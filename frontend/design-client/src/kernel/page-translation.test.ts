@@ -504,3 +504,41 @@ test('clipped-board prefetch keeps exact native strips outside the viewport', ()
   expect(strips[0].x + strips[0].width - 1).toBe(left)
   expect(strips[1].x + 1).toBe(right)
 })
+
+test('a released clipped board never starts native drag repair from a late coverage miss', () => {
+  const doc = blank()
+  const board = node('frame', -400, 0, 800, 90)
+  const neighbor = node('frame', 900, 0, 100, 90)
+  for (const root of [board, neighbor]) {
+    root.blend = 'normal'
+    root.clip = true
+    doc.nodes[root.id] = root
+  }
+  const paint = board.fills[0]
+  if (paint.kind !== 'solid') throw Error('Missing opaque paint')
+  paint.color = 'color(srgb 0.8 0.9 1 / 1)'
+  const page = doc.pages[0]
+  page.children = [board.id, neighbor.id]
+  const props: InteractionProps = { document: doc, selection: [board.id], active: true, epoch: 1,
+    figmaBoardPreview: true, control: { current: null }, onReady() {} }
+  const camera = { view: { x: 0, y: 0, zoom: 1 }, width: 100, height: 90, dpr: 1 }
+  const tile = { key: 'expanded', serial: 1, gpuTile: 7, bytes: new Uint8Array(),
+    x: -257, y: -1, width: 614, height: 92, zoom: 1 }
+  const rebase = vi.fn(() => null)
+  const movement = new PageTranslation(vi.fn(), rebase)
+  expect(movement.prepare(props, page.id, doc, [], doc, true, false, camera,
+    [{ tile, active: true, layer: 0 }])).toBe(true)
+  const transform: typeof board.transform = [1, 0, 0, 1, -360, 0]
+  expect(movement.control.apply(doc, { [board.id]: { transform } })).toEqual({ x: 40, y: 0 })
+  const sequence = movement.control.inputSequence!()
+  movement.control.releaseInput?.('move')
+  const committed = { ...doc, nodes: { ...doc.nodes, [board.id]: { ...board, transform } } }
+  movement.control.end(committed)
+  expect(movement.repairMissingCoverage(sequence)).toBe(false)
+  expect(movement.control.apply(doc, { [board.id]: { transform } })).toBeNull()
+  expect(movement.items(camera.view)).not.toBeNull()
+  // A resize can invalidate the retained crop while exact tiles are pending.
+  expect(movement.prepare({ ...props, active: false, document: committed }, page.id,
+    committed, [], undefined, true, false, { ...camera, width: 120 })).toBe(false)
+  expect(rebase).not.toHaveBeenCalled()
+})

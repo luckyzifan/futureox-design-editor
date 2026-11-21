@@ -59,6 +59,7 @@ export class PageTranslation {
   private residents: CompositeTile[] = []
   private active = false
   private phaseRevoked = false
+  private clippedInputClosed = false
   private fractional = false
   private feedback = new PoseFeedback()
   private offset = { x: 0, y: 0 }
@@ -106,7 +107,7 @@ private tracking = false
    * retired owner, and a pointer-up does not. */
   repairMissingCoverage(sequence: number) {
     const pending = this.pendingPose
-    if (!this.active || this.phaseRevoked || sequence !== this.input.sequence || !pending) return false
+    if (!this.active || this.phaseRevoked || this.clippedInputClosed || sequence !== this.input.sequence || !pending) return false
     // An uncommitted whole-page translation can fill the missing original
     // world tiles through the canvas's existing owner/budget/queue. No document
     // patch or enlarged capture is needed. A clipped board uses that same
@@ -154,6 +155,7 @@ private tracking = false
     return this.residents.length > 0 && (this.fractional || this.integerPhysicalOffset(offset))
   }
   private rebase(document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1], guides=this.input.guides) {
+if (this.clippedInputClosed) return null
     this.tracking = false
     this.phaseRevoked = true
     if(this.reportPhase){
@@ -213,6 +215,9 @@ private tracking = false
       : null
   }
   readonly control: GpuMoveControl = {
+    releaseInput: () => {
+      if (this.srgbBoard?.clipped) this.clippedInputClosed = true
+    },
     isActive: () => this.active,
     guidesInSurface:()=>true,
     feedbackPending:()=>true,
@@ -223,7 +228,7 @@ private tracking = false
       ids.every((id) => this.plan!.ids.includes(id)) &&
       !!this.delta(document),
     apply: (document, patches, _trace, guides) => {
-      if (!this.plan || Object.keys(patches).some((id) => !this.plan!.ids.includes(id))) return null
+      if (this.clippedInputClosed || !this.plan || Object.keys(patches).some((id) => !this.plan!.ids.includes(id))) return null
       if (!this.delta(document)) return null
       // The editor document is immutable during a retained move. Validate it
       // once by identity; pointer samples only need the selected transforms.
@@ -268,9 +273,16 @@ private tracking = false
       this.tracking = false
       this.input = { ...this.input, guides:undefined }
       this.feedback.clear()
+      if (this.srgbBoard?.clipped) this.clippedInputClosed = true
       if (!this.active || this.phaseRevoked) return
       const offset = this.delta(document)
-      if (offset && (!this.clippedPoseCovered(offset) || !this.reusableOffset(offset))) { this.rebase(document, {}); return }
+      if (offset && (!this.clippedPoseCovered(offset) || !this.reusableOffset(offset))) {
+        if (this.clippedInputClosed) {
+          this.clear()
+          this.changed()
+        } else this.rebase(document, {})
+        return
+      }
       this.active = !!offset && (offset.x !== 0 || offset.y !== 0)
       if (offset) this.offset = offset
       this.lastEnd = offset ? `${offset.x},${offset.y}` : 'content-changed'
@@ -289,6 +301,9 @@ private tracking = false
     clippedItems?: CompositeItem[],
   ) {
     if(this.fractional!==fractional){this.clear();this.fractional=fractional}
+    // A second drag can start before the committed frame arrives. The old
+    // clipped pose must not become the source of that new gesture.
+    if (this.clippedInputClosed && props?.active && this.props?.active === false) this.clear()
     if (this.phaseRevoked) {
       // React refreshes during imperative input still refer to the old
       // authored document. Do not rebind its invalid pixel fast path.
@@ -340,7 +355,8 @@ const coveredBoard = !!board && (this.active && !!this.board || boardTilesCover(
       if (this.pendingPose && (this.overlapsStationary(this.offset) || !this.clippedPoseCovered(this.offset) ||
         supplied && !sameBoardViewport(supplied, camera))) {
         const { document, patches } = this.pendingPose
-        this.rebase(document, patches)
+        if (this.clippedInputClosed) this.clear()
+        else this.rebase(document, patches)
         return false
       }
     }
@@ -357,6 +373,10 @@ const coveredBoard = !!board && (this.active && !!this.board || boardTilesCover(
       if (settled !== props.document) return true
     }
     if (settled === source && items.length) {
+      if (this.clippedInputClosed) {
+        this.clippedInputClosed = false
+        this.pendingPose = undefined
+      }
       this.plan = { document: source, pageId, ids: [...props.selection], layers: [] }
       this.checkedDocument = undefined
       this.board = all ? undefined : board
@@ -457,6 +477,7 @@ const coveredBoard = !!board && (this.active && !!this.board || boardTilesCover(
     this.coveredMisses = 0
     this.active = false
     this.phaseRevoked = false
+    this.clippedInputClosed = false
     this.pendingPose = undefined
     this.offset = { x: 0, y: 0 }
   }
