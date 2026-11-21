@@ -476,6 +476,7 @@ test('a clipped board reuses a finite pixel window and rebases when a move expos
   expect(movement.prepare(props, page.id, doc, visible, doc, true, false, camera)).toBe(false)
   expect(movement.prepare(props, page.id, doc, visible, doc, true, false, camera, available)).toBe(true)
   expect(movement.mode).toBe('retained-clipped-board')
+  expect(movement.prepare({ ...props, active: true }, page.id, doc, [], undefined, true, false, camera)).toBe(true)
   expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, -360, 0] } })).toEqual({ x: 40, y: 0 })
   expect(rebase).not.toHaveBeenCalled()
   expect(movement.prepare({ ...props, active: true }, page.id, doc, visible, doc, true, false, camera)).toBe(true)

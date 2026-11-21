@@ -1,7 +1,7 @@
 import type { CanvasCamera } from '../canvas-camera'
 import type { Bounds, DesignDocument } from '../model'
 import { validColor } from '../color'
-import { boardViewportBounds, clippedBoardSource, containsBoardSource, visibleBoardSource, type BoardViewport } from './clipped-board-drag'
+import { boardViewportBounds, clippedBoardSource, containsBoardSource, sameBoardViewport, visibleBoardSource, type BoardViewport } from './clipped-board-drag'
 import { translateOverlay, type CanvasOverlay } from './gpu/canvas-overlay'
 import { tilesCoverBounds } from './tile-cache'
 import type { CompositeItem, CompositeTile } from './gpu/tile-compositor'
@@ -296,6 +296,17 @@ private tracking = false
           props?.selection.length === this.plan.ids.length && props.selection.every(id => this.plan!.ids.includes(id))) return false
       this.clear()
     }
+    // Pointer down temporarily replaces the viewport plan before the first
+    // move. Keep the prepared pixel owner while this is still its exact view.
+    const prepared = this.srgbBoard?.clipped
+    if (!this.active && prepared && camera && sameBoardViewport(prepared.camera, camera) &&
+        this.ready && allowed && props?.active && props.figmaBoardPreview &&
+        this.epoch === props.epoch && this.plan?.pageId === pageId &&
+        this.plan.document === source && props.document === source &&
+        props.selection.length === 1 && props.selection[0] === this.plan.ids[0]) {
+      this.props = props
+      return true
+    }
     const document = this.active && this.plan ? this.plan.document : props?.document
     const page = document?.pages.find((page) => page.id === pageId)
     const roots = page?.children.filter((id) => document?.nodes[id]?.visible) || []
@@ -327,9 +338,7 @@ const coveredBoard = !!board && (this.active && !!this.board || boardTilesCover(
       const supplied = this.srgbBoard.clipped?.camera
       this.srgbBoard.viewport = boardViewportBounds(camera)
       if (this.pendingPose && (this.overlapsStationary(this.offset) || !this.clippedPoseCovered(this.offset) ||
-        supplied && (supplied.dpr !== camera.dpr || supplied.view.x !== camera.view.x ||
-          supplied.view.y !== camera.view.y || supplied.view.zoom !== camera.view.zoom ||
-          supplied.width !== camera.width || supplied.height !== camera.height))) {
+        supplied && !sameBoardViewport(supplied, camera))) {
         const { document, patches } = this.pendingPose
         this.rebase(document, patches)
         return false

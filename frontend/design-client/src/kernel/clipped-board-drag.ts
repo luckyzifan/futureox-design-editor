@@ -6,6 +6,11 @@ import { clipAlignedTile } from './tile-plan-aligned'
 
 export type BoardViewport = { view: CanvasCamera; width: number; height: number; dpr?: number }
 
+export function sameBoardViewport(a: BoardViewport, b: BoardViewport) {
+  return a.dpr === b.dpr && a.width === b.width && a.height === b.height &&
+    a.view.x === b.view.x && a.view.y === b.view.y && a.view.zoom === b.view.zoom
+}
+
 export function boardViewportBounds({ view, width, height }: BoardViewport): Bounds {
   return { x: -view.x / view.zoom, y: -view.y / view.zoom, width: width / view.zoom, height: height / view.zoom }
 }
