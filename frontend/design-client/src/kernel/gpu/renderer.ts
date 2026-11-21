@@ -4352,13 +4352,36 @@ export class GpuRenderer {
     }
     const batchLimit = pressure ? Math.max(RECLAIM_BATCH_BYTES, this.workingBytes + required - this.frameBudget) : RECLAIM_BATCH_BYTES
     const resourceLimit = pressure ? 4096 : RECLAIM_BATCH_RESOURCES
-    // Preserve the exact oldest-first batch. Only a pool-only maintenance
-    // batch below image pressure can use prior-frame completion evidence.
+    // Preserve the oldest-first order for both completed and fenced retirement.
     if(!indexedPool)pooled.sort((a, b) => (this.lastUsed.get(a) || 0) - (this.lastUsed.get(b) || 0))
+    const completed = this.driver.completedResourceEpoch, current = this.driver.resourceEpoch
+    let completedPoolTarget = 0
+    if (pressure && required > 0) completedPoolTarget = this.workingBytes + required - this.frameBudget
+    else if (!pressure && poolTrim && !imagesUnderPressure)
+      completedPoolTarget = Math.min(batchLimit, this.workingBytes - Math.floor(this.frameBudget * .875))
+    if (completedPoolTarget > 0 && !this.driver.lost && !retiredImageTableBytes && !retiredImageAssetBytes &&
+        !this.retiredUploads.length && !coordinates.length &&
+        Number.isSafeInteger(completed) && Number.isSafeInteger(current) && completed! <= current!) {
+      // A previous tile may leave differently sized surfaces in the pool.
+      // Their prior-frame completion can cover admission and the subsequent
+      // pool watermark trim without waiting for this tile or evicting images.
+      const available = pooled.filter(texture => {
+        const epoch = this.poolReleaseEpoch.get(texture)
+        return !this.used.has(texture) && Number.isSafeInteger(epoch) && epoch! > 0 &&
+          epoch! < current! && epoch! <= completed!
+      }).slice(0, resourceLimit)
+      if (available.reduce((bytes, texture) => bytes + texture.bytes, 0) >= completedPoolTarget) {
+        let retiredBytes = 0
+        for (const texture of available) {
+          if (retiredBytes >= batchLimit) break
+          if (this.destroyFree(texture)) retiredBytes += texture.bytes
+        }
+        if (retiredBytes >= completedPoolTarget && this.workingBytes + required <= this.frameBudget) return
+      }
+    }
     let completedPoolEpoch: number | undefined
     if (required === 0 && !retiredImageAssetBytes && !this.retiredUploads.length && !coordinates.length &&
         this.workingBytes <= this.frameBudget * .75) {
-      const completed = this.driver.completedResourceEpoch, current = this.driver.resourceEpoch
       if (Number.isSafeInteger(completed) && Number.isSafeInteger(current)) {
         let bytes = 0, count = 0, newest = 0, proven = pooled.length > 0
         for (const texture of pooled) {

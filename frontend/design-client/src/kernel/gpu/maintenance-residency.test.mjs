@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {stripTypeScriptTypes} from 'node:module'
 import {MaintenanceResidency} from './maintenance-residency.ts'
+import {ResourceLedger} from './resource-ledger.ts'
 const M=1024*1024
 const src=readFileSync(process.env.RENDERER_SOURCE || new URL('./renderer.ts',import.meta.url),'utf8')
 const start=src.indexOf('  private async reclaimScratch('),end=src.indexOf('\n  private ',start+1)
@@ -13,13 +14,14 @@ const Renderer=Function('gpuDiagnosticsEnabled','recordGpuDiagnostic','RECLAIM_B
 const records=[]
 function fixture(working=272586144,pool=9844192,transient=160118336) {
  const r=new Renderer(), p={bytes:pool},t={bytes:transient},calls={wait:0,destroy:0}
- Object.assign(r,{maintenanceResidency:new MaintenanceResidency(),workingBytes:working,bytes:working,frameBudget:1024*M,
+ Object.assign(r,{ledger:new ResourceLedger(),maintenanceResidency:new MaintenanceResidency(),workingBytes:working,bytes:working,frameBudget:1024*M,
  checkFrameCurrent(){},admissionPins:new Set(),staticImageBlurs:{collect(){},discardPending(){},bytes:0,clear(){}},collectRetiredImageAssets(){},
- driver:{completedResourceEpoch:1,resourceEpoch:2,async checkpoint(){calls.wait++}},scene:{},retiredImageAssets:{bytes:0},constantTargets:new Map(),aliases:new Map(),free:new Map([['pool',[p]]]),coordinateMaps:new Set([t]),retiredUploads:[],hasEvictableImage(){return false},images:new Map(),lastUsed:new Map(),poolReleaseEpoch:new Map(),
+ driver:{completedResourceEpoch:1,resourceEpoch:2,async checkpoint(){calls.wait++}},scene:{},retiredImageAssets:{bytes:0},constantTargets:new Map(),aliases:new Map(),free:new Map([['pool',[p]]]),coordinateMaps:new Set([t]),hasEvictableImage(){return false},images:new Map(),lastUsed:new Map(),poolReleaseEpoch:new Map(),
  retiredImageAssetCohort(){return []},coverRetiredImageAssets(){},checkpointMs:0,retireDisplayMaterial(){},retireNestedPrefix(){},retireCoherentSubtrees(){},horizontalFilters:{clear(){}},evictImages(){},
  destroyFree(t){for(const [k,list]of this.free)this.free.set(k,list.filter(v=>v!==t));this.bytes-=t.bytes;this.workingBytes-=t.bytes;calls.destroy++},
  forgetCoordinateTexture(t){this.coordinateMaps.delete(t);this.bytes-=t.bytes;this.workingBytes-=t.bytes;calls.destroy++},
  forgetUpload(t){this.bytes-=t.bytes;this.workingBytes-=t.bytes;calls.destroy++}})
+ Object.defineProperty(r,'retiredUploads',{get:()=>r.ledger.retiredUploads})
  return {r,p,t,calls}
 }
 test('actual req76 transient-heavy mix reclaims one completed cohort and preserves pool',async()=>{
@@ -62,7 +64,7 @@ test('conflicting pool/transient ownership fails before any destroy or completio
  assert.equal(calls.wait,0);assert.equal(calls.destroy,0);assert.equal(r.free.get('pool')[0],p);assert.equal(r.coordinateMaps.has(p),true)
 })
 test('conflicting retired/coordinate ownership preserves aliases and rejects',async()=>{
- const {r,t,calls}=fixture();r.retiredUploads=[t];await assert.rejects(r.reclaimScratch(),/ownership overlaps/)
+ const {r,t,calls}=fixture();r.ledger.retireUpload(t);await assert.rejects(r.reclaimScratch(),/ownership overlaps/)
  assert.equal(calls.wait,0);assert.equal(calls.destroy,0);assert.equal(r.retiredUploads[0],t);assert.equal(r.coordinateMaps.has(t),true)
 })
 test('completed cohort disposal remains bounded at the production64 handles',async()=>{

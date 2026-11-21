@@ -55,6 +55,66 @@ test.each([1,700*MiB])('requested allocation %s retains its real admission fence
   expect(f.driver.checkpoint).toHaveBeenCalledTimes(1);retained(f)
   complete();await pending
 })
+
+test('allocation pressure retires enough completed pool surfaces without a new fence', async () => {
+  const { renderer, driver, pool, coordinate } = fixture()
+  renderer.coordinateMaps.delete(coordinate)
+  renderer.frameBudget = 512 * MiB
+  renderer.bytes = 500 * MiB
+  const queued = { ...pool, resource: {} }
+  const pinned = { ...pool, resource: {} }
+  renderer.free.set('1024:5120', [queued, pinned, pool])
+  renderer.poolReleaseEpoch.set(queued, 12)
+  renderer.poolReleaseEpoch.set(pinned, 11)
+  renderer.poolReleaseEpoch.set(pool, 11)
+  renderer.admissionPins.set(pinned, 1)
+
+  await renderer.reclaimScratch(48 * MiB)
+
+  expect(driver.checkpoint).not.toHaveBeenCalled()
+  expect(driver.destroy.mock.calls).toEqual([[pool]])
+  expect(renderer.free.get('1024:5120')).toEqual([queued, pinned])
+  expect(renderer.bytes).toBe(420 * MiB)
+  expect(driver.completedResourceEpoch).toBe(11)
+})
+
+test.each([undefined, 12])('allocation pressure waits when free pool completion is %s', async epoch => {
+  const f = fixture()
+  f.renderer.coordinateMaps.delete(f.coordinate)
+  f.renderer.frameBudget = 512 * MiB
+  f.renderer.bytes = 500 * MiB
+  if (epoch !== undefined) f.renderer.poolReleaseEpoch.set(f.pool, epoch)
+  let complete!: () => void
+  f.setBoundary(new Promise<void>(resolve => { complete = resolve }))
+
+  const pending = f.renderer.reclaimScratch(48 * MiB)
+  expect(f.driver.checkpoint).toHaveBeenCalledOnce()
+  expect(f.driver.destroy).not.toHaveBeenCalled()
+  complete()
+  await pending
+  expect(f.driver.destroy).toHaveBeenCalledWith(f.pool)
+})
+
+test('the soft pool watermark reclaims completed surfaces without stalling the current tile', async () => {
+  const { renderer, driver, pool, coordinate } = fixture()
+  renderer.coordinateMaps.delete(coordinate)
+  renderer.residentImageRequest = true
+  renderer.frameBudget = 512 * MiB
+  renderer.bytes = 465 * MiB
+  renderer.free.clear()
+  renderer.free.setOwned('1024:5120', [pool])
+  renderer.free.added(pool)
+  renderer.touch(pool)
+  renderer.poolReleaseEpoch.set(pool, 11)
+
+  await renderer.reclaimScratch()
+
+  expect(driver.checkpoint).not.toHaveBeenCalled()
+  expect(driver.destroy.mock.calls).toEqual([[pool]])
+  expect(renderer.bytes).toBe(385 * MiB)
+  expect(driver.completedResourceEpoch).toBe(11)
+})
+
 test('large transient cohort still fences even in native display mode',async()=>{
   const f=fixture(65*MiB);let complete!:()=>void
   f.setBoundary(new Promise<void>(r=>complete=r))
