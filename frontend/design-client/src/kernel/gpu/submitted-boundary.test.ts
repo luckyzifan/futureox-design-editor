@@ -71,3 +71,49 @@ test('a rejected queue boundary retains table ownership and fails closed for thi
   await expect(f.driver.waitForSubmittedWork()).rejects.toThrow('requires an ended frame')
   expect(f.finish).not.toHaveBeenCalled()
 })
+
+test('an admission prefix proves only the captured encoder, not another completed submission', () => {
+  const owner = {}, encoder = { finish: vi.fn(() => ({})) }
+  const driver = Object.assign(Object.create(WebGpuDriver.prototype), {
+    device: owner, encoder, resourceEpoch: 3, frameScopeOpen: true, rasterPacing: true, lost: false,
+    completedSubmissionSequence: 0, submissionSequence: 0,
+    submitQueue() { this.submissionSequence++ },
+  })
+  const covered = driver.captureAdmissionCompletion()!
+  driver.submitQueue()
+  driver.completedSubmissionSequence = 1
+  expect(covered()).toBe(false)
+
+  driver.submitEncoder()
+  expect(encoder.finish).toHaveBeenCalledOnce()
+  expect(covered()).toBe(false)
+
+  driver.completedSubmissionSequence = 2
+  expect(covered()).toBe(true)
+  driver.resourceEpoch++
+  expect(covered()).toBe(false)
+})
+
+test('finish reuses a raster completion that covers a deferred admission prefix', async () => {
+  const owner = {}, waitForQueue = vi.fn()
+  let resolve!: () => void
+  const fence = new Promise<void>(done => { resolve = done })
+  const coveringCompletion = vi.fn(() => fence)
+  const driver = Object.assign(Object.create(WebGpuDriver.prototype), {
+    device: owner, encoder: { finish: () => ({}) }, resourceEpoch: 2, frameScopeOpen: true, rasterPacing: true,
+    submissionSequence: 0, completedSubmissionSequence: 0, waitForQueue,
+    rasterPacer: { device: owner, pacer: { coveringCompletion } },
+    submitQueue() { this.submissionSequence++ },
+  })
+  const covered = driver.captureAdmissionCompletion()!
+  driver.submitEncoder()
+  const finish = driver.finishAdmissionCompletion(driver.admissionCompletion)
+  expect(coveringCompletion).toHaveBeenCalledExactlyOnceWith(1)
+  expect(waitForQueue).not.toHaveBeenCalled()
+  expect(covered()).toBe(false)
+  driver.completedSubmissionSequence = 1
+  resolve()
+  await finish
+  expect(covered()).toBe(true)
+  expect(driver.admissionCompletion).toBeUndefined()
+})
