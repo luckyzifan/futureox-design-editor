@@ -2907,14 +2907,22 @@ impl Engine {
             extent = plan.root;
             painter_support = None;
             regional_foreground = false;
-        } else if extent.pixels() > 16_777_216 && unmanaged_tile && !regional_foreground {
+        } else if unmanaged_tile && !regional_foreground && (extent.pixels() > 16_777_216
+            || analytic_regions && !compatible && !properties.has_zoom && prepared.iter().any(|(id, p)| {
+                let n = &doc.nodes[id];
+                n.visible && n.opacity > 0.
+                    && gaussian_region_plan(n, p.matrix, viewport.intersect(p.bounds)).is_some()
+            }))
+        {
+            // A small focus crop can fit the whole-surface pixel budget while
+            // still requiring the regional operator's wider sigma domain.
             let coherent = options.raster_profile != crate::fidelity::RasterProfile::Analytic;
             let proved = page.children.iter().all(|id| foreground_region_supported(
                 doc, id, viewport, &prepared, coherent, true, true, false));
             if proved {
                 regional_foreground = true;
                 extent = viewport.expand(2);
-                // Stage rectangles were proved against the rejected extent.
+                // Stage rectangles were proved against the previous extent.
                 painter_support = None;
             }
         }
