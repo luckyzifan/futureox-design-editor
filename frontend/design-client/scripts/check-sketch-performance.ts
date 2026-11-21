@@ -40,6 +40,7 @@ const report: Record<string, any> = {
     contentToken: 'Sparse digest of worker byte output, when present; bitmap-only output has no digest',
     exact: 'Production presentation-ready=true, no preview/fallback/error, latest requested camera/revision',
     screenshot: 'Actual composite at each completed stage; no substituted pixels',
+    coverage: 'Bounds of visible legacy tiles or the GPU compositor with a displayed document',
   },
 }
 let application: Awaited<ReturnType<typeof _electron.launch>> | undefined
@@ -133,10 +134,18 @@ async function startFrames(current: Page) {
       const host = document.querySelector<HTMLElement>('.kernel-presentation')
       const surface = document.querySelector<HTMLElement>('.kernel-tiles')
       const outline = document.querySelector<SVGElement>('[data-testid="canvas-selection-outline"]')
-      const visible = [...document.querySelectorAll<HTMLCanvasElement>('canvas[data-tile-key]')]
-        .filter(canvas => canvas.dataset.frameVisible === 'true' && getComputedStyle(canvas).visibility === 'visible')
+      const visible = [...(host?.querySelectorAll<HTMLCanvasElement>('canvas[data-frame-visible="true"]') ?? [])]
+        .filter(canvas => {
+          const style = getComputedStyle(canvas)
+          return canvas.width > 0 && canvas.height > 0 && style.visibility === 'visible' &&
+            style.opacity !== '0' && canvas.getClientRects().length > 0
+        })
+      const tiles = visible.filter(canvas => canvas.dataset.tileKey)
+      const compositors = host?.dataset.displayedDocument && host.dataset.presentationBackend === 'gpu'
+        ? visible.filter(canvas => canvas.dataset.compositor)
+        : []
       const canvasBounds = document.querySelector('[data-testid="canvas"]')?.getBoundingClientRect()
-      const rectangles = visible.map(canvas => canvas.getBoundingClientRect())
+      const rectangles = [...tiles, ...compositors].map(canvas => canvas.getBoundingClientRect())
       let uncovered = 0
       if (canvasBounds) for (const fx of [0.02, 0.25, 0.5, 0.75, 0.98]) for (const fy of [0.02, 0.25, 0.5, 0.75, 0.98]) {
         const x = canvasBounds.x + canvasBounds.width * fx, y = canvasBounds.y + canvasBounds.height * fy
@@ -145,8 +154,10 @@ async function startFrames(current: Page) {
       const frame = { at: performance.now(), host: { ...host?.dataset }, surface: { ...surface?.dataset },
         uncovered,
         selection: outline && getComputedStyle(outline).visibility === 'visible' ? rect(outline) : null,
-        tiles: visible.map(canvas => ({ key: canvas.dataset.tileKey, revision: canvas.dataset.tileRevision,
+        tiles: tiles.map(canvas => ({ key: canvas.dataset.tileKey, revision: canvas.dataset.tileRevision,
           zoom: canvas.dataset.tileZoom, lod: canvas.dataset.lod, ...rect(canvas) })),
+        compositors: compositors.map(canvas => ({ backend: canvas.dataset.compositor,
+          rasterWidth: canvas.width, rasterHeight: canvas.height, ...rect(canvas) })),
         pixelWrites: probe.writes.length,
       }
       const signature = JSON.stringify({ ...frame, at: 0 })
@@ -218,6 +229,15 @@ try {
     await expect(presentation).toHaveAttribute('data-presentation-ready', 'true')
     await expect(presentation).toHaveAttribute('data-preview-active', 'false')
   }
+  const setZoom = async (percent: number) => {
+    const menu = current.getByLabel('缩放与视图设置', { exact: true })
+    await menu.click()
+    const ratio = current.getByRole('spinbutton', { name: '缩放比例', exact: true })
+    await ratio.fill(String(percent))
+    await ratio.press('Enter')
+    await expect(presentation).toHaveAttribute('data-requested-camera-zoom', String(percent / 100))
+    if (await ratio.isVisible()) await menu.click()
+  }
   const stage = async (name: string, action: () => Promise<void>, verify?: () => Promise<void>) => {
     const before = await snapshot(), marker = await startFrames(current)
     console.log(`SKETCH_PERFORMANCE_START ${name}`)
@@ -230,7 +250,10 @@ try {
     }, { marker })
     const after = await snapshot()
     assert.ok(result.frames.length > 0, 'Frame probe must observe the real canvas')
-    if (name !== 'import') assert.ok(result.frames.every((frame: any) => frame.tiles.length > 0), 'Camera/editing must retain visible tiles')
+    if (name !== 'import') {
+      assert.ok(result.frames.every((frame: any) => frame.tiles.length > 0 || frame.compositors.length > 0),
+        'Camera/editing must retain a visible rendered surface')
+    }
     const previews = result.frames.filter((frame: any) => frame.host.previewActive === 'true')
     const workerTiles = result.trace.filter((entry: any) => entry.kind === 'receive' && entry.tileKey)
     const finishes = result.trace.filter((entry: any) => entry.kind === 'receive' && entry.tilesRendered !== undefined)
@@ -274,11 +297,7 @@ try {
   const zooms = values.zooms ? values.zooms.split(',').map(Number) : [50, 100, 200, 50]
   assert.ok(zooms.length && zooms.every(value => Number.isFinite(value) && value > 0), 'Invalid zoom sequence')
   for (const zoom of zooms) {
-    const result = await stage(`zoom-${zoom}${completedCameras.size >= 2 ? '-return' : ''}`, async () => {
-    await current.getByLabel('缩放与视图设置', { exact: true }).click()
-    await current.getByRole('button', { name: `${zoom}%`, exact: true }).click()
-    await expect(presentation).toHaveAttribute('data-requested-camera-zoom', String(zoom / 100))
-  })
+    const result = await stage(`zoom-${zoom}${completedCameras.size >= 2 ? '-return' : ''}`, () => setZoom(zoom))
     const camera = JSON.stringify([result.after.host.cameraX, result.after.host.cameraY, result.after.host.cameraZoom])
     if (values['assert-cached-zoom'] && completedCameras.has(camera)) {
       assert.equal(result.after.surface.viewportTilesRendered, result.before.surface.viewportTilesRendered,
@@ -346,19 +365,22 @@ try {
       firstPreviewMs: gesture.firstPreviewMs, deliveredTiles: delivered.length,
       cachedPreviewFrames: gesture.frames.filter((f: any) => Number(f.surface.cachedPreviewTiles) > 0).length }
     // Revisit a previously completed camera and compare actual composite pixels.
-    const zoomMenu = async () => {
-      await current.getByLabel('缩放与视图设置', { exact: true }).click()
-      await current.getByRole('button', { name: '50%', exact: true }).click()
+    const capturePixels = async () => {
+      const resident = presentation.locator('canvas[data-compositor="webgpu-resident"]:visible')
+      if (await resident.count()) {
+        // Read the presented bitmap without the floating toolbar composited over it.
+        return digest(await resident.evaluate((element: HTMLCanvasElement) => element.toDataURL()))
+      }
+      return digest(await canvas.screenshot())
     }
-    await zoomMenu(); await settle()
-    const beforeCamera = await snapshot(), firstPixels = digest(await canvas.screenshot())
-    await current.getByLabel('缩放与视图设置', { exact: true }).click()
-    await current.getByRole('button', { name: '100%', exact: true }).click(); await settle()
-    await zoomMenu(); await settle()
+    await setZoom(50); await settle()
+    const beforeCamera = await snapshot(), firstPixels = await capturePixels()
+    await setZoom(100); await settle()
+    await setZoom(50); await settle()
     const afterCamera = await snapshot()
     assert.equal(afterCamera.host.cameraX, beforeCamera.host.cameraX)
     assert.equal(afterCamera.host.cameraY, beforeCamera.host.cameraY)
-    assert.equal(digest(await canvas.screenshot()), firstPixels, 'Zoom round trip must preserve the actual visible content')
+    assert.equal(await capturePixels(), firstPixels, 'Zoom round trip must preserve the actual visible content')
     report.gesture.roundTripPixelsEqual = true
   }
   const trace = await current.evaluate(() => (window as any).__sketchPerformance.trace)
