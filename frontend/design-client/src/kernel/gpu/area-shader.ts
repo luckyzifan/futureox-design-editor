@@ -5,12 +5,13 @@ import coverageGlsl from './coverage64.glsl?raw'
 import areaWgsl from '../../../../../design-studio/crates/design-kernel/shaders/area.wgsl?raw'
 import areaGlsl from './area.glsl?raw'
 
-export const areaShaderWgsl =
+export const areaCoverageWgsl =
   vectorWgsl.slice(0, vectorWgsl.indexOf('fn fixedLinear')) +
   vectorWgsl.slice(vectorWgsl.indexOf('fn scaledPositive64'), vectorWgsl.indexOf('fn paintUV')) +
   coverageWgsl +
-  areaWgsl +
-  `
+  areaWgsl
+
+export const areaShaderWgsl = areaCoverageWgsl + `
 struct AreaParams { values:array<vec4<f32>,64> }
 @group(0) @binding(0) var<uniform> params:AreaParams;
 @group(0) @binding(4) var<storage,read> curves:array<vec4<f32>>;

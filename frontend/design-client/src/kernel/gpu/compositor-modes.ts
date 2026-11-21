@@ -2,6 +2,7 @@ import type { GpuScene } from './types'
 
 /** Shader specialization removes unreachable dispatch branches; it never changes the numeric program. */
 export const baseCompositorModes=[1,2,12,15,19,21,23,24,25,26,27,28,29,30]
+export const SOLID_BIN_DRAW_MODE = 79
 export const SKETCH_LAYER_GAUSSIAN_MODE = 98
 export function compositorModes(scene: GpuScene) {
   const modes = new Set(Object.keys(scene.nodes).length ? baseCompositorModes : [12])

@@ -25,7 +25,7 @@ import { CoordinateRetirementSet } from './coordinate-retirement-set'
 import { prefixAlignedStrip, prefixAlignedRgbStrip } from './prefix-band'
 import { PREFIX_SCRATCH_BYTES } from './texture-prefix'
 import { BOX_PREFIX_BYTES } from './box-prefix'
-import { SKETCH_LAYER_GAUSSIAN_MODE } from './compositor-modes'
+import { SKETCH_LAYER_GAUSSIAN_MODE, SOLID_BIN_DRAW_MODE } from './compositor-modes'
 import { backdropFilterRegion } from './backdrop-filter-region'
 import { painterStageBox } from './painter-stage'
 import { identicalSampleCoverage } from './sample-equivalent-coverage'
@@ -3873,7 +3873,7 @@ export class GpuRenderer {
       const composed = saved && await this.composeLastZoomFocus(children[focus.index], saved, focus.output)
       if (composed) { this.release(target); return composed }
     }
-    const start = !skip&&this.sampleIndex!==undefined?this.opaqueBegin(children,[target],clip?[clip]:undefined):0
+    let start = !skip&&this.sampleIndex!==undefined?this.opaqueBegin(children,[target],clip?[clip]:undefined):0
     const repair = this.scene.progressiveBlurRepair
     const repairNode = repair && this.scene.nodes[repair.node], repairOutput = this.scene.output
     const repairIndex = repair && !skip && scope && this.scene.roots.length === 1 && this.scene.roots[0] === scope.id &&
@@ -3909,6 +3909,29 @@ export class GpuRenderer {
             return composed
           }
         } finally { this.activeNode = previous }
+      }
+    }
+    if (this.optimized && !start && !clip && !skip && !focus && !repair && !target.logicalBounds &&
+        this.analyticPaintFusionEnabled() && this.driver.drawSolidBins && exactBlendLattice([target.rect]) &&
+        !(this.analyticSolidBatchEnabled() && this.analyticSolidTarget(target))) {
+      const prefix = this.driver.solidBinPrefix?.(children, target.texture)
+      if (prefix && !this.surfaceNeedsAdmission(target.rect)) {
+        this.checkFrameCurrent()
+        const out = this.acquire(target.rect, false, false, SurfaceAllocationSite.passOutput, SOLID_BIN_DRAW_MODE)
+        const scratch = this.driver.scratchBytes || 0
+        let drawn = false
+        try {
+          drawn = this.driver.drawSolidBins(children, out.texture, target.texture, target.rect, this.frameBudget - this.workingBytes)
+          if (drawn) {
+            this.release(target)
+            target = out
+            start = prefix
+            this.passPixels += out.rect.w * out.rect.h
+          }
+        } finally {
+          this.noteScratch(scratch)
+          if (!drawn) this.release(out)
+        }
       }
     }
     for (let i = start; i < children.length; ) {
@@ -4391,9 +4414,35 @@ export class GpuRenderer {
     }
     const batchLimit = pressure ? Math.max(RECLAIM_BATCH_BYTES, this.workingBytes + required - this.frameBudget) : RECLAIM_BATCH_BYTES
     const resourceLimit = pressure ? 4096 : RECLAIM_BATCH_RESOURCES
-    // Preserve the exact oldest-first batch. Only a pool-only maintenance
-    // batch below image pressure can use prior-frame completion evidence.
+    // Preserve the oldest-first order for both completed and fenced retirement.
     if(!indexedPool)pooled.sort((a, b) => (this.lastUsed.get(a) || 0) - (this.lastUsed.get(b) || 0))
+    const completed = this.driver.completedResourceEpoch, current = this.driver.resourceEpoch
+    let completedPoolTarget = 0
+    if (pressure && required > 0) completedPoolTarget = this.workingBytes + required - this.frameBudget
+    else if (!pressure && poolTrim && !imagesUnderPressure)
+      completedPoolTarget = Math.min(batchLimit, this.workingBytes - Math.floor(this.frameBudget * .875))
+    if (completedPoolTarget > 0 && !this.driver.lost && !retiredImageTableBytes && !retiredImageAssetBytes &&
+        !this.retiredUploads.length && !coordinates.length &&
+        Number.isSafeInteger(completed) && Number.isSafeInteger(current) && completed! <= current!) {
+      // A previous tile may leave differently sized surfaces in the pool.
+      // Their prior-frame completion can cover admission and the subsequent
+      // pool watermark trim without waiting for this tile or evicting images.
+      const available = pooled.filter(texture => {
+        const epoch = this.poolReleaseEpoch.get(texture)
+        return !this.used.has(texture) && Number.isSafeInteger(epoch) && epoch! > 0 &&
+          epoch! < current! && epoch! <= completed!
+      }).slice(0, resourceLimit)
+      if (available.reduce((bytes, texture) => bytes + texture.bytes, 0) >= completedPoolTarget) {
+        let retiredBytes = 0
+        for (const texture of available) {
+          if (retiredBytes >= batchLimit) break
+          if (this.destroyFree(texture)) retiredBytes += texture.bytes
+        }
+        if (retiredBytes >= completedPoolTarget && this.workingBytes + required <= this.frameBudget) return
+      }
+    }
+    // Keep pool-only retirement first. The bounded soft batch can also
+    // proceed while an independent coordinate retirement remains charged.
     if (reuseAdmission && !required && !pressure && !imagesUnderPressure &&
         this.onlyDeferredCoordinateRetirements() && !retiredImageTableBytes && !retiredImageAssetBytes &&
         (poolTrim || maintenanceReason === 3) &&
@@ -4401,7 +4450,6 @@ export class GpuRenderer {
     let completedPoolEpoch: number | undefined
     if (required === 0 && !retiredImageAssetBytes && !this.retiredUploads.length && !coordinates.length &&
         this.workingBytes <= this.frameBudget * .75) {
-      const completed = this.driver.completedResourceEpoch, current = this.driver.resourceEpoch
       if (Number.isSafeInteger(completed) && Number.isSafeInteger(current)) {
         let bytes = 0, count = 0, newest = 0, proven = pooled.length > 0
         for (const texture of pooled) {
@@ -9014,6 +9062,8 @@ export class GpuRenderer {
       this.collectRetiredImageAssets()
       return {
         ...result,
+        solidBinDispatches: this.driver.solidBinDispatches || 0,
+        solidBinNodes: this.driver.solidBinNodes || 0,
         staticImageBlurEligible: this.staticImageBlurEligible, staticImageBlurHits: this.staticImageBlurHits,
         staticImageBlurPixels: this.staticImageBlurPixels, staticImageBlurBytes: this.staticImageBlurs.bytes,
         staticImageBlurEntries: this.staticImageBlurs.count,

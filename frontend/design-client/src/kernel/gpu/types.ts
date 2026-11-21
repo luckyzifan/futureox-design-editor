@@ -309,6 +309,10 @@ export type GpuAdmissionDiagnostic = Readonly<{
 export type ExactImageTable = { resource: unknown; width: number; height: number; bytes: number; opaqueAlpha?: true; nonnegativeResolved?: true }
 export type OpaqueSolidBatch = Readonly<{count:number;pixels:number}>
 export interface Driver {
+  solidBinPrefix?(siblings: readonly string[], base: Texture): number | undefined
+  drawSolidBins?(siblings: readonly string[], output: Texture, base: Texture, target: Rect, available: number): boolean
+  readonly solidBinDispatches?: number
+  readonly solidBinNodes?: number
   readonly sourceLayersReady?:boolean
   readonly sourceImageLayersReady?:boolean
   prepareSourceDisplay?():Promise<void>

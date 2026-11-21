@@ -29,7 +29,7 @@ import { canvasSpatialBlurWgsl } from './canvas-spatial-blur'
 import { ZOOM_MASK_SUMMARY_MODE, ZOOM_MASK_COMPOSITE_MODE, zoomFocusMaskWgsl } from './zoom-focus-mask'
 import { exactFilterPacketLayout, exactFilterPacketTexels } from './exact-filter-packet-layout'
 import { managedBackgroundEntryPoint, managedBackgroundWgsl } from './managed-background'
-import { baseCompositorModes, compositorModes } from './compositor-modes'
+import { baseCompositorModes, compositorModes, SOLID_BIN_DRAW_MODE } from './compositor-modes'
 import { gaussianReductionWgsl } from './gaussian-reduction'
 import { linearRetainedCaptureWgsl } from './linear-retained-capture'
 import { emptyManagedComposeScene } from './empty-scene-compose'
@@ -72,6 +72,7 @@ import { GpuBindingCache } from './binding-cache'
 import { ResidentGeometry } from './resident-geometry'
 import { ResidentPrograms, type ProgramPlan } from './resident-programs'
 import { PipelineRegistry } from './pipeline-registry'
+import { encodeSolidBinScene, SolidBinPipeline, SOLID_BIN_MAX_SIDE, SOLID_BIN_SIDE, type SolidBinScene } from './solid-bins'
 const maskShader = `struct Params{values:array<vec4<f32>,64>} @group(0) @binding(0) var<uniform> p:Params;
 @vertex fn mesh(@location(0) point:vec2<f32>)->@builtin(position) vec4<f32>{return vec4<f32>((point.x-p.values[1].x)/p.values[0].z*2.-1.,1.-(point.y-p.values[1].y)/p.values[0].w*2.-1.,0.,1.);}
 @vertex fn quad(@builtin(vertex_index) i:u32)->@builtin(position) vec4<f32>{return vec4<f32>(f32((i<<1u)&2u)*2.-1.,1.-f32(i&2u)*2.,0.,1.);}
@@ -449,7 +450,7 @@ export class WebGpuDriver implements Driver {
       resource.height === upload.height && resource.format === 'rgba32float' && range.nonnegativeRgb &&
       range.opaqueAlpha && range.maximum.every(value => value <= 127)
   }
-  get scratchBytes(){ return (this.boxPrefix?.scratchBytes || 0) + (this.prefix?.scratchBytes || 0) + [...(this.imageTables?.keys() || [])].reduce((sum,table)=>sum+table.bytes,0) +
+  get scratchBytes(){ return (this.solidBinPipeline?.bytes || 0) + (this.boxPrefix?.scratchBytes || 0) + (this.prefix?.scratchBytes || 0) + [...(this.imageTables?.keys() || [])].reduce((sum,table)=>sum+table.bytes,0) +
     [...(this.byteTentLeases?.keys() || [])].reduce((sum,lease)=>sum+lease.bytes,0) }
   get retiredImageTableBytes() {
     let bytes = 0
@@ -654,6 +655,14 @@ export class WebGpuDriver implements Driver {
   private solidBind?: GPUBindGroup
   private solidData = new Float32Array(MAX_SOLID_INSTANCES * SOLID_INSTANCE_FLOATS)
   private solidOffset = 0
+  private solidBinPipeline?: SolidBinPipeline
+  private solidBinScene?: SolidBinScene
+  private solidBinPlans = new WeakMap<GpuScene, SolidBinScene | null>()
+  // Only explicitly initialized planes are valid for skipping the
+  // intermediate integer-centre sampling of newly painted finite pixels.
+  private solidBinBases = import.meta.env.VITE_DESIGN_SOLID_BINS === '1' ? new WeakSet<Texture>() : undefined
+  solidBinDispatches = 0
+  solidBinNodes = 0
   private solidUploaded = 0
   private solidRanges = new Map<Float32Array, number>()
   private presentPipeline!: GPURenderPipeline
@@ -1385,6 +1394,29 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
   }
   async prepareScene(scene: GpuScene, displayOnly = false, gradientFusion?: boolean) {
     this.encodedP3 = scene.colorManagement?.compositingSpace === 'display-p3'
+    this.solidBinScene = undefined
+    if (this.solidBinBases && displayOnly && this.managed && !this.hdr && !this.displayMath && !this.encodedP3 &&
+        !scene.coherentSamples && !scene.interactionRetained && !scene.softwareRaster &&
+        !scene.resolve && !scene.presentation && !scene.progressiveBlurRepair && !this.timingQueries &&
+        scene.extent.w <= SOLID_BIN_MAX_SIDE && scene.extent.h <= SOLID_BIN_MAX_SIDE) {
+      let plan = this.solidBinPlans.get(scene)
+      if (plan === undefined) {
+        plan = encodeSolidBinScene(scene) ?? null
+        this.solidBinPlans.set(scene, plan)
+      }
+      if (plan) {
+        const device = this.device
+        this.pipelines.register('solid-bins', async () => {
+          const pipeline = await SolidBinPipeline.create(device)
+          this.assertPipelinePublicationOwner(device)
+          this.solidBinPipeline = pipeline
+        })
+        try {
+          await this.pipelines.prepare(['solid-bins'])
+          this.solidBinScene = plan
+        } catch { this.assertPipelinePublicationOwner(device) }
+      }
+    }
     this.linearCapture=import.meta.env.VITE_DESIGN_LINEAR_RETAINED_CAPTURE==='1'&&scene.linearRetainedCapture===true&&displayOnly&&
       this.captureDisplay&&this.managed&&this.linearLight&&!this.encodedP3&&!this.hdr&&!this.displayMath&&!scene.presentation&&!scene.resolve
     if(this.linearCapture){
@@ -2117,6 +2149,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.prefix?.releaseScratch()
     this.boxPrefix?.release()
     this.releaseImageTables()
+    this.solidBinPipeline?.destroy()
     for (const target of this.transientTargets) this.destroy(target)
     this.transientTargets = []
     for (const texture of this.transient) texture.destroy()
@@ -2213,6 +2246,8 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.uniformCommands = 0
     this.commandSubmissions = 0
     this.solidOffset = 0
+    this.solidBinPipeline?.begin()
+    this.solidBinDispatches = this.solidBinNodes = 0
     this.solidUploaded = 0
     this.solidRanges.clear()
     this.errors = []
@@ -2419,6 +2454,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     return t
   }
   private invalidateTextureCertificates(texture: Texture) {
+    this.solidBinBases?.delete(texture)
     this.boxKernels?.delete(texture)
     this.nativeTentKernels?.delete(texture)
     this.rationalKernelBounds?.delete(texture)
@@ -2730,6 +2766,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       ],
     })
     pass.end()
+    if (this.managed && !t.scalarCoverage && !t.binaryCoverage) this.solidBinBases?.add(t)
   }
   private uniform(u: Float32Array) {
     if(!Number.isSafeInteger(this.uniformCommands+1))throw Error('GPU command sequence exhausted')
@@ -3269,6 +3306,35 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     // this frame arena; submission alone must not reopen or overwrite it.
     return Math.max(0, Math.floor((this.solidData.length - this.solidOffset) / SOLID_INSTANCE_FLOATS))
   }
+  solidBinPrefix(siblings: readonly string[], base: Texture) {
+    if (!this.solidBinPipeline || !this.solidBinBases?.has(base)) return
+    return this.solidBinScene?.runs.get(siblings)?.end
+  }
+  drawSolidBins(siblings: readonly string[], output: Texture, base: Texture, target: Rect, available: number) {
+    const scene = this.solidBinScene, pipeline = this.solidBinPipeline, run = scene?.runs.get(siblings)
+    if (!scene || !pipeline || !run || !this.curves || !this.solidBinBases?.has(base) ||
+        ![output, base].every(t => this.textures.has(t) && !t.binaryCoverage && !t.scalarCoverage &&
+          (t.resource as GPUTexture).format === 'rgba32float') ||
+        this.lost || this.disposed || output.resource === base.resource || output.width !== target.w || output.height !== target.h ||
+        target.w < 1 || target.h < 1 || target.w > SOLID_BIN_MAX_SIDE || target.h > SOLID_BIN_MAX_SIDE ||
+        !Object.values(target).every(v => Number.isInteger(v) && Math.abs(v) <= 1048576)) return false
+    const compact = (base.uniformColor || base.transparentZero) && base.width === 1 && base.height === 1
+    if (!compact && (base.width !== target.w || base.height !== target.h)) return false
+    if (!pipeline.upload(scene, this.programOffsets, available)) return false
+    this.closeOver()
+    this.invalidateTextureCertificates(output)
+    const columns = Math.ceil(target.w / SOLID_BIN_SIDE), rows = Math.ceil(target.h / SOLID_BIN_SIDE)
+    const u = parameters(target)
+    u.set([run.start, run.count, columns, rows], 36)
+    const uniform = this.uniform(u)
+    pipeline.encode(this.encoder, uniform, this.curves, this.bindingCache.view(base.resource as GPUTexture),
+      this.bindingCache.view(output.resource as GPUTexture), columns, rows)
+    this.solidBinDispatches++
+    this.solidBinNodes += run.count
+    this.noteDraw(SOLID_BIN_DRAW_MODE, 1, target.w * target.h)
+    this.triangles++
+    return true
+  }
   solidBatch(target: Texture, u: Float32Array, data: Float32Array, clip?: Texture) {
     this.drawSolidInstances(target,u,data,this.solidPipeline,clip)
   }
@@ -3407,7 +3473,14 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       const straight=!!inputs[1]&&this.straightSources?.has(inputs[1])===true
       noteHostedSourceImageLayer(u,straight)
     }
+    const bases = this.solidBinBases
+    const solidBase = bases && this.managed && !this.displayMath && !target.scalarCoverage && !target.binaryCoverage &&
+      !region && channels === 15 &&
+      (u[16] === 12 && u[47] === 0 && u[55] === 0 && u.subarray(48, 52).every(v => v >= 0 && v <= 1 && !Object.is(v, -0)) ||
+      u[16] === 0 && u[242] === 0 && u.subarray(0, 16).every(v => Number.isInteger(v) && Math.abs(v) <= 1048576) &&
+        inputs.length === 1 && bases.has(inputs[0]))
     this.encodePass(target,u,inputs,region,channels,filter,clearOutside)
+    if (solidBase) bases.add(target)
   }
   passFilterWindow(target: Texture, uniforms: Float32Array, inputs: Texture[], physicalWindow: Readonly<Rect>,
     channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number): boolean {
@@ -4155,6 +4228,8 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.curves = undefined
     this.curveCapacity = 0
     this.solidBuffer?.destroy()
+    this.solidBinPipeline?.destroy()
+    this.solidBinScene = undefined
     this.solidBuffer = undefined
     this.solidBind = undefined
     this.solidRanges.clear()

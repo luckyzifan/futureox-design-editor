@@ -117,3 +117,45 @@ fn unmanaged_device_zoom_64_uses_regional_gaussian_without_raising_the_cap() {
         AUTHORED_RADIUS.to_bits()
     );
 }
+
+#[test]
+fn analytic_focus_crop_selects_regional_gaussian_even_when_the_surface_fits() {
+    let mut doc: serde_json::Value = serde_json::from_str(&document()).unwrap();
+    // A distant backdrop disqualifies the page-wide foreground shortcut,
+    // but is irrelevant to the guarded region demanded by the focus tile.
+    doc["pages"][0]["children"] = json!(["ellipse", "backdrop"]);
+    doc["nodes"]["backdrop"] = json!({
+        "id": "backdrop",
+        "kind": "rectangle",
+        "width": 120,
+        "height": 120,
+        "transform": [1, 0, 0, 1, 1000, 1000],
+        "effects": [{"kind": "background-blur", "radius": 4, "color": "#000000"}]
+    });
+    let mut engine = Engine::new();
+    engine.load_document(&doc.to_string()).unwrap();
+    let mut request = json!({
+        "pageId": "p",
+        "width": 162,
+        "height": 162,
+        "view": {"x": 0, "y": 0, "zoom": 64},
+        "rasterProfile": "analytic",
+        "gpuViewport": {"x": 0, "y": 0, "w": 162, "h": 162}
+    });
+
+    let whole = engine.compile_gpu_request(&request.to_string()).unwrap();
+    assert!(whole.extent.w * whole.extent.h <= 16_777_216);
+    assert!(whole.nodes["ellipse"].gaussian_region.is_none());
+    request["gpuAnalyticRegions"] = json!(true);
+
+    let focus = engine.compile_gpu_request(&request.to_string()).unwrap();
+    let blur = &focus.nodes["ellipse"];
+    let plan = blur.gaussian_region.as_ref().expect("full-density regional Gaussian");
+    assert_eq!((focus.extent.w, focus.extent.h), (166, 166));
+    assert_eq!(focus.output, whole.output);
+    assert_eq!(blur.effects[0].radius.to_bits(), AUTHORED_RADIUS.to_bits());
+    assert_eq!(plan.radii, [611, 612, 612]);
+    assert!(plan.factor.is_none());
+    assert!(plan.full_output.is_none());
+    assert!(!focus.nodes.contains_key("backdrop"));
+}

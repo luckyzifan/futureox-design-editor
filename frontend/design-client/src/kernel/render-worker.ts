@@ -294,6 +294,7 @@ function backgroundTileResult(gpuTile:number,color:ColorSettings|undefined):Tile
     displayTentRadiusPasses:0,displayTentRadiusPixels:0,variableFilterPasses:0,retainedPrefixHits:0,staticImageBlurEligible:0,staticImageBlurHits:0,staticImageBlurPixels:0,staticImageBlurBytes:0,staticImageBlurEntries:0,
     horizontalFilterHits:0,horizontalFilterPixels:0,horizontalFilterRows:0,
     compileMs:0,renderMs:0,milliseconds:0,graphMs:0,finishMs:0,checkpointMs:0,previewTiles:0,bitmapLeaves:0,injectedBudgetFailures:0,
+    solidBinDispatches:0,solidBinNodes:0,
     workingTextureBytes:0,peakTextureBytes:0,finishTransientBytes:0,drawCalls:0,triangles:0,
     stats:{nodes:0,culled:0,effectLayers:0,backdropReads:0,pathSegments:0,shadedPixels:0,peakLayerPixels:0,allocatedLayerPixels:0}}
 }
@@ -2135,6 +2136,7 @@ self.onmessage = (e) => {
               tileFieldMs = 0, tileFieldBytes = 0, tileFieldBuilds = 0,
               tilePeakTextureBytes = 0, tileFinishTransientBytes = 0, tileWorkingTextureBytes = 0, tileDrawCalls = 0, tileTriangles = 0,
               tileLeaves = 0, tileBitmapLeaves = 0, tileBudgetInjections = 0,
+              tileSolidBinDispatches = 0, tileSolidBinNodes = 0,
               tileDisplayTentRadiusPasses = 0, tileDisplayTentRadiusPixels = 0
             const cameraDependent = tileComputationDependsOnCamera(renderOptions, !!color)
             const requestPreference: BackendPreference | undefined = preference
@@ -2373,6 +2375,8 @@ self.onmessage = (e) => {
                 tileGraphMs += result.graphMs
                 tileFinishMs += result.finishMs
                 tileCheckpointMs += result.checkpointMs
+                tileSolidBinDispatches += result.solidBinDispatches
+                tileSolidBinNodes += result.solidBinNodes
                 tileFieldMs += result.materialFieldBuildMs
                 tileFieldBytes += result.materialFieldUploadBytes
                 tileFieldBuilds += result.materialFieldBuilds
@@ -2463,6 +2467,8 @@ self.onmessage = (e) => {
                     graphMs: result.graphMs,
                     finishMs: result.finishMs,
                     checkpointMs: result.checkpointMs,
+                    solidBinDispatches: cached ? 0 : result.solidBinDispatches,
+                    solidBinNodes: cached ? 0 : result.solidBinNodes,
                     passTimings: gpu?.driver.stats?.().passTimings,
                     peakTextureBytes: result.peakTextureBytes,
                     workingTextureBytes: result.workingTextureBytes,
@@ -2512,6 +2518,8 @@ self.onmessage = (e) => {
               materialFieldBuildMs: tileFieldMs, materialFieldUploadBytes: tileFieldBytes, materialFieldBuilds: tileFieldBuilds,
               finishMs: tileFinishMs,
               checkpointMs: tileCheckpointMs,
+              solidBinDispatches: tileSolidBinDispatches,
+              solidBinNodes: tileSolidBinNodes,
               loadMs,
               previewTiles: rendered,
               previewLeaves: tileLeaves,
@@ -2773,6 +2781,9 @@ self.onmessage = (e) => {
               loadMs,
               graphMs: result.graphMs,
               finishMs: result.finishMs,
+              checkpointMs: result.checkpointMs,
+              solidBinDispatches: result.solidBinDispatches,
+              solidBinNodes: result.solidBinNodes,
               passPixels: result.passPixels,
               workingTextureBytes: result.workingTextureBytes,
               maskHits: result.maskHits,
@@ -3139,6 +3150,8 @@ async function renderTiledPreview(
     graphMs = 0,
     finishMs = 0,
     checkpointMs = 0,
+    solidBinDispatches = 0,
+    solidBinNodes = 0,
     drawCalls = 0,
     triangles = 0,
     workingTextureBytes = 0,
@@ -3243,6 +3256,8 @@ async function renderTiledPreview(
         graphMs += result.graphMs
         finishMs += result.finishMs
         checkpointMs += result.checkpointMs
+        solidBinDispatches += result.solidBinDispatches
+        solidBinNodes += result.solidBinNodes
         workingTextureBytes = Math.max(workingTextureBytes, result.workingTextureBytes)
         peakTextureBytes = Math.max(peakTextureBytes, result.peakTextureBytes)
         finishTransientBytes = Math.max(finishTransientBytes, result.finishTransientBytes ?? 0)
@@ -3404,6 +3419,8 @@ async function renderTiledPreview(
         graphMs += result.graphMs
         finishMs += result.finishMs
         checkpointMs += result.checkpointMs
+        solidBinDispatches += result.solidBinDispatches
+        solidBinNodes += result.solidBinNodes
         workingTextureBytes = Math.max(workingTextureBytes, result.workingTextureBytes)
         peakTextureBytes = Math.max(peakTextureBytes, result.peakTextureBytes)
         finishTransientBytes = Math.max(finishTransientBytes, result.finishTransientBytes ?? 0)
@@ -3482,6 +3499,7 @@ async function renderTiledPreview(
       graphMs,
       finishMs,
       checkpointMs,
+      solidBinDispatches, solidBinNodes,
       // Zero byte-assembled subtiles: presented pixels cannot certify an
       // exact-cache witness (and need none — nothing was read back).
       previewTiles: 0,
@@ -3527,6 +3545,7 @@ async function renderTiledPreview(
     graphMs,
     finishMs,
     checkpointMs,
+    solidBinDispatches, solidBinNodes,
     previewTiles: assembled!.tiles,
     injectedBudgetFailures,
     workingTextureBytes,
