@@ -42,6 +42,7 @@ export type ResidentFrame = {
   height: number
   dpr: number
   interaction?: boolean
+  panGesture?: boolean
   gestureGuides?: boolean
   allowEmpty?: boolean
   allowBackground?: boolean
@@ -64,6 +65,7 @@ export type ResidentFrame = {
   pageBackground?: [number, number, number, number]
   input?: import('../interaction-layers').InteractionInput & { owner?:string }
 }
+type BitmapPresentation = { token:number; payload:PayloadToken; frame:ResidentFrame; sent:boolean; onReleased?:()=>void }
 type DisplayRow = {
   item: ResidentItem
   entry: {
@@ -152,23 +154,27 @@ export class ResidentPresenter {
   private drawnIds: number[] = []
   private navigationBacking?: PayloadToken
   private bitmapVisible?: PayloadToken
+  private bitmapVisibleToken=0
   private bitmapReserved?: PayloadToken
-  private bitmapPending?: { token:number; payload:PayloadToken; frame:ResidentFrame; sent:boolean; onReleased?: () => void }
+private bitmapPending?: BitmapPresentation
+  private panAwaitingAck?: BitmapPresentation
   private clearBitmapPresentation() {
     const pending = this.bitmapPending
     if(pending)this.payload.retire(pending.payload)
+    if(this.panAwaitingAck)this.payload.retire(this.panAwaitingAck.payload)
     if(this.bitmapVisible)this.payload.retire(this.bitmapVisible)
-    this.bitmapPending=undefined;this.bitmapVisible=undefined
+    this.bitmapPending=undefined;this.panAwaitingAck=undefined;this.bitmapVisible=undefined;this.bitmapVisibleToken=0
     pending?.onReleased?.()
   }
   acceptPresentation(token:number,accepted=true) {
-    const pending=this.bitmapPending
+    const pending=this.panAwaitingAck?.token===token ? this.panAwaitingAck : this.bitmapPending
     if(!pending?.sent||pending.token!==token||this.disposed)return
-    if(accepted){
+    if(accepted&&token>this.bitmapVisibleToken){
       if(this.bitmapVisible)this.payload.retire(this.bitmapVisible)
-      this.bitmapVisible=pending.payload
+      this.bitmapVisible=pending.payload;this.bitmapVisibleToken=token
     }else this.payload.retire(pending.payload)
-    this.bitmapPending=undefined
+if(pending===this.panAwaitingAck)this.panAwaitingAck=undefined
+    else this.bitmapPending=undefined
     try { if(this.latest!==pending.frame)this.repaint() }
     finally { pending.onReleased?.() }
   }
@@ -211,6 +217,20 @@ export class ResidentPresenter {
       candidate.view.x === frame.view.x && candidate.view.y === frame.view.y && candidate.view.zoom === frame.view.zoom &&
       candidate.items.some(item => item.active && item.tile.gpuTile === slot)
     if (obsolete(pending) && obsolete(latest)) this.latest = pending
+  }
+  }
+  private admitPipelinedPan(frame:ResidentFrame) {
+    const previous=this.bitmapPending
+    if(import.meta.env.VITE_DESIGN_PAN_BITMAP_PIPELINE!=='1' || !previous?.sent || this.panAwaitingAck ||
+        !previous.frame.panGesture || !frame.panGesture || frame.interaction || previous.frame.interaction ||
+        frame===previous.frame || frame.view.zoom!==previous.frame.view.zoom || frame.dpr!==previous.frame.dpr ||
+        frame.width!==previous.frame.width || frame.height!==previous.frame.height) return false
+    // transferToImageBitmap detached the previous canvas image after its GPU
+    // fence. Only its window ACK is pending; the GPU can encode the latest
+    // camera now. Keep both payloads charged until their actual release.
+    this.panAwaitingAck=previous
+    this.bitmapPending=undefined
+    return true
   }
   hasDeferredPosePresentation(slot:number) {
     const pending = this.bitmapPending, frame = this.latest
@@ -464,6 +484,20 @@ export class ResidentPresenter {
     this.bytes -= old.bytes
     this.textures.delete(next)
     this.textures.set(slot, replacement)
+  }
+  snapshotExactClippedViewport(owner: object, contract: string, view: CanvasCamera, output: Rect) {
+    const frame = this.drawn
+    if (!frame || frame.interaction || frame.linearBlend || frame.allowEmpty || this.drawnPreview || !this.drawnIds.length ||
+        frame.view.zoom * frame.dpr !== view.zoom || view.x - frame.view.x * frame.dpr !== output.x ||
+        view.y - frame.view.y * frame.dpr !== output.y ||
+        Math.ceil(frame.width * frame.dpr) !== output.w || Math.ceil(frame.height * frame.dpr) !== output.h ||
+        !this.drawnIds.every(id => {
+          const tile = this.textures.get(id), raster = tile?.raster
+          return !!raster && !tile?.linear && tile?.content?.owner === owner && tile.content.contract === contract &&
+            raster.view.zoom === view.zoom && Number.isSafeInteger(raster.view.x - view.x) &&
+            Number.isSafeInteger(raster.view.y - view.y)
+        })) return
+    return this.snapshot()?.gpuTile
   }
   private clippedTexture(slot: number) {
     const entry = this.textures.get(slot)
@@ -803,7 +837,7 @@ export class ResidentPresenter {
     this.payload.assertOpen()
     // One immutable display transfer in flight, plus the accepted image. The
     // latest request replaces queued cameras while the browser owns the handoff.
-    if(this.atomic&&this.bitmapPending)return
+    if(this.atomic&&this.bitmapPending&&!this.admitPipelinedPan(frame))return
     try { this.drawAvailable(frame) }
     finally { if(this.bitmapReserved){this.payload.cancel(this.bitmapReserved);this.bitmapReserved=undefined} }
   }
@@ -1296,7 +1330,120 @@ export class ResidentPresenter {
     try { this.device.queue.submit([encoder.finish()]) }
     catch (error) { alpha?.cancel(); throw error }
     alpha?.submitted()
-    return { drawCount, uploadBytes, linear, bitmapPayload }
+const submittedEpoch = performance.timeOrigin + performance.now()
+    this.drawn = frame
+    this.drawnPreview = !!preview
+    this.drawnIds = available.filter(item => item.active).map(item => item.tile.gpuTile)
+    this.translatedProof=undefined
+    const translation=frame.backgroundTranslation,sourceProof=rows.find(row=>row.entry.background?.pixel)?.entry.background
+    this.translatedProofChecks=Number(complete)|Number(!!frame.interaction)<<1|Number(!!translation)<<2|Number(!!sourceProof)<<3|
+      Number(!!sourceProof?.contract)<<4|Number(sourceProof?.view.zoom===view.zoom*dpr)<<5|
+      Number(!!sourceProof&&rows.every(row=>row.entry.content?.owner===sourceProof.owner))<<6|
+      Number(!!sourceProof&&rows.every(row=>row.entry.content?.contract===sourceProof.contract))<<7
+    if(complete&&frame.interaction&&translation&&sourceProof&&sourceProof.view.zoom===view.zoom*dpr&&
+      Number.isSafeInteger(width*dpr)&&Number.isSafeInteger(height*dpr)&&
+      [translation.x*view.zoom*dpr,translation.y*view.zoom*dpr].every(Number.isSafeInteger)&&
+      rows.every(row=>!row.item.blend&&row.entry.content?.owner===sourceProof.owner&&row.entry.content.contract===sourceProof.contract&&
+        (row.constant||row.entry.constantBackground||(()=>{
+          const tile=row.item.tile,s=view.zoom/tile.zoom,p=row.item.placement
+          return !!p&&tile.zoom===view.zoom*dpr&&tile.width===row.entry.texture.width&&tile.height===row.entry.texture.height&&
+            [p.left*dpr,p.top*dpr].every(Number.isSafeInteger)&&p.width*dpr===row.entry.texture.width&&p.height*dpr===row.entry.texture.height&&
+            p.left===(tile.x-(tile.phaseX||0))*s+view.x+translation.x*view.zoom&&
+            p.top===(tile.y-(tile.phaseY||0))*s+view.y+translation.y*view.zoom&&
+            p.width===tile.width*s&&p.height===tile.height*s
+        })()))){
+      // Strict pixel-lattice checks above and complete integer scissors are
+      // authority here. The sparse/toleranced quality diagnostics are not.
+      this.translatedProof={frame,source:sourceProof,offset:{...translation}}
+    }
+    this.frames++
+    const coverageAt=performance.now()
+    const terminalQuality = this.terminalQualityGate.claim(complete?frame.terminalQuality:undefined, detailedDiagnostics)
+    const measureCoverage=strictSharpDiagnostics || traceQuality || !!terminalQuality || import.meta.env.DEV || (detailedDiagnostics && coverageAt-this.diagnosticCoverageAt>=250)
+    if(measureCoverage)this.diagnosticCoverageAt=coverageAt
+    const report = {
+      ...this.diagnosticFields(),
+      coverageDeferred: 0,
+      ...(!complete&&!frame.interaction?{pixelCoverageComplete:false,nativeCoverageComplete:false,qualityTerminal:false}:{}),
+      backgroundCoverage: Number(backgroundAdded),
+      diagnosticSequence: frame.diagnosticSequence, submittedEpoch,
+      gridVisible: !this.atomic && !!frame.overlay?.pixelGrid && view.zoom>=4, dpr,
+      ...(terminalQuality ? { ...terminalQuality, qualityTerminal: true } : {}),
+      coverageMeasured:measureCoverage,
+      ...(measureCoverage?{coverageAt}:{}),
+      compositor: 'webgpu-resident',
+      compositorFrames: this.frames,
+      compositorTransformUploadBytes: upload?.data.byteLength || 0,
+      compositorUploads: this.imports,
+      compositorCaptures: this.captures,
+      compositorBytes: this.residentBytes,
+      compositorOverlayBytes: this.overlay?.residentBytes || 0,
+      compositorTiles: this.textures.size,
+      compositorDraws: drawCount + (linear ? 1 : 0) + (preview?.gaps.length || 0),
+      linearBlend: linear,
+      presented: {
+        presentationId: frame.presentationId,
+        presentationToken: pending?.token,
+        ...(this.navigationBacking ? { navigationBackingBytes: this.navigationBacking.bytes } : {}),
+        ...(this.atomic && preview && preview.gaps.length <= MAX_NAVIGATION_GAPS ? {previewGaps: preview.gaps} : {}),
+        preview: !!preview,
+        gpuOverlay: !!frame.overlay,
+        gpuSelection: !!frame.overlay?.selection,
+        gpuPixelGrid: !this.atomic && !!frame.overlay?.pixelGrid && view.zoom>=4,
+        view,
+        width,
+        height,
+        dpr,
+        interaction: !!frame.interaction,
+        ids: this.drawnIds.slice(),
+      },
+      input: frame.input,
+      missingTextureCount: missing.length,
+      ...(strictSharpDiagnostics || traceQuality || backgroundAdded ? presentedFragmentQuality(rows.map(row => ({ ...row.raster,constant:row.constant,
+        sourceWidth: row.entry.texture.width, sourceHeight: row.entry.texture.height, blend: row.item.blend })), w, h) :
+        measureCoverage ? { ...presentationQuality(available as CompositeItem[], view, width, height, dpr),
+          ...physicalCoverage(rows.map(row=>({...row.raster,
+            blend:row.item.blend,native:!!row.constant||Math.min(row.item.tile.width*row.raster.uv[2]/row.raster.box[2],row.item.tile.height*row.raster.uv[3]/row.raster.box[3])>=dpr*(1-1e-10)})),w,h) } : {}),
+      // These fields must follow sampled diagnostics: placeholder coverage is
+      // never exact content coverage, even when diagnostic probes miss a gap.
+      cameraPreview: !!preview, previewPendingPixels: preview?.pendingPixels || 0,
+      previewCachedPixels: preview ? w * h - preview.pendingPixels : w * h,
+      ...(preview ? { pixelCoverageComplete: false, nativeCoverageComplete: false, qualityTerminal: false } : {}),
+      // Diagnostic geometry of pixels actually submitted, excluding missing
+      // textures. Tests can distinguish absent document content from the known
+      // empty page background outside the document's paint bounds.
+      ...(import.meta.env.DEV ? { worldCoverage: JSON.stringify(rows.map(row => ({
+        x: (row.raster.box[0] - view.x) / view.zoom,
+        y: (row.raster.box[1] - view.y) / view.zoom,
+        width: row.raster.box[2] / view.zoom, height: row.raster.box[3] / view.zoom,
+        density: row.item.tile.zoom,
+      }))) } : {}),
+    }
+    if(!pending){this.report(report);return}
+    // Transfer an immutable, completed image. The DOM canvas and its camera
+    // transform are replaced together on the window event loop; a live worker
+    // canvas must never change beneath a previously applied CSS transform.
+    let completion:Promise<void>
+    try{completion=this.device.queue.onSubmittedWorkDone()}catch(error){completion=Promise.reject(error)}
+    void completion.then(()=>{
+      if(this.disposed||this.bitmapPending!==pending)return
+      this.payload.assertOpen()
+      const bitmap=this.canvas.transferToImageBitmap()
+      try{
+        pending.sent=true
+        this.report({...report,atomicPresentation:true,bitmap,completedEpoch:performance.timeOrigin+performance.now()})
+      }catch(error){bitmap.close();throw error}
+      if (pending.frame.panGesture && this.latest!==pending.frame) {
+        try { this.repaint() } catch (error) { this.report({ error: String(error) }) }
+      }
+    }).catch(error=>{
+      if(this.bitmapPending!==pending||this.disposed)return
+      this.bitmapPending=undefined;this.payload.retire(pending.payload)
+      this.report({error:String(error)})
+    })
+  }
+  repaint() {
+    if (this.latest) this.draw(this.latest)
   }
   private drawOverlay(encoder: GPUCommandEncoder, output: GPUTexture, frame: ResidentFrame) {
     const guides = frame.gestureGuides ? frame.input?.guides : undefined
@@ -1315,7 +1462,7 @@ export class ResidentPresenter {
     return (
       this.bytes + (this.linearTarget ? this.linearTarget.width * this.linearTarget.height * 8*this.linearTarget.samples : 0) +
       (this.navigationBacking?.bytes || 0) + (this.navigationTransfer?.payload.bytes || 0) +
-      (this.bitmapVisible?.bytes || 0) + (this.bitmapPending?.payload.bytes || 0) +
+(this.bitmapVisible?.bytes || 0) + (this.bitmapPending?.payload.bytes || 0) + (this.panAwaitingAck?.payload.bytes || 0) +
       (this.backbuffer ? this.backbuffer.width * this.backbuffer.height * 4 : 0) +
       (this.zoomBasis ? this.zoomBasis.width * this.zoomBasis.height * 4 : 0) + (this.overlay?.residentBytes || 0)
     )

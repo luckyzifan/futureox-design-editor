@@ -3107,9 +3107,10 @@ focus?: SurfaceProps['overview'],
         {singleCanvas ? (() => {
           const CompositeSurface = residentDisplay && rasterClient ? ResidentCompositeSurface : TileCompositeSurface
           return <CompositeSurface key={residentDisplay && rasterClient ? 'resident' : 'bitmap'} client={rasterClient!}
-          navigationInputOwner={props.navigationInputOwner}
+navigationInputOwner={props.navigationInputOwner}
           {...(residentDisplay ? { reuseSequence: previewReuseSequence.current, overviewPresentation,
-            progressiveBlurDragActive: props.progressiveBlurDragActive } : {})}
+            progressiveBlurDragActive: props.progressiveBlurDragActive,
+            panGestureActive: props.panGestureActive, livePanCamera: props.livePanCamera } : {})}
           items={compositeItems}
           onCompositeItems={residentDisplay ? items => compositeCacheFrame.stage(compositeOwner, {
             ...compositeOwner,
@@ -3340,6 +3341,7 @@ export const ProgressiveSurface = memo(ProgressiveSurfaceImpl, (prev, next) =>
   prev.onRenderFailure === next.onRenderFailure &&
   prev.navigationInputOwner === next.navigationInputOwner &&
   prev.panGestureActive === next.panGestureActive &&
+  prev.livePanCamera === next.livePanCamera &&
   (prev.requestedView || prev.view).x === (next.requestedView || next.view).x &&
   (prev.requestedView || prev.view).y === (next.requestedView || next.view).y &&
   (prev.requestedView || prev.view).zoom === (next.requestedView || next.view).zoom &&

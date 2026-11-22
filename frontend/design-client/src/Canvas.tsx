@@ -4116,6 +4116,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }}/>:<KernelSurface
         navigationInputOwner={editor}
         panGestureActive={panning}
+        livePanCamera={import.meta.env.VITE_DESIGN_LIVE_RESIDENT_PAN === '1' ? editor : undefined}
         overlay={overlay}
         // Nudges present the edited document through the canvas tile path.
         interaction={canvasFilterEdit || keyboardNudgeActive(editor) ? undefined : gpuInteraction}

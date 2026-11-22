@@ -288,3 +288,36 @@ test('a native repair can span skipped revisions on the same lattice when it cov
   expect(f.presenter.beginViewportRepair(current, {}, contract, view, 16, 16, damage, origin)).toBeDefined()
   f.presenter.dispose()
 })
+
+test('a detached pan bitmap can await its window ACK while the next immutable image renders',async()=>{
+  vi.stubEnv('VITE_DESIGN_PAN_BITMAP_PIPELINE','1')
+  const f=fixture(),tile=f.presenter.capture(32,32)
+  try {
+    f.presenter.attachCanvas(f.canvas as unknown as OffscreenCanvas,true)
+    const pan=(x:number):ResidentFrame=>{
+      const result=frame(tile.id)
+      Object.assign(result.items[0].tile,{x:-8,y:-8,width:32,height:32})
+      return {...result,view:{x,y:0,zoom:1},allowEmpty:false,panGesture:true}
+    }
+    f.presenter.draw(pan(0))
+    const first=f.queue.epoch
+    f.presenter.draw(pan(1))
+    expect(f.queue.epoch).toBe(first)
+    f.queue.completeThrough(first)
+    await flush()
+    expect(f.queue.epoch).toBeGreaterThan(first)
+    const second=f.queue.epoch
+    f.presenter.draw(pan(2))
+    f.queue.completeThrough(second)
+    await flush()
+    expect(f.queue.epoch).toBe(second)
+    const receipts=f.reports.filter(row=>row.bitmap).map(row=>(row.presented as {presentationToken:number}).presentationToken)
+    expect(receipts).toHaveLength(2)
+    f.presenter.acceptPresentation(receipts[0],true)
+    expect(f.queue.epoch).toBeGreaterThan(second)
+    f.presenter.acceptPresentation(receipts[1],true)
+  } finally {
+    f.presenter.dispose()
+    vi.unstubAllEnvs()
+  }
+})

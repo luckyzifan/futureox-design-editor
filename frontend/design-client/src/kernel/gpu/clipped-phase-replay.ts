@@ -92,22 +92,53 @@ export class ClippedPhaseReplay {
     return { origin, support, captured }
   }
 
+  private placement(anchor: Pick<Anchor, 'origin' | 'support' | 'captured'>,
+    target: Pick<Anchor, 'origin' | 'support' | 'captured'>) {
+    const dx = (target.origin.x - anchor.origin.x) * this.view.zoom
+    const dy = (target.origin.y - anchor.origin.y) * this.view.zoom
+    if (!Number.isSafeInteger(dx) || !Number.isSafeInteger(dy) ||
+        target.support.x !== anchor.support.x + dx || target.support.y !== anchor.support.y + dy ||
+        target.support.w !== anchor.support.w || target.support.h !== anchor.support.h) return
+    const read = { ...target.captured, x: target.captured.x - dx, y: target.captured.y - dy }
+    if (!contains(anchor.captured, read)) return
+    return { from: { ...read, x: read.x - anchor.captured.x, y: read.y - anchor.captured.y },
+      to: { x: target.captured.x, y: target.captured.y } }
+  }
+
   find(transform: Matrix): Replay | undefined {
     if (this.background === undefined) return
     const target = this.pose(transform)
     if (!target) return
     for (let i = this.anchors.length - 1; i >= 0; i--) {
-      const anchor = this.anchors[i]
-      const dx = (target.origin.x - anchor.origin.x) * this.view.zoom
-      const dy = (target.origin.y - anchor.origin.y) * this.view.zoom
-      if (!Number.isSafeInteger(dx) || !Number.isSafeInteger(dy) ||
-          target.support.x !== anchor.support.x + dx || target.support.y !== anchor.support.y + dy ||
-          target.support.w !== anchor.support.w || target.support.h !== anchor.support.h) continue
-      const read = { ...target.captured, x: target.captured.x - dx, y: target.captured.y - dy }
-      if (!contains(anchor.captured, read)) continue
-      return { anchor, from: { ...read, x: read.x - anchor.captured.x, y: read.y - anchor.captured.y },
-        to: { x: target.captured.x, y: target.captured.y } }
+      const anchor = this.anchors[i], placement = this.placement(anchor,target)
+      if (placement) return { anchor, ...placement }
     }
+  }
+
+  /** When a phase needs new native pixels, put the board as far inside the
+   * same capture as this lattice permits. Returning towards the viewport
+   * edge can then reuse samples that a capture at the pointer would omit. */
+  representative(transform: Matrix): Matrix | undefined {
+    const target = this.pose(transform)
+    if (!target || this.background === undefined) return
+    const zoom = this.view.zoom
+    const period = [1,2,3,4,5,6,7,8].find(value => Number.isSafeInteger(value * zoom))
+    if (period === undefined) return
+    const step = period * zoom
+    const offset = (start: number, length: number, limit: number) => {
+      const end = start + length
+      if (start >= 0 && end <= limit) return 0
+      if (length <= limit) return start < 0 ? Math.ceil(-start / step) : -Math.ceil((end - limit) / step)
+      if (start >= step) return -Math.floor(start / step)
+      if (end <= limit - step) return Math.floor((limit - end) / step)
+      return 0
+    }
+    const x = offset(target.support.x,target.support.w,this.output.w)
+    const y = offset(target.support.y,target.support.h,this.output.h)
+    if (!x && !y) return
+    const representative: Matrix = [1,0,0,1,transform[4] + x*period,transform[5] + y*period]
+    const anchor = this.pose(representative)
+    if (anchor && this.placement(anchor,target)) return representative
   }
 
   record(slot: number, transform: Matrix) {

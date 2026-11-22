@@ -67,3 +67,13 @@ test('cache pressure and cancellation preserve the original renderer and release
   expect(atlas.show(match)).toBeUndefined()
   expect(atlas.find(pose(15))).toBeUndefined()
 })
+
+test('a miss can capture a wider portion of the same phase without extending the computed viewport', () => {
+  const { atlas } = fixture()
+  atlas.record(5, pose(10))
+  const anchor = atlas.representative(pose(40, 15))
+  expect(anchor).toEqual(pose(5, 15))
+  atlas.record(5, anchor!)
+  expect(atlas.find(pose(40, 15))).toBeDefined()
+  expect(atlas.find(pose(15, 15))).toBeDefined()
+})

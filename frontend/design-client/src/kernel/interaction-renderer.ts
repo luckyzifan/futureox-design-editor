@@ -712,14 +712,18 @@ export class InteractionRenderer {
       (mask.width + 64) * (mask.height + 64) * (viewport.view.zoom * viewport.dpr) ** 2 <= 1_048_576
     const legacyWarm = this.allowIdleWarm && import.meta.env.VITE_DESIGN_NESTED_IDLE_WARM === '1' &&
       this.profile === 'figmaSubpixel'
-    if ((!warmMask && !legacyWarm) || !this.sharedClient || this.backend !== 'webgpu' && this.backend !== 'auto' ||
+    const warmClipped = import.meta.env.VITE_DESIGN_CLIPPED_IDLE_CAPTURE === '1' &&
+      !!props?.clippedBoardHandoff && !!resident && this.useClippedPoseStartup(resident)
+    if ((!warmMask && !legacyWarm && !warmClipped) || !this.sharedClient || this.backend !== 'webgpu' && this.backend !== 'auto' ||
         !props || !resident?.live || !viewport || this.disposed ||
         props.active || resident.active || this.handoff || this.error || this.liveRunning || this.livePending ||
         this.lastSettledDocument !== props.document || resident.plan.document !== props.document ||
         this.sessionEpoch !== props.epoch || !this.sameIds(props.selection) ||
         resident.tiles.length > 0 && !this.inlineDisabled) return
     const page = props.document.pages.find(page => page.id === resident.plan.pageId)
-    if (!page || !props.selection.length || props.selection.some(id => page.children.includes(id))) return
+    if (!page || !props.selection.length ||
+        (warmClipped ? props.selection.length !== 1 || !page.children.includes(props.selection[0]) :
+          props.selection.some(id => page.children.includes(id)))) return
     const same = (context: IdleWarmContext | undefined) => !!context &&
       this.sameIdleWarmContext(context, props, resident.plan.pageId, this.profile, this.backend)
     if (same(this.idleWarmWaiting) || same(this.idleWarmAttempt)) return
@@ -742,7 +746,7 @@ export class InteractionRenderer {
         resident.affine = true
         resident.maskWarmOnly = true
       }
-      else if (!legacyWarm) return
+      else if (!legacyWarm && !(warmClipped && this.settledViewportMatches(context.document, context.view))) return
       this.idleWarmAttempt = context; this.idleWarmCapture = context; this.idleWarmFailed = undefined
       this.renderLive(context.document)
     }, 150)
@@ -1694,6 +1698,8 @@ const layerOptions = {scene:props.scene,epoch:props.epoch,
                 interactionNative: !!resident.affine || !reduced || localNativePose || nativeImagePose,
                 interactionAffine: !!resident.affine, interactionLocalFootprint: resident.containedForeground,
                 ...(clippedBoard ? { interactionClippedBoard: true } : {}),
+                ...(fixedClippedViewport && this.idleWarmCapture?.resident===resident && !resident.active
+                  ? { interactionClippedIdleCapture: true } : {}),
                 ...(maskedRotation && nativeDensity ? { interactionFixedMask: true } : {}),
                 ...(exactInnerShadowGesture(resident)&&roots?.get(resident.plan.ids[0])&&!resident.repairBounds?{interactionBaseFill:roots.get(resident.plan.ids[0])}:{}),
                 renderIntent: 'preview', interactionChannel: !!this.sharedClient,

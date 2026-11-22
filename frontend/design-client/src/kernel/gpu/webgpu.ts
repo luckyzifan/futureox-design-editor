@@ -319,6 +319,7 @@ export class WebGpuDriver implements Driver {
   presentFrame(frame: ResidentFrame) { this.presenter?.draw(frame) }
   releasePresented(ids: number[]) { this.presenter?.release(ids) }
   replacePresented(slot:number,next:number){this.presenter?.replace(slot,next)}
+  snapshotExactClippedViewport(...args: Parameters<ResidentPresenter['snapshotExactClippedViewport']>) { return this.presenter?.snapshotExactClippedViewport(...args) }
   saveClippedBackground(...args: Parameters<ResidentPresenter['saveClippedBackground']>) { return this.presenter?.saveClippedBackground(...args) }
   saveClippedRegion(...args: Parameters<ResidentPresenter['saveClippedRegion']>) { return this.presenter?.saveClippedRegion(...args) }
   copyClippedPose(...args: Parameters<ResidentPresenter['copyClippedPose']>) { return this.presenter?.copyClippedPose(...args) }
