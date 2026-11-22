@@ -43,6 +43,7 @@ type ResidentInteraction = {
   affine?: boolean
   affinePlan?: InteractionAffinePlan
   inputPriority?: boolean
+  clippedViewportRevision?: number
   displayedTransforms?: Record<string, Matrix>
   // Only a complete capture may retain chrome from that exact document. World
   // AABBs, size text and measurements cannot be recovered by inverse affine.
@@ -1030,11 +1031,11 @@ export class InteractionRenderer {
     const pad = 128 / view.zoom
     const captureViewport = viewport ? { x: viewport.x - pad, y: viewport.y - pad,
       width: viewport.width + 2 * pad, height: viewport.height + 2 * pad } : undefined
-    const layerOptions = {scene:props.scene,epoch:props.epoch,
+const layerOptions = {scene:props.scene,epoch:props.epoch,
       neutralPageGroup:import.meta.env.VITE_DESIGN_NEUTRAL_PAGE_GROUP==='1'&&this.allowIdleWarm&&!!this.sharedClient&&
       profile==='figmaSubpixel'&&(backend==='webgpu'||backend==='auto')}
     const managedBytes = props.document.colorManagement && !this.sharedClient
-    let plan = contentGesture || managedBytes
+    let plan = contentGesture || props.clippedBoardHandoff || managedBytes
       ? null : this.layerPlanner.plan(props.document, pageId, props.selection, captureViewport, layerOptions)
     if (plan && !this.layersFit(plan, view.zoom, dpr)) plan = null
     // A zoom-blur center edit is not a transform, so it used to drop the
@@ -1087,7 +1088,8 @@ export class InteractionRenderer {
         const livePlan = { document: props.document, pageId, ids: [...props.selection], layers: [] }
         this.resident = { plan: livePlan, tiles: [], scale: view.zoom * dpr,
           offsets: interactionOffsets(livePlan, props.document)!, active: props.active, live: true,
-          affine: ['rotate', 'scale'].includes(props.gestureKind || '') }
+          affine: ['rotate', 'scale'].includes(props.gestureKind || ''),
+          clippedViewportRevision: props.clippedBoardHandoff ? this.viewportRevision : undefined }
         // Borrow only current Canvas geometry under its original slot/scope
         // guards. No cache is created for mutable or standalone callers.
         const entries = props.scene?.entriesFor(props.document, pageId, props.epoch) ?? scene(props.document, pageId)
@@ -1631,8 +1633,29 @@ export class InteractionRenderer {
                   resident.containedForeground && import.meta.env.VITE_DESIGN_BOUNDED_POSE_CAPTURE !== '0') &&
                   !reduced && this.profile === 'figmaSubpixel' ||
                 localNativePose&&(this.profile==='figmaSubpixel'||this.profile==='analytic'))
-              const captureViewport=canonicalCapture?{x:originX+Math.floor(captureCamera.x),y:originY+Math.floor(captureCamera.y),w:width,h:height}:
+              let captureViewport=canonicalCapture?{x:originX+Math.floor(captureCamera.x),y:originY+Math.floor(captureCamera.y),w:width,h:height}:
                 worldCapture?{x:originX,y:originY,w:width,h:height}:boundedCapture?{x:0,y:0,w:width,h:height}:undefined
+              let fixedClippedViewport = false
+              const viewport = this.viewport
+              const clippedBoard = resident.clippedViewportRevision === viewportRevision && nativeDensity && !resident.affine
+              if (clippedBoard && viewport &&
+                  !resident.containedForeground && this.profile === 'analytic') {
+                const x = captureCamera.x - viewport.view.x * viewport.dpr
+                const y = captureCamera.y - viewport.view.y * viewport.dpr
+                const w = Math.ceil(viewport.width * viewport.dpr), h = Math.ceil(viewport.height * viewport.dpr)
+                // Keep the original computation camera. Only the consumed
+                // output is smaller, and every edge is on its pixel lattice.
+                if ([x, y, w, h].every(Number.isSafeInteger) && Math.abs(x) <= 16_000_000 && Math.abs(y) <= 16_000_000 &&
+                    w > 0 && h > 0 && w <= 8192 && h <= 8192 && w * h <= 8_388_608) {
+                  captureViewport = { x, y, w, h }
+                  fixedClippedViewport = true
+                  originX = x - Math.floor(captureCamera.x)
+                  originY = y - Math.floor(captureCamera.y)
+                  width = w; height = h
+                  const { view, width: cssWidth, height: cssHeight } = viewport
+                  bounds = { x: -view.x / view.zoom, y: -view.y / view.zoom, width: cssWidth / view.zoom, height: cssHeight / view.zoom }
+                }
+              }
               causePhase=2;causeBranch=3
               result = await client.render(document, { pageId: resident.plan.pageId, width, height,
                 view:captureCamera,transparent:false,grid:false,...(bitmapViewport||exactInnerShadowGesture(resident)?{checkerboard:false}:{}),
@@ -1641,11 +1664,13 @@ export class InteractionRenderer {
                 rasterProfile: this.profile, livePreview: true, retainInteractionGraph: true, interactionSelection: resident.plan.ids,
                 interactionNative: !!resident.affine || !reduced || localNativePose || nativeImagePose,
                 interactionAffine: !!resident.affine, interactionLocalFootprint: resident.containedForeground,
+                ...(clippedBoard ? { interactionClippedBoard: true } : {}),
                 ...(maskedRotation && nativeDensity ? { interactionFixedMask: true } : {}),
                 ...(exactInnerShadowGesture(resident)&&roots?.get(resident.plan.ids[0])&&!resident.repairBounds?{interactionBaseFill:roots.get(resident.plan.ids[0])}:{}),
                 renderIntent: 'preview', interactionChannel: !!this.sharedClient,
-                interactionWindowFixed: !!resident.affine || resident.plan.ids.every(id=>resident.fixedBounds?.has(id)),
-                ...(this.viewport ? { interactionWindow: { x: bounds.x*scale+captureCamera.x,
+                interactionWindowFixed: fixedClippedViewport || !!resident.affine || resident.plan.ids.every(id=>resident.fixedBounds?.has(id)),
+                ...(fixedClippedViewport ? { interactionWindow: captureViewport } :
+                  this.viewport ? { interactionWindow: { x: bounds.x*scale+captureCamera.x,
                   y:bounds.y*scale+captureCamera.y,
                   w: bounds.width * scale, h: bounds.height * scale } } : {}) }, false, this.backend, false, false, undefined, undefined, signal)
               causePhase=3

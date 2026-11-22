@@ -93,6 +93,11 @@ private tracking = false
   ) => ReturnType<GpuMoveControl['apply']>, private reportPhase?: (fields:Record<string,number>)=>void,
     private fillCoverage?: (source:DesignDocument,offset:{x:number;y:number},sequence:number,failed:()=>void,region?:Bounds)=>boolean) {}
   get handingOff() { return this.phaseRevoked }
+  ownsClippedSource(document: DesignDocument, pageId: string, camera: BoardViewport) {
+    const clipped = this.srgbBoard?.clipped
+    return !!clipped && !this.clippedInputClosed && this.plan?.document === document &&
+      this.plan.pageId === pageId && sameBoardViewport(clipped.camera, camera)
+  }
   get backgroundTranslation() { return this.board ? undefined : { ...this.offset } }
   get backgroundBoard() {
     if (!this.srgbBoard || !this.board) return
@@ -132,7 +137,7 @@ private tracking = false
     this.rebase(pending.document, pending.patches)
     return true
   }
-  private requestBoardFill() {
+private requestBoardFill() {
     const owner = this.plan, board = this.board
     if (!owner || !board || !this.tracking || this.phaseRevoked || tilesCoverBounds(this.residents, board)) return false
     if (!this.boardFillSequence) this.boardFillSequence = this.fillToken
@@ -150,9 +155,10 @@ private tracking = false
     // A clipped board's texels belong to one sample lattice. Both axes must
     // land on whole physical pixels before those texels can move. A fractional
     // axis keeps the last accepted frame and asks native to rasterize the real
-    // pose on that same camera lattice. Whole-page desktop reprojection is
-    // unchanged.
-    if (this.board) return this.integerPhysicalOffset(offset)
+    // pose on that same camera lattice. Ordinary boards and page reprojection
+    // keep their established rules.
+    if (this.board && !this.srgbBoard) return this.integerPhysicalOffset(offset)
+    if (this.srgbBoard?.clipped) return this.integerPhysicalOffset(offset)
     return this.residents.length > 0 && (this.fractional || this.integerPhysicalOffset(offset))
   }
   private rebase(document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1], guides=this.input.guides) {
@@ -168,7 +174,10 @@ if (this.clippedInputClosed) return null
         error=Math.max(error,Math.abs(shift-Math.round(shift)))
       this.reportPhase({retainedPhaseRejects:1,retainedPhaseSamples:this.residents.length*2,retainedPhaseError:error})
     }
-    return this.fractionalPose?.(document, patches, this.displayedDocument(), guides) ?? null
+    // The clipped gesture still displays its last native texture while the
+    // renderer takes over. Use the original authored snapshot for derivation.
+    const source = this.srgbBoard?.clipped ? this.plan!.document : this.displayedDocument()
+    return this.fractionalPose?.(document, patches, source, guides) ?? null
   }
   private displayedDocument() {
     const document = this.plan!.document
@@ -253,8 +262,8 @@ if (this.clippedInputClosed) return null
       // A visible overlap needs native painter order. Motion beyond the edge
       // of the viewport does not invalidate this composition.
       if (this.overlapsStationary(offset)) return this.rebase(document, patches, guides)
-// Whole-page desktop motion may reproject full-density texels. A clipped
-      // board additionally needs a proved source on the board lattice. Final
+// A clipped crop preserves antialiasing coverage only on its native pixel
+      // lattice. Fractional poses require the existing native renderer; final
       // readiness always belongs to the committed native page, not this pose.
       if (!this.clippedPoseCovered(offset) || !this.reusableOffset(offset)) return this.rebase(document, patches, guides)
       const id = this.plan.ids[0],

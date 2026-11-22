@@ -527,10 +527,15 @@ export function ResidentCompositeSurface(props: {
         const p = latest.current, renderer = interaction.current
         if (!p.interaction || !renderer) return null
         usePageTranslation.current = false; interactionStarted.current = true
-        // Warm at the last displayed pose, so a fractional move never falls
-        // back to the unshifted page while its native GPU sample is pending.
-        renderer.prepare({ ...p.interaction, document: displayed }, p.pageId, p.view, p.dpr,
-          p.rasterProfile, p.backend, p.settledDocument, { width: p.width, height: p.height })
+        const camera = { view: p.view, width: p.width, height: p.height, dpr: p.dpr }
+        const clipped = pageTranslation.current?.ownsClippedSource(displayed, p.pageId, camera) &&
+          p.rasterProfile === 'analytic' && p.backend === 'webgpu'
+        // Keep the original capture and sample origin for the native pose.
+        // A certified clipped board already has complete canvas coverage.
+        if (clipped) p.client.cancelTileFill()
+        renderer.prepare({ ...p.interaction, document: displayed,
+          ...(clipped ? { clippedBoardHandoff: true } : {}) }, p.pageId, p.view, p.dpr,
+          p.rasterProfile, p.backend, clipped ? displayed : p.settledDocument, { width: p.width, height: p.height })
         return renderer.control.apply(document, patches, undefined, guides)
       }, p.client.presentationDiagnosticsEnabled?.() ? fields=>latest.current.client.recordViewportDiagnostic(fields) : undefined,
         (source,offset,sequence,failed,region)=>latest.current.onTranslatedCoverage?.(source,offset,sequence,failed,region)===true)

@@ -411,7 +411,7 @@ const queue = new RenderWorkQueue()
 type ResidentPose={terminal?:boolean;slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
 type PoseSession={canvasOwner?:object;baseFill?:{x:number;y:number;width:number;height:number};softEffectPreview?: boolean;bitmapPreviewOnly?:boolean;reuse?:ResidentPoseReuse;nativePosePending?:boolean;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
   origins:ReadonlyMap<string,readonly[number,number]>;
-  patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
+  patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;clippedBoard?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
 type BitmapCommit = {
   id: number; transforms: Record<string, Matrix>; view: KernelOptions['view']; width: number; height: number
@@ -651,8 +651,10 @@ function schedulePose(){
         }
         if(right<=x||bottom<=y){rebasePose(pose);break}
         const ownsSelection = ids.length===session.origins.size&&ids.every(id=>session.origins.has(id))
-        const fullNativePose = session.native===true && coversDisplay && ownsSelection &&
-          !session.scene.interactionLocalFootprint
+const fullNativeViewport = session.native === true && coversDisplay && ownsSelection && !session.scene.interactionLocalFootprint
+        const fullNativePose = fullNativeViewport
+        const fullNativeAffine = fullNativeViewport && session.affine === true
+        const clippedTranslation = fullNativeViewport && session.clippedBoard === true && !session.affine
         const terminalTransport = session.native && !session.affine && ownsSelection && !session.scene.interactionLocalFootprint
           ? 'confirmed-curves' : 'inline-lz4'
         const viewportPatch=session.native===true&&!session.patch&&(coversDisplay||session.scene.interactionFixedMask===true)&&
@@ -661,7 +663,7 @@ function schedulePose(){
           isBitmapPoseLayer(session.baseDocument.nodes[ids[0]])
         // A native absolute pose can replace queued work while the previous
         // accepted viewport remains visible. Submitted GPU work still fences.
-        terminalMaySupersede||=fullNativePose||viewportPatch
+terminalMaySupersede ||= fullNativeAffine || viewportPatch || clippedTranslation
         const window={x,y,w:right-x,h:bottom-y}
         const displayGeometry=displayFrame?[displayFrame.view.x,displayFrame.view.y,displayFrame.view.zoom,
           displayFrame.width,displayFrame.height,displayFrame.dpr]:undefined
@@ -826,7 +828,7 @@ function schedulePose(){
           prepareDisplay()
           const localTerminal = session.canvasOwner && next.interactionLocalFootprint && !next.gestureSoftEffects &&
             ids.length===1 && isInnerShadowFill(session.baseDocument.nodes[ids[0]])
-          // A private Sketch mask can decline the JS patch session. The full
+// A private Sketch mask can decline the JS patch session. The full
           // native bitmap capture still proves coverage and can overlap its
           // next exact compile while the previous pose is on the GPU.
           const openTerminalPreparation = poseKernel && !pose.terminal &&
@@ -1294,7 +1296,7 @@ self.onmessage = (e) => {
       const retainInteraction = request.options?.retainInteractionGraph === true && request.options?.renderIntent === 'preview' && request.options?.livePreview === true &&
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
-      const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionFixedMask, interactionLocalFootprint, interactionBaseFill, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
+const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionClippedBoard, interactionFixedMask, interactionLocalFootprint, interactionBaseFill, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
 tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, zoomFocusCapture, clippedCommitTiles,
         progressiveBlurRepair: _progressiveBlurRepair, progressiveBlurWarm, ...renderOptions } = request.options
       const clippedCommitDisplay = clippedCommitTiles === true && channel === 'canvas' && renderIntent === 'canvas' &&
@@ -2760,7 +2762,10 @@ tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillP
               if(poseSession){poseSession.controller.abort();frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene)}
               const softEffectPreview = scene!.gestureSoftEffects
               scene!.gestureSoftEffects = result.gestureBlurPixels > 0
-              poseSession={canvasOwner,controller:new AbortController(),slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,origins,
+              const clippedBoard = interactionClippedBoard === true && executionPolicy.desktopDisplay && backend === 'webgpu' &&
+                renderOptions.rasterProfile === 'analytic' && interactionNative === true &&
+                !interactionAffine && !interactionLocalFootprint && interactionSelection?.length === 1
+              poseSession={canvasOwner,controller:new AbortController(),slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,origins,clippedBoard,
               baseFill:interactionBaseFill,softEffectPreview,scene:scene!,native:interactionNative===true,affine:interactionAffine===true,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
               patch:interactionNative||import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'?TranslationPatchSession.create(scene!,laneState.interactionDocument,interactionSelection||[],interactionNative===true)||undefined:undefined}
             }
