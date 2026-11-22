@@ -348,10 +348,11 @@ export interface Driver {
   submitPending?(): void
   /** Pace canvas encoding against the already submitted queue without
    * retiring frame resources or treating presentation ACKs as completion. */
-  yieldRasterQueue?(sliceFull?: boolean): Promise<void>
+  yieldRasterQueue?(sliceFull?: boolean, checkCurrent?: () => void): Promise<void>
   /** Display-only bounded command slices; never a resource completion proof. */
   rasterPacing?: boolean
   readonly pendingDrawCalls?: number
+  readonly rasterUniformSliceReady?: boolean
   captureDisplay?: boolean
   retainedSampleCapture?(): boolean
   attachPresenter?(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void, atomic?:boolean): void

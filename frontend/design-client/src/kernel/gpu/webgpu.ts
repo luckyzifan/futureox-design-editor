@@ -381,6 +381,12 @@ export class WebGpuDriver implements Driver {
   get pendingDrawCalls() {
     return this.drawCalls - this.submittedDrawCalls + this.variableFilterPasses - this.submittedVariableFilterPasses
   }
+  get rasterUniformSliceReady() {
+    // A uniform-only command can fill the slice before the draw count does.
+    // Route it through the task yield when it fits in the existing queue window.
+    return this.offset >= RASTER_SLICE_COMMANDS * 1024 &&
+      this.submissionSequence - this.completedSubmissionSequence < 2
+  }
   opaqueTentPasses = 0
   private mergedExactFilterPasses = 0
   triangles = 0
@@ -2926,7 +2932,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     // transient/scratch lifetime ends here and no readback is introduced.
     if (this.offset > 0 || [...(this.byteTentLeases?.values() || [])].some(entry => entry.encoder === this.encoder && !entry.submitted)) this.submitCommands()
   }
-  async yieldRasterQueue(sliceFull = true) {
+  async yieldRasterQueue(sliceFull = true, checkCurrent?: () => void) {
     const device = this.device
     if (this.disposed || this.lost) throw Error('GPU 设备已丢失')
     // A CPU time slice can yield to camera messages while the GPU already
@@ -2938,14 +2944,26 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     if (import.meta.env.VITE_DESIGN_RASTER_QUEUE_PACING === '0') await this.waitForQueue('raster-yield')
     else {
       if (this.rasterPacer?.device !== device) this.rasterPacer = { device, pacer: new RasterQueuePacer() }
-      await this.rasterPacer.pacer.yield(this.submissionSequence, this.completedSubmissionSequence,
-        () => this.waitForQueue('raster-yield', undefined, true).catch(error => {
-          // A low-water observer can reject after yield returned. Preserve it
-          // for finish's existing error boundary as well as the next slice.
-          if (!this.disposed && this.device === device) this.errors.push(String(error))
-          throw error
-        }), this.queueWaitStats.timingEnabled
-          ? wait=>this.queueWaitStats.wait('raster-yield',wait,()=>this.lost) : undefined)
+      const { pacer } = this.rasterPacer
+      const epoch = this.resourceEpoch, encoder = this.encoder, sequence = this.submissionSequence
+      const observe = () => this.waitForQueue('raster-yield', undefined, true).catch(error => {
+        // A low-water observer can reject after yield returned. Preserve it
+        // for finish's existing error boundary as well as the next slice.
+        if (!this.disposed && this.device === device) this.errors.push(String(error))
+        throw error
+      })
+      await pacer.yield(sequence, this.completedSubmissionSequence, observe, this.queueWaitStats.timingEnabled
+        ? wait=>this.queueWaitStats.wait('raster-yield',wait,()=>this.lost) : undefined)
+      if (this.disposed || this.lost || this.device !== device) throw Error('GPU 设备已丢失')
+      // The oldest wait may have drained the queue while we held a partial
+      // encoder. Refill one slot so it can run while the next slice encodes.
+      if (!sliceFull && this.rasterPacing && checkCurrent && this.resourceEpoch === epoch && this.encoder === encoder &&
+          this.submissionSequence === sequence && sequence <= this.completedSubmissionSequence) {
+        checkCurrent()
+        this.submitPending()
+        if (this.submissionSequence > sequence)
+          await pacer.yield(this.submissionSequence, this.completedSubmissionSequence, observe)
+      }
     }
     if (this.disposed || this.lost || this.device !== device) throw Error('GPU 设备已丢失')
   }
