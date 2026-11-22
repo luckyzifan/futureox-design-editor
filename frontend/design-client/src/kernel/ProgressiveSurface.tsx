@@ -599,7 +599,14 @@ export function ProgressiveSurfaceImpl(
     grid: !!props.grid, checkerboard: !!props.checkerboard, pixelPreview: props.pixelPreview || 0,
     rasterProfile, displayCapability, hdrCompositing })
   const filteredContent = useMemo(() => pageHasFilteredContent(doc, pageId), [doc.nodes, doc.pages, pageId])
-  const clippedBoardId = import.meta.env.VITE_DESIGN_CLIPPED_BOARD_DRAG === '1' &&
+  const clippedBoardSetting = import.meta.env.VITE_DESIGN_CLIPPED_BOARD_DRAG
+  const poseTransportSetting = import.meta.env.VITE_DESIGN_CLIPPED_POSE_CURVE_RESOURCES
+  const defaultClippedBoardDrag = clippedBoardSetting === undefined &&
+    (poseTransportSetting === undefined || poseTransportSetting === '1') &&
+    navigator.platform.startsWith('Mac') && backend === 'webgpu' && rasterProfile === 'analytic' &&
+    view.zoom < 1 && !allowsReducedSampling(view.zoom) &&
+    usesDesktopDisplay(renderExecutionPolicy, { renderIntent: 'canvas', rasterProfile })
+  const clippedBoardId = (clippedBoardSetting === '1' || defaultClippedBoardDrag) &&
     import.meta.env.VITE_DESIGN_RETAINED_TRANSLATION !== '0' && residentDisplay &&
     renderExecutionPolicy.desktopDisplay && !cameraDependent && !hdrCompositing &&
     !props.grid && !props.checkerboard && !props.pixelPreview && !props.animation &&

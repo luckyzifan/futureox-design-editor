@@ -134,7 +134,7 @@ impl WorldSupport {
         // HashMap capacity stays resident. Keep the original conservative
         // charge (including removed key bytes) until this owner is retired.
     }
-    /// A pure translation moves a node and every descendant. Drop those
+/// A pure translation moves a node and every descendant. Drop those
     /// certificates and the ancestor unions. Untouched siblings keep the
     /// bounds built for this page, so the next camera does not walk them
     /// again. Missing entries are unknown and are prepared, never drawn from
@@ -157,6 +157,18 @@ impl WorldSupport {
                 self.entries.remove(ancestor);
             });
         }
+    }
+    /// A translated page root changes support only inside its render subtree.
+    /// Missing certificates fall back to ordinary device geometry preparation.
+    pub(crate) fn invalidate_translated_roots<'a>(&mut self, doc: &'a Document, roots: impl Iterator<Item = &'a str>) {
+        let mut pending: Vec<_> = roots.collect();
+        while let Some(id) = pending.pop() {
+            self.entries.remove(id);
+            if let Some(node) = doc.nodes.get(id) {
+                pending.extend(node.render_children().iter().map(String::as_str));
+            }
+        }
+        // HashMap capacity remains charged to the same owner.
     }
     /// Remember a declined optional allocation for this exact revision/page.
     /// A new camera must not rebuild the same over-budget index on every tile.
@@ -294,6 +306,24 @@ mod tests {
             "root":{"id":"root","kind":"group","width":1,"height":1,"children":["leaf"]},
             "leaf":{"id":"leaf","kind":"rectangle","width":20,"height":10,"transform":[1,0,0,1,10000,10000],"fills":[{"kind":"solid","color":"#abcdef"}]}
         }})).unwrap()}
+    #[test]
+    fn a_root_move_forgets_descendants_but_keeps_other_roots() {
+        let mut doc = document();
+        doc.pages[0].children.push("cold".into());
+        doc.nodes.insert("cold".to_owned(), serde_json::from_value(json!({
+            "id":"cold","kind":"rectangle","width":10,"height":10,
+            "transform":[1,0,0,1,10000,10000],"fills":[{"kind":"solid","color":"#112233"}]
+        })).unwrap());
+        let mut support = WorldSupport::build(&doc, &doc.pages[0].children, &Fonts::new(), LIMIT).unwrap().unwrap();
+        let query = Rect::new(0, 0, 64, 64);
+        assert!(support.culls("leaf", Transform::default(), query));
+        let bytes = support.bytes();
+        support.invalidate_translated_roots(&doc, std::iter::once("root"));
+        assert!(!support.culls("root", Transform::default(), query));
+        assert!(!support.culls("leaf", Transform::default(), query));
+        assert!(support.culls("cold", Transform::default(), query));
+        assert_eq!(support.bytes(), bytes);
+    }
     #[test]
     fn stable_world_bounds_follow_new_cameras_without_reusing_device_samples(){
         let d=document();let f=Fonts::new();let index=WorldSupport::build(&d,&d.pages[0].children,&f,LIMIT).unwrap().unwrap();

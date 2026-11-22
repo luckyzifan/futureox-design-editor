@@ -15,6 +15,36 @@ struct Request {
     #[serde(rename="sourceBitmaps",default)]
     source_bitmaps:Option<futureox_design_kernel::source_bitmap_pixels::Directory>,
 }
+#[cfg(target_os = "macos")]
+fn pack_pose_packet(bytes: &[u8]) -> Option<Vec<u8>> {
+    // The SDK exposes a raw LZ4 block; the renderer uses the same raw block
+    // decoder on every host. An incompressible packet stays inline.
+    const LZ4_RAW: u32 = 0x101;
+    #[link(name = "compression")]
+    unsafe extern "C" {
+        fn compression_encode_buffer(
+            destination: *mut u8,
+            destination_bytes: usize,
+            source: *const u8,
+            source_bytes: usize,
+            scratch: *mut std::ffi::c_void,
+            algorithm: u32,
+        ) -> usize;
+    }
+    let mut destination = vec![0; bytes.len() * 3 / 4];
+    // Both buffers are live and disjoint. The SDK bounds all writes by the
+    // supplied destination length; null scratch requests framework storage.
+    let size = unsafe {
+        compression_encode_buffer(destination.as_mut_ptr(), destination.len(),
+            bytes.as_ptr(), bytes.len(), std::ptr::null_mut(), LZ4_RAW)
+    };
+    if size == 0 || size >= destination.len() { return None; }
+    destination.truncate(size);
+    Some(destination)
+}
+#[cfg(not(target_os = "macos"))]
+fn pack_pose_packet(_bytes: &[u8]) -> Option<Vec<u8>> { None }
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     if args.next().as_deref() != Some("--font") {
@@ -61,8 +91,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stdout=io::stdout();let mut output=stdout.lock();
     for incoming in receiver {
         let (request, cancelled)=incoming?;
-        let (mut metadata, bytes) =
-            match futureox_design_kernel::render_cancellation::with_probe(move || cancelled.load(Ordering::Acquire),
+        let probe = Arc::clone(&cancelled);
+        let (mut metadata, mut bytes) =
+            match futureox_design_kernel::render_cancellation::with_probe(move || probe.load(Ordering::Acquire),
                 || match request.source_bitmaps {
                     Some(grant)=>session.render_with_bitmaps(&request.lane,&request.method,&request.args,grant),
                     None=>session.request(&request.lane,&request.method,&request.args),
@@ -70,6 +101,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(reply) => (reply.metadata, reply.bytes),
                 Err(error) => (json!({"error":error}), Vec::new()),
             };
+        let pack = metadata.as_object_mut().and_then(|fields| fields.remove("packPose"))
+            .and_then(|value| value.as_bool()) == Some(true);
+        if pack && !cancelled.load(Ordering::Acquire) && (262_144..=33_554_432).contains(&bytes.len()) {
+            let encoding = metadata["compileStats"]["nativeEncodeMs"].as_f64();
+            let start = encoding.map(|_| std::time::Instant::now());
+            if let Some(packed) = pack_pose_packet(&bytes) {
+                metadata["unpackedPoseBytes"] = json!(bytes.len());
+                bytes = packed;
+            }
+            if let (Some(encoding), Some(start)) = (encoding, start) {
+                metadata["compileStats"]["nativeEncodeMs"] = json!(encoding + start.elapsed().as_secs_f64() * 1000.0);
+            }
+        }
+        if request.method == "compile_gpu_packet" && cancelled.load(Ordering::Acquire) {
+            // The canceled consumer never acknowledges this reply. Complete
+            // the physical job without sending the abandoned geometry body.
+            metadata = json!({"error":"PREVIEW_CANCELLED"});
+            bytes.clear();
+        }
         metadata["id"] = json!(request.id);
         let metadata = serde_json::to_vec(&metadata)?;
         output.write_all(b"FPR1")?;

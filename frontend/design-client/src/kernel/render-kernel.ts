@@ -1,7 +1,7 @@
 import { markRenderFailure } from './render-failure-telemetry'
 import type { PreparationStateReceiptV1 } from './preparation-state'
 import type { GpuScene } from './gpu/types'
-import { VectorEngine } from '../generated/design-kernel/design_kernel'
+import { VectorEngine, unpack_native_pose_packet } from '../generated/design-kernel/design_kernel'
 import { blank } from '../model'
 import type { PaintDamage } from './paint-damage'
 import { renderCpuFrame } from './cpu-frame'
@@ -132,6 +132,14 @@ export class RenderKernel {
           rasterProfile: colorManagement ? 'figma' : 'analytic', colorManagement }))
         this.settings = reply.settings
       }
+      if (reply.unpackedPoseBytes !== undefined) {
+        const size = reply.unpackedPoseBytes
+        if (method !== 'compile_gpu_packet' || this.lane !== 'interaction' ||
+            !(reply.value instanceof Uint8Array) || !Number.isSafeInteger(size) ||
+            size < 262_144 || size > 33_554_432 || reply.value.length >= size)
+          throw Error('Invalid packed native pose reply')
+        return unpack_native_pose_packet(reply.value, size) as T
+      }
       return reply.value as T
     }
     if(method==='load_source_snapshot'||method==='source_hit')throw Error('NATIVE_SOURCE_UNSUPPORTED')
@@ -252,14 +260,17 @@ export class RenderKernel {
   private async compileFrame(options:string, revision:number, signal?:AbortSignal, transport: ScenePacketTransport = 'exact') {
     const lease=this.resources.capture(),owner=this.contentOwner
     try {
-      const acknowledgement = lease.acknowledgement
+const acknowledgement = lease.acknowledgement
+      const { clippedPoseEncoding, ...renderOptions } = JSON.parse(options)
       const reuseCurves = transport === 'curves' || transport === 'confirmed-curves' && this.resources.hasCurvePrograms
-      const frameResources = transport === 'exact' ? acknowledgement
+      const frameResources = this.preparation && (clippedPoseEncoding === 'resources' || clippedPoseEncoding === 'inline')
+        ? { ...acknowledgement, curvePrograms: clippedPoseEncoding === 'resources', clippedPoseTransport: true }
+        : transport === 'exact' ? acknowledgement
         : { ...acknowledgement, sceneLz4: true, ...(reuseCurves ? { curvePrograms: true } : {}) }
-      const request=JSON.stringify({...JSON.parse(options),frameResources})
+      const request=JSON.stringify({...renderOptions,frameResources})
       const bytes=await this.call<Uint8Array>('compile_gpu_packet',[request],signal)
       const scene=decodeScenePacket(bytes,revision===this.revision&&!this.pendingMutations?this.resources:undefined,lease)
-      bindContentOwner(scene,owner,pixelSourceContract(JSON.parse(options)))
+      bindContentOwner(scene,owner,pixelSourceContract(renderOptions))
       return bytes
     } finally {lease.release()}
   }

@@ -6,7 +6,8 @@ import { producerIdentityFields, sanitizeProducerIdentity } from './render-diagn
 // Strict scalar allowlist shared by worker, renderer and terminal. Never stringify a render payload.
 const tileCostLimits = {imageAxisFields:1e9,imageFieldBytes:1e12,displayImageSourcePasses:1e9,nestedPrefixHits:1e9,nestedPrefixBuilds:1e9,nestedPrefixBytes:67108864,staticImageBlurEligible:1e9,staticImageBlurHits:1e9,staticImageBlurPixels:1e12,staticImageBlurBytes:17825792,staticImageBlurEntries:1,wholeFilterAxes:1e9,opaqueTentPasses:1e9,imageXTableBuilds:1e6,imageXTablePixels:1e12,imageXTableBytes:41943040,tileCacheDecision:5,tileCostSamples:2048,costSamplesOmitted:1e9,tileCostUnavailable:63,tileCostCapped:1,outputPixelVisits:1e12,sourcePixelVisits:1e12,sourcePixelAreaMax:1e9,supportRectExpansionMax:1e7,packetNodeVisits:1e9,sampledPacketNodeVisits:1e9,effectBlurVisits:1e9,effectBackdropVisits:1e9,effectShadowVisits:1e9,effectOtherVisits:1e9,costScanOmittedNodes:1e9,costScanOmittedEffects:1e9,encodedPassPixels:1e15,fieldBuildElapsedMs:120000,graphNonCheckpointElapsedMs:120000,materialFieldBuilds:1e9,materialFieldHits:1e9,materialFieldUploadBytes:1e12,materialFieldRejectedOversize:1e9,materialFieldRejectedPinned:1e9,materialFieldRejectedBytes:1e12,tileDrawCalls:1e9,tileCommandSubmissions:1e9,horizontalFilterHits:1e9,horizontalFilterRows:1e12,horizontalFilterPixels:1e12}
 export const PREFIX = '[render-diag] '
-Object.assign(tileCostLimits, { scenePacketProtocol:2, scenePacketVersion:1, scenePacketBytes:1e12, frameResourceHits:1e12, frameResourceBytes:33554432,
+Object.assign(tileCostLimits, { scenePacketProtocol:2, scenePacketVersion:1, scenePacketBytes:1e12,
+ sceneCurveBytes:134217728, sceneWireCurveBytes:134217728, frameResourceHits:1e12, frameResourceBytes:33554432,
  scenePacketMetadataBytes:1e12, scenePacketResourceBytes:1e12 })
 Object.assign(tileCostLimits,drawWorkLimits)
 Object.assign(tileCostLimits, { separatePresentationDevice:1,backgroundCoverage:1,backgroundDecline:5,backgroundDensitySources:4096,backgroundPhaseError:1,coverageDeferred:1, coverageDeferredDraws:4096 })
@@ -52,6 +53,7 @@ for (const key of Object.keys(failureLimits)) fields.add(key)
 for (const key of Object.keys(textureFailureLimits)) fields.add(key)
 for (const key of [...Object.keys(poseLifecycleLimits),...Object.keys(handoffLimits)]) fields.add(key)
 for (const key of Object.keys(deviceLimits)) fields.add(key)
+for (const key of ['nativeGeometryMs', 'nativeEncodeMs']) fields.add(key)
 for (const key of ['renderResetCode','cpuSpanId','cpuParentSpanId','cpuStageCode','cpuPhase','cpuSkipped','cpuDurationCapped','cpuOutcome','cpuDurationMs','cpuWaitMs','bridgeBoundaryAt','bridgeDeliveryMs']) fields.add(key)
 for (const key of Object.keys(tileOrderLimits)) fields.add(key)
 const imageFieldRegionLimits = {imageFieldCallsite:7,imageFieldStage:5,imageFieldOutcome:3,imageFieldAxes:2,imageFieldSample:4,imageFieldLevel:32,
@@ -68,6 +70,10 @@ export function sanitizeFields(value) {
     // Most records contain only a handful of the shared scalar fields. An
     // absent value cannot pass any validator; avoid probing every limit map.
     if (v === undefined) continue
+    if (key === 'nativeGeometryMs' || key === 'nativeEncodeMs') {
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 120000) out[key] = v
+      continue
+    }
     // Stage numbers are a fixed dictionary, including the intentional gaps.
     // Adding frame/planning 40/41 does not admit undeclared stages 38/39.
     if (key === 'cpuStageCode' && ![1,2,3,4,5,10,11,12,13,14,20,21,22,23,24,30,31,32,33,34,35,36,37,40,41].includes(v)) continue

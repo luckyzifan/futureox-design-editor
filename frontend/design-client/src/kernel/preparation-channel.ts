@@ -2,7 +2,7 @@ import type { PreparationStateReceiptV1 } from './preparation-state'
 import { preparationProtocol, type PreparationMethod } from '../../../design-desktop/src/preparation-methods-v1'
 export type { PreparationMethod }
 export type PreparationProgress = { backendCode: 1 | 2; boundaryCode: number; boundaryDurationMs?: number; bridgeBoundaryAt?: number }
-export type PreparationReply = { progress?: PreparationProgress; bridgeBoundaryAt?: number; id: number; value?: unknown; settings?: string; error?: string; fatal?: string; documentFork?: boolean; compileStats?:Record<string,unknown>; stateReceipt?: PreparationStateReceiptV1 | null }
+export type PreparationReply = { progress?: PreparationProgress; bridgeBoundaryAt?: number; id: number; unpackedPoseBytes?: number; value?: unknown; settings?: string; error?: string; fatal?: string; documentFork?: boolean; compileStats?:Record<string,unknown>; stateReceipt?: PreparationStateReceiptV1 | null }
 
 const methods: PreparationMethod[] = preparationProtocol.methods.map(method => method.name)
 type Diagnostics = { enabled: () => boolean; owner: () => number; record: (event: string, fields: Record<string, number | boolean>) => void }
@@ -102,7 +102,14 @@ export class PreparationChannel {
         return
       }
       clearTimeout(job.diagnosticTimer)
-      this.trace(job, 4, { ...bridgeTiming(reply.bridgeBoundaryAt), durationMs: performance.now() - (job.startedAt ?? performance.now()), documentFork: reply.documentFork === true })
+      const geometry = reply.compileStats?.nativeGeometryMs, encode = reply.compileStats?.nativeEncodeMs
+      this.trace(job, 4, {
+        ...bridgeTiming(reply.bridgeBoundaryAt),
+        durationMs: performance.now() - (job.startedAt ?? performance.now()),
+        documentFork: reply.documentFork === true,
+        ...(typeof geometry === 'number' && typeof encode === 'number' && reply.value instanceof Uint8Array ?
+          {nativeGeometryMs: geometry, nativeEncodeMs: encode, scenePacketBytes: reply.value.byteLength} : {}),
+      })
       this.active = undefined
       if (PreparationChannel.mutates(job.method)) {
         if (!reply.error && reply.stateReceipt) this.receipts.set(job.lane, reply.stateReceipt)

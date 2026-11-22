@@ -411,7 +411,7 @@ const queue = new RenderWorkQueue()
 type ResidentPose={terminal?:boolean;slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
 type PoseSession={canvasOwner?:object;baseFill?:{x:number;y:number;width:number;height:number};softEffectPreview?: boolean;bitmapPreviewOnly?:boolean;reuse?:ResidentPoseReuse;nativePosePending?:boolean;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
   origins:ReadonlyMap<string,readonly[number,number]>;
-  patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;clippedBoard?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
+  patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;clippedBoard?:boolean;window:import('./gpu/types').Rect;options:string;terminalOptions?:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
 type BitmapCommit = {
   id: number; transforms: Record<string, Matrix>; view: KernelOptions['view']; width: number; height: number
@@ -655,8 +655,9 @@ const fullNativeViewport = session.native === true && coversDisplay && ownsSelec
         const fullNativePose = fullNativeViewport
         const fullNativeAffine = fullNativeViewport && session.affine === true
         const clippedTranslation = fullNativeViewport && session.clippedBoard === true && !session.affine
-        const terminalTransport = session.native && !session.affine && ownsSelection && !session.scene.interactionLocalFootprint
+const terminalTransport = session.native && !session.affine && ownsSelection && !session.scene.interactionLocalFootprint
           ? 'confirmed-curves' : 'inline-lz4'
+        const terminalOptions = clippedTranslation ? session.terminalOptions : undefined
         const viewportPatch=session.native===true&&!session.patch&&(coversDisplay||session.scene.interactionFixedMask===true)&&
           !session.scene.interactionLocalFootprint&&ownsSelection
         const bitmapTerminal = (fullNativePose || viewportPatch && session.scene.interactionFixedMask) && session.affine && ids.length===1 &&
@@ -775,8 +776,10 @@ const compileStarted=performance.now()
             if (superseded) prioritizeTerminalPose = terminal => {
               if (terminalPoseDisposition(pose,terminal)==='changed')superseded.abort()
             }
-            try {
-              const compile=()=>compilePacket(kernel,session.options,signal,pose.terminal ? terminalTransport : 'curves')
+try {
+              const terminal = pose.terminal && terminalOptions
+              const compile=()=>compilePacket(kernel, terminal ? terminalOptions! : session.options, signal,
+                terminal ? false : pose.terminal ? terminalTransport : 'curves')
               packet=await (direct ? direct.withPoseTransport(compile) : compile())
             } catch(error) {
               // The native channel still fences the cancelled call before the
@@ -863,7 +866,8 @@ const compileStarted=performance.now()
                   work.mutated=true
                   if(!await kernel.apply_interaction_transforms(JSON.stringify(terminal.transforms))){work.mutated=false;return {packet:undefined,compileMs:0}}
                   const at=performance.now()
-                  const packet=await journalCompile(()=>kernel.prepare_gpu_scene(session.options,session.controller.signal,terminalTransport))
+const packet=await journalCompile(()=>kernel.prepare_gpu_scene(terminalOptions ?? session.options,
+                    session.controller.signal, terminalOptions ? false : terminalTransport))
                   return {packet,compileMs:performance.now()-at}
                 }
                 ahead.start(terminal.input.sequence,()=>preparation?preparation.withPoseTransport(prepare):prepare())
@@ -1424,7 +1428,20 @@ tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillP
       // Canvas chrome is never authored/exported content.
       if (request.png || exportFormat || renderOptions.exportRegion) renderOptions.checkerboard = false
       const disableExactCache = request.debug?.disableExactTileCache === true
-      const options = JSON.stringify({...renderOptions,...(renderOptions.captureViewport&&requestedPrepareViewport?{prepareViewport:requestedPrepareViewport}:{})})
+      const poseTransportSetting = import.meta.env.VITE_DESIGN_CLIPPED_POSE_CURVE_RESOURCES
+      const reuseCurvePrograms = (poseTransportSetting === undefined || poseTransportSetting === '1') &&
+        channel === 'interaction' && retainInteraction && interactionNative === true &&
+        interactionClippedBoard === true && !interactionAffine && !interactionLocalFootprint &&
+        interactionWindowFixed === true && !!renderOptions.captureViewport &&
+        backend === 'webgpu' && renderOptions.rasterProfile === 'analytic' &&
+        usesDesktopDisplay(executionPolicy, {...renderOptions, renderIntent, png:request.png, readback:request.readback, exportFormat})
+      const captureOptions = {...renderOptions,
+        ...(renderOptions.captureViewport && requestedPrepareViewport ? {prepareViewport:requestedPrepareViewport} : {}),
+      }
+      const options = JSON.stringify(reuseCurvePrograms ? {...captureOptions, clippedPoseEncoding:'resources'} : captureOptions)
+      // The final pose commonly changes nearly every curve block. Compress
+      // its inline arena without interning or reassembling those changed blocks.
+      const terminalOptions = reuseCurvePrograms ? JSON.stringify({...captureOptions, clippedPoseEncoding:'inline'}) : undefined
       const synchronizeDeferred = async () => {
         if (!laneState.deferredInteractionDocument) return
         if(laneState.synchronizedInteractionDocument?.id===laneState.deferredInteractionDocument.id)
@@ -2784,7 +2801,7 @@ tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillP
                 renderOptions.rasterProfile === 'analytic' && interactionNative === true &&
                 !interactionAffine && !interactionLocalFootprint && interactionSelection?.length === 1
               poseSession={canvasOwner,controller:new AbortController(),slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,origins,clippedBoard,
-              baseFill:interactionBaseFill,softEffectPreview,scene:scene!,native:interactionNative===true,affine:interactionAffine===true,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
+              baseFill:interactionBaseFill,softEffectPreview,scene:scene!,native:interactionNative===true,affine:interactionAffine===true,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,terminalOptions,stopped:false,
               patch:interactionNative||import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'?TranslationPatchSession.create(scene!,laneState.interactionDocument,interactionSelection||[],interactionNative===true)||undefined:undefined}
             }
           }
