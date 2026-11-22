@@ -9,11 +9,15 @@ export function samePoseTransforms(a:Record<string,Matrix>,b:Record<string,Matri
     Array.from(a[id]).every((value,i)=>Number.isFinite(value)&&Object.is(value,b[id][i])))
 }
 type Pose={slot:number;transforms:Record<string,Matrix>;terminal?:boolean;input:{sequence:number;owner?:unknown}}
-/** Scheduling only: never authorizes a document commit or a different owner. */
-export function terminalPoseDisposition(running:Pose,pending:Pose|undefined):'none'|'same'|'changed' {
-  if(!pending?.terminal||pending.slot!==running.slot||typeof running.input.owner!=='string'||!running.input.owner||
+/** A later sample can only replace work owned by the same display slot and gesture. */
+export function newerPoseDisposition(running:Pose,pending:Pose|undefined):'none'|'same'|'changed' {
+  if(!pending||pending.slot!==running.slot||typeof running.input.owner!=='string'||!running.input.owner||
     pending.input.owner!==running.input.owner||!Number.isSafeInteger(pending.input.sequence)||pending.input.sequence<=running.input.sequence)return 'none'
   return samePoseTransforms(running.transforms,pending.transforms)?'same':'changed'
+}
+/** Scheduling only: never authorizes a document commit or a different owner. */
+export function terminalPoseDisposition(running:Pose,pending:Pose|undefined) {
+  return pending?.terminal ? newerPoseDisposition(running,pending) : 'none'
 }
 /** One successful native capture only. Equality of input transforms is not
  * sufficient without the same scene, physical texture, device and draw window. */

@@ -3,7 +3,7 @@ import { admitAction, admitPreparedTile } from './zoom-refine-schedule'
 import { equalValue } from '../document-patch'
 import {regionalGaussianDisplay,regionalGaussianAllocationFailure} from './regional-gaussian-display'
 import {MATERIAL_BAND,sourceBandDefersWholePresent} from './source-display-band'
-import { ResidentPoseReuse, samePoseTransforms, terminalPoseDisposition } from './resident-pose-reuse'
+import { ResidentPoseReuse, samePoseTransforms, newerPoseDisposition, terminalPoseDisposition } from './resident-pose-reuse'
 import { MAX_CANVAS_RASTER_SCALE } from '../canvas-camera'
 import { documentCapacity, pinDocumentCapacity } from '../document-capacity'
 import { initializeKernelModule } from './module'
@@ -571,12 +571,13 @@ function schedulePose(){
   poseQueued=true
   void queue.run(async()=>{
     let runningPose: ResidentPose | undefined
-    type Advance={pose:ResidentPose; sequence:number; session:PoseSession; kernel:RenderKernel; previous:Record<string,Matrix>; mutated:boolean}
+    type Advance={pose:ResidentPose; sequence:number; session:PoseSession; kernel:RenderKernel; previous:Record<string,Matrix>; mutated:boolean; motion?:AbortController}
     let advance:Advance|undefined
     const ahead=new PrepareAhead<{packet:Awaited<ReturnType<RenderKernel['prepare_gpu_scene']>>|undefined; compileMs:number}>()
     const discardAdvance=async()=>{
       if (!advance) return
       const old=advance;advance=undefined
+      old.motion?.abort()
       await ahead.drain()
       if (!old.mutated) return
       // No other CPU mutation can enter this queue until the abandoned move
@@ -589,11 +590,21 @@ function schedulePose(){
       synchronizedAuthored.delete('interaction')
       if (poseSession===old.session) rebasePose(old.pose)
     }
+    // One admitted motion can finish while the mailbox keeps accepting newer
+    // input. A released or replaced owner can still supersede that work.
+    const nextPose = () => {
+      const motion = advance?.motion
+      if (advance && motion && !motion.signal.aborted && advance.session === poseSession &&
+          !advance.session.stopped && pendingPose && pendingPose.slot === advance.pose.slot &&
+          pendingPose.input.owner === advance.pose.input.owner && !pendingPose.terminal) return advance.pose
+      return pendingPose
+    }
     try{
       // Keep the next raster behind a pose whose display copy has not yet
       // reached this queue. A submitted copy can finish during preparation.
-      while(pendingPose&&!waitingForPoseSubmission(pendingPose)){
-        const pose=pendingPose;pendingPose=undefined;runningPose=pose
+      for (let pose = nextPose(); pose && !waitingForPoseSubmission(pose); pose = nextPose()) {
+        if (pendingPose === pose) pendingPose = undefined
+        runningPose=pose
         const session=poseSession
         if (advance && (advance.pose!==pose || advance.session!==session || session?.stopped)) await discardAdvance()
         if(!session||session!==poseSession||session.stopped||session.slot!==pose.slot||!gpu?.driver.replacePresented)continue
@@ -658,6 +669,8 @@ const fullNativeViewport = session.native === true && coversDisplay && ownsSelec
 const terminalTransport = session.native && !session.affine && ownsSelection && !session.scene.interactionLocalFootprint
           ? 'confirmed-curves' : 'inline-lz4'
         const terminalOptions = clippedTranslation ? session.terminalOptions : undefined
+        const prepareMotionAhead = import.meta.env.VITE_DESIGN_CLIPPED_POSE_AHEAD !== '0' &&
+          !!terminalOptions && !!session.patch
         const viewportPatch=session.native===true&&!session.patch&&(coversDisplay||session.scene.interactionFixedMask===true)&&
           !session.scene.interactionLocalFootprint&&ownsSelection
         const bitmapTerminal = (fullNativePose || viewportPatch && session.scene.interactionFixedMask) && session.affine && ids.length===1 &&
@@ -722,7 +735,20 @@ terminalMaySupersede ||= fullNativeAffine || viewportPatch || clippedTranslation
           session.nativePosePending = true
           let packet:CompiledScenePacket | undefined
           if (advance?.pose===pose && advance.session===session) {
-            const prepared=await ahead.take(advance.sequence)
+const motion = advance.motion
+            if (motion) prioritizeTerminalPose = terminal => {
+              if (terminalPoseDisposition(pose,terminal) === 'changed') motion.abort()
+            }
+            let prepared
+            try { prepared=await ahead.take(advance.sequence) }
+            catch(error) {
+              if (motion?.signal.aborted && !session.controller.signal.aborted &&
+                  String(error).includes('PREVIEW_CANCELLED')) continue
+              throw error
+            } finally {
+              if (motion) prioritizeTerminalPose = undefined
+            }
+            if(!prepared?.packet){rebasePose(pose);break}
             if(!current())continue
             if(prepared?.packet){
               packet=prepared.packet.consume()
@@ -776,10 +802,11 @@ const compileStarted=performance.now()
             if (superseded) prioritizeTerminalPose = terminal => {
               if (terminalPoseDisposition(pose,terminal)==='changed')superseded.abort()
             }
-try {
-              const terminal = pose.terminal && terminalOptions
-              const compile=()=>compilePacket(kernel, terminal ? terminalOptions! : session.options, signal,
-                terminal ? false : pose.terminal ? terminalTransport : 'curves')
+const terminal = pose.terminal && terminalOptions
+            const poseOptions = pose.terminal || prepareMotionAhead ? terminalOptions ?? session.options : session.options
+            const compile=()=>compilePacket(kernel, poseOptions, signal,
+              terminal ? false : pose.terminal ? terminalTransport : 'curves')
+            try {
               packet=await (direct ? direct.withPoseTransport(compile) : compile())
             } catch(error) {
               // The native channel still fences the cancelled call before the
@@ -854,26 +881,40 @@ try {
               (fullNativeAffine || clippedTranslation) && session.patch)
             ? () => {
               const kernel=poseKernel!
-              prioritizeTerminalPose=terminal=>{
+              const start = (nextPose: ResidentPose, motion?: AbortController) => {
                 if(advance || session!==poseSession || session.stopped || session.controller.signal.aborted ||
-                    terminalPoseDisposition(pose,terminal)!=='changed' || Object.keys(terminal.transforms).length!==1 ||
-                    !Object.hasOwn(terminal.transforms,ids[0]) || !Array.isArray(terminal.transforms[ids[0]]) ||
-                    terminal.transforms[ids[0]].length!==6 || !terminal.transforms[ids[0]].every(Number.isFinite))return
-                const work:Advance={pose:terminal,sequence:terminal.input.sequence,session,kernel,previous:pose.transforms,mutated:false}
+                    newerPoseDisposition(pose,nextPose)!=='changed' || Object.keys(nextPose.transforms).length!==1 ||
+                    !Object.hasOwn(nextPose.transforms,ids[0]) || !Array.isArray(nextPose.transforms[ids[0]]) ||
+                    nextPose.transforms[ids[0]].length!==6 || !nextPose.transforms[ids[0]].every(Number.isFinite))return
+                // A moving packet is admitted only for the same linear
+                // transform as the already validated clipped translation.
+                if (motion && nextPose.transforms[ids[0]].slice(0,4).some((value,i) => value !== pose.transforms[ids[0]][i])) return
+                const work:Advance={pose:nextPose,sequence:nextPose.input.sequence,session,kernel,previous:pose.transforms,mutated:false,motion}
                 advance=work
+                const signal=motion ? AbortSignal.any([session.controller.signal,motion.signal]) : session.controller.signal
                 const prepare=async()=>{
-                  if(session!==poseSession || session.stopped || session.controller.signal.aborted)return {packet:undefined,compileMs:0}
+                  if(session!==poseSession || session.stopped || signal.aborted)return {packet:undefined,compileMs:0}
                   work.mutated=true
-                  if(!await kernel.apply_interaction_transforms(JSON.stringify(terminal.transforms))){work.mutated=false;return {packet:undefined,compileMs:0}}
+                  if(!await kernel.apply_interaction_transforms(JSON.stringify(nextPose.transforms))){work.mutated=false;return {packet:undefined,compileMs:0}}
                   const at=performance.now()
 const packet=await journalCompile(()=>kernel.prepare_gpu_scene(terminalOptions ?? session.options,
-                    session.controller.signal, terminalOptions ? false : terminalTransport))
+                    signal, terminalOptions ? false : terminalTransport))
                   return {packet,compileMs:performance.now()-at}
                 }
-                ahead.start(terminal.input.sequence,()=>preparation?preparation.withPoseTransport(prepare):prepare())
+                ahead.start(work.sequence,()=>preparation?preparation.withPoseTransport(prepare):prepare())
+              }
+              prioritizeTerminalPose=terminal=>{
+                if (advance?.motion) {
+                  const relation = terminalPoseDisposition(advance.pose, terminal)
+                  if (relation === 'same' && !advance.motion.signal.aborted) advance.pose = terminal
+                  else if (relation === 'changed') advance.motion.abort()
+                  return
+                }
+                start(terminal)
               }
               const last=latestPendingPose()
               if(last?.terminal)prioritizeTerminalPose(last)
+              else if(last && prepareMotionAhead && next.queuedClippedMotion) start(last,new AbortController())
             } : undefined
 if (bitmapTerminal || clippedTranslation) prepareTerminal?.()
           if (bitmapTerminal && pose.terminal && next.interactionFixedMask) {
@@ -899,8 +940,8 @@ if (bitmapTerminal || clippedTranslation) prepareTerminal?.()
             if(!session.patch&&!document)document=authoredPose()
           }
           session.scene=next
-          session.bitmapPreviewOnly=!!bitmapRepairScene&&!pose.terminal
-          if (session.native) session.nativePosePending = false
+session.bitmapPreviewOnly=!!bitmapRepairScene&&!pose.terminal
+          if (session.native) session.nativePosePending = !!advance?.motion
           if(session.patch)session.patch.accept(next,pose.transforms)
             else if(document){
             session.document=laneState.interactionDocument=document
