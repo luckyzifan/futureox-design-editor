@@ -529,6 +529,44 @@ test('clipped release bands cover the visible viewport on the ordinary tile latt
   expect(clippedCommitTiles({ ...viewport, w: 8193 }, view.zoom * 2, phase)).toBeUndefined()
 })
 
+test('a fully visible isolated board can use the exact release bands at the same camera', () => {
+  const doc = blank()
+  const board = node('frame', 0, 0, 80, 70)
+  const neighbor = node('frame', 180, 0, 40, 70)
+  for (const root of [board, neighbor]) {
+    root.blend = 'normal'
+    root.clip = true
+    doc.nodes[root.id] = root
+  }
+  const paint = board.fills[0]
+  if (paint.kind !== 'solid') throw Error('Missing opaque paint')
+  paint.color = 'color(srgb 0.8 0.9 1 / 1)'
+  const page = doc.pages[0]
+  page.children = [board.id, neighbor.id]
+  const props: InteractionProps = { document: doc, selection: [board.id], active: true, epoch: 1,
+    figmaBoardPreview: true, control: { current: null }, onReady() {} }
+  const camera = { view: { x: 10, y: 10, zoom: .75 }, width: 140, height: 120, dpr: 2 }
+  const tile = { key: 'viewport', serial: 1, gpuTile: 7, bytes: new Uint8Array(),
+    x: -24, y: -24, width: 284, height: 244, zoom: 1.5 }
+  const items = [{ tile, active: true, layer: 0 }]
+  const movement = new PageTranslation(vi.fn())
+  const transform: typeof board.transform = [1, 0, 0, 1, 11, 3]
+  const committed = { ...doc, nodes: { ...doc.nodes, [board.id]: { ...board, transform } } }
+  expect(movement.prepare(props, page.id, doc, items, doc, true, false, camera)).toBe(true)
+  expect(movement.control.apply(doc, { [board.id]: { transform } })).toEqual({ x: 11, y: 3 })
+  expect(movement.mode).toBe('retained-board')
+  expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(false)
+  movement.control.releaseInput?.('move')
+  movement.control.end(committed)
+  expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(true)
+  movement.control.end(committed)
+  expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(true)
+  expect(movement.control.boardCommit?.(doc, page.id, camera)).toBe(false)
+  expect(movement.control.boardCommit?.(committed, page.id, { ...camera, width: 141 })).toBe(false)
+  movement.clear()
+  expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(false)
+})
+
 test('a released clipped board never starts native drag repair from a late coverage miss', () => {
   const doc = blank()
   const board = node('frame', -400, 0, 800, 90)
@@ -555,20 +593,20 @@ test('a released clipped board never starts native drag repair from a late cover
   const transform: typeof board.transform = [1, 0, 0, 1, -360, 0]
   expect(movement.control.apply(doc, { [board.id]: { transform } })).toEqual({ x: 40, y: 0 })
   const sequence = movement.control.inputSequence!()
-  expect(movement.control.clippedCommit?.(doc, page.id, camera)).toBe(false)
+  expect(movement.control.boardCommit?.(doc, page.id, camera)).toBe(false)
   movement.control.releaseInput?.('move')
   const committed = { ...doc, nodes: { ...doc.nodes, [board.id]: { ...board, transform } } }
   movement.control.end(committed)
-  expect(movement.control.clippedCommit?.(committed, page.id, camera)).toBe(true)
-  expect(movement.control.clippedCommit?.({ ...committed }, page.id, camera)).toBe(false)
-  expect(movement.control.clippedCommit?.(committed, 'another-page', camera)).toBe(false)
-  expect(movement.control.clippedCommit?.(committed, page.id, { ...camera, dpr: 2 })).toBe(false)
+  expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(true)
+  expect(movement.control.boardCommit?.({ ...committed }, page.id, camera)).toBe(false)
+  expect(movement.control.boardCommit?.(committed, 'another-page', camera)).toBe(false)
+  expect(movement.control.boardCommit?.(committed, page.id, { ...camera, dpr: 2 })).toBe(false)
   expect(movement.repairMissingCoverage(sequence)).toBe(false)
   expect(movement.control.apply(doc, { [board.id]: { transform } })).toBeNull()
   expect(movement.items(camera.view)).not.toBeNull()
   // A resize can invalidate the retained crop while exact tiles are pending.
   expect(movement.prepare({ ...props, active: false, document: committed }, page.id,
     committed, [], undefined, true, false, { ...camera, width: 120 })).toBe(false)
-  expect(movement.control.clippedCommit?.(committed, page.id, camera)).toBe(false)
+  expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(false)
   expect(rebase).not.toHaveBeenCalled()
 })

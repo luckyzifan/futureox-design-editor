@@ -60,7 +60,8 @@ export class PageTranslation {
   private active = false
   private phaseRevoked = false
   private clippedInputClosed = false
-  private clippedCommit?: DesignDocument
+  private releaseCamera?: BoardViewport
+  private boardCommit?: { document: DesignDocument; camera: BoardViewport }
   private fractional = false
   private feedback = new PoseFeedback()
   private offset = { x: 0, y: 0 }
@@ -72,7 +73,7 @@ private tracking = false
   private readonly fillToken = ++boardFillTokens
   private boardFillSequence = 0
   private coveredMisses = 0
-  private srgbBoard?: { others: Bounds[]; viewport: Bounds; shown: { x: number; y: number }; clipped?: { source: Bounds; camera: BoardViewport } }
+  private srgbBoard?: { others: Bounds[]; viewport: Bounds; camera: BoardViewport; shown: { x: number; y: number }; clipped?: { source: Bounds; camera: BoardViewport } }
   private checkedDocument?: DesignDocument
   private checkedOffset: { x: number; y: number } | null = null
   moves = 0
@@ -225,14 +226,16 @@ if (this.clippedInputClosed) return null
       : null
   }
   readonly control: GpuMoveControl = {
-    releaseInput: () => {
+    releaseInput: (gesture) => {
       if (this.srgbBoard?.clipped) this.clippedInputClosed = true
+      if (gesture === 'move' && this.active && !this.phaseRevoked)
+        this.releaseCamera = this.srgbBoard?.camera
     },
     isActive: () => this.active,
-    clippedCommit: (doc, pageId, camera) => {
-      const source = this.srgbBoard?.clipped
-      return !!source && this.clippedCommit === doc && this.plan?.pageId === pageId &&
-        sameBoardViewport(source.camera, camera)
+    boardCommit: (doc, pageId, camera) => {
+      const commit = this.boardCommit
+      return commit?.document === doc && this.plan?.pageId === pageId &&
+        sameBoardViewport(commit.camera, camera)
     },
     guidesInSurface:()=>true,
     feedbackPending:()=>true,
@@ -288,7 +291,10 @@ if (this.clippedInputClosed) return null
       this.tracking = false
       this.input = { ...this.input, guides:undefined }
       this.feedback.clear()
-      if (this.srgbBoard?.clipped) this.clippedInputClosed = true
+      const clipped = this.srgbBoard?.clipped
+      const camera = clipped?.camera ?? this.releaseCamera
+      this.releaseCamera = undefined
+      if (clipped) this.clippedInputClosed = true
       if (!this.active || this.phaseRevoked) return
       const offset = this.delta(document)
       if (offset && (!this.clippedPoseCovered(offset) || !this.reusableOffset(offset))) {
@@ -300,7 +306,8 @@ if (this.clippedInputClosed) return null
       }
       this.active = !!offset && (offset.x !== 0 || offset.y !== 0)
       if (offset) this.offset = offset
-      if (this.active && this.clippedInputClosed) this.clippedCommit = document
+      if (this.active && camera) this.boardCommit = { document, camera }
+      else if (!this.active || this.boardCommit?.document !== document) this.boardCommit = undefined
       this.lastEnd = offset ? `${offset.x},${offset.y}` : 'content-changed'
       this.changed()
     },
@@ -320,6 +327,7 @@ if (this.clippedInputClosed) return null
     // A second drag can start before the committed frame arrives. The old
     // clipped pose must not become the source of that new gesture.
     if (this.clippedInputClosed && props?.active && this.props?.active === false) this.clear()
+    if (props?.active && this.props?.active === false) this.boardCommit = undefined
     if (this.phaseRevoked) {
       // React refreshes during imperative input still refer to the old
       // authored document. Do not rebind its invalid pixel fast path.
@@ -389,16 +397,16 @@ const coveredBoard = !!board && (this.active && !!this.board || boardTilesCover(
       if (settled !== props.document) return true
     }
     if (settled === source && items.length) {
+      this.boardCommit = undefined
       if (this.clippedInputClosed) {
         this.clippedInputClosed = false
-        this.clippedCommit = undefined
         this.pendingPose = undefined
       }
       this.plan = { document: source, pageId, ids: [...props.selection], layers: [] }
       this.checkedDocument = undefined
       this.board = all ? undefined : board
       this.srgbBoard = this.board && proof?.srgb && camera
-        ? { others: proof.others, viewport: boardViewportBounds(camera), shown: { x: 0, y: 0 }, clipped } : undefined
+        ? { others: proof.others, viewport: boardViewportBounds(camera), camera, shown: { x: 0, y: 0 }, clipped } : undefined
       this.residents = items.map((item) => item.tile)
       const offset = this.delta(props.document) || { x: 0, y: 0 }
       this.offset = { x: 0, y: 0 }
@@ -495,7 +503,8 @@ const coveredBoard = !!board && (this.active && !!this.board || boardTilesCover(
     this.active = false
     this.phaseRevoked = false
     this.clippedInputClosed = false
-    this.clippedCommit = undefined
+    this.releaseCamera = undefined
+    this.boardCommit = undefined
     this.pendingPose = undefined
     this.offset = { x: 0, y: 0 }
   }

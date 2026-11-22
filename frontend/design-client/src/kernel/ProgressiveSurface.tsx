@@ -603,7 +603,7 @@ export function ProgressiveSurfaceImpl(
   const poseTransportSetting = import.meta.env.VITE_DESIGN_CLIPPED_POSE_CURVE_RESOURCES
   const defaultClippedBoardDrag = clippedBoardSetting === undefined &&
     (poseTransportSetting === undefined || poseTransportSetting === '1') &&
-    navigator.platform.startsWith('Mac') && backend === 'webgpu' && rasterProfile === 'analytic' &&
+    navigator.platform?.startsWith('Mac') === true && backend === 'webgpu' && rasterProfile === 'analytic' &&
     view.zoom < 1 && !allowsReducedSampling(view.zoom) &&
     usesDesktopDisplay(renderExecutionPolicy, { renderIntent: 'canvas', rasterProfile })
   const clippedBoardId = (clippedBoardSetting === '1' || defaultClippedBoardDrag) &&
@@ -2286,12 +2286,12 @@ focus?: SurfaceProps['overview'],
           ? { x: -Math.floor(view.x * dpr), y: -Math.floor(view.y * dpr), w: Math.ceil(width * dpr), h: Math.ceil(height * dpr) }
           : undefined
         const clippedCamera = { view, width, height, dpr }
-        const bands = clippedBoard && backend === 'webgpu' && rasterProfile === 'analytic' &&
+        const bands = clippedBoardId && backend === 'webgpu' && rasterProfile === 'analytic' &&
           usesDesktopDisplay(renderExecutionPolicy, { renderIntent: 'canvas', rasterProfile }) &&
           !cameraMoving && !navigationZoom.active && !zooming && !props.interaction?.active &&
           renderScale === detailLevel && phaseExact &&
           rejectedEdgeCrop.current !== frameKey &&
-          props.interaction?.control.current?.clippedCommit?.(doc, pageId, clippedCamera)
+          props.interaction?.control.current?.boardCommit?.(doc, pageId, clippedCamera)
           ? clippedCommitTiles({
             x: -Math.floor(renderCamera.x), y: -Math.floor(renderCamera.y),
             w: Math.ceil(width * dpr), h: Math.ceil(height * dpr),
