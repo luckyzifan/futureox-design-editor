@@ -562,9 +562,29 @@ function presentSampledPose(session:PoseSession,pose:ResidentPose,bounds:{x:numb
 // While an old pose prepares or uses the GPU, the release input can revoke
 // obsolete preparation or use the idle CPU lane to prepare one fresh packet.
 let prioritizeTerminalPose: ((next: ResidentPose) => void) | undefined
+let checkPreparedPoseDisplay: (() => void) | undefined
 function waitingForPoseSubmission(pose:ResidentPose) {
   return !pose.terminal && poseSession?.slot === pose.slot && poseSession.native === true &&
     gpu?.driver.hasDeferredPosePresentation?.(pose.slot) === true
+}
+function waitForPreparedPoseDisplay(pose: ResidentPose, signal: AbortSignal) {
+  return new Promise<boolean>(resolve => {
+    const finish = (ready: boolean) => {
+      clearTimeout(limit)
+      if (checkPreparedPoseDisplay === check) checkPreparedPoseDisplay = undefined
+      signal.removeEventListener('abort', check)
+      resolve(ready)
+    }
+    const check = () => {
+      if (signal.aborted || pendingPose?.terminal || !waitingForPoseSubmission(pose)) finish(true)
+    }
+    // The presenter acknowledges a transferred bitmap outside the render
+    // queue. Give it one display interval before abandoning CPU work.
+    const limit = setTimeout(() => finish(false), 17)
+    checkPreparedPoseDisplay = check
+    signal.addEventListener('abort', check, { once: true })
+    check()
+  })
 }
 function schedulePose(){
   if(poseQueued||!pendingPose||waitingForPoseSubmission(pendingPose))return
@@ -602,7 +622,11 @@ function schedulePose(){
     try{
       // Keep the next raster behind a pose whose display copy has not yet
       // reached this queue. A submitted copy can finish during preparation.
-      for (let pose = nextPose(); pose && !waitingForPoseSubmission(pose); pose = nextPose()) {
+      for (let pose = nextPose(); pose; pose = nextPose()) {
+        if (waitingForPoseSubmission(pose)) {
+          if (!advance?.motion || !await waitForPreparedPoseDisplay(pose, advance.session.controller.signal)) break
+          continue
+        }
         if (pendingPose === pose) pendingPose = undefined
         runningPose=pose
         const session=poseSession
@@ -881,21 +905,33 @@ const terminal = pose.terminal && terminalOptions
               (fullNativeAffine || clippedTranslation) && session.patch)
             ? () => {
               const kernel=poseKernel!
-              const start = (nextPose: ResidentPose, motion?: AbortController) => {
-                if(advance || session!==poseSession || session.stopped || session.controller.signal.aborted ||
+              const start = (nextPose: ResidentPose, motion?: AbortController, superseded?: Advance) => {
+                if(advance !== superseded || session!==poseSession || session.stopped || session.controller.signal.aborted ||
                     newerPoseDisposition(pose,nextPose)!=='changed' || Object.keys(nextPose.transforms).length!==1 ||
                     !Object.hasOwn(nextPose.transforms,ids[0]) || !Array.isArray(nextPose.transforms[ids[0]]) ||
                     nextPose.transforms[ids[0]].length!==6 || !nextPose.transforms[ids[0]].every(Number.isFinite))return
                 // A moving packet is admitted only for the same linear
                 // transform as the already validated clipped translation.
                 if (motion && nextPose.transforms[ids[0]].slice(0,4).some((value,i) => value !== pose.transforms[ids[0]][i])) return
-                const work:Advance={pose:nextPose,sequence:nextPose.input.sequence,session,kernel,previous:pose.transforms,mutated:false,motion}
+                const retired = superseded && ahead.drain()
+                const work:Advance={pose:nextPose,sequence:nextPose.input.sequence,session,kernel,
+                  previous:superseded?.previous ?? pose.transforms,mutated:false,motion}
                 advance=work
                 const signal=motion ? AbortSignal.any([session.controller.signal,motion.signal]) : session.controller.signal
                 const prepare=async()=>{
+                  if (superseded) {
+                    // Both moves belong to this absolute translation lease.
+                    // Let the release overwrite the abandoned motion directly.
+                    // The preparation channel still owns the physical pipe job.
+                    await retired
+                    work.mutated = superseded.mutated
+                  }
                   if(session!==poseSession || session.stopped || signal.aborted)return {packet:undefined,compileMs:0}
                   work.mutated=true
-                  if(!await kernel.apply_interaction_transforms(JSON.stringify(nextPose.transforms))){work.mutated=false;return {packet:undefined,compileMs:0}}
+                  if(!await kernel.apply_interaction_transforms(JSON.stringify(nextPose.transforms))){
+                    work.mutated = superseded?.mutated ?? false
+                    return {packet:undefined,compileMs:0}
+                  }
                   const at=performance.now()
 const packet=await journalCompile(()=>kernel.prepare_gpu_scene(terminalOptions ?? session.options,
                     signal, terminalOptions ? false : terminalTransport))
@@ -907,7 +943,11 @@ const packet=await journalCompile(()=>kernel.prepare_gpu_scene(terminalOptions ?
                 if (advance?.motion) {
                   const relation = terminalPoseDisposition(advance.pose, terminal)
                   if (relation === 'same' && !advance.motion.signal.aborted) advance.pose = terminal
-                  else if (relation === 'changed') advance.motion.abort()
+                  else if (relation === 'changed') {
+                    const displaced = advance
+                    displaced.motion!.abort()
+                    start(terminal, undefined, displaced)
+                  }
                   return
                 }
                 start(terminal)
@@ -1056,6 +1096,7 @@ self.onmessage = (e) => {
   }
   if(request.command==='display-accept'){
     try{if(Number.isSafeInteger(request.token)&&request.token>0)displayAttachment?.driver.acceptPresentation?.(request.token,request.accepted===true)}catch(error){reportDisplay({error:String(error)})}
+    checkPreparedPoseDisplay?.()
     schedulePose()
     return
   }
@@ -1135,6 +1176,7 @@ self.onmessage = (e) => {
     if(Number.isSafeInteger(request.sequence)&&poseSession&&!poseSession.stopped&&poseSession.slot===request.slot&&
       pendingPose&&pendingPose.slot===request.slot&&pendingPose.input.sequence===request.sequence&&pendingPose.input.owner===request.owner){
       pendingPose.terminal=true;prioritizeTerminalPose?.(pendingPose);schedulePose()
+      checkPreparedPoseDisplay?.()
     }
     return
   }
@@ -1155,7 +1197,10 @@ self.onmessage = (e) => {
           request.input.sequence > (heldBitmapViewport.frame.input?.sequence ?? 0)) resumeBitmapViewport()
       if(pendingPose?.terminal && terminalPoseDisposition(pendingPose,request)==='same') pendingPose.input=request.input
       else pendingPose=request
-      if(pendingPose!.terminal)prioritizeTerminalPose?.(pendingPose!)
+      if(pendingPose!.terminal){
+        prioritizeTerminalPose?.(pendingPose!)
+        checkPreparedPoseDisplay?.()
+      }
       schedulePose()
     }
     else rebasePose(request)

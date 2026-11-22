@@ -535,7 +535,8 @@ export function ResidentCompositeSurface(props: {
         if (clipped) p.client.cancelTileFill()
         renderer.prepare({ ...p.interaction, document: displayed,
           ...(clipped ? { clippedBoardHandoff: true } : {}) }, p.pageId, p.view, p.dpr,
-          p.rasterProfile, p.backend, clipped ? displayed : p.settledDocument, { width: p.width, height: p.height })
+          p.rasterProfile, p.backend, clipped ? displayed : p.settledDocument, { width: p.width, height: p.height },
+          clipped ? p.overlay : undefined)
         return renderer.control.apply(document, patches, undefined, guides)
       }, p.client.presentationDiagnosticsEnabled?.() ? fields=>latest.current.client.recordViewportDiagnostic(fields) : undefined,
         (source,offset,sequence,failed,region)=>latest.current.onTranslatedCoverage?.(source,offset,sequence,failed,region)===true)

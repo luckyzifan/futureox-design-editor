@@ -652,6 +652,16 @@ export class InteractionRenderer {
     return interactionTransformsOnly(plan,document)
   }
 
+  private useClippedPoseStartup(resident: ResidentInteraction) {
+    const viewport = this.viewport
+    if (!viewport || resident.containedForeground || allowsReducedSampling(viewport.view.zoom)) return false
+    const width = Math.ceil(viewport.width * viewport.dpr), height = Math.ceil(viewport.height * viewport.dpr)
+    return resident.clippedViewportRevision === this.viewportRevision &&
+      this.profile === 'analytic' && this.backend === 'webgpu' && !!this.sharedClient &&
+      width > 0 && height > 0 && width <= 8192 && height <= 8192 && width * height <= 8_388_608 &&
+      import.meta.env.VITE_DESIGN_CLIPPED_POSE_AHEAD !== '0'
+  }
+
   private captureMoveOverlay(document:DesignDocument,resident:ResidentInteraction,planOffsets:ReturnType<typeof interactionOffsets>) {
     const source=this.overlaySource,ids=resident.plan.ids,commands=source?.commands,owners=commands?.selection?.owners
     // Freeze chrome with the consumed capture input, before awaiting the GPU.
@@ -668,10 +678,16 @@ export class InteractionRenderer {
     if(!local)return
     const offset={x:parent[0]*local.x+parent[2]*local.y,y:parent[1]*local.x+parent[3]*local.y}
     if(!Number.isFinite(offset.x)||!Number.isFinite(offset.y))return
-    const snapshot=translateOverlay(structuredClone(commands),new Map([[id,offset]]))
+    const original=structuredClone(commands)
+    const snapshot=translateOverlay(original,new Map([[id,offset]]))
     snapshot.transforms={[id]:[...document.nodes[id].transform]}
     this.overlayWork.snapshotCopies++
-    return {uiIdentity:source.uiIdentity,sourceCommands:commands,commands:snapshot}
+    const projected = {uiIdentity:source.uiIdentity,sourceCommands:commands,commands:snapshot}
+    // The fixed native slot already knows the absolute compiled pose. Keep
+    // its chrome on the original authored basis through every later sample.
+    const authored = this.useClippedPoseStartup(resident) && source.document === resident.plan.document
+      ? {...projected,commands:original} : undefined
+    return {projected,authored}
   }
 
   private cancelIdleWarmTimer() {
@@ -1100,8 +1116,18 @@ const layerOptions = {scene:props.scene,epoch:props.epoch,
         // Navigation temporarily removes interaction props and recreates this
         // resident when it settles. Install its control/scope now, but give the
         // exact canvas the queue until an actual gesture needs live pixels.
-        if (props.active) this.renderLive(props.document)
-        else { this.liveDeferred = true; this.scheduleIdleWarm() }
+        if (props.active) {
+          if (this.useClippedPoseStartup(this.resident)) {
+            // The handoff supplies the first fractional position in the
+            // same input event. Do not queue the unchanged screen first.
+            const resident = this.resident
+            queueMicrotask(() => {
+              if (!this.disposed && token === this.generation && this.resident === resident &&
+                  this.props?.document === props.document && this.props.active &&
+                  !this.endedDocument && !this.liveRunning && !this.livePending) this.renderLive(props.document)
+            })
+          } else this.renderLive(props.document)
+        } else { this.liveDeferred = true; this.scheduleIdleWarm() }
       } else { this.releaseClient() }
       props.onReady(); this.changed(); return
     }
@@ -1492,7 +1518,10 @@ const layerOptions = {scene:props.scene,epoch:props.epoch,
             // Re-render the swept selection plus its backdrop dependency halo.
             // Unaffected pixels continue using the settled resident tile stack.
             const affected = unionBounds(resident.plan.ids.flatMap(id => {
-              const source=roots.get(id)!, local=offsets.get(id) || {x:0,y:0},m=resident.parentLinear?.get(id)||[1,0,0,1]
+              const source=roots.get(id)!,m=resident.parentLinear?.get(id)||[1,0,0,1]
+              // The first clipped capture uses the same computation origin
+              // as the authored position, even when its pixels have moved.
+              const local=(!resident.captureBounds && this.useClippedPoseStartup(resident) ? undefined : offsets.get(id)) || {x:0,y:0}
               const offset={x:m[0]*local.x+m[2]*local.y,y:m[1]*local.x+m[3]*local.y}
               return resident.fixedBounds?.has(id) ? [source] : [source,{...source,x:source.x+offset.x,y:source.y+offset.y}]
             }))
@@ -1745,7 +1774,8 @@ const layerOptions = {scene:props.scene,epoch:props.epoch,
             x: originX, y: originY, width, height, zoom: scale, phaseX, phaseY, bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile }]
           const slots=Object.freeze(resident.tiles.map(tile=>tile.gpuTile||0))
           resident.overlayCapture = { document, tiles:resident.tiles, slots, cohort:Object.freeze({slots}),
-            pageId:resident.plan.pageId, epoch:this.sessionEpoch!, generation:token, ids:this.selectionIds(resident.plan),overlay:capturedCommands }
+            pageId:resident.plan.pageId, epoch:this.sessionEpoch!, generation:token, ids:this.selectionIds(resident.plan),
+            overlay:resident.workerPoses && capturedCommands?.authored ? capturedCommands.authored : capturedCommands?.projected }
           this.samples++; this.lastSampleMs = performance.now() - started
           this.lastSampleCompileMs = result.compileMs; this.lastSampleGraphMs = result.graphMs || 0
           this.lastSampleReused = !!result.compileCacheHit

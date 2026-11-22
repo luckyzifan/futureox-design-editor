@@ -182,6 +182,29 @@ test('a single-node translation capture freezes its own projected chrome before 
  expect(captured.cohort?.slots).toEqual([651])
  expect(owner.capturedOverlay(doc,doc.pages[0].id,1,commands,'changed-ui')?.commands).toBeUndefined()
 })
+test('the first clipped sample uses the moved document and authored chrome on its native slot', async () => {
+  const doc = blank(), board = node('frame', 0, 0, 1440, 1030), page = doc.pages[0]
+  board.blend = 'normal'; board.clip = true
+  doc.nodes[board.id] = board
+  page.children = [board.id]
+  const owner = new InteractionRenderer(vi.fn(), new KernelClient(), true); owners.push(owner)
+  const commands = {pixelGrid:false, transforms:{[board.id]:board.transform}, selection:{
+    owners:[board.id], handles:true, corners:[{x:0,y:0},{x:1440,y:0},{x:1440,y:1030},{x:0,y:1030}] }}
+  owner.prepare({document:doc,selection:[board.id],active:true,gestureKind:'move',clippedBoardHandoff:true,
+    epoch:1,control:{current:null},onReady(){} }, page.id, {x:-.25,y:.25,zoom:.8}, 2, 'analytic', 'webgpu', doc,
+    {width:1143,height:933}, {document:doc,pageId:page.id,epoch:1,uiIdentity:'selection',commands})
+  expect(worker.jobs).toHaveLength(0)
+  const transform: typeof board.transform = [1,0,0,1,4,1]
+  expect(owner.control.apply(doc,{[board.id]:{transform}})).toEqual({x:4,y:1})
+  await vi.waitFor(()=>expect(worker.jobs).toHaveLength(1))
+  expect(worker.jobs[0].document.nodes[board.id].transform).toEqual(transform)
+  expect(worker.jobs[0].options.interactionClippedBoard).toBe(true)
+  worker.jobs[0].resolve({gpuTile:652,residentInteraction:true,bytes:new Uint8Array()})
+  await vi.waitFor(()=>expect(owner.ready).toBe(true))
+  const chrome = owner.capturedOverlay(doc,page.id,1,commands,'selection')
+  expect(chrome?.overlayPoseSlot).toBe(652)
+  expect(chrome?.commands).toEqual(commands)
+})
 test('undo after a dependency edit replaces the live lease instead of reusing an obsolete pending layer marker',async()=>{
  const doc=blank(),root=node('frame',0,0,200,200),child=node('rectangle',10,10,20,20)
  root.children=[child.id];doc.nodes={[root.id]:root,[child.id]:child};doc.pages[0].children=[root.id]
