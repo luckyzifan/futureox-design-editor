@@ -365,6 +365,9 @@ export interface Driver {
   presentFrame?(frame: import('./resident-presenter').ResidentFrame): void
   releasePresented?(ids: number[]): void
   replacePresented?(slot:number,next:number):void
+  saveClippedBackground?(slot: number, hole: Rect, sample: { x: number; y: number }): number | undefined
+  saveClippedRegion?(slot: number, rect: Rect): number | undefined
+  copyClippedPose?(background: number, board: number, from: Rect, to: { x: number; y: number }): number | undefined
   /** Private immutable captured-texture identity; absent after loss/release. */
   presentedContentToken?(slot:number):object|undefined
   tagExactTile?(id:number, owner:object, contract:string, gutter:number):void

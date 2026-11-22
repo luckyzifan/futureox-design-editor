@@ -67,7 +67,8 @@ import { isDisplayBudgetError } from './gpu/display-budget'
 import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../document-patch'
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
-import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame, stickyPresentedAffines } from './gpu/resident-affine-pose'
+import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame, stickyPresentedAffines, type RenderedRootPose } from './gpu/resident-affine-pose'
+import { ClippedPhaseReplay } from './gpu/clipped-phase-replay'
 import { expandBitmapRotationPatch, interactionPatchTransforms, isBitmapPoseLayer, isBitmapTranslationPatch, isInnerShadowFill, isInnerShadowPosePatch, isProgressiveBlurEditPatch } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
 import { tilePrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
@@ -409,7 +410,7 @@ function yieldPreviewTask() {
 }
 const queue = new RenderWorkQueue()
 type ResidentPose={terminal?:boolean;slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
-type PoseSession={canvasOwner?:object;baseFill?:{x:number;y:number;width:number;height:number};softEffectPreview?: boolean;bitmapPreviewOnly?:boolean;reuse?:ResidentPoseReuse;nativePosePending?:boolean;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
+type PoseSession={pageId:string;phasePixels?:ClippedPhaseReplay;phaseStarted?:boolean;phaseInputClosed?:boolean;renderedRoot?:RenderedRootPose;canvasOwner?:object;baseFill?:{x:number;y:number;width:number;height:number};softEffectPreview?: boolean;bitmapPreviewOnly?:boolean;reuse?:ResidentPoseReuse;nativePosePending?:boolean;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
   origins:ReadonlyMap<string,readonly[number,number]>;
   patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;clippedBoard?:boolean;window:import('./gpu/types').Rect;options:string;terminalOptions?:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
@@ -532,7 +533,7 @@ function rebasePose(pose:ResidentPose,expandCapture=false){
   if (bitmapRelease?.session.slot === pose.slot) bitmapRelease = undefined
   if(poseSession?.slot===pose.slot){
     poseSession.stopped=true;poseSession.controller.abort()
-    if(gpu)frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene)
+    if(gpu)frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene,poseSession.renderedRoot)
   }
   if(pendingPose?.slot===pose.slot)pendingPose=undefined
   reportDisplay({residentSample:{slot:pose.slot,...pose.input,needsRebase:true,expandCapture}})
@@ -559,6 +560,35 @@ function presentSampledPose(session:PoseSession,pose:ResidentPose,bounds:{x:numb
     }
   }
 }
+/** Independent resident copies can display a newer hit while a miss prepares
+ * its native graph. The compiled scene and ordered native mutations stay in
+ * the render queue; only produced pixels and their chrome advance here. */
+function replayClippedPose(session: PoseSession, pose: ResidentPose, started=performance.now()) {
+  const phase = session.phasePixels, driver = gpu?.driver, frame = displayFrame
+  const output = session.scene.output
+  if (!phase || !driver?.replacePresented || driver.lost || !output || session.stopped ||
+      session.controller.signal.aborted || session.phaseInputClosed || pose.terminal ||
+      !session.input?.owner || pose.input.owner !== session.input.owner ||
+      pose.input.sequence <= (session.input?.sequence ?? -1) || Object.keys(pose.transforms).length !== 1 ||
+      !phase.sameViewport(frame) || !frame?.items.some(item=>item.active&&item.tile.gpuTile===session.slot)) return false
+  const transform = pose.transforms[phase.id]
+  if (!Array.isArray(transform) || transform.length !== 6 || !transform.every(Number.isFinite)) return false
+  const replay = phase.find(transform)
+  const next = replay && phase.show(replay)
+  if (next === undefined) return false
+  driver.replacePresented(session.slot, next)
+  const { x, y, zoom } = session.scene.view
+  session.renderedRoot = { id: phase.id, matrix: [zoom, 0, 0, zoom, transform[4] * zoom + x, transform[5] * zoom + y] }
+  session.scene.queuedClippedMotion = !!driver.waitForSubmittedWork
+  const bounds = { x: (output.x - x) / zoom, y: (output.y - y) / zoom, width: output.w / zoom, height: output.h / zoom }
+  presentSampledPose(session, pose, bounds)
+  reportDisplay({residentSample:{slot:session.slot,...pose.input,bounds,total:performance.now()-started,
+    phaseReplay:true,nativePose:true,compileMs:0,graphMs:0,finishMs:0,posePrepareMs:0,translationMs:0,
+    sceneUpdateBytes:0,geometryUploadBytes:0,fieldUploadBytes:0,
+    signature:displayFrame?residentFrameSignature(displayFrame):undefined}})
+  return true
+}
+
 // While an old pose prepares or uses the GPU, the release input can revoke
 // obsolete preparation or use the idle CPU lane to prepare one fresh packet.
 let prioritizeTerminalPose: ((next: ResidentPose) => void) | undefined
@@ -705,6 +735,20 @@ terminalMaySupersede ||= fullNativeAffine || viewportPatch || clippedTranslation
         const window={x,y,w:right-x,h:bottom-y}
         const displayGeometry=displayFrame?[displayFrame.view.x,displayFrame.view.y,displayFrame.view.zoom,
           displayFrame.width,displayFrame.height,displayFrame.dpr]:undefined
+        if (import.meta.env.VITE_DESIGN_CLIPPED_PHASE_REPLAY === '1' && clippedTranslation &&
+            !session.phaseStarted && session.patch && displayFrame && current() && !pose.terminal) {
+          session.phaseStarted = true
+          const frame = displayFrame
+          session.phasePixels = ClippedPhaseReplay.create(gpu.driver, session.scene, session.baseDocument, session.pageId, ids[0],
+            { ...frame.view, width: frame.width, height: frame.height, dpr: frame.dpr }, session.controller.signal)
+          session.phasePixels?.record(session.slot, session.baseDocument.nodes[ids[0]].transform)
+        }
+        const phasePixels = clippedTranslation && session.phasePixels?.sameViewport(displayFrame) ? session.phasePixels : undefined
+        if (phasePixels && !advance && current()) {
+          if (replayClippedPose(session, pose, started)) continue
+          if (!pose.terminal && session.input?.owner === pose.input.owner &&
+              (session.input?.sequence ?? 0) > pose.input.sequence && phasePixels.find(pose.transforms[ids[0]])) continue
+        }
         const texture=gpu.driver.presentedContentToken?.(session.slot)
         // A terminal receipt can reuse a full-quality frame. A soft preview
         // of that same transform still owes the canvas its full filter.
@@ -912,7 +956,8 @@ const terminal = pose.terminal && terminalOptions
                     nextPose.transforms[ids[0]].length!==6 || !nextPose.transforms[ids[0]].every(Number.isFinite))return
                 // A moving packet is admitted only for the same linear
                 // transform as the already validated clipped translation.
-                if (motion && nextPose.transforms[ids[0]].slice(0,4).some((value,i) => value !== pose.transforms[ids[0]][i])) return
+                if (motion && (nextPose.transforms[ids[0]].slice(0,4).some((value,i) => value !== pose.transforms[ids[0]][i]) ||
+                    phasePixels?.find(nextPose.transforms[ids[0]]))) return
                 const retired = superseded && ahead.drain()
                 const work:Advance={pose:nextPose,sequence:nextPose.input.sequence,session,kernel,
                   previous:superseded?.previous ?? pose.transforms,mutated:false,motion}
@@ -967,10 +1012,18 @@ if (bitmapTerminal || clippedTranslation) prepareTerminal?.()
             .finally(()=>{prioritizeTerminalPose=undefined;renderingBitmapRelease=undefined})
           if(!result.gpuTile)throw Error('Resident movement did not produce a GPU texture')
           if(!current()){gpu.driver.releasePresented?.([result.gpuTile]);continue}
-          gpu.driver.replacePresented(session.slot,result.gpuTile)
-          // This scene describes the actual texture which just replaced the
-          // slot. Small/unsupported effects can be admitted as exact pixels.
+          // A newer phase hit can cross the display queue while the native
+          // raster is pending. Its slot and chrome remain the published pose.
+          const supersededByReplay = !!session.renderedRoot && !pose.terminal && session.input?.owner === pose.input.owner &&
+            (session.input?.sequence ?? 0) > pose.input.sequence
           next.gestureSoftEffects = result.gestureBlurPixels > 0
+if (phasePixels && !session.phaseInputClosed && !pose.terminal && !next.gestureSoftEffects && phasePixels.sameViewport(displayFrame))
+            phasePixels.record(result.gpuTile,pose.transforms[ids[0]])
+          if (supersededByReplay) gpu.driver.releasePresented?.([result.gpuTile])
+          else {
+            gpu.driver.replacePresented(session.slot,result.gpuTile)
+            session.renderedRoot=undefined
+          }
           const ending=latestPendingPose()
           // If release repeated the pose while it was rasterizing, the first
           // exact presentation can already carry the terminal input identity.
@@ -978,7 +1031,6 @@ if (bitmapTerminal || clippedTranslation) prepareTerminal?.()
               !next.gestureSoftEffects && !bitmapRepairScene && ending && terminalPoseDisposition(pose,ending)==='same'){
             pose.input=ending.input;pose.terminal=true;pendingPose=undefined
             if(!session.patch&&!document)document=authoredPose()
-          }
           session.scene=next
 session.bitmapPreviewOnly=!!bitmapRepairScene&&!pose.terminal
           if (session.native) session.nativePosePending = !!advance?.motion
@@ -989,6 +1041,10 @@ session.bitmapPreviewOnly=!!bitmapRepairScene&&!pose.terminal
             laneState.deferredInteractionDocument=patchedPose?undefined:document
           }
           laneState.compiledScene={revision:laneState.loadedRevision,options:session.options,scene:next}
+          if (supersededByReplay) {
+            session.reuse=undefined
+            continue
+          }
           const content=visible??window
           const bounds={x:(content.x-next.view.x)/scale,y:(content.y-next.view.y)/scale,width:content.w/scale,height:content.h/scale}
           if(session.native){session.reuse??=new ResidentPoseReuse();session.reuse.record({scene:next,driver:gpu.driver,
@@ -1096,6 +1152,12 @@ self.onmessage = (e) => {
   }
   if(request.command==='display-accept'){
     try{if(Number.isSafeInteger(request.token)&&request.token>0)displayAttachment?.driver.acceptPresentation?.(request.token,request.accepted===true)}catch(error){reportDisplay({error:String(error)})}
+    const pending = pendingPose, session = poseSession
+    if (session && pending && pending.slot === session.slot && !waitingForPoseSubmission(pending)) {
+      try {
+        if (replayClippedPose(session, pending)) pendingPose=undefined
+      } catch { rebasePose(pending) }
+    }
     checkPreparedPoseDisplay?.()
     schedulePose()
     return
@@ -1142,7 +1204,7 @@ self.onmessage = (e) => {
     // The pose worker may already have submitted this immutable frame before
     // the main thread reflected its sample. Keep later poses from waiting
     // behind another transfer of the same texture, clip, and chrome.
-    if (poseSession?.native && !poseSession.stopped &&
+if (poseSession && (poseSession.native || poseSession.scene.interactionFixedMask || poseSession.renderedRoot) && !poseSession.stopped &&
         previous?.interaction && previous.input?.sequence && displayFrame?.interaction &&
         previous.input.sequence === displayFrame.input?.sequence &&
         displayFrame.items.some(item => item.active && item.tile.gpuTile === poseSession?.slot) &&
@@ -1175,6 +1237,7 @@ self.onmessage = (e) => {
   if(request.command==='interaction-settle'){
     if(Number.isSafeInteger(request.sequence)&&poseSession&&!poseSession.stopped&&poseSession.slot===request.slot&&
       pendingPose&&pendingPose.slot===request.slot&&pendingPose.input.sequence===request.sequence&&pendingPose.input.owner===request.owner){
+      poseSession.phaseInputClosed=true
       pendingPose.terminal=true;prioritizeTerminalPose?.(pendingPose);schedulePose()
       checkPreparedPoseDisplay?.()
     }
@@ -1184,7 +1247,7 @@ self.onmessage = (e) => {
     if(!request.input||!Number.isSafeInteger(request.input.sequence)||!Number.isFinite(request.input.at)||
         !request.transforms||typeof request.transforms!=='object')return
     if(poseSession&&poseSession.slot===request.slot&&!poseSession.stopped){
-      const driver = gpu?.driver
+const driver = gpu?.driver
       if (request.terminal && atomicDisplay && driver && poseSession.native && poseSession.affine &&
           poseSession.scene.interactionFixedMask && displayFrame?.interaction &&
           displayFrame.input?.owner === request.input.owner && displayFrame.items.some(item=>item.active && item.tile.gpuTile===request.slot)) {
@@ -1195,6 +1258,18 @@ self.onmessage = (e) => {
       }
       if (heldBitmapViewport?.session === poseSession &&
           request.input.sequence > (heldBitmapViewport.frame.input?.sequence ?? 0)) resumeBitmapViewport()
+      const session=poseSession
+      if (request.terminal) session.phaseInputClosed = true
+      else if (!pendingPose?.terminal && !waitingForPoseSubmission(request)) {
+        try {
+          // Leave one queued miss available to warm that phase. It may
+          // populate the atlas but cannot replace these newer pixels.
+          if (replayClippedPose(session,request)) return
+        } catch {
+          rebasePose(request)
+          return
+        }
+      }
       if(pendingPose?.terminal && terminalPoseDisposition(pendingPose,request)==='same') pendingPose.input=request.input
       else pendingPose=request
       if(pendingPose!.terminal){
@@ -1211,7 +1286,7 @@ self.onmessage = (e) => {
     if (heldBitmapViewport?.session.slot === request.slot) resumeBitmapViewport()
     if(poseSession&&poseSession.slot===request.slot){
       poseSession.stopped=true;poseSession.controller.abort()
-      if(gpu)frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene)
+      if(gpu)frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene,poseSession.renderedRoot)
     }
     if(pendingPose?.slot===request.slot)pendingPose=undefined
     return
@@ -2880,13 +2955,13 @@ tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillP
             // path; warming their former bilinear approximation is unnecessary.
             const origins=capturePoseOrigins(scene!,interactionSelection||[])
             if(origins){
-              if(poseSession){poseSession.controller.abort();frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene)}
+              if(poseSession){poseSession.controller.abort();frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene,poseSession.renderedRoot)}
               const softEffectPreview = scene!.gestureSoftEffects
               scene!.gestureSoftEffects = result.gestureBlurPixels > 0
               const clippedBoard = interactionClippedBoard === true && executionPolicy.desktopDisplay && backend === 'webgpu' &&
                 renderOptions.rasterProfile === 'analytic' && interactionNative === true &&
                 !interactionAffine && !interactionLocalFootprint && interactionSelection?.length === 1
-              poseSession={canvasOwner,controller:new AbortController(),slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,origins,clippedBoard,
+              poseSession={pageId:renderOptions.pageId,canvasOwner,controller:new AbortController(),slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,origins,clippedBoard,
               baseFill:interactionBaseFill,softEffectPreview,scene:scene!,native:interactionNative===true,affine:interactionAffine===true,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,terminalOptions,stopped:false,
               patch:interactionNative||import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'?TranslationPatchSession.create(scene!,laneState.interactionDocument,interactionSelection||[],interactionNative===true)||undefined:undefined}
             }

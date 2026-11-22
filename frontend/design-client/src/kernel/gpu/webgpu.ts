@@ -319,6 +319,10 @@ export class WebGpuDriver implements Driver {
   presentFrame(frame: ResidentFrame) { this.presenter?.draw(frame) }
   releasePresented(ids: number[]) { this.presenter?.release(ids) }
   replacePresented(slot:number,next:number){this.presenter?.replace(slot,next)}
+  saveClippedBackground(...args: Parameters<ResidentPresenter['saveClippedBackground']>) { return this.presenter?.saveClippedBackground(...args) }
+  saveClippedRegion(...args: Parameters<ResidentPresenter['saveClippedRegion']>) { return this.presenter?.saveClippedRegion(...args) }
+  copyClippedPose(...args: Parameters<ResidentPresenter['copyClippedPose']>) { return this.presenter?.copyClippedPose(...args) }
+
   presentedContentToken(slot:number){return this.lost||this.disposed?undefined:this.presenter?.contentToken(slot)}
   tagExactTile(...args: Parameters<ResidentPresenter['tagExactTile']>) { this.presenter?.tagExactTile(...args) }
   forwardPaintDamage(...args: Parameters<ResidentPresenter['forwardPaintDamage']>) { this.presenter?.forwardPaintDamage(...args) }
