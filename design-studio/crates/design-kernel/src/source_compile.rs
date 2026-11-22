@@ -379,11 +379,12 @@ impl Runtime {
             self.key = key;
         }
         if self.replay {
-            if let Some((bytes,nodes,authored))=owner.frame_scene.reuse_source(key.unwrap(),request)? {
+            if let Some((bytes,compiled,authored,resolved))=owner.frame_scene.reuse_source(key.unwrap(),request)? {
                 self.reuses+=1;
                 self.stats=json!({"mode":"demand-replay","sourceNodes":descriptor.nodes,
                     "projectionRebuilds":self.rebuilds,"projectionReuses":self.reuses,
-                    "globalMarginEvaluations":self.margin_evaluations,"scopeExpansions":0,"resolvedCompileNodes":nodes,"residentAuthoredNodes":authored,
+                    "globalMarginEvaluations":self.margin_evaluations,"scopeExpansions":0,
+                    "resolvedCompileNodes":resolved,"compiledSceneNodes":compiled,"residentAuthoredNodes":authored,
                     "cache":{"frameScene":owner.frame_scene.stats()}});
                 return Ok(bytes);
             }
@@ -542,7 +543,9 @@ impl Runtime {
             // One wire-resource owner; scope expansion must finish before
             // minting transfer IDs or exposing a packet to the renderer.
             std::mem::swap(&mut compiler.frame_scene, &mut owner.frame_scene);
+            let mut compiled_nodes = None;
             let result = compiler.compile_gpu_packet_request_checked(request, |scene| {
+compiled_nodes = Some(scene.nodes.len());
                 let extent_guard = tile_closure_guard(query.region, Some(scene.extent));
                 if extent_guard == guard {
                     // This identical guard was already closed by the catalogue.
@@ -561,6 +564,11 @@ impl Runtime {
                 }
                 Ok(())
             });
+            let compiled_nodes = result.as_ref().ok()
+                .and_then(|_| compiled_nodes.or_else(|| compiler.frame_scene.cached_scene_nodes()));
+            // The resolved backing can contain cold records kept by a shared
+            // owner. The dependency demand and emitted scene have their own counts.
+            let resolved_nodes = compiler.doc.as_ref().unwrap().nodes.len();
             let cache = compiler.gpu_compile_cache_stats();
             std::mem::swap(&mut compiler.frame_scene, &mut owner.frame_scene);
             if let Some((extent_guard, next)) = expanded {
@@ -573,9 +581,10 @@ impl Runtime {
                 demand = next;
                 continue;
             }
-            if result.is_ok() && self.replay {owner.frame_scene.retain_source(key.unwrap(),self.authored_nodes);}
+            if result.is_ok() && self.replay {owner.frame_scene.retain_source(key.unwrap(),self.authored_nodes,resolved_nodes);}
             self.stats = json!({"mode":"demand","sourceNodes":descriptor.nodes,"residentAuthoredNodes":self.authored_nodes,
-                "resolvedCompileNodes":compiler.doc.as_ref().unwrap().nodes.len(),"projectionRebuilds":self.rebuilds,"projectionReuses":self.reuses,
+                "resolvedCompileNodes":resolved_nodes,"compiledSceneNodes":compiled_nodes,
+                "projectionRebuilds":self.rebuilds,"projectionReuses":self.reuses,
                 "projectionDecision":projection_decision,
                 "scopeExpansions":expansions,"excludedNodePayloadCopies":0,"residentAuthority":true,"globalPadding":padding,
                 "globalMarginEvaluations":self.margin_evaluations,"contextMarginBytes":margin.bytes(),"cache":cache,

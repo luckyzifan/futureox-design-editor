@@ -616,16 +616,32 @@ mod tests {
         let store=crate::scene_store::write(&path,"test:0",&doc,&[],&std::sync::atomic::AtomicBool::new(false)).unwrap();
         let descriptor=json!({"path":path,"store":store,"documentId":"cpu-preparation","pageId":"p","stageId":"stage","nodes":3});
         let mut actual=session();actual.request("canvas","load_source_snapshot",&[descriptor]).unwrap();
+        let mut expected=session();
+        expected.request("canvas","load_document",&[json!(source.to_string())]).unwrap();
         let mut query=json!({"pageId":"p","width":64,"height":64,"view":{"x":-480,"y":-480,"zoom":1},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":64,"h":64}});
-        for x in [-480,-9980,-480]{query["view"]["x"]=json!(x);let reply=actual.request("canvas","compile_gpu_packet",&[json!(query.to_string())]).unwrap();
-            assert!(matches!(reply.metadata["compileStats"]["sourceDemand"]["mode"].as_str(),Some("demand" | "demand-replay")));
-            assert_eq!(reply.metadata["compileStats"]["sourceDemand"]["resolvedCompileNodes"],2);
+        let mut resolved = None;
+        for (x, visible) in [(-480, "r"), (-9980, "cold"), (-480, "r")] {
+            query["view"]["x"] = json!(x);
+            let args = [json!(query.to_string())];
+            let reply = actual.request("canvas", "compile_gpu_packet", &args).unwrap();
+            let stats = &reply.metadata["compileStats"]["sourceDemand"];
+            assert!(matches!(stats["mode"].as_str(), Some("demand" | "demand-replay")));
+            assert_eq!(stats["residentAuthoredNodes"], 2);
+            assert_eq!(stats["compiledSceneNodes"], 2);
+            let count = stats["resolvedCompileNodes"].as_u64().unwrap();
+            assert_eq!(count, *resolved.get_or_insert(count));
+            let scene = frame_scene::scene(&reply.bytes);
+            let nodes = scene["nodes"].as_object().unwrap();
+            assert_eq!(nodes.len(), 2);
+            assert!(nodes.contains_key("stage") && nodes.contains_key(visible));
+            let reference = expected.request("canvas", "compile_gpu_packet", &args).unwrap();
+            frame_scene::assert_equivalent(&reply.bytes, &reference.bytes);
         }
         source["nodes"]["r"]["fills"][0]["color"]=json!("#0000ff");
         actual.request("canvas","apply_document_patch_with_damage",&[json!(json!({"nodes":{"r":source["nodes"]["r"]}}).to_string())]).unwrap();
         let reply=actual.request("canvas","compile_gpu_packet",&[json!(query.to_string())]).unwrap();
         assert!(reply.metadata["compileStats"].get("sourceDemand").is_none());
-        let mut expected=session();expected.request("canvas","load_document",&[json!(source.to_string())]).unwrap();
+        expected.request("canvas","load_document",&[json!(source.to_string())]).unwrap();
         let reference=expected.request("canvas","compile_gpu_packet",&[json!(query.to_string())]).unwrap();
         frame_scene::assert_equivalent(&reply.bytes,&reference.bytes);
         assert_eq!(actual.lanes[0].engine.authored_document().unwrap().nodes.len(),3);

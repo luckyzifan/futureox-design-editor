@@ -100,6 +100,7 @@ struct EncodedFrame {
     sequence:u32,
     nodes:usize,
     authored_nodes:usize,
+    resolved_nodes:usize,
 }
 fn acknowledged_ranges(scope:&str,request:Option<&serde_json::Value>)->Result<Vec<(u32,u32)>,String>{
     let acknowledged=request.and_then(|r|r.get("frameResources"));
@@ -321,7 +322,7 @@ impl FrameSceneContext {
     pub(crate) fn bytes(&self)->usize{self.bytes+self.semantic_bytes+self.cached.as_ref().map_or(0,|frame|frame.charge)+self.source_history_bytes}
     fn evict_source_frame(&mut self){if let Some(frame)=self.source_history.pop_front(){self.source_history_bytes-=frame.charge;}}
     pub(crate) fn clear_source_history(&mut self){self.source_history.clear();self.source_history_bytes=0;}
-    pub(crate) fn reuse_source(&mut self,revision:(u64,bool,bool),request:&str)->Result<Option<(Vec<u8>,usize,usize)>,String>{
+    pub(crate) fn reuse_source(&mut self,revision:(u64,bool,bool),request:&str)->Result<Option<(Vec<u8>,usize,usize,usize)>,String>{
         crate::render_cancellation::checkpoint()?;
         if self.source_history.is_empty() { return Ok(None); }
         let fields:serde_json::Value=serde_json::from_str(request).map_err(|e|e.to_string())?;
@@ -336,13 +337,18 @@ impl FrameSceneContext {
             frame.prefix[frame.sequence_offset..frame.sequence_offset+8].copy_from_slice(&f64::from(self.frame).to_le_bytes());
             frame.sequence=self.frame;self.frame_key=None;
         }
-        let bytes=frame.emit(&ranges)?;let nodes=frame.nodes;let authored=frame.authored_nodes;
+        let bytes = frame.emit(&ranges)?;
+        let (compiled, authored, resolved) = (frame.nodes, frame.authored_nodes, frame.resolved_nodes);
         let frame=self.source_history.remove(index).unwrap();self.source_history.push_back(frame);
-        self.source_history_hits+=1;Ok(Some((bytes,nodes,authored)))
+        self.source_history_hits+=1;Ok(Some((bytes,compiled,authored,resolved)))
     }
-    pub(crate) fn retain_source(&mut self,revision:(u64,bool,bool),authored_nodes:usize){
+    pub(crate) fn cached_scene_nodes(&self) -> Option<usize> {
+        self.cached.as_ref().map(|frame| frame.nodes)
+    }
+    pub(crate) fn retain_source(&mut self,revision:(u64,bool,bool),authored_nodes:usize,resolved_nodes:usize){
         let Some(mut frame)=self.cached.take()else{return};
         frame.authored_nodes=authored_nodes;
+        frame.resolved_nodes=resolved_nodes;
         // replace the projection-local epoch with the complete source lineage;
         // this method is called only after demand closure and successful encode.
         frame.key.0=revision;
@@ -675,7 +681,7 @@ struct Metadata<'a>{#[serde(flatten)]scene:&'a GpuScene,resource_scope:&'a str,f
                     resource_wire_bytes += 9 + data.len();
                 }
                 let resource_bounds = (!resources.is_empty()).then_some((min_id, max_id));
-                self.cached=Some(EncodedFrame{key,prefix,resources,resource_bounds,resource_wire_bytes,charge,sequence_offset:24+sequence_offset,sequence:self.frame,nodes:compiled_nodes,authored_nodes:compiled_nodes});
+                self.cached=Some(EncodedFrame{key,prefix,resources,resource_bounds,resource_wire_bytes,charge,sequence_offset:24+sequence_offset,sequence:self.frame,nodes:compiled_nodes,authored_nodes:0,resolved_nodes:0});
             }
         }
         Ok(bytes)
@@ -841,13 +847,18 @@ let encoded=self.frame_scene.encode_with_curves(scene,Some(&fields),self.geo_rev
             let local=json!({"pageId":"page","width":64,"height":64,"view":{"x":-480,"y":-480,"zoom":1},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":64,"h":64}});
             runtime.compile(&mut engine,&descriptor,"stage","page",&local.to_string()).unwrap();
             assert_eq!(runtime.stats["mode"],"demand","{}",runtime.stats);
-            assert_eq!(runtime.stats["resolvedCompileNodes"],2);
+            assert_eq!(runtime.stats["residentAuthoredNodes"], 2);
+            assert_eq!(runtime.stats["compiledSceneNodes"], 2);
+            let resolved = runtime.stats["resolvedCompileNodes"].clone();
             assert_eq!(engine.frame_scene.scope,"overview-return");
             assert!(engine.frame_scene.next>next,"eviction must not reuse wire IDs");
             assert!(engine.frame_scene.bytes()+runtime.stats["contextMarginBytes"].as_u64().unwrap() as usize<=64*1024*1024);
             runtime.compile(&mut engine,&descriptor,"stage","page",&local.to_string()).unwrap();
             assert_eq!(runtime.stats["projectionRebuilds"],1);
             assert_eq!(runtime.stats["projectionReuses"],1);
+            assert_eq!(runtime.stats["residentAuthoredNodes"], 2);
+            assert_eq!(runtime.stats["compiledSceneNodes"], 2);
+            assert_eq!(runtime.stats["resolvedCompileNodes"], resolved);
         });
     }
     #[test] fn identical_static_request_returns_before_scene_compilation(){
