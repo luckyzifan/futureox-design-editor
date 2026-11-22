@@ -191,8 +191,10 @@ export type GpuScene = {
   interactionLocalFootprint?: boolean
   /** Native worker verified the stationary mask and its output window. */
   interactionFixedMask?: boolean
-  /** Worker-owned release after the final gesture transform is known. */
+/** Worker-owned release after the final gesture transform is known. */
   interactionRelease?: boolean
+  /** Same-device clipped motion. The terminating pose still fences the GPU. */
+  queuedClippedMotion?: boolean
   disableSparseGlass?: boolean
   /** Worker-local proof owner for transform-only recompiles; never a document field. */
   interactionLease?: object

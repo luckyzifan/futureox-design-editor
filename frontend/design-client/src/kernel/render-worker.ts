@@ -560,8 +560,8 @@ function presentSampledPose(session:PoseSession,pose:ResidentPose,bounds:{x:numb
   }
 }
 // While an old pose prepares or uses the GPU, the release input can revoke
-// obsolete preparation or prepare one fresh packet behind the GPU fence.
-let beginTerminalPreparation: ((next:ResidentPose)=>void) | undefined
+// obsolete preparation or use the idle CPU lane to prepare one fresh packet.
+let prioritizeTerminalPose: ((next: ResidentPose) => void) | undefined
 function waitingForPoseSubmission(pose:ResidentPose) {
   return !pose.terminal && poseSession?.slot === pose.slot && poseSession.native === true &&
     gpu?.driver.hasDeferredPosePresentation?.(pose.slot) === true
@@ -682,13 +682,20 @@ terminalMaySupersede ||= fullNativeAffine || viewportPatch || clippedTranslation
             if(!current())continue
             advance=undefined
           }
-          // A nonterminal native pose may only have updated the kernel.
+// A nonterminal native pose may only have updated the kernel.
           // The matching terminal texture also needs its authored snapshot
           // for the canvas commit's document equality check.
           if (pose.terminal && document && ids.some(id =>
             pose.transforms[id].some((value, index) => !Object.is(value, session.document.nodes[id].transform[index])))) {
             session.document = laneState.interactionDocument = document
             laneState.deferredInteractionDocument = document
+          }
+          if (pose.terminal && session.scene.queuedClippedMotion) {
+            // The repeated position owns the same texture, but a motion
+            // submission may still be in flight. Keep the terminal fence.
+            await gpu.driver.waitForSubmittedWork!()
+            if (!current()) continue
+            session.scene.queuedClippedMotion = false
           }
           const bounds=session.bounds
           presentSampledPose(session,pose,bounds)
@@ -727,6 +734,9 @@ terminalMaySupersede ||= fullNativeAffine || viewportPatch || clippedTranslation
           }
           if(!packet){
             // A real in-flight motion can become the terminal input before its native reply.
+const direct = clippedTranslation || session.affine && session.canvasOwner && session.scene.interactionLocalFootprint &&
+              !session.softEffectPreview && ids.length === 1 && isInnerShadowFill(session.baseDocument.nodes[ids[0]])
+              ? preparation : undefined
             const apply=()=>kernel.apply_interaction_transforms(JSON.stringify(pose.transforms))
             // Pointer motion uses the preparation port that goes straight
             // to the existing worker. Returning the entire packet through
@@ -752,26 +762,29 @@ terminalMaySupersede ||= fullNativeAffine || viewportPatch || clippedTranslation
                 allowsReducedSampling(displayFrame.view.zoom)&&isBitmapTranslationPatch(session.document,document,patch)
             }
             if(!current())continue
-            const compileStarted=performance.now()
-            // A distinct release pose can own this absolute translation while
-            // its compile is still walking nodes. Same-transform release keeps
-            // the in-flight packet. The native channel stays ordered: cancel
-            // drains, then the terminal pose is applied and compiled once.
+const compileStarted=performance.now()
+            // A distinct release pose can own this absolute or clipped
+            // translation while its compile is still walking nodes.
+            // Same-transform release keeps the in-flight packet. The native
+            // channel stays ordered: cancel drains, then the terminal pose is
+            // applied and compiled once.
             const absoluteTranslation = !affine && (fullNativePose || viewportPatch)
-            const superseded = !pose.terminal && (bitmapTerminal || absoluteTranslation) ? new AbortController() : undefined
+            const superseded = !pose.terminal && (bitmapTerminal || absoluteTranslation || clippedTranslation)
+              ? new AbortController() : undefined
             const signal = superseded ? AbortSignal.any([session.controller.signal, superseded.signal]) : session.controller.signal
-            if (superseded) beginTerminalPreparation = terminal => {
-              if(terminalPoseDisposition(pose,terminal)==='changed')superseded.abort()
+            if (superseded) prioritizeTerminalPose = terminal => {
+              if (terminalPoseDisposition(pose,terminal)==='changed')superseded.abort()
             }
             try {
               const compile=()=>compilePacket(kernel,session.options,signal,pose.terminal ? terminalTransport : 'curves')
-              packet=await (preparation ? preparation.withPoseTransport(compile) : compile())
+              packet=await (direct ? direct.withPoseTransport(compile) : compile())
             } catch(error) {
-              // The next absolute pose still owns this lease and reapplies
-              // its transform after the cancelled native request drains.
-              if(superseded?.signal.aborted && String(error).includes('PREVIEW_CANCELLED'))continue
+              // The native channel still fences the cancelled call before the
+              // terminal mutation. No authored or interaction mutation is cancelled.
+              if(superseded?.signal.aborted && !session.controller.signal.aborted &&
+                  String(error).includes('PREVIEW_CANCELLED'))continue
               throw error
-            } finally { beginTerminalPreparation=undefined }
+            } finally { prioritizeTerminalPose=undefined }
             if(!current())continue
             poseCompileMs=performance.now()-compileStarted
           }
@@ -818,6 +831,8 @@ terminalMaySupersede ||= fullNativeAffine || viewportPatch || clippedTranslation
         if(bitmapRepairScene && pose.terminal) next={...next,nodes:bitmapRepairScene.nodes,
           interactionRetained:false,nativeInteraction:false,repairOutput:true}
         next.gestureSoftEffects = session.softEffectPreview === true && !pose.terminal
+        next.queuedClippedMotion = clippedTranslation && !pose.terminal &&
+          !next.gestureSoftEffects && !!gpu.driver.waitForSubmittedWork
         const visible=innerShadowContentWindow(session,next,window,ids)
         // Canvas repair rounds damage outwards and samples integer neighbours.
         next.interactionContentWindow=visible && intersect(window,guardedPixelWindow(visible))
@@ -829,13 +844,14 @@ terminalMaySupersede ||= fullNativeAffine || viewportPatch || clippedTranslation
           const localTerminal = session.canvasOwner && next.interactionLocalFootprint && !next.gestureSoftEffects &&
             ids.length===1 && isInnerShadowFill(session.baseDocument.nodes[ids[0]])
 // A private Sketch mask can decline the JS patch session. The full
-          // native bitmap capture still proves coverage and can overlap its
-          // next exact compile while the previous pose is on the GPU.
-          const openTerminalPreparation = poseKernel && !pose.terminal &&
-            (bitmapTerminal || session.affine && localTerminal || fullNativePose && session.patch)
+          // native bitmap capture still proves coverage, and absolute or
+          // clipped releases can overlap the next exact compile with GPU work.
+          const prepareTerminal = poseKernel && !pose.terminal &&
+            (bitmapTerminal || session.affine && localTerminal || fullNativePose && session.patch ||
+              (fullNativeAffine || clippedTranslation) && session.patch)
             ? () => {
               const kernel=poseKernel!
-              beginTerminalPreparation=terminal=>{
+              prioritizeTerminalPose=terminal=>{
                 if(advance || session!==poseSession || session.stopped || session.controller.signal.aborted ||
                     terminalPoseDisposition(pose,terminal)!=='changed' || Object.keys(terminal.transforms).length!==1 ||
                     !Object.hasOwn(terminal.transforms,ids[0]) || !Array.isArray(terminal.transforms[ids[0]]) ||
@@ -853,17 +869,17 @@ terminalMaySupersede ||= fullNativeAffine || viewportPatch || clippedTranslation
                 ahead.start(terminal.input.sequence,()=>preparation?preparation.withPoseTransport(prepare):prepare())
               }
               const last=latestPendingPose()
-              if(last?.terminal)beginTerminalPreparation(last)
+              if(last?.terminal)prioritizeTerminalPose(last)
             } : undefined
-          if(bitmapTerminal)openTerminalPreparation?.()
+if (bitmapTerminal || clippedTranslation) prepareTerminal?.()
           if (bitmapTerminal && pose.terminal && next.interactionFixedMask) {
             next.interactionRelease = true
             renderingBitmapRelease = pose
             prepareBitmapCommit()
           }
           const result=await failureAttempt(12, () => gpu!.render(next,false,true,current,undefined,false,
-            bitmapTerminal ? undefined : openTerminalPreparation))
-            .finally(()=>{beginTerminalPreparation=undefined;renderingBitmapRelease=undefined})
+            bitmapTerminal || clippedTranslation ? undefined : prepareTerminal))
+            .finally(()=>{prioritizeTerminalPose=undefined;renderingBitmapRelease=undefined})
           if(!result.gpuTile)throw Error('Resident movement did not produce a GPU texture')
           if(!current()){gpu.driver.releasePresented?.([result.gpuTile]);continue}
           gpu.driver.replacePresented(session.slot,result.gpuTile)
@@ -910,8 +926,10 @@ terminalMaySupersede ||= fullNativeAffine || viewportPatch || clippedTranslation
             drawCalls:result.drawCalls,passPixels:result.passPixels,textureBytes:result.textureBytes,
             signature:displayFrame?residentFrameSignature(displayFrame):undefined}})
         }catch(error){
-          if(advance && latestPendingPose()===advance.pose && poseSession===session && !session.stopped &&
-              String(error).includes('PREVIEW_CANCELLED'))continue
+          const ending = latestPendingPose()
+          if (poseSession === session && !session.stopped && String(error).includes('PREVIEW_CANCELLED') &&
+              (advance && ending === advance.pose || clippedTranslation && terminalPoseDisposition(pose, ending) === 'changed'))
+            continue
           if(current()){console.warn('[resident-interaction] rebuilding capture',String(error));rebasePose(pose)}break}
       }
     }catch(error){
@@ -919,7 +937,7 @@ terminalMaySupersede ||= fullNativeAffine || viewportPatch || clippedTranslation
       // just like a raster failure so input never waits for an impossible ACK.
       if(runningPose && poseSession?.slot === runningPose.slot && !poseSession.stopped)rebasePose(runningPose)
       if(import.meta.env.DEV)console.warn('DESIGN_POSE',error)
-    }finally{beginTerminalPreparation=undefined;await discardAdvance();poseQueued=false;if(pendingPose)schedulePose()}
+    }finally{prioritizeTerminalPose=undefined;await discardAdvance();poseQueued=false;if(pendingPose)schedulePose()}
   },1)
 }
 self.onmessage = (e) => {
@@ -1071,7 +1089,7 @@ self.onmessage = (e) => {
   if(request.command==='interaction-settle'){
     if(Number.isSafeInteger(request.sequence)&&poseSession&&!poseSession.stopped&&poseSession.slot===request.slot&&
       pendingPose&&pendingPose.slot===request.slot&&pendingPose.input.sequence===request.sequence&&pendingPose.input.owner===request.owner){
-      pendingPose.terminal=true;beginTerminalPreparation?.(pendingPose);schedulePose()
+      pendingPose.terminal=true;prioritizeTerminalPose?.(pendingPose);schedulePose()
     }
     return
   }
@@ -1092,7 +1110,7 @@ self.onmessage = (e) => {
           request.input.sequence > (heldBitmapViewport.frame.input?.sequence ?? 0)) resumeBitmapViewport()
       if(pendingPose?.terminal && terminalPoseDisposition(pendingPose,request)==='same') pendingPose.input=request.input
       else pendingPose=request
-      if(pendingPose!.terminal)beginTerminalPreparation?.(pendingPose!)
+      if(pendingPose!.terminal)prioritizeTerminalPose?.(pendingPose!)
       schedulePose()
     }
     else rebasePose(request)
