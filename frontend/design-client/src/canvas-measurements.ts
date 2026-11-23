@@ -7,6 +7,33 @@ export type SpacingPill = { text: string; anchor: Point; offset: Point }
 export const SPACING_RED = '#e05634'
 /** White type on the red distance pill. */
 export const DISTANCE_PILL_TEXT = '#ffffff'
+/** CSS size of the distance numeral. DOM and the GPU measure chip share it. */
+export const DISTANCE_PILL_FONT_SIZE = 11
+/** Horizontal padding inside the red pill, CSS px. */
+export const DISTANCE_PILL_PAD_X = 4
+/** Extra CSS px added to the font size for the pill height. */
+export const DISTANCE_PILL_EXTRA_HEIGHT = 4
+/** CSS px from the pill top to the text baseline: font size plus this lead. */
+export const DISTANCE_PILL_BASELINE_LEAD = 3
+export const DISTANCE_PILL_RADIUS = 3
+/**
+ * CSS px from the measurement line to the near edge of the pill.
+ * Help-center attachment 30101683610903 (not a live Figma 126.10.13 desktop
+ * capture) shows about 12–13 device px of clearance. The selection handle in
+ * that image is 16 device px, and these handles are 8 CSS px, so the image
+ * reads as 2× and the clearance is about 6 CSS px.
+ */
+export const DISTANCE_PILL_GAP = 6
+
+/** Screen-pixel width of a selection or distance chip. CJK counts as one em; Latin is narrower. */
+export function selectionChromeChipWidth(text: string, size: number) {
+  let em = 0
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0
+    em += code > 0xff ? 1 : code <= 0x20 ? 0.34 : 0.58
+  }
+  return Math.max(size * 0.5, em * size)
+}
 const EPS = 1e-9
 const encloses = (outer: Bounds, inner: Bounds) => outer.x <= inner.x + EPS && outer.y <= inner.y + EPS
   && outer.x + outer.width + EPS >= inner.x + inner.width && outer.y + outer.height + EPS >= inner.y + inner.height
@@ -64,10 +91,21 @@ export function measurementTicks(measurement: Pick<Measurement, 'from' | 'to' | 
   return [cap(measurement.from), cap(measurement.to)]
 }
 
-/** Screen-pixel label placement. The red number sits on the segment; a short
- * gap steps aside so the glyph clears the ticks. */
+/** Screen-pixel label placement. Padding pills sit below a horizontal line and
+ * to the right of a vertical line. Other segments keep the shorter label
+ * stepped off the ticks. The offset is the text baseline. */
 export function measurementLabel(measurement: Measurement, zoom = 1): { anchor: Point; offset: Point } {
   const anchor = { x: (measurement.from.x + measurement.to.x) / 2, y: (measurement.from.y + measurement.to.y) / 2 }
+  if (measurement.role === 'padding') {
+    const text = distanceText(measurement.distance)
+    const baselineFromTop = DISTANCE_PILL_FONT_SIZE + DISTANCE_PILL_BASELINE_LEAD
+    if (measurement.axis === 'vertical') {
+      const boxW = selectionChromeChipWidth(text, DISTANCE_PILL_FONT_SIZE) + DISTANCE_PILL_PAD_X * 2
+      const boxH = DISTANCE_PILL_FONT_SIZE + DISTANCE_PILL_EXTRA_HEIGHT
+      return { anchor, offset: { x: DISTANCE_PILL_GAP + boxW / 2, y: baselineFromTop - boxH / 2 } }
+    }
+    return { anchor, offset: { x: 0, y: DISTANCE_PILL_GAP + baselineFromTop } }
+  }
   const scale = Number.isFinite(zoom) && zoom > EPS ? zoom : 1
   const short = measurement.distance * scale < 28
   if (measurement.axis === 'vertical') return { anchor, offset: short ? { x: 16, y: -6 } : { x: 0, y: -6 } }
@@ -108,7 +146,7 @@ export function spacingDiagram(selection: Bounds, target: Bounds, zoom = 1): { l
   const pills: SpacingPill[] = []
   const outline = [...boxEdges(selection), ...boxEdges(target)]
   if (encloses(selection, target) || encloses(target, selection)) {
-    const gaps = measureBounds(selection, target).map(item => ({ ...item, tick: true, role: 'padding' as const }))
+    const gaps = measureBounds(selection, target).map(item => ({ ...item, tick: false, role: 'padding' as const }))
     for (const line of gaps) {
       const placed = measurementLabel(line, scale)
       pills.push({ text: distanceText(line.distance), anchor: placed.anchor, offset: placed.offset })

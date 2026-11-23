@@ -13,7 +13,7 @@ import { rotationChromeHeldToTexture, rotationDocumentChromeSuppressed, rotation
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
 import { crispOutlinePath } from './kernel/gpu/canvas-overlay'
-import { altMeasurementTarget, measurementTicks, SPACING_RED, textMeasurementBounds } from './canvas-measurements'
+import { altMeasurementTarget, DISTANCE_PILL_BASELINE_LEAD, DISTANCE_PILL_EXTRA_HEIGHT, DISTANCE_PILL_PAD_X, DISTANCE_PILL_RADIUS, measurementTicks, SPACING_RED, textMeasurementBounds } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
 import { frameTitleShown } from './page-frame-chrome'
 import { interfacePreference, useInterfacePreferences } from './interface-preference'
@@ -316,16 +316,16 @@ function SelectionChromeChip({ testId, x, y, text, size, zoom, fill, opacity, ce
   testId: string; x: number; y: number; text: string; size: number; zoom: number; fill: string; opacity: number; centered?: boolean
   tone?: 'paper' | 'accent' | 'measure'
 }) {
-  const width = selectionChromeChipWidth(text, size), pad = tone === 'measure' ? 4 : 6
-  const boxW = (width + pad * 2) / zoom, boxH = (size + (tone === 'measure' ? 4 : 8)) / zoom
+  const width = selectionChromeChipWidth(text, size), pad = tone === 'measure' ? DISTANCE_PILL_PAD_X : 6
+  const boxW = (width + pad * 2) / zoom, boxH = (size + (tone === 'measure' ? DISTANCE_PILL_EXTRA_HEIGHT : 8)) / zoom
   const textFill = tone === 'paper' ? fill : '#ffffff'
   const frame = tone === 'accent' ? 'selection-chrome-frame selection-size-pill'
     : tone === 'measure' ? 'selection-chrome-frame measurement-distance-pill'
     : 'selection-chrome-frame'
   return <g data-testid={testId} data-pill={tone} opacity={opacity} pointerEvents="none">
     <rect className={frame} vectorEffect="non-scaling-stroke"
-      x={centered ? x - boxW / 2 : x - pad / zoom} y={y - (size + 3) / zoom}
-      width={boxW} height={boxH} rx={(tone === 'measure' ? 3 : 4) / zoom} />
+      x={centered ? x - boxW / 2 : x - pad / zoom} y={y - (size + (tone === 'measure' ? DISTANCE_PILL_BASELINE_LEAD : 3)) / zoom}
+      width={boxW} height={boxH} rx={(tone === 'measure' ? DISTANCE_PILL_RADIUS : 4) / zoom} />
     <text x={x} y={y} textAnchor={centered ? 'middle' : 'start'} fontSize={size / zoom} fill={textFill}>{text}</text>
   </g>
 }
@@ -4055,6 +4055,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           })()}
           {!hidePanChrome && hover &&
             (!selection.has(hover) || contextMenu?.layerPickerOnly) &&
+            hover !== measurementTarget &&
             !drag.current &&
             (() => {
               const e = entries.find((v) => v.id === hover)
