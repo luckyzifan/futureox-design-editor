@@ -112,6 +112,7 @@ test('headed Chrome measures Export contrast on the live header', { timeout: 120
       assert.equal(shot.accent, '#007aff', shot.id)
       assert.equal(shot.otherPrimary, '#007aff', `${shot.id} retinted a non-export primary`)
     }
+    assert.equal(shot.icons.length, 2, `${shot.id} export markup lost an icon`)
     if (shot.requestedWidth >= 1181) {
       assert.equal(shot.font, '12px', shot.id)
       assert.equal(shot.density, 'wide', shot.id)
@@ -119,10 +120,15 @@ test('headed Chrome measures Export contrast on the live header', { timeout: 120
       assert.ok(shot.textBox.w >= 12, `${shot.id} label width ${shot.textBox.w}`)
       assert.ok(shot.textInk, `${shot.id} label was not painted`)
       assert.ok(shot.textInk.contrast >= 4.5, `${shot.id} painted text ${shot.textInk.contrast} ${shot.textInk.hex}`)
+      assert.equal(shot.icons[0].display, 'none', `${shot.id} labeled state showed the download glyph`)
+      assert.ok(shot.icons[1].w >= 12 && shot.icons[1].h >= 12, `${shot.id} chevron ${shot.icons[1].w}×${shot.icons[1].h}`)
     } else {
       assert.equal(shot.font, '0px', shot.id)
       assert.equal(shot.density, 'desk', shot.id)
       assert.ok(shot.textBox.w < 1, `${shot.id} icon state still lays out the label at ${shot.textBox.w}`)
+      assert.notEqual(shot.icons[0].display, 'none', `${shot.id} compact state hid the download glyph`)
+      assert.ok(shot.icons[0].w >= 12 && shot.icons[0].h >= 12, `${shot.id} download glyph ${shot.icons[0].w}×${shot.icons[0].h}`)
+      assert.equal(shot.visibleIcon.w, shot.icons[0].w, `${shot.id} visible icon is not the download glyph`)
     }
   }
   assert.match(measured.environment.browser, /Chrome\/\d+/)
