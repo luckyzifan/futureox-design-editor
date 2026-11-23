@@ -778,11 +778,11 @@ fn measuredGradientOver(p:vec2<f32>)->vec4<f32>{
  var source:vec4<f32>=min(abs(addRN4(color,vec4<f32>(field.y))),vec4<f32>(1));
  if(color.a==1.){source.a=1.;}
  // u(8).y is isolating group opacity applied after this RGBA8 stage.
- // Plain f32 scaling matches the CPU export that hits the Chrome PNG.
- // Zero keeps paint opacity inside the sample above.
+ // Decode the bytes and round each scaling step as binary32. Metal may
+ // lower division by 255 to multiplication by a rounded reciprocal.
  if(u(8).y>0.){
-  let encoded=vec4<f32>(f32(figmaEncodeUnorm8(clamp(source.x,0.,1.))),f32(figmaEncodeUnorm8(clamp(source.y,0.,1.))),f32(figmaEncodeUnorm8(clamp(source.z,0.,1.))),f32(figmaEncodeUnorm8(clamp(source.w,0.,1.))));
-  source=(encoded/255.)*u(8).y*coverage;
+  let encoded=vec4<u32>(figmaEncodeUnorm8(clamp(source.x,0.,1.)),figmaEncodeUnorm8(clamp(source.y,0.,1.)),figmaEncodeUnorm8(clamp(source.z,0.,1.)),figmaEncodeUnorm8(clamp(source.w,0.,1.)));
+  source=mulRN4(mulRN4(figmaByteValue(encoded),vec4<f32>(u(8).y)),vec4<f32>(coverage));
  }else{
   source=mulRN4(source,vec4<f32>(coverage));
  }
