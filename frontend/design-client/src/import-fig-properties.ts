@@ -21,8 +21,13 @@ export function figExportSettings(value: unknown): { settings: ExportSetting[]; 
       return
     }
     settings.push({ id: `fig-export-${index}`, format, scale, suffix })
+    // Format, scale and suffix are the executable preset. Options that change
+    // the exported file must stay incomplete instead of looking done.
     incomplete ||= item.useAbsoluteBounds === true || item.contentsOnly === false ||
-      (item.colorProfile !== undefined && item.colorProfile !== 'DOCUMENT')
+      (item.colorProfile !== undefined && item.colorProfile !== 'DOCUMENT') ||
+      item.svgOutlineText === true || item.svgAnimated === true ||
+      item.svgForceStrokeMasks === true || item.svgDataName === true ||
+      item.useBicubicSampler === true
   })
   return { settings, incomplete }
 }

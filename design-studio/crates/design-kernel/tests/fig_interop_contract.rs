@@ -249,3 +249,56 @@ fn fig_rewrite_round_trips_the_message_against_the_embedded_schema() {
         "imported documents must be identical"
     );
 }
+
+fn untranslated(doc: &Document, id: &str) -> String {
+    doc.design_system.as_ref()
+        .and_then(|system| system.sketch_containers.get("nodeMetadata"))
+        .and_then(|metadata| metadata.get(id))
+        .and_then(|entry| entry.get("bindings"))
+        .and_then(|bindings| bindings.get("figUntranslated"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
+}
+
+#[test]
+fn svg_outline_text_and_bicubic_export_presets_stay_incomplete() {
+    let svg = import(json!({"exportSettings":[{
+        "imageType":"SVG","suffix":"","constraint":{"type":"CONTENT_SCALE","value":1},
+        "svgOutlineText":true,"svgIDMode":"IF_NEEDED","svgDataName":false,
+        "svgForceStrokeMasks":false,"svgAnimated":false,"contentsOnly":true,
+        "useAbsoluteBounds":false,"colorProfile":"DOCUMENT","useBicubicSampler":true
+    }]}));
+    let setting = &svg.nodes["fig-1-3"].export_settings[0];
+    assert_eq!(setting.format, "svg");
+    assert_eq!(setting.scale, 1.);
+    assert_eq!(setting.suffix, "");
+    assert!(untranslated(&svg, "fig-1-3").contains("exportSettings(partial)"));
+
+    let png = import(json!({"exportSettings":[{
+        "imageType":"PNG","constraint":{"type":"CONTENT_SCALE","value":1},"suffix":"",
+        "contentsOnly":true,"useAbsoluteBounds":false,"colorProfile":"DOCUMENT","useBicubicSampler":true
+    }]}));
+    assert_eq!(png.nodes["fig-1-3"].export_settings[0].format, "png");
+    assert!(untranslated(&png, "fig-1-3").contains("exportSettings(partial)"));
+
+    let plain = import(json!({"exportSettings":[{
+        "imageType":"PNG","suffix":"@2x","constraint":{"type":"CONTENT_SCALE","value":2}
+    }]}));
+    assert_eq!(plain.nodes["fig-1-3"].export_settings[0].scale, 2.);
+    assert!(!untranslated(&plain, "fig-1-3").contains("exportSettings"));
+
+    let document_png = import(json!({"exportSettings":[{
+        "imageType":"PNG","constraint":{"type":"CONTENT_SCALE","value":1},"suffix":"",
+        "contentsOnly":true,"useAbsoluteBounds":false,"colorProfile":"DOCUMENT","useBicubicSampler":false
+    }]}));
+    assert!(!untranslated(&document_png, "fig-1-3").contains("exportSettings"));
+
+    let bytes = include_bytes!("../../../../testing/fixtures/design/figma-materials-native-2026-10-08.fig");
+    let materials = fig::import_fig_native(bytes).unwrap();
+    materials.validate().unwrap();
+    let partial = materials.nodes.values().filter(|node| untranslated(&materials, &node.id).contains("exportSettings(partial)")).count();
+    // 53 sRGB PNG presets were already partial. The fixture also has one
+    // DOCUMENT PNG with bicubic sampling and one SVG preset that outlines text.
+    assert_eq!(partial, 55);
+}

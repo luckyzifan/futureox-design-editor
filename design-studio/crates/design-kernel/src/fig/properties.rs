@@ -31,8 +31,13 @@ pub(super) fn export_settings(value: &Value) -> (Vec<ExportSetting>, bool) {
             }
             Some(ExportSetting { id: format!("fig-export-{index}"), format: format.into(), scale, suffix: suffix.into() })
         })();
+        // Format, scale and suffix are the executable preset. Options that
+        // change the exported file must stay incomplete instead of looking done.
         incomplete |= parsed.is_none() || item["useAbsoluteBounds"] == true || item["contentsOnly"] == false ||
-            item.get("colorProfile").is_some_and(|p| p != "DOCUMENT");
+            item.get("colorProfile").is_some_and(|p| p != "DOCUMENT") ||
+            item["svgOutlineText"] == true || item["svgAnimated"] == true ||
+            item["svgForceStrokeMasks"] == true || item["svgDataName"] == true ||
+            item["useBicubicSampler"] == true;
         parsed
     }).collect();
     (settings, incomplete)
