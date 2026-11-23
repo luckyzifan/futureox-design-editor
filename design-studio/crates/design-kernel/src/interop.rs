@@ -3074,9 +3074,177 @@ impl<'a> Importer<'a> {
             let plugin:Map<String,Value>=info.iter().filter(|(key,_)|key.as_str()!="com.futureox.design-kernel").map(|(k,v)|(k.clone(),v.clone())).collect();
             if !plugin.is_empty() {node.bindings.insert("sketchPluginUserInfo".into(),json!(plugin).to_string());}
         }
+        store_sketch_layer_flags(&mut node, layer);
         adaptable_capture(&mut node);
         self.nodes.insert(id.clone(), node);
         id
+    }
+}
+
+const SKETCH_USER_JSON_BUDGET: usize = 1_048_576;
+
+fn sketch_bool(value: Option<&Value>) -> Option<bool> {
+    match value? {
+        Value::Bool(flag) => Some(*flag),
+        Value::Number(number) => match number.as_u64() {
+            Some(0) => Some(false),
+            Some(1) => Some(true),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn sketch_archived_field(layer: &Value, key: &str, keep_zero: bool) -> Option<(String, Value)> {
+    for prefix in ["__", "_", ""] {
+        let spelling = format!("{prefix}{key}");
+        let Some(value) = layer.get(&spelling).filter(|value| !value.is_null()) else {
+            continue;
+        };
+        if !keep_zero && value.as_u64() == Some(0) {
+            continue;
+        }
+        if value.as_f64().is_some_and(|number| !number.is_finite()) {
+            continue;
+        }
+        return Some((spelling, value.clone()));
+    }
+    None
+}
+
+/// Layer switches Sketch stores beside geometry. Only non-default values are
+/// kept, so export of an ordinary layer still writes the historical defaults.
+fn sketch_layer_flags(layer: &Value) -> Map<String, Value> {
+    let class = layer.get("_class").and_then(Value::as_str).unwrap_or("");
+    let mut flags = Map::new();
+    if sketch_bool(layer.get("nameIsFixed")) == Some(true) {
+        flags.insert("nameIsFixed".into(), json!(true));
+    }
+    if let Some(value) = layer.get("layerListExpandedType").filter(|value| value.as_i64().is_some_and(|code| code != 0)) {
+        flags.insert("layerListExpandedType".into(), value.clone());
+    }
+    if sketch_bool(layer.get("isFixedToViewport")) == Some(true) {
+        flags.insert("isFixedToViewport".into(), json!(true));
+    }
+    if class == "symbolMaster" && sketch_bool(layer.get("allowsOverrides")) == Some(false) {
+        flags.insert("allowsOverrides".into(), json!(false));
+    }
+    if matches!(class, "artboard" | "symbolMaster") && sketch_bool(layer.get("resizesContent")) == Some(true) {
+        flags.insert("resizesContent".into(), json!(true));
+    }
+    if class == "symbolInstance" {
+        if let Some(scale) = layer.get("scale").filter(|value| value.as_f64().is_some_and(|scale| scale.is_finite() && scale != 1.)) {
+            flags.insert("scale".into(), scale.clone());
+        }
+        for key in ["horizontalSpacing", "verticalSpacing"] {
+            if let Some(value) = layer.get(key).filter(|value| value.as_f64().is_some_and(|number| number.is_finite())) {
+                flags.insert(key.into(), value.clone());
+            }
+        }
+    }
+    flags
+}
+
+fn store_sketch_layer_flags(node: &mut Node, layer: &Value) {
+    let flags = sketch_layer_flags(layer);
+    if flags.is_empty() {
+        return;
+    }
+    if let Ok(raw) = serde_json::to_string(&flags) {
+        node.bindings.insert("sketchLayerFlags".into(), raw);
+    }
+}
+
+fn sketch_page_metadata(page: &Value) -> Map<String, Value> {
+    let mut fields = sketch_layer_flags(page);
+    for key in [
+        "horizontalPins",
+        "verticalPins",
+        "horizontalSizing",
+        "verticalSizing",
+        "flexItem",
+        "prototypeVisibility",
+        "prototypeVisibilityTrigger",
+    ] {
+        if let Some((spelling, value)) = sketch_archived_field(page, key, false) {
+            fields.insert(spelling, value);
+        }
+    }
+    if let Some((spelling, value)) = sketch_archived_field(page, "paddingSelection", true) {
+        fields.insert(spelling, value);
+    }
+    fields
+}
+
+fn retain_sketch_document_fields(document: &Value, containers: &mut BTreeMap<String, Value>) {
+    if let Some(index) = document.get("currentPageIndex").filter(|value| value.as_i64().is_some_and(|index| index != 0)) {
+        containers.insert("currentPageIndex".into(), index.clone());
+    }
+    for key in ["enableLayerInteraction", "enableSliceInteraction"] {
+        if let Some(value) = document.get(key).filter(|value| value.is_boolean()) {
+            containers.insert(key.into(), value.clone());
+        }
+    }
+}
+
+fn retain_sketch_user_json(files: &BTreeMap<String, Vec<u8>>, containers: &mut BTreeMap<String, Value>) {
+    let Some(bytes) = files.get("user.json").filter(|bytes| bytes.len() <= SKETCH_USER_JSON_BUDGET) else {
+        return;
+    };
+    let Ok(value) = serde_json::from_slice::<Value>(bytes) else {
+        return;
+    };
+    if value.as_object().is_some_and(|map| !map.is_empty()) {
+        containers.insert("sketchUser".into(), value);
+    }
+}
+
+fn apply_sketch_layer_flags(layer: &mut Map<String, Value>, node: &Node) {
+    let Some(raw) = node.bindings.get("sketchLayerFlags") else { return };
+    let Ok(flags) = serde_json::from_str::<Map<String, Value>>(raw) else { return };
+    let class = layer.get("_class").and_then(Value::as_str).unwrap_or("").to_owned();
+    if flags.get("nameIsFixed").and_then(Value::as_bool) == Some(true) {
+        layer.insert("nameIsFixed".into(), json!(true));
+    }
+    if let Some(value) = flags.get("layerListExpandedType").filter(|value| value.as_i64().is_some_and(|code| code != 0)) {
+        layer.insert("layerListExpandedType".into(), value.clone());
+    }
+    if flags.get("isFixedToViewport").and_then(Value::as_bool) == Some(true) {
+        layer.insert("isFixedToViewport".into(), json!(true));
+    }
+    if class == "symbolMaster" && flags.get("allowsOverrides").and_then(Value::as_bool) == Some(false) {
+        layer.insert("allowsOverrides".into(), json!(false));
+    }
+    if matches!(class.as_str(), "artboard" | "symbolMaster") && flags.get("resizesContent").and_then(Value::as_bool) == Some(true) {
+        layer.insert("resizesContent".into(), json!(true));
+    }
+    if class == "symbolInstance" {
+        if let Some(scale) = flags.get("scale").filter(|value| value.as_f64().is_some_and(|scale| scale.is_finite())) {
+            layer.insert("scale".into(), scale.clone());
+        }
+        for key in ["horizontalSpacing", "verticalSpacing"] {
+            if let Some(value) = flags.get(key).filter(|value| value.as_f64().is_some_and(|number| number.is_finite())) {
+                layer.insert(key.into(), value.clone());
+            }
+        }
+    }
+}
+
+fn overlay_sketch_page_metadata(doc: &Document, page_id: &str, page: &mut Map<String, Value>) {
+    let Some(fields) = doc
+        .design_system
+        .as_ref()
+        .and_then(|system| system.sketch_containers.get("sketchPageMetadata"))
+        .and_then(|pages| pages.get(page_id))
+        .and_then(Value::as_object)
+    else {
+        return;
+    };
+    for (key, value) in fields {
+        if matches!(key.as_str(), "_class" | "do_objectID" | "layers" | "name" | "frame" | "style" | "userInfo") {
+            continue;
+        }
+        page.insert(key.clone(), value.clone());
     }
 }
 
@@ -3451,6 +3619,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     }
 
     let mut ruler_pages: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
+    let mut page_metadata: Map<String, Value> = Map::new();
     for (file_id, kernel_id, page_name) in ordered {
         let page_json = page_index
             .get(&file_id)
@@ -3505,6 +3674,10 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
                 .entry(kernel_id.clone())
                 .or_default()
                 .extend(ruler_raw);
+        }
+        let fields = sketch_page_metadata(page_json);
+        if !fields.is_empty() {
+            page_metadata.insert(kernel_id.clone(), Value::Object(fields));
         }
         importer.nodes.insert(kernel_id.clone(), page_node);
         doc.pages.push(Page {
@@ -3764,6 +3937,11 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     // P1-13: foreign symbols — the embedded symbolMaster copy becomes a
     // local master node (instances reference its symbolID as usual).
     foreign_symbol_import(&mut importer, &document, &mut sketch_containers);
+    if !page_metadata.is_empty() {
+        sketch_containers.insert("sketchPageMetadata".into(), Value::Object(page_metadata));
+    }
+    retain_sketch_document_fields(document, &mut sketch_containers);
+    retain_sketch_user_json(files, &mut sketch_containers);
     // Embedded library definitions need an owned graph root before editable
     // admission. They remain native foreign resources when exported.
     let owned: std::collections::BTreeSet<&str> = doc.pages.iter().flat_map(|p|p.children.iter().map(String::as_str))
@@ -8053,6 +8231,7 @@ fn export_layer_impl(
         // into their style/text/background slots and restore the
         // updatableColors recolor markers.
         adaptable_apply_layer(&mut layer, n);
+        apply_sketch_layer_flags(&mut layer, n);
     }
     Ok(Value::Object(layer))
 }
@@ -8805,6 +8984,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                 }
                 map.remove("frame");
                 map.remove("style");
+                overlay_sketch_page_metadata(doc, &page.id, map);
             }
             page_layer
         };
@@ -9069,6 +9249,8 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     | "sketchDocumentColorSpace"
                     | "sketchStyleAliases"
                     | "sketchCheckedLibraries"
+                    | "sketchPageMetadata"
+                    | "sketchUser"
             ) {
                 continue;
             }
@@ -9120,7 +9302,14 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
     };
     push_json(&mut entries, "meta.json", &meta);
     push_json(&mut entries, "document.json", &document);
-    push_json(&mut entries, "user.json", &json!({}));
+    let user = doc
+        .design_system
+        .as_ref()
+        .and_then(|system| system.sketch_containers.get("sketchUser"))
+        .filter(|value| value.is_object())
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    push_json(&mut entries, "user.json", &user);
     push_json(&mut entries, "archive.json", &json!({"version": 1}));
     entries.extend(page_entries);
     entries.extend(images.entries);
