@@ -2016,7 +2016,50 @@ impl Engine {
             Err(last_error)
         }
     }
+    /// Byte display. An integer camera on an exact zoom bucket reuses
+    /// world-anchored tiles; every other camera keeps the full viewport path.
+    /// Checkerboards are screen-anchored, and a fractional camera changes
+    /// coverage, so those frames never read residency.
     pub(crate) fn render_exact(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
+        if self.integer_bucket_residency(options) {
+            return Ok(self.render_tiled_frame(options, None)?.rgba);
+        }
+        self.render_unretained(options)
+    }
+    fn integer_bucket_residency(&self, options: &RenderOptions) -> bool {
+        if self.display_degrade
+            || options.pixel_preview.is_some()
+            || options.animation.is_some()
+            || self.animation_sample.is_some()
+            || options.checkerboard
+            || options.interactive_effects
+        {
+            return false;
+        }
+        if !matches!(
+            options.raster_profile,
+            crate::fidelity::RasterProfile::Analytic
+                | crate::fidelity::RasterProfile::Figma
+                | crate::fidelity::RasterProfile::FigmaSubpixel
+        ) {
+            return false;
+        }
+        // `fract` of an integer is signed zero, which compares equal to 0.
+        if options.view.x.fract() != 0. || options.view.y.fract() != 0. || !options.view.zoom.is_finite() {
+            return false;
+        }
+        if options.view.zoom != crate::tile_stack::exact_bucket_scale(options.view.zoom) {
+            return false;
+        }
+        options.width > 0
+            && options.height > 0
+            && options.width <= 8192
+            && options.height <= 8192
+            && u64::from(options.width) * u64::from(options.height) <= 8_388_608
+    }
+    /// Full-viewport render that does not read or write tile residency.
+    /// Pixel oracles use this so a retained display cannot confirm itself.
+    pub fn render_unretained(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
         if self
             .doc
             .as_ref()
@@ -2045,7 +2088,7 @@ impl Engine {
         self.resolve_layout()?;
         if options.pixel_preview.is_some() {
             let plan = crate::preview::plan(options)?;
-            let source = self.render_exact(&plan.source)?;
+            let source = self.render_unretained(&plan.source)?;
             return Ok(crate::preview::resample(&source, &plan));
         }
         if matches!(

@@ -106,6 +106,10 @@ harness = false
 name = "profile_frame_split"
 required-features = ["frame-split-profile"]
 
+[[bench]]
+name = "pan_residency"
+harness = false
+
 [build-dependencies]
 serde_json.workspace = true
 
