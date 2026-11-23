@@ -55,6 +55,8 @@ pub mod fixed_gradient;
 pub mod font;
 #[cfg(not(target_arch = "wasm32"))]
 mod font_splash;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod text_drag_profile;
 #[cfg(target_arch = "wasm32")]
 mod font_splash {
     pub(crate) fn sketch_device_mask(
