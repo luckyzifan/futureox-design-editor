@@ -111,8 +111,17 @@ export class NativePreparation {
   return this.done
  }
 }
+/** Exact typed-array replies own their ArrayBuffer. A pooled slab or subview
+ * stays cloned so unrelated bytes are not moved. */
+function exactPacketBuffer(value){
+ if(!(value instanceof Uint8Array||value instanceof Float32Array))return undefined
+ const buffer=value.buffer
+ if(!(buffer instanceof ArrayBuffer)||value.byteOffset!==0||value.byteLength!==buffer.byteLength)return undefined
+ return buffer
+}
 /** The renderer owns its existing preparation process. Only real pose mutations
- * and packets cross this port, in the same physical queue as ordinary calls. */
+ * and packets cross this port, in the same physical queue as ordinary calls.
+ * Exact packet buffers are transferred; a structured clone kept a second copy. */
 export function bindPosePreparationPort(port,worker,current,retire){
  let active=0,last=0,closed=false
  const fatal=error=>{
@@ -135,7 +144,11 @@ export function bindPosePreparationPort(port,worker,current,retire){
    const reply=await worker.request({lane,method,args,
     ...(diagnostics?{diagnostics:{...diagnostics,preparationId:id}}:{}),
     ...(method==='compile_gpu_packet'&&cancellable?{cancellationId:id}:{})})
-   if(!closed&&current())port.postMessage({...reply,id})
+   if(!closed&&current()){
+    const message={...reply,id},buffer=exactPacketBuffer(reply?.value)
+    if(buffer)port.postMessage(message,[buffer])
+    else port.postMessage(message)
+   }
   }catch(error){if(!closed&&current())fatal(error)}finally{active=0}
  })
  port.on('close',()=>{closed=true;if(active&&current())retire()})
