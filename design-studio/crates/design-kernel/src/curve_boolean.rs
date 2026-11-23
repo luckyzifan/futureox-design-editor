@@ -437,6 +437,11 @@ fn stroke_operand(node: &Node) -> Result<Option<Path>, String> {
     Ok((!outline.commands.is_empty()).then_some(outline))
 }
 
+fn identical_operands(inputs: &[(Path, Transform, bool)]) -> bool {
+    let Some((path, transform, even)) = inputs.first() else { return false };
+    inputs.iter().skip(1).all(|(next, pose, rule)| next == path && pose == transform && rule == even)
+}
+
 fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache::Cache, memoize: bool, roots: Vec<String>) -> Result<(), String> {
     fn visit(doc: &mut Document, id: &str, depth: usize, cache: &mut crate::curve_boolean_cache::Cache, memoize: bool) -> Result<(), String> {
         if depth > 64 {
@@ -461,7 +466,7 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
             let keep_open_strokes = op == Operation::Union && node.kind == "vector" && !node.strokes.is_empty() && !stroke_operands;
             let mut open_strokes = Vec::new();
             let mut open_edges = 0usize;
-            let inputs = children
+            let mut inputs = children
                 .iter()
                 .filter(|c| doc.nodes[*c].visible)
                 .map(|c| {
@@ -514,6 +519,15 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
                     ))
                 })
                 .collect::<Result<Vec<_>, String>>()?;
+            // Identical copies are the operand, or nothing. The clipper otherwise
+            // leaves a fringe where coincident smooth-corner controls cancel.
+            if open_strokes.is_empty() && inputs.len() > 1 && identical_operands(&inputs) {
+                match op {
+                    Operation::Union | Operation::Intersect => inputs.truncate(1),
+                    Operation::Subtract | Operation::Exclude => inputs.clear(),
+                    Operation::CompoundNonzero | Operation::CompoundEvenodd => {}
+                }
+            }
             if let Some(rule)=op.compound_rule() {
                 if doc.schema_version<16{return Err("Compound paths require schema 16".into());}
                 let key=crate::curve_boolean_cache::Cache::key(&inputs,op);
