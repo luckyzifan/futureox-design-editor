@@ -51,7 +51,7 @@ import { bindEditorSettings } from './settings-preference'
 import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootControls'
 import { useShortcutProfile } from './shortcut-preference'
 import { getPrototypeTab, setPrototypeTab, subscribePrototypeTab } from './prototype-chrome'
-import { shortcutPlatform, toolShortcutLabel, shortcutLabel, shortcutLabels, formatShortcutCombo } from './shortcut-profiles'
+import { shortcutPlatform, toolShortcutLabel, shortcutLabel, shortcutLabels, formatShortcutCombo, resolveShortcut } from './shortcut-profiles'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { NativeAutomationDialog } from './AutomationPanelLauncher'
 import { DesignAgentLauncher } from './design-ai/DesignAgentLauncher'
@@ -286,6 +286,15 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const setShowLayers = adaptivePanels.setLeftOpen
   const panelText = interfaceText[adaptivePanels.preferences.locale]
   const [uiMinimized, setUiMinimized] = useState(false)
+  const [uiHidden, setUiHidden] = useState(false)
+  useLayoutEffect(() => {
+    if (!uiHidden) return
+    const active = document.activeElement
+    const canvas = document.querySelector<HTMLElement>('[data-testid="canvas"]')
+    if (!(active instanceof HTMLElement) || !canvas || active === canvas || canvas.contains(active)) return
+    if (active.closest('.editor-header, .properties-workspace, .adaptive-layers-shell, .floating-toolbar, .canvas-panel-toggles, .workspace-rail, nav[data-workspace-tabs]'))
+      canvas.focus({ preventScroll: true })
+  }, [uiHidden])
   const showInspector = adaptivePanels.rightOpen
   const setShowInspector = adaptivePanels.setRightOpen
   const [desktop] = useState(desktopBridge)
@@ -534,7 +543,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setBlurEdit({ session: editor.sessionGeneration, document: state.doc.id, page: state.page,
       node: node.id, index, effect: effect.id, count: node.effects.length })
   }, [editor, exitBlurEdit])
-  useEffect(() => { if (s.renamingLayer) { setShowLayers(true); setUiMinimized(false); setWorkspaceSection('layers') } }, [s.renamingLayer])
+  useEffect(() => { if (s.renamingLayer) { setShowLayers(true); setUiMinimized(false); setUiHidden(false); setWorkspaceSection('layers') } }, [s.renamingLayer])
   useEffect(() => {
     if (['select', 'hand', 'scale', 'zoom'].includes(s.tool)) setLastMoveTool(s.tool)
     if (['frame', 'section', 'slice'].includes(s.tool)) setLastRegionTool(s.tool)
@@ -566,6 +575,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setShowDrawing(false); setShowUtility(false)
     closeCommandSearch()
     closeShortcutReference(false)
+    setUiHidden(false)
   }, [uiMode])
   useEffect(() => { if (showHome) closeShortcutReference(false) }, [showHome])
   useEffect(() => () => closeShortcutReference(false), [])
@@ -620,6 +630,34 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [startupPreview, setStartupPreview] = useState<StartupPreview>()
   const [localFiles, setLocalFiles] = useState<LocalEntry[] | null>(null)
   const [switching, setSwitching] = useState(false)
+  useEffect(() => {
+    if (uiMode !== 'figma') return
+    const onKey = (event: KeyboardEvent) => {
+      const primary = shortcutPlatform() === 'mac' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+      const altPage = event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey ? /^Digit([123])$/.exec(event.code) : null
+      // Unshifted ⌘\ / Ctrl\ hides every chrome surface. ⇧⌘\ stays minimize.
+      const hideAll = primary && !event.altKey && !event.shiftKey && event.code === 'Backslash' && (event.key === '\\' || event.key === '\u001c')
+      if (!altPage && !hideAll) return
+      if (event.defaultPrevented || event.repeat || event.isComposing || event.keyCode === 229 ||
+          event.getModifierState?.('AltGraph') || shortcutTargetOwnsKeyboard(event.target) ||
+          document.querySelector('[role="menu"], .file-menu, .workspace-actions[open], .view-menu[open]') ||
+          showHome || !ready || switching || desktopStatus.transitioning || largeDocument ||
+          source?.openingPreview || source?.nativeCanvas || editor.interactionActive || editor.state.busy ||
+          editor.propertyPreviewActive || hasPendingEdits(editor)) return
+      // de-QWERTZ already uses this physical key for the pixel grid.
+      if (hideAll && resolveShortcut(event, shortcutContext)) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (hideAll) { setUiHidden(value => !value); return }
+      if (altPage![1] === '3') { setShowTools(true); return }
+      setWorkspaceSection(altPage![1] === '2' ? 'assets' : 'layers')
+      setShowLayers(true)
+      setUiMinimized(false)
+      setUiHidden(false)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [uiMode, editor, showHome, ready, switching, desktopStatus.transitioning, largeDocument, source, shortcutContext])
   const [importing, setImporting] = useState(false)
   const switchGate = useRef<object | null>(null)
   const panelHost = useRef<HTMLDivElement>(null)
@@ -1483,6 +1521,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             {figmaDraw && s.tool === 'pencil' && !toolbarDisabled && <DrawPencilToolbar editor={editor} />}
     </DesignToolbar>
   )
+  const figmaChromeHidden = uiMode === 'figma' && uiHidden
+  const hideLeftChrome = figmaChromeHidden || !showLayers || uiMinimized
+  const selectionShowsInspector = uiMinimized ? s.selection.length > 0 : showInspector
+  const hideRightChrome = figmaChromeHidden || (!agentDockOpen && !selectionShowsInspector)
   return (
     <div
       ref={panelHost}
@@ -1498,7 +1540,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       data-density={adaptivePanels.density}
       data-ui-mode={uiMode}
       data-document-chooser={documentChooserActive || undefined}
-      className={`app-shell editor-shell ${showHome ? 'home-route-active' : ''} ${showLayers && !uiMinimized ? '' : 'chrome-hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) && !agentDockOpen ? '' : agentDockOpen ? '' : 'chrome-hide-inspector'} ${agentDockOpen ? 'design-agent-open' : ''} ${uiMinimized ? 'chrome-minimized' : ''}`}
+      className={`app-shell editor-shell ${showHome ? 'home-route-active' : ''} ${hideLeftChrome ? 'chrome-hide-layers' : ''} ${hideRightChrome ? 'chrome-hide-inspector' : ''} ${agentDockOpen ? 'design-agent-open' : ''} ${uiMinimized ? 'chrome-minimized' : ''} ${figmaChromeHidden ? 'chrome-hidden' : ''}`}
       data-history-backend={editor.historyBackend} data-history-operation={editor.historyOperationMode} data-history-frame-bytes={editor.historyFrameBytes}
       data-desktop-ready={desktop ? String(ready) : undefined}
       data-editor-ready={String(ready)}
@@ -1939,7 +1981,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           searchField={sketchComponentSearch} onInsert={id => {
             if (switchSketchWorkspace(false)) editor.insertComponent(id)
           }} />
-      </main> : <main className={`editor-workspace ${showLayers && !uiMinimized ? '' : 'hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'hide-inspector'} ${uiMinimized ? 'ui-minimized' : ''}`} >
+      </main> : <main className={`editor-workspace ${hideLeftChrome ? 'hide-layers' : ''} ${figmaChromeHidden || !selectionShowsInspector ? 'hide-inspector' : ''} ${uiMinimized ? 'ui-minimized' : ''}`} >
         <WorkspaceLayers panelRef={leftPanel}
           rail={<WorkspaceRail section={workspaceSection} onSection={switchWorkspaceSection}
             onFiles={libraryRailVisible(uiMode, libraryHostKind(desktopSession)) ? openPersistentLibrary : undefined}
@@ -1951,7 +1993,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             documentTitle={figmaNameInSidebar ? documentNameField : undefined} />}
         </WorkspaceLayers>
         <div className="canvas-workspace" ref={source?.canvas}>
-          {!showHome&&!uiMinimized&&<div className="canvas-panel-toggles" onKeyDown={event=>event.stopPropagation()}>
+          {!showHome&&!uiMinimized&&!figmaChromeHidden&&<div className="canvas-panel-toggles" onKeyDown={event=>event.stopPropagation()}>
             <button type="button" ref={leftPanelToggle} className="canvas-panel-toggle left"
               title={`${showLayers?panelText.collapse:panelText.expand} · ${panelText.left}`} aria-label={panelText.left}
               aria-expanded={showLayers} onClick={() => togglePanel('left')}>
