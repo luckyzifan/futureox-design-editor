@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { blank, node, paint, effect, validateDocument, defaultLayout, defaultSizing } from '../model'
+import { blank, node, paint, effect, stroke, validateDocument, defaultLayout, defaultSizing } from '../model'
 import { layoutFixture } from '../layout-fixtures'
 import { componentFixture } from '../component-fixtures'
 import { emptySystem } from '../design-system'
@@ -134,6 +134,155 @@ describe('AI-friendly semantic export', () => {
     expect(css).toContain('linear-gradient(90deg,#ff0000 0%,#0000ff 100%)')
     expect(css).toContain('linear-gradient(180deg,color-mix(in srgb, #112233 50%, transparent) 0%,color-mix(in srgb, #abcdef 50%, transparent) 100%)')
     expect(css).toContain('radial-gradient(ellipse closest-side at center,#00ff00 0%,#0000ff 100%)')
+  })
+})
+
+function ruleFor(css: string, selector: string) {
+  const start = css.indexOf(`${selector}{`)
+  expect(start).toBeGreaterThanOrEqual(0)
+  return css.slice(start, css.indexOf('}', start) + 1)
+}
+
+describe('CSS export of paint, stroke, flow, text, and blur', () => {
+  it('fades only the image fill and leaves the node, stroke, and other fill alone', () => {
+    const document = blank('Image opacity')
+    document.schemaVersion = 31
+    const frame = node('rectangle', 0, 0, 80, 40)
+    const under = paint('#00ff00')
+    const image = paint('#fff', 'image')
+    image.opacity = 0.25
+    image.image = 'data:image/png;base64,iVBORw0KGgo='
+    frame.fills = [under, image]
+    frame.strokes = [{ ...stroke('#ff0000', 4), align: 'inside' }]
+    document.nodes = { [frame.id]: frame }
+    document.pages[0].children = [frame.id]
+    const result = exportDesignCode(document)
+    const rule = ruleFor(result.css, '#design-node-1')
+    expect(rule).toContain('opacity:1')
+    expect(rule).not.toContain('opacity:0.25')
+    expect(rule).toContain('-webkit-cross-fade(')
+    expect(rule).toContain(',75%)')
+    expect(rule).toContain('cross-fade(')
+    expect(rule).toContain(',25%)')
+    expect(rule).toContain('linear-gradient(#00ff00,#00ff00)')
+    expect(rule).not.toContain('color-mix(in srgb, #00ff00')
+    expect(rule).toContain('border:4px solid #ff0000')
+    expect(result.warnings.some(warning => warning.code === 'PAINT_COMPOSITING' && warning.nodeId === frame.id)).toBe(true)
+  })
+
+  it('places inside, center, and outside strokes on different sides of the box', () => {
+    const rules = (['inside', 'center', 'outside'] as const).map(align => {
+      const document = blank(align)
+      document.schemaVersion = 31
+      const rectangle = node('rectangle', 0, 0, 40, 40)
+      rectangle.fills = []
+      rectangle.strokes = [{ ...stroke('#ff0000', 4), align }]
+      document.nodes = { [rectangle.id]: rectangle }
+      document.pages[0].children = [rectangle.id]
+      return ruleFor(exportDesignCode(document).css, '#design-node-1')
+    })
+    expect(rules[0]).toContain('border:4px solid #ff0000')
+    expect(rules[0]).not.toContain('outline:')
+    expect(rules[1]).toContain('border:2px solid #ff0000')
+    expect(rules[1]).toContain('outline:2px solid #ff0000')
+    expect(rules[2]).toContain('outline:4px solid #ff0000')
+    expect(rules[2]).not.toContain('border:')
+    expect(new Set(rules).size).toBe(3)
+  })
+
+  it('reverses flex flow from stacking order and leaves grid in source order', () => {
+    const flow = (mode: 'horizontal' | 'vertical' | 'grid', layout: Record<string, unknown>) => {
+      const document = blank(mode)
+      document.schemaVersion = 31
+      const frame = node('frame', 0, 0, 120, 80)
+      frame.layout = { ...defaultLayout(), mode, padding: [0, 0, 0, 0], gap: 0, lineGap: 0, ...layout }
+      const first = node('rectangle', 0, 0, 10, 10)
+      const second = node('rectangle', 20, 0, 10, 10)
+      frame.children = [first.id, second.id]
+      document.nodes = { [frame.id]: frame, [first.id]: first, [second.id]: second }
+      document.pages[0].children = [frame.id]
+      return exportDesignCode(document).css
+    }
+    expect(flow('horizontal', { reverseFlow: true })).toContain('flex-direction:row-reverse')
+    expect(flow('vertical', { reverseFlow: true })).toContain('flex-direction:column-reverse')
+    expect(flow('horizontal', { stackingOrder: 'first-on-top' })).toContain('flex-direction:row-reverse')
+    const overridden = flow('horizontal', { reverseFlow: true, stackingOrder: 'last-on-top' })
+    expect(overridden).toContain('flex-direction:row;')
+    expect(overridden).not.toContain('row-reverse')
+    const grid = flow('grid', { reverseFlow: true, stackingOrder: 'first-on-top', columns: 2 })
+    expect(grid).toContain('display:grid')
+    expect(grid).not.toContain('flex-direction')
+    expect(grid).not.toContain('row-reverse')
+  })
+
+  it('writes italic, letter-spacing, and line-height on the text fragment', () => {
+    const document = blank('Runs')
+    document.schemaVersion = 31
+    const text = node('text', 0, 0, 80, 40)
+    text.fontSize = 16
+    text.text = 'Hello'
+    text.textStyle = { ...defaultTextStyle(), letterSpacing: 1, lineHeight: 1.5 }
+    text.textRuns = [{ start: 0, end: 5, italic: true, letterSpacing: 4, lineHeight: 2, fontSize: 20 }]
+    document.nodes = { [text.id]: text }
+    document.pages[0].children = [text.id]
+    const css = exportDesignCode(document).css
+    const nodeRule = ruleFor(css, '#design-node-1')
+    const runRule = ruleFor(css, '.design-node-1-run-0')
+    expect(nodeRule).toContain('letter-spacing:1px')
+    expect(nodeRule).toContain('line-height:1.5')
+    expect(runRule).toContain('font-size:20px')
+    expect(runRule).toContain('font-style:italic')
+    expect(runRule).toContain('letter-spacing:4px')
+    expect(runRule).toContain('line-height:2')
+  })
+
+  it('writes gaussian blur like layer blur and still omits a gradient blur', () => {
+    const exported = (kind: 'blur' | 'gaussian-blur', gradient: boolean) => {
+      const document = blank(kind)
+      document.schemaVersion = 31
+      const rectangle = node('rectangle', 0, 0, 80, 40)
+      const blur = effect(kind)
+      blur.radius = 6
+      if (gradient) blur.gradientBlur = {
+        start: [0, 0], end: [80, 40], startCount: 1, endCount: 1, smooth: false,
+        ...(kind === 'gaussian-blur' ? { sketch: { shape: 'linear' as const, ellipse: 0, stops: [{ offset: 0, strength: 0 }, { offset: 1, strength: 1 }] } } : {}),
+      }
+      rectangle.effects = [blur]
+      document.nodes = { [rectangle.id]: rectangle }
+      document.pages[0].children = [rectangle.id]
+      return exportDesignCode(document)
+    }
+    const plain = exported('blur', false)
+    const gaussian = exported('gaussian-blur', false)
+    expect(ruleFor(plain.css, '#design-node-1')).toContain('filter:blur(6px)')
+    expect(ruleFor(gaussian.css, '#design-node-1')).toContain('filter:blur(6px)')
+    expect(gaussian.warnings.some(warning => warning.code === 'EFFECT_APPROXIMATION')).toBe(true)
+    expect(gaussian.warnings.some(warning => warning.code === 'UNSUPPORTED_EFFECT')).toBe(false)
+    const ramped = exported('gaussian-blur', true)
+    expect(ramped.css).not.toContain('filter:')
+    expect(ramped.warnings.some(warning => warning.code === 'UNSUPPORTED_EFFECT' && warning.message.includes('gradient blur'))).toBe(true)
+  })
+
+  it('emits a shifted radial ellipse and omits one CSS cannot align', () => {
+    const exported = (transform: [number, number, number, number, number, number]) => {
+      const document = blank('Radial')
+      document.schemaVersion = 31
+      const rectangle = node('rectangle', 0, 0, 200, 80)
+      const radial = paint('#ff0000', 'radial')
+      radial.transform = transform
+      radial.stops = [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#0000ff' }]
+      rectangle.fills = [radial]
+      document.nodes = { [rectangle.id]: rectangle }
+      document.pages[0].children = [rectangle.id]
+      return exportDesignCode(document)
+    }
+    const shifted = exported([1, 0, 0, 1, -0.25, 0.1])
+    const rule = ruleFor(shifted.css, '#design-node-1')
+    expect(rule).toContain('radial-gradient(ellipse 50% 50% at 25% 60%,#ff0000 0%,#0000ff 100%)')
+    expect(rule).not.toContain('at center')
+    const skewed = exported([1, 0.3, 0.2, 1, 0, 0])
+    expect(ruleFor(skewed.css, '#design-node-1')).not.toContain('radial-gradient')
+    expect(skewed.warnings.some(warning => warning.code === 'RADIAL_TRANSFORM')).toBe(true)
   })
 })
 describe('native document roundtrip', () => {
