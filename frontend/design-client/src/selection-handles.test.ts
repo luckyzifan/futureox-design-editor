@@ -89,6 +89,22 @@ test('edge resize changes one local dimension and keeps opposite edge in place',
   expect(after.x).toBeCloseTo(fixed.x,9);expect(after.y).toBeCloseTo(fixed.y,9)
 })
 
+test('dragging a handle past the opposite edge mirrors that axis', () => {
+  const basis: Matrix = [1, 0, 0, 1, 0, 0]
+  const box = { x: 0, y: 0, width: 100, height: 50 }
+  const flipped = resizeInBasis(basis, box, { x: 100, y: 25 }, { x: -20, y: 25 }, 5, false, false, false)
+  expect(apply(flipped, { x: 0, y: 25 })).toEqual({ x: 0, y: 25 })
+  expect(apply(flipped, { x: 100, y: 25 }).x).toBeCloseTo(-20, 8)
+  expect(apply(flipped, { x: 100, y: 0 }).y).toBeCloseTo(0, 8)
+  expect(apply(flipped, { x: 100, y: 50 }).y).toBeCloseTo(50, 8)
+  const shrunk = resizeInBasis(basis, box, { x: 100, y: 25 }, { x: 0.2, y: 25 }, 5, false, false, false)
+  expect(apply(shrunk, { x: 100, y: 25 }).x).toBeCloseTo(1, 8)
+  const proportional = resizeInBasis(basis, box, { x: 100, y: 25 }, { x: -20, y: 25 }, 5, true, false, false)
+  expect(apply(proportional, { x: 100, y: 25 }).x).toBeCloseTo(-20, 8)
+  expect(apply(proportional, { x: 100, y: 0 }).y).toBeLessThan(25)
+  expect(apply(proportional, { x: 0, y: 0 }).x).toBeCloseTo(0, 8)
+})
+
 test('edge proportional shrinking and Alt center resize preserve their intended anchors',()=>{
   const basis:Matrix=[1,0,0,1,0,0],box={x:0,y:0,width:120,height:80}
   const scale=resizeInBasis(basis,box,{x:120,y:40},{x:60,y:40},5,true,false,false)

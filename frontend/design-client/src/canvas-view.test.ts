@@ -7,10 +7,12 @@ import {
   snapMove,
   zoomAt,
   resizeInBasis,
+  resizeSnapEnd,
   rotateNode,
   parentBounds,
   rotationDegrees,
 } from './canvas-view'
+import { createSmartGuidesIndex } from './canvas-smart-guides'
 import { figmaFixture } from './figma-fixtures'
 import { scene, apply, multiply, rotate } from './geometry'
 import { Editor } from './engine'
@@ -69,6 +71,69 @@ test('rotated resize preserves its local axes and opposite corner, with whole-pi
   expect(Math.hypot(next[2], next[3]) * 10).toBeCloseTo(16, 9)
   expect(Math.atan2(next[1], next[0])).toBeCloseTo((-17 * Math.PI) / 180, 10)
 })
+test('pixel snap keeps a crossed edge mirrored and at least one pixel', () => {
+  const basis = [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number]
+  const box = { x: 0, y: 0, width: 100, height: 50 }
+  const snapped = resizeInBasis(basis, box, { x: 100, y: 25 }, { x: -20.6, y: 25 }, 5, false, false, true)
+  expect(apply(snapped, { x: 0, y: 25 }).x).toBeCloseTo(0, 8)
+  expect(apply(snapped, { x: 100, y: 25 }).x).toBeCloseTo(-21, 8)
+  const held = resizeInBasis(basis, box, { x: 100, y: 25 }, { x: -0.2, y: 25 }, 5, false, false, true)
+  expect(apply(held, { x: 100, y: 25 }).x).toBeCloseTo(-1, 8)
+})
+
+test('resize snap moves the free edge, center, and anchored-center edge onto another object', () => {
+  const basis = [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number]
+  const box = { x: 0, y: 0, width: 50, height: 40 }
+  const query = (siblings: { x: number; y: number; width: number; height: number }[]) => {
+    const index = createSmartGuidesIndex(undefined, siblings)
+    expect(index).toBeDefined()
+    return {
+      index: index!,
+      ask: (end: { x: number; y: number }, corner = 5, aspect = false, center = false, start = { x: 50, y: 20 }) =>
+        resizeSnapEnd(basis, box, start, end, corner, aspect, center, 6, (moving, threshold) => index!.snap(moving, threshold)),
+    }
+  }
+  const edge = query([{ x: 100, y: 0, width: 40, height: 40 }])
+  const hit = edge.ask({ x: 96, y: 28 })
+  expect(hit.end.x).toBeCloseTo(100, 6)
+  expect(hit.end.y).toBeCloseTo(28, 6)
+  expect(hit.guides[0]?.position).toBe(100)
+  expect(hit.snapped).toEqual({ x: true, y: false })
+  const missed = edge.ask({ x: 90, y: 20 })
+  expect(missed.end).toEqual({ x: 90, y: 20 })
+  expect(missed.snapped).toEqual({ x: false, y: false })
+  const boundary = edge.ask({ x: 94, y: 20 })
+  expect(boundary.end.x).toBeCloseTo(94, 6)
+  expect(boundary.guides[0]).toBeNull()
+  edge.index.free()
+
+  const centered = query([{ x: 40, y: -100, width: 200, height: 20 }])
+  const centerHit = centered.ask({ x: 70, y: 20 })
+  expect(centerHit.end.x).toBeCloseTo(80, 6)
+  expect(centerHit.guides[0]?.position).toBe(40)
+  centered.index.free()
+
+  const alt = query([{ x: 100, y: 0, width: 40, height: 40 }])
+  const altHit = alt.ask({ x: 96, y: 20 }, 5, false, true)
+  expect(altHit.end.x).toBeCloseTo(100, 6)
+  const altMatrix = resizeInBasis(basis, box, { x: 50, y: 20 }, altHit.end, 5, false, true, false)
+  expect(apply(altMatrix, { x: 25, y: 20 }).x).toBeCloseTo(25, 6)
+  expect(apply(altMatrix, { x: 50, y: 20 }).x).toBeCloseTo(100, 6)
+  alt.index.free()
+
+  const offset = query([{ x: 100, y: 0, width: 10, height: 40 }])
+  const offsetHit = offset.ask({ x: 103.68, y: 20 }, 5, false, false, { x: 54, y: 20 })
+  expect(offsetHit.end.x).toBeCloseTo(108, 5)
+  const offsetMatrix = resizeInBasis(basis, box, { x: 54, y: 20 }, offsetHit.end, 5, false, false, false)
+  expect(apply(offsetMatrix, { x: 50, y: 20 }).x).toBeCloseTo(100, 5)
+  offset.index.free()
+
+  const turned = resizeSnapEnd(rotate(30), box, { x: 50, y: 20 }, { x: 96, y: 20 }, 5, false, false, 6,
+    () => { throw new Error('rotated resize does not query world snap') })
+  expect(turned.end).toEqual({ x: 96, y: 20 })
+  expect(turned.snapped).toEqual({ x: false, y: false })
+})
+
 test('zoom changes preserve the document point under the chosen anchor', () => {
   const v = { x: 30, y: 35, zoom: 0.75 },
     a = { x: 390, y: 310 },

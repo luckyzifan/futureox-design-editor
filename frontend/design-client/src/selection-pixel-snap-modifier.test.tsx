@@ -106,6 +106,71 @@ test('Control keeps pixel-grid snap while moving a layer', async () => {
   expect(editor.state.doc.nodes[moved.id].transform[5]).toBeCloseTo(8, 6)
 })
 
+test('dragging a handle past the opposite edge flips the layer and undo restores it', async () => {
+  const shape = node('rectangle', 0, 0, 100, 50)
+  await render([shape], { snap: false, snapPixels: false })
+  await act(async () => editor.select([shape.id]))
+  const edge = mount.querySelector('[data-testid="resize-edge-1"]')!
+  const before = editor.state.doc
+  await act(async () => pointer('pointerdown', 100, 25, {}, edge))
+  await act(async () => pointer('pointerup', -20, 25))
+  const layer = editor.state.doc.nodes[shape.id]
+  expect(layer.width).toBeCloseTo(20, 6)
+  expect(layer.height).toBeCloseTo(50, 6)
+  expect(layer.transform[0] * layer.transform[3] - layer.transform[1] * layer.transform[2]).toBeLessThan(0)
+  const bounds = editor.selectionBounds()
+  expect(bounds.x).toBeCloseTo(-20, 6)
+  expect(bounds.y).toBeCloseTo(0, 6)
+  expect(bounds.width).toBeCloseTo(20, 6)
+  expect(bounds.height).toBeCloseTo(50, 6)
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+})
+
+test('resizing a handle snaps its moving edge to another object and draws the guide', async () => {
+  const moving = node('rectangle', 0, 0, 50, 40)
+  const target = node('rectangle', 100, 0, 40, 40)
+  const frames: FrameRequestCallback[] = []
+  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { frames.push(fn); return frames.length })
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  await render([moving, target], { snap: true, snapPixels: false })
+  await act(async () => editor.select([moving.id]))
+  const edge = () => mount.querySelector('[data-testid="resize-edge-1"]')!
+  const before = editor.state.doc
+  await act(async () => pointer('pointerdown', 50, 20, {}, edge()))
+  await act(async () => pointer('pointermove', 96, 20))
+  await act(async () => { for (const fn of frames.splice(0)) fn(0) })
+  expect(editor.state.doc.nodes[moving.id].width).toBeCloseTo(100, 6)
+  expect(editor.state.doc.nodes[moving.id].transform[4]).toBeCloseTo(0, 6)
+  const guide = mount.querySelector('[data-testid="canvas-alignment-guide"]')
+  expect(guide?.getAttribute('data-axis')).toBe('x')
+  expect(Number(guide?.getAttribute('data-position'))).toBeCloseTo(100, 6)
+  await act(async () => pointer('pointerup', 96, 20))
+  expect(editor.state.doc.nodes[moving.id].width).toBeCloseTo(100, 6)
+  expect(editor.state.doc.nodes[target.id].transform[4]).toBeCloseTo(100, 6)
+  expect(mount.querySelector('[data-testid="canvas-alignment-guide"]')).toBeNull()
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+  await act(async () => pointer('pointerdown', 50, 20, { ctrlKey: true }, edge()))
+  await act(async () => pointer('pointerup', 96, 20, { ctrlKey: true }))
+  expect(editor.state.doc.nodes[moving.id].width).toBeCloseTo(96, 6)
+  expect(editor.state.doc.nodes[moving.id].transform[4]).toBeCloseTo(0, 6)
+})
+
+test('shift-resize snap keeps aspect while the dragged edge meets the target', async () => {
+  const moving = node('rectangle', 0, 0, 50, 40)
+  const target = node('rectangle', 100, 0, 40, 40)
+  await render([moving, target], { snap: true, snapPixels: false })
+  await act(async () => editor.select([moving.id]))
+  const edge = mount.querySelector('[data-testid="resize-edge-1"]')!
+  await act(async () => pointer('pointerdown', 50, 20, { shiftKey: true }, edge))
+  await act(async () => pointer('pointerup', 96, 20, { shiftKey: true }))
+  const layer = editor.state.doc.nodes[moving.id]
+  expect(layer.width).toBeCloseTo(100, 6)
+  expect(layer.height).toBeCloseTo(80, 6)
+  expect(layer.transform[4]).toBeCloseTo(0, 6)
+})
+
 test('Control still suspends object snap while pixel snap is off', async () => {
   const moving = node('rectangle', 0, 0, 50, 40)
   const target = node('rectangle', 100, 0, 40, 40)
