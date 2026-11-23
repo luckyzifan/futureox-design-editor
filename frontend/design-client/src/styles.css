@@ -2750,6 +2750,25 @@ html[data-reduced-motion=true] .animation-modal * {
   padding: 0 4px;
 }
 .editor-shell[data-ui-mode="figma"]:has(> .editor-header[data-inline-tabs]) { grid-template-rows: var(--editor-chrome-row) 0px minmax(0, 1fr) auto; }
+/* Figma ⌘\ / Ctrl\ hides the navigation bar, both sidebars and the toolbar.
+   ⇧⌘\ keeps the minimized layout, which brings the inspector back for a selection. */
+.editor-shell[data-ui-mode="figma"].chrome-hidden,
+.editor-shell[data-ui-mode="figma"].chrome-hidden.chrome-minimized,
+.editor-shell[data-ui-mode="figma"][data-window-controls="inset"].chrome-hidden,
+.editor-shell[data-ui-mode="figma"]:has(> .editor-header[data-inline-tabs]).chrome-hidden {
+  grid-template-columns: 0 0 minmax(0, 1fr) 0;
+  grid-template-rows: 0 0 minmax(0, 1fr) 0;
+}
+.editor-shell[data-ui-mode="figma"].chrome-hidden > .editor-header,
+.editor-shell[data-ui-mode="figma"].chrome-hidden > nav[data-workspace-tabs],
+.editor-shell[data-ui-mode="figma"].chrome-hidden .floating-toolbar,
+.editor-shell[data-ui-mode="figma"].chrome-hidden > footer,
+.editor-shell[data-ui-mode="figma"].chrome-hidden .canvas-panel-toggles,
+.editor-shell[data-ui-mode="figma"].chrome-hidden .adaptive-layers-shell,
+.editor-shell[data-ui-mode="figma"].chrome-hidden .properties-workspace,
+.editor-shell[data-ui-mode="figma"].chrome-hidden.design-agent-open .properties-workspace {
+  display: none;
+}
 .editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] { grid-row: 1; }
 .editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] .document-title { display: flex; flex: 0 1 auto; min-width: 0; gap: 4px; }
 .editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] .document-title input { max-width: 130px; min-width: 70px; }
