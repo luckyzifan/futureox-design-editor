@@ -286,7 +286,7 @@ test('a clipped opaque board follows retained tiles and fills the board instead 
   const items = [{ tile, active: true, layer: 0 }]
   const camera = { view: { x: 0, y: 0, zoom: 1 }, width: 400, height: 300 }
   const native = vi.fn(() => null)
-  const fill = vi.fn(() => true)
+  const fill = vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[3]>>(() => true)
   const movement = new PageTranslation(vi.fn(), native, undefined, fill)
   expect(movement.prepare(props, pageId, doc, items, doc, true)).toBe(false)
   expect(movement.prepare(props, pageId, doc, items, doc, true, false, camera)).toBe(true)
@@ -316,7 +316,7 @@ test('a clipped opaque board follows retained tiles and fills the board instead 
   const held = new PageTranslation(vi.fn(), native, undefined, fill)
   expect(held.prepare(props, pageId, doc, items, doc, true, false, camera)).toBe(true)
   held.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 40, 0] } })
-  const fail = fill.mock.calls.at(-1)![3] as () => void
+  const fail = fill.mock.calls.at(-1)![3]
   const committed = { ...doc, nodes: { ...doc.nodes, [board.id]: { ...board, transform: [1, 0, 0, 1, 40, 0] as typeof board.transform } } }
   held.control.end(committed)
   expect(held.handingOff).toBe(false)
