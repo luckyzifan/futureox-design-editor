@@ -27,6 +27,44 @@ fn compare(surface: &Surface, crop: Rect) {
     }
 }
 
+fn round_oracle(pixel: Pixel) -> [u8; 4] {
+    let alpha = pixel.0[3];
+    let rgb = if alpha <= 1e-10 {
+        [0.; 3]
+    } else {
+        [pixel.0[0] / alpha, pixel.0[1] / alpha, pixel.0[2] / alpha]
+    };
+    [rgb[0], rgb[1], rgb[2], alpha].map(|v| (v.clamp(0., 1.) * 255.).round() as u8)
+}
+
+#[test]
+fn straight_encode_matches_libm_round_on_ties_and_bit_patterns() {
+    let mut values = vec![
+        0., -0., 1., -1., 0.5, 255., 254.5, 1e-12, 1e-10, f32::MIN_POSITIVE,
+        f32::INFINITY, f32::NEG_INFINITY, f32::NAN, 1.0001, -0.25,
+    ];
+    for byte in 0..=255 {
+        let unit = byte as f32 / 255.;
+        values.push(unit);
+        values.push((byte as f32 + 0.5) / 255.);
+        values.push(f32::from_bits(unit.to_bits().wrapping_sub(1)));
+        values.push(f32::from_bits(unit.to_bits().wrapping_add(1)));
+    }
+    let mut state = 0x921d_3a47_u32;
+    for _ in 0..20_000 {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        values.push(f32::from_bits(state));
+    }
+    for alpha in values.iter().copied() {
+        for red in values.iter().step_by(17).copied() {
+            let pixel = Pixel([red * alpha, (1. - red) * alpha, 0.25 * alpha, alpha]);
+            assert_eq!(pixel.straight_rgba8(), round_oracle(pixel), "{pixel:?}");
+        }
+    }
+}
+
 #[test]
 fn contained_rows_and_outside_crops_match_original_coordinates() {
     for rect in [Rect::new(0, 0, 7, 5), Rect::new(-9, -6, 7, 5)] {
