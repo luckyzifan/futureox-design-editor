@@ -436,6 +436,19 @@ fn bool_at(v: &Value, key: &str) -> bool {
     v.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// Fill id for a symbol master's artboard background. It is not a style fill:
+/// Sketch draws it from `backgroundColor`, and instances include it only when
+/// `includeBackgroundColorInInstance` is set.
+pub(crate) const SKETCH_SYMBOL_BACKGROUND: &str = "sketch-symbol-background";
+
+fn sketch_flag(value: &Value) -> bool {
+    match value {
+        Value::Bool(flag) => *flag,
+        Value::Number(number) => number.as_u64() == Some(1),
+        _ => false,
+    }
+}
+
 /// Sketch 2026 writes `centerDashes` as a bool. Older files omit it, which
 /// keeps the historical uncentered dash. A 0/1 number is accepted as well.
 pub(crate) fn sketch_center_dashes(options: &Value) -> bool {
@@ -2639,6 +2652,22 @@ impl<'a> Importer<'a> {
             "symbolMaster" => {
                 if let Some(symbol_id) = layer.get("symbolID").and_then(Value::as_str) {
                     node.bindings.insert("symbolID".into(), symbol_id.into());
+                }
+                // Symbol-master backgrounds live beside style fills. Instances
+                // inherit that color only when the source asks them to.
+                if bool_at(layer, "hasBackgroundColor")
+                    && let Some(background) = layer.get("backgroundColor")
+                {
+                    let mut paint = solid_paint(background, 1., "normal", self.color_space);
+                    paint.id = SKETCH_SYMBOL_BACKGROUND.into();
+                    node.fills.insert(0, paint);
+                    node.bindings.insert("sketchSymbolBackground".into(), "true".into());
+                }
+                if let Some(include) = layer.get("includeBackgroundColorInInstance") {
+                    node.bindings.insert(
+                        "sketchIncludeBackgroundInInstance".into(),
+                        sketch_flag(include).to_string(),
+                    );
                 }
                 // P1-12 (22 号字典 §5): master overrideProperties carry the
                 // canOverride inventory, which the kernel component model has
@@ -6787,7 +6816,7 @@ fn export_layer_impl(
             .iter()
             .enumerate()
             .map(|(index, p)| -> Result<Option<Value>> {
-                if Some(index) == bitmap_paint { return Ok(None); }
+                if Some(index) == bitmap_paint || p.id == SKETCH_SYMBOL_BACKGROUND { return Ok(None); }
                 if p.kind == "diamond" {
                     // Sketch gradients: 1 linear, 2 radial, 3 angular — no
                     // diamond; radial is the nearest visual approximation.
@@ -7131,7 +7160,19 @@ fn export_layer_impl(
                         ),
                     );
                     layer.insert("allowsOverrides".into(), json!(true));
-                    layer.insert("includeBackgroundColorInInstance".into(), json!(true));
+                    let include_background = sketch_binding(doc, n, "sketchIncludeBackgroundInInstance")
+                        .is_none_or(|value| value == "true");
+                    layer.insert(
+                        "includeBackgroundColorInInstance".into(),
+                        json!(include_background),
+                    );
+                    if let Some(paint) = n.fills.iter().find(|paint| paint.id == SKETCH_SYMBOL_BACKGROUND) {
+                        layer.insert("hasBackgroundColor".into(), json!(paint.visible));
+                        layer.insert(
+                            "backgroundColor".into(),
+                            hex_to_rgba(&paint.color, paint.opacity, images.color_settings)?,
+                        );
+                    }
                     // P1-12: restore the archived canOverride inventory
                     // imported into bindings; a master authored kernel-side
                     // has none and exports the empty list.
