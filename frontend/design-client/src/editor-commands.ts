@@ -427,11 +427,15 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       case 'remove-stroke': {
         const fills = command === 'remove-fill'
         const stack = fills ? 'fills' : 'strokes'
-        const selection = fills ? editor.state.selection : editor.topSelection()
-        const ids = selection.filter(id => nodeHasRemovablePaint(editor.state.doc.nodes[id], stack))
+        // Official Figma edits every selected layer that owns the paint,
+        // including locked and hidden layers and a child selected with its
+        // parent. topSelection() is for structural edits: it drops those
+        // layers, so a property shortcut must use the selection itself.
+        // Unselected descendants stay untouched. No paint and no style
+        // reference means the document is not written.
+        const ids = editor.state.selection.filter(id => nodeHasRemovablePaint(editor.state.doc.nodes[id], stack))
         if (!ids.length) break
-        if (fills) editor.updateProperties(ids, node => clearStyleStack(node, stack), '去掉填充')
-        else editor.update(ids, node => clearStyleStack(node, stack), '去掉描边')
+        editor.updateProperties(ids, node => clearStyleStack(node, stack), fills ? '去掉填充' : '去掉描边')
         break
       }
       case 'flatten': await editor.flattenSelection(); break
