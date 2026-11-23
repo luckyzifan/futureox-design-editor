@@ -3239,7 +3239,7 @@ export function ProgressiveSurfaceImpl(
           right: 14,
           top: 'var(--kernel-status-top, 12px)',
           fontSize: 10,
-          color: failure ? '#bd3b54' : '#777c8e',
+          color: failure ? '#bd3b54' : 'var(--kernel-status-ink, #777c8e)',
           pointerEvents: 'auto',
           zIndex: 4,
         }}

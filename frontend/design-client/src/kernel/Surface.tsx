@@ -582,7 +582,7 @@ export function ReferenceSurface(
           right: 14,
           top: 'var(--kernel-status-top, 12px)',
           fontSize: 10,
-          color: error ? '#bd3b54' : '#777c8e',
+          color: error ? '#bd3b54' : 'var(--kernel-status-ink, #777c8e)',
           pointerEvents: 'none',
           zIndex: 4,
         }}

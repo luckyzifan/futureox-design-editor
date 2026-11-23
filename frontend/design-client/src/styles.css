@@ -2808,6 +2808,13 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell[data-ui-mode="figma"] .floating-toolbar .creation-tool-hint {
   bottom: calc(100% + 56px);
 }
+/* 11px tool name. #0d99ff is 2.99:1 and icon-selected #007be5 is 4.23:1 on
+   the white hint. #0768cf clears 4.5:1. The instruction stays muted. */
+.editor-shell[data-ui-mode="figma"] .creation-tool-hint b { color: #0768cf; }
+/* 10px checks. #9699a7 is 2.83:1 on white and 2.60:1 on #f5f5f5. */
+.editor-shell[data-ui-mode="figma"] .check-row { color: var(--workspace-muted); }
+/* 10px kernel status. #777c8e is 4.08:1 on the 94% white capsule. Error stays #bd3b54. */
+.editor-shell[data-ui-mode="figma"] .kernel-status:not(.error) { --kernel-status-ink: var(--workspace-muted); }
 .figma-toolbelt-mode {
   display: flex;
   gap: 2px;
@@ -2817,7 +2824,9 @@ html[data-reduced-motion=true] .animation-modal * {
   background: var(--workspace-field);
 }
 .floating-toolbar .figma-toolbelt-mode > button { width: 30px; height: 30px; padding: 0; }
-.figma-toolbelt-mode > [aria-checked="true"] { background: var(--workspace-panel); color: var(--workspace-accent); }
+/* Selected Design/Draw glyph. #0d99ff on the white panel is 2.99:1.
+   Official icon-selected #007be5 is 4.23:1 there. Unselected stays the text color. */
+.figma-toolbelt-mode > [aria-checked="true"] { background: var(--workspace-panel); color: #007be5; }
 .draw-pencil-tools {
   position: absolute;
   bottom: calc(100% + 8px);
