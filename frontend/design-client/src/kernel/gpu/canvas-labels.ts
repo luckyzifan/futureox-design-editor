@@ -1,7 +1,7 @@
 import type { CanvasCamera } from '../../canvas-camera'
 import type { Point } from '../../model'
 import { SELECTION_BLUE } from '../../selection-blue'
-import { SPACING_RED } from '../../canvas-measurements'
+import { DISTANCE_PILL_BASELINE_LEAD, DISTANCE_PILL_EXTRA_HEIGHT, DISTANCE_PILL_PAD_X, DISTANCE_PILL_RADIUS, SPACING_RED } from '../../canvas-measurements'
 import { CANVAS_CHROME_FONT } from '../../page-frame-chrome'
 
 export type CanvasLabel = {
@@ -21,12 +21,16 @@ function measureLabel(label:CanvasLabel,density:number,measure:OffscreenCanvasRe
   const font=`${label.size}px ${CANVAS_CHROME_FONT}`
   measure.font=font
   const metrics=measure.measureText(label.text)
-  const framed=label.frame==='pill'||label.frame==='accent'||label.frame==='measure'
-  const padX=label.chip?6:framed?8:label.halo?3:2
+  const measureFrame=label.frame==='measure'
+  const framed=label.frame==='pill'||label.frame==='accent'||measureFrame
+  const padX=label.chip?6:measureFrame?DISTANCE_PILL_PAD_X:framed?8:label.halo?3:2
   const padY=label.chip?3:padX
-  const left=padX+metrics.actualBoundingBoxLeft,top=padY+metrics.actualBoundingBoxAscent
-  const width=Math.max(1,Math.ceil((metrics.actualBoundingBoxLeft+metrics.actualBoundingBoxRight+padX*2)*density))
-  const height=Math.max(1,Math.ceil((metrics.actualBoundingBoxAscent+metrics.actualBoundingBoxDescent+padY*2)*density))
+  const left=padX+metrics.actualBoundingBoxLeft
+  const top=measureFrame?label.size+DISTANCE_PILL_BASELINE_LEAD:padY+metrics.actualBoundingBoxAscent
+  const cssW=metrics.actualBoundingBoxLeft+metrics.actualBoundingBoxRight+padX*2
+  const cssH=measureFrame?label.size+DISTANCE_PILL_EXTRA_HEIGHT:metrics.actualBoundingBoxAscent+metrics.actualBoundingBoxDescent+padY*2
+  const width=Math.max(1,Math.ceil(cssW*density))
+  const height=Math.max(1,Math.ceil(cssH*density))
   return{font,width,height,left,top,advance:metrics.width}
 }
 function fillChip(context:OffscreenCanvasRenderingContext2D,width:number,height:number,color:string) {
@@ -47,7 +51,7 @@ function rasterLabel(label:CanvasLabel,density:number,metrics:ReturnType<typeof 
   context.setTransform(density,0,0,density,0,0);context.font=font
   if(label.chip)fillChip(context,width/density,height/density,label.chip)
   else if(label.frame==='pill'||label.frame==='accent'||label.frame==='measure'){
-    const cssW=width/density,cssH=height/density,radius=Math.min(7,cssW/2,cssH/2),inset=.5
+    const cssW=width/density,cssH=height/density,radius=Math.min(label.frame==='measure'?DISTANCE_PILL_RADIUS:7,cssW/2,cssH/2),inset=.5
     context.beginPath()
     context.moveTo(inset+radius,inset)
     context.arcTo(cssW-inset,inset,cssW-inset,cssH-inset,radius)

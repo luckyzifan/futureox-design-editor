@@ -300,6 +300,7 @@ test('Alt draws red gap lines to the hovered layer, not through the selection', 
   const lines = [...mount.querySelectorAll('[data-testid="canvas-measurement"]')]
   expect(lines.length).toBeGreaterThan(0)
   expect(lines.every(line => line.querySelector('line')?.getAttribute('stroke') === SPACING_RED)).toBe(true)
+  expect(mount.querySelector('[data-testid="canvas-hover-outline"]')).toBeNull()
   const pills = lines.flatMap(line => [...line.querySelectorAll('[data-pill="measure"]')].map(node => node.textContent))
   expect(pills).toEqual(expect.arrayContaining(['50', '40']))
   await act(async () => key('Alt', { altKey: false }, 'keyup'))
