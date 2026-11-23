@@ -167,7 +167,7 @@ test('pose transport binds one native interaction owner and retains the physical
  send({id:2,lane:'interaction',method:'load_document',args:['x']});assert.equal(jobs.length,0)
  const packet={id:3,lane:'interaction',method:'compile_gpu_packet',args:['{}'],cancellable:true};send(packet)
  send({...packet,id:4});assert.equal(jobs.length,1);send({cancel:2});send({cancel:3});assert.deepEqual(cancels,[3])
- const packetBytes=new Uint8Array([3]);resolve({value:packetBytes});await new Promise(done=>setImmediate(done));assert.equal(sent.at(-1).value[0],3);assert.deepEqual(transfers.at(-1),[packetBytes.buffer])
+ const packetBytes=new Uint8Array([3]);resolve({value:packetBytes});await new Promise(done=>setImmediate(done));assert.equal(sent.at(-1).value[0],3);assert.deepEqual(transfers.at(-1),[]);assert.equal(packetBytes.byteLength,1)
  send(packet);assert.match(sent.at(-1).error,/Invalid/);assert.equal(jobs.length,1)
  const patch={id:5,lane:'interaction',method:'apply_document_patch_with_damage',args:['{"fields":{},"nodes":{}}']}
  send({...patch,lane:'canvas'});assert.match(sent.at(-1).error,/Invalid/)
@@ -176,6 +176,97 @@ test('pose transport binds one native interaction owner and retains the physical
  resolve({value:'paint damage'});await new Promise(done=>setImmediate(done));assert.equal(sent.at(-1).value,'paint damage');assert.deepEqual(transfers.at(-1),[])
  send({...packet,id:6});port.close();assert.equal(retired,1)
  const count=sent.length;resolve({value:new Uint8Array([6])});await new Promise(done=>setImmediate(done));assert.equal(sent.length,count)
+})
+
+test('an event-target pose port moves an exact buffer and keeps a pooled subview', async () => {
+  const { port1, port2 } = new MessageChannel()
+  const port = new EventEmitter()
+  const received = []
+  port2.on('message', value => received.push(value))
+  Object.assign(port, {
+    addEventListener: port1.addEventListener.bind(port1),
+    start() { port1.start() },
+    close() { this.emit('close'); port1.close(); port2.close() },
+    postMessage(value, transfer) { port1.postMessage(value, transfer) },
+  })
+  port1.on('message', data => port.emit('message', { data }))
+  let resolve
+  let requested
+  const worker = {
+    closed: false,
+    request() { requested(); return new Promise(done => { resolve = done }) },
+    cancel() {},
+  }
+  try {
+    bindPosePreparationPort(port, worker, () => true, () => {})
+    await new Promise(done => {
+      const check = () => received.length > 0 ? done() : setImmediate(check)
+      check()
+    })
+    assert.equal(received.shift().terminalReady, true)
+    const send = async (data, value) => {
+      const untilRequested = new Promise(done => { requested = done })
+      port2.postMessage(data)
+      await untilRequested
+      resolve({ value, compileStats: { compilations: 1 } })
+      await new Promise(done => {
+        const check = () => received.length > 0 ? done() : setImmediate(check)
+        check()
+      })
+      return received.shift()
+    }
+    const packet = new Uint8Array(256 * 1024)
+    packet[0] = 9
+    packet[packet.length - 1] = 8
+    const owned = packet.buffer
+    const reply = await send({ id: 1, lane: 'interaction', method: 'compile_gpu_packet', args: ['{}'] }, packet)
+    assert.equal(reply.value[0], 9)
+    assert.equal(reply.value[reply.value.byteLength - 1], 8)
+    assert.equal(reply.value.byteLength, 256 * 1024)
+    assert.equal(reply.compileStats.compilations, 1)
+    assert.equal(owned.byteLength, 0)
+    const slab = new Uint8Array(128)
+    slab[10] = 3
+    const view = slab.subarray(8, 12)
+    const copied = await send({ id: 2, lane: 'interaction', method: 'compile_gpu_packet', args: ['{}'] }, view)
+    assert.deepEqual([...copied.value], [0, 0, 3, 0])
+    assert.equal(slab.buffer.byteLength, 128)
+    assert.equal(slab[10], 3)
+    const text = await send({ id: 3, lane: 'interaction', method: 'apply_document_patch_with_damage', args: ['{"fields":{},"nodes":{}}'] }, 'paint damage')
+    assert.equal(text.value, 'paint damage')
+  } finally { port.close() }
+})
+
+test('a desktop pose port delivers an exact buffer when ArrayBuffer transfer is rejected', async () => {
+  const port = new EventEmitter()
+  const sent = []
+  let retired = 0
+  Object.assign(port, {
+    start() {},
+    close() { this.emit('close') },
+    postMessage(value, transfer) {
+      if (transfer?.some(item => item instanceof ArrayBuffer)) throw new TypeError('Port at index 0 is not a valid port')
+      sent.push(value)
+    },
+  })
+  let resolve
+  const worker = { closed: false, request() { return new Promise(done => { resolve = done }) }, cancel() {} }
+  bindPosePreparationPort(port, worker, () => true, () => { retired++ })
+  const packet = new Uint8Array(256 * 1024)
+  packet[0] = 9
+  packet[packet.length - 1] = 8
+  port.emit('message', { data: { id: 1, lane: 'interaction', method: 'compile_gpu_packet', args: ['{}'] } })
+  resolve({ value: packet, compileStats: { compilations: 1 } })
+  await new Promise(done => setImmediate(done))
+  assert.equal(retired, 0)
+  assert.equal(sent.some(message => message.fatal), false)
+  const reply = sent.at(-1)
+  assert.equal(reply.value[0], 9)
+  assert.equal(reply.value[reply.value.byteLength - 1], 8)
+  assert.equal(reply.value.byteLength, 256 * 1024)
+  assert.equal(reply.compileStats.compilations, 1)
+  assert.equal(packet.byteLength, 256 * 1024)
+  assert.equal(packet[0], 9)
 })
 
 test('pose packet buffers move across a message port without a second byte copy', async () => {

@@ -111,10 +111,9 @@ export class NativePreparation {
   return this.done
  }
 }
-/** Move an owned packet buffer to the renderer. A pooled Node Buffer stays
- * copied: transferring it would detach the pool. Exact Uint8Array replies,
- * which the FPR1 decoder allocates, cross this thread boundary without a
- * second byte copy. */
+/** Buffers an EventTarget port can move. A pooled Node Buffer stays copied:
+ * transferring it would detach the pool. MessagePortMain is not an EventTarget
+ * and rejects an ArrayBuffer transfer list, so the caller clones that reply. */
 export function poseReplyTransfers(reply) {
   const value = reply?.value
   if (!value || typeof value.byteLength !== 'number' || typeof value.byteOffset !== 'number') return []
@@ -147,7 +146,13 @@ export function bindPosePreparationPort(port,worker,current,retire){
    const reply=await worker.request({lane,method,args,
     ...(diagnostics?{diagnostics:{...diagnostics,preparationId:id}}:{}),
     ...(method==='compile_gpu_packet'&&cancellable?{cancellationId:id}:{})})
-   if(!closed&&current())port.postMessage({...reply,id},poseReplyTransfers(reply))
+   if(!closed&&current()){
+    const transfers=poseReplyTransfers(reply)
+    // MessagePortMain.postMessage throws "not a valid port" for an ArrayBuffer,
+    // and that throw retires the session. EventTarget ports can move the buffer.
+    if(transfers.length&&typeof port.addEventListener==='function')port.postMessage({...reply,id},transfers)
+    else port.postMessage({...reply,id})
+   }
   }catch(error){if(!closed&&current())fatal(error)}finally{active=0}
  })
  port.on('close',()=>{closed=true;if(active&&current())retire()})
