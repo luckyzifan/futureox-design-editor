@@ -28,6 +28,19 @@ fn sqlite_primary(error: &sqlx::Error) -> Option<i32> {
         .and_then(|code| code.parse::<i32>().ok())
         .map(|code| code & 0xff)
 }
+fn preflight_connect(error: sqlx::Error) -> BackendError {
+    // A read-only directory is SQLITE_READONLY_DIRECTORY (1544), whose primary
+    // code is still 8. That is a refused open, not a damaged database. A
+    // read-only mount is often SQLITE_CANTOPEN (14) for the same reason.
+    match sqlite_primary(&error) {
+        Some(8 | 13) => db(error),
+        Some(14) => BackendError::new(
+            "WORKSPACE_WRITE_FAILED",
+            format!("Local document storage could not be opened; this change was not written and the last committed revision is unchanged: {error}"),
+        ),
+        _ => corrupt(&error.to_string()),
+    }
+}
 fn db(error: sqlx::Error) -> BackendError {
     // Contention is retryable; preserve the same mutationId after an uncertain
     // response so a committed receipt is replayed instead of duplicating edits.
@@ -326,7 +339,7 @@ impl WorkspaceStore {
             .max_connections(1)
             .connect_with(options.clone().read_only(true))
             .await
-            .map_err(|e| corrupt(&e.to_string()))?;
+            .map_err(preflight_connect)?;
         let check = Self::inspect(&preflight).await;
         preflight.close().await;
         check?;
@@ -379,7 +392,7 @@ impl WorkspaceStore {
         let check: String = sqlx::query_scalar("PRAGMA quick_check")
             .fetch_one(pool)
             .await
-            .map_err(|e| corrupt(&e.to_string()))?;
+            .map_err(preflight_connect)?;
         if check != "ok" {
             return Err(corrupt(&check));
         }
@@ -1188,6 +1201,77 @@ mod autosave_recovery_tests {
         assert_eq!(current.entry.revision, saved.revision);
         assert_eq!(current.entry.hash, saved.hash);
         assert_eq!(current.document, document("consistent"));
+        reopened.close().await;
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn autosave_recovery_readonly_directory_is_not_corrupt() {
+        use std::os::unix::fs::PermissionsExt;
+        static N: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "futureox-sqlite-rodir-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let db = root.join("workspace.sqlite3");
+        let original = root.join("original-import.fig");
+        let original_bytes = b"user-import-bytes-must-stay";
+        fs::write(&original, original_bytes).unwrap();
+        let store = WorkspaceStore::open(&db).await.unwrap();
+        let saved = store
+            .commit(&document("consistent"), None, "create-rodir")
+            .await
+            .unwrap();
+        store.close().await;
+        let before = fs::read(&db).unwrap();
+        let mode = fs::metadata(&root).unwrap().permissions().mode();
+        struct RestoreMode(PathBuf, u32);
+        impl Drop for RestoreMode {
+            fn drop(&mut self) {
+                let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(self.1));
+            }
+        }
+        let _restore = RestoreMode(root.clone(), mode);
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o555)).unwrap();
+        let error = match WorkspaceStore::open(&db).await {
+            Ok(store) => {
+                let error = store
+                    .commit(&document("must-not-commit"), Some(saved.revision), "edit-rodir")
+                    .await
+                    .expect_err("a read-only directory must not report the edit as saved");
+                store.close().await;
+                error
+            }
+            Err(error) => error,
+        };
+        eprintln!(
+            "MEASURE readonly_directory status=error {}: {}",
+            error.code, error.message
+        );
+        assert_eq!(error.code, "WORKSPACE_WRITE_FAILED");
+        assert!(error.message.contains("not written"));
+        assert!(error.message.contains("unchanged"));
+        assert!(!error.message.contains("saved"));
+        let extended = error
+            .message
+            .split("code: ")
+            .nth(1)
+            .and_then(|value| value.split(')').next())
+            .and_then(|value| value.parse::<i32>().ok());
+        assert_eq!(extended.map(|code| code & 0xff), Some(8), "{}", error.message);
+        assert_eq!(fs::read(&original).unwrap(), original_bytes);
+        assert_eq!(fs::read(&db).unwrap(), before);
+        drop(_restore);
+        let reopened = WorkspaceStore::open(&db).await.unwrap();
+        let current = reopened.read(ID, None).await.unwrap();
+        assert_eq!(current.entry.revision, saved.revision);
+        assert_eq!(current.entry.hash, saved.hash);
+        assert_eq!(current.document, document("consistent"));
+        assert_eq!(fs::read(&original).unwrap(), original_bytes);
         reopened.close().await;
         let _ = fs::remove_dir_all(&root);
     }

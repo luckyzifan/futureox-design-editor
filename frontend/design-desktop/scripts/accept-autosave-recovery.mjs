@@ -23,6 +23,7 @@ export const EXPECTED_RECOVERY_TESTS = [
   'autosave_recovery_synced_journal_next_reopens_edit',
   'autosave_recovery_source_write_denied_keeps_original',
   'autosave_recovery_sqlite_readonly_is_not_saved',
+  'autosave_recovery_readonly_directory_is_not_corrupt',
   'autosave_recovery_synced_temp_reopens_without_touching_import',
   'autosave_recovery_killed_process_reopens_last_commit',
 ]
@@ -57,7 +58,7 @@ export function buildReport({ cargo, releasePackagePresent = false, platform = p
     },
     {
       id: 'storage_full_or_write_failure',
-      evidence: 'autosave_recovery_storage_full_preserves_original_and_is_not_saved, autosave_recovery_sqlite_storage_full_keeps_last_commit, autosave_recovery_sqlite_readonly_is_not_saved, autosave_recovery_source_write_denied_keeps_original, autosave_recovery_checkpoint_refresh_failure_reopens_last_journal, and autosave_recovery_readonly_and_leftover_temp_keep_import_and_recovery',
+      evidence: 'autosave_recovery_storage_full_preserves_original_and_is_not_saved, autosave_recovery_sqlite_storage_full_keeps_last_commit, autosave_recovery_sqlite_readonly_is_not_saved, autosave_recovery_readonly_directory_is_not_corrupt, autosave_recovery_source_write_denied_keeps_original, autosave_recovery_checkpoint_refresh_failure_reopens_last_journal, and autosave_recovery_readonly_and_leftover_temp_keep_import_and_recovery',
       status: unitStatus,
       scope: 'simulated_backend',
     },
