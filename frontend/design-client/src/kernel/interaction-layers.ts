@@ -16,6 +16,7 @@ export type InteractionInput = { sequence:number; at:number; guides?:readonly im
 export type GpuMoveControl = {
   /** Release coordinates are flushed; this is only a preview priority hint. */
   releaseInput?(gesture?:'move'|'rotate'):void
+  prioritizeClippedRelease?(): void
   isActive(): boolean
   /** The committed translation of an isolated board at this exact camera. */
   boardCommit?(document: DesignDocument, pageId: string, camera: import('./clipped-board-drag').BoardViewport): boolean

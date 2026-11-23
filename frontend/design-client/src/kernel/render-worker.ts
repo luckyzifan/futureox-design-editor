@@ -1,3 +1,4 @@
+import { sameBoardViewport } from './clipped-board-drag'
 import { settledPoseDamage } from './interaction-pose-damage'
 import { admitAction, admitPreparedTile } from './zoom-refine-schedule'
 import { equalValue } from '../document-patch'
@@ -409,8 +410,12 @@ function yieldPreviewTask() {
   })
 }
 const queue = new RenderWorkQueue()
-type ResidentPose={terminal?:boolean;slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
-type PoseSession={pageId:string;phasePixels?:ClippedPhaseReplay;phaseStarted?:boolean;phaseInputClosed?:boolean;phaseAnchorsDisabled?:boolean;phaseCommit?:{ transform: Matrix; texture: object };renderedRoot?:RenderedRootPose;canvasOwner?:object;baseFill?:{x:number;y:number;width:number;height:number};softEffectPreview?: boolean;bitmapPreviewOnly?:boolean;reuse?:ResidentPoseReuse;nativePosePending?:boolean;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
+type ResidentPose={terminal?:boolean;committed?:boolean;slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
+type CapturedClippedRelease = {
+  slot:number; texture:object; driver:Driver; frame:NonNullable<typeof displayFrame>;
+  document:DesignDocument; contract:string;
+}
+type PoseSession={pageId:string;capturedRelease?:CapturedClippedRelease;phasePixels?:ClippedPhaseReplay;phaseStarted?:boolean;phaseInputClosed?:boolean;phaseAnchorsDisabled?:boolean;phaseCommit?:{ transform: Matrix; texture: object };renderedRoot?:RenderedRootPose;canvasOwner?:object;baseFill?:{x:number;y:number;width:number;height:number};softEffectPreview?: boolean;bitmapPreviewOnly?:boolean;reuse?:ResidentPoseReuse;nativePosePending?:boolean;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
   origins:ReadonlyMap<string,readonly[number,number]>;
   patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;clippedBoard?:boolean;window:import('./gpu/types').Rect;options:string;terminalOptions?:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
@@ -593,6 +598,29 @@ function replayClippedPose(session: PoseSession, pose: ResidentPose, started=per
   return true
 }
 
+function clippedReleaseContract(options:Record<string,unknown>) {
+  // Curve packing and the request for background metadata do not enter the
+  // painter. Normalize the disabled checkerboard spelling across callers.
+  const {clippedPoseEncoding:_encoding,gpuPageBackground:_background,...render}=options
+  return pixelSourceContract({...render,checkerboard:render.checkerboard??false})
+}
+function nativeClippedViewport(scene:GpuScene,frame:NonNullable<typeof displayFrame>) {
+  const output=scene.output
+  return !!output && !scene.resolve && !scene.presentation && !scene.colorManagement &&
+    !scene.transparent && !scene.checkerboard && !scene.grid && !scene.softwareRaster &&
+    !scene.displayFilters && !scene.displayImageSource && !scene.displayMaterialSource &&
+    !scene.displayTentRadius && !scene.linearRetainedCapture && !scene.gestureSoftEffects &&
+    !scene.interactionLocalFootprint && !scene.interactionFixedMask &&
+    frame.view.zoom*frame.dpr===scene.view.zoom &&
+    scene.view.x-frame.view.x*frame.dpr===output.x && scene.view.y-frame.view.y*frame.dpr===output.y &&
+    frame.width*frame.dpr===output.w && frame.height*frame.dpr===output.h
+}
+function retireCapturedClippedRelease(session:PoseSession) {
+  const capture=session.capturedRelease
+  session.capturedRelease=undefined
+  if(capture)capture.driver.releasePresented?.([capture.slot])
+}
+
 // While an old pose prepares or uses the GPU, the release input can revoke
 // obsolete preparation or use the idle CPU lane to prepare one fresh packet.
 let prioritizeTerminalPose: ((next: ResidentPose) => void) | undefined
@@ -626,14 +654,9 @@ function schedulePose(){
   void queue.run(async()=>{
     let runningPose: ResidentPose | undefined
     type Advance={pose:ResidentPose; transforms:ResidentPose['transforms']; sequence:number; session:PoseSession; kernel:RenderKernel; previous:Record<string,Matrix>; mutated:boolean; motion?:AbortController}
-    let advance:Advance|undefined
+    let advance:Advance|undefined, displacedAbsolutePose:Advance|undefined
     const ahead=new PrepareAhead<{packet:Awaited<ReturnType<RenderKernel['prepare_gpu_scene']>>|undefined; compileMs:number}>()
-    const discardAdvance=async()=>{
-      if (!advance) return
-      const old=advance;advance=undefined
-      old.motion?.abort()
-      await ahead.drain()
-      if (!old.mutated) return
+    const restoreAdvance=async(old:Advance)=>{
       // No other CPU mutation can enter this queue until the abandoned move
       // is drained. Restore the pre-advance state, including on stop/rebase.
       try { if (await old.kernel.apply_interaction_transforms(JSON.stringify(old.previous))) return } catch { /* reload the last published state */ }
@@ -643,6 +666,28 @@ function schedulePose(){
       lane.synchronizedInteractionDocument=undefined; lane.compiledScene=undefined
       synchronizedAuthored.delete('interaction')
       if (poseSession===old.session) rebasePose(old.pose)
+    }
+    const discardAdvance=async(replacement?:ResidentPose)=>{
+      if (!advance) return
+      const old=advance;advance=undefined
+      old.motion?.abort()
+      await ahead.drain()
+      if (!old.mutated) return
+      const id=old.session.scene.interactionSelection?.[0], transform=id&&replacement?.transforms[id]
+      if (import.meta.env.VITE_DESIGN_CLIPPED_ABSOLUTE_RELEASE === '1' && replacement?.terminal && old.motion &&
+          !displacedAbsolutePose && old.session===poseSession && !old.session.stopped &&
+          old.session.clippedBoard && old.session.native && old.session.fixedWindow && old.session.patch &&
+          newerPoseDisposition(old.pose,replacement)!=='none' && id && Object.keys(replacement.transforms).length===1 &&
+          Array.isArray(transform) && transform.length===6 && transform.every(Number.isFinite) &&
+          transform.slice(0,4).every((value,i)=>value===old.session.baseDocument.nodes[id]?.transform[i]) &&
+          !old.session.phasePixels?.find(transform)) {
+        // The next request overwrites the entire absolute pose. Keep a
+        // rollback receipt until that mutation has really been accepted.
+        displacedAbsolutePose=old
+        old.session.nativePosePending=true
+        return
+      }
+      await restoreAdvance(old)
     }
     // One admitted motion can finish while the mailbox keeps accepting newer
     // input. A released or replaced owner can still supersede that work.
@@ -664,7 +709,7 @@ function schedulePose(){
         if (pendingPose === pose) pendingPose = undefined
         runningPose=pose
         const session=poseSession
-        if (advance && (advance.pose!==pose || advance.session!==session || session?.stopped)) await discardAdvance()
+        if (advance && (advance.pose!==pose || advance.session!==session || session?.stopped)) await discardAdvance(pose)
         if(!session||session!==poseSession||session.stopped||session.slot!==pose.slot||!gpu?.driver.replacePresented)continue
         let terminalMaySupersede=!!session.scene.interactionLocalFootprint
         const current=()=>poseSession===session&&!session.stopped&&!session.controller.signal.aborted &&
@@ -854,7 +899,12 @@ const apply=()=>kernel.apply_interaction_transforms(JSON.stringify(renderTransfo
             // to the existing worker. Returning the entire packet through
             // the editor event loop delays the next visible pose.
             const transport = direct ?? preparation
-            if(!await (transport ? transport.withPoseTransport(apply) : apply())){
+            const applied=await (transport ? transport.withPoseTransport(apply) : apply())
+            if(applied && displacedAbsolutePose?.kernel===kernel && displacedAbsolutePose.session===session) {
+              displacedAbsolutePose=undefined
+              terminalDiagnostics.record('cache',{pageCommitStage:3,pageCommitReason:9,inputSequence:pose.input.sequence})
+            }
+            if(!applied){
               if(!viewportPatch){rebasePose(pose);break}
               if(!current())continue
               // A Sketch mask or derived ancestor can reject the transform
@@ -934,7 +984,7 @@ const terminal = pose.terminal && terminalOptions
           // pointers keep normal sampling progress and cannot starve rendering.
           if(disposition==='changed')continue
           if(disposition==='same'&&ending){
-            pose.input=ending.input;pose.terminal=true;pendingPose=undefined
+pose.input=ending.input;pose.terminal=true;pose.committed=ending.committed;pendingPose=undefined
             // A pose that began as a native preview acquires its document
             // when the matching pointer-up turns it into the terminal pose.
             if (!session.patch && !document) document = authoredPose()
@@ -947,7 +997,14 @@ const terminal = pose.terminal && terminalOptions
         if(bitmapRepairScene && pose.terminal) next={...next,nodes:bitmapRepairScene.nodes,
           interactionRetained:false,nativeInteraction:false,repairOutput:true}
         next.gestureSoftEffects = session.softEffectPreview === true && !pose.terminal
-        next.queuedClippedMotion = clippedTranslation && !pose.terminal &&
+        const releaseFrame = import.meta.env.VITE_DESIGN_CLIPPED_DIRECT_RELEASE === '1' &&
+          clippedTranslation && pose.terminal && pose.committed && !movedForCoverage &&
+          session.patch && displayFrame && sameDisplay && nativeClippedViewport(next,displayFrame) &&
+          gpu.driver.presentedContentToken && !gpu.driver.displayMath ? displayFrame : undefined
+        // The raw terminal texture is consumed by the same device queue.
+        // The normal transient/scratch/periodic fences and the actual window
+        // presentation fence still apply. No intermediate live bitmap is owed.
+        next.queuedClippedMotion = clippedTranslation && (!pose.terminal || !!releaseFrame) &&
           !next.gestureSoftEffects && !!gpu.driver.waitForSubmittedWork
         const visible=innerShadowContentWindow(session,next,window,ids)
         // Canvas repair rounds damage outwards and samples integer neighbours.
@@ -1038,7 +1095,29 @@ if (bitmapTerminal || clippedTranslation) prepareTerminal?.()
           const supersededByReplay = !!session.renderedRoot && !pose.terminal && session.input?.owner === pose.input.owner &&
             (session.input?.sequence ?? 0) > pose.input.sequence
           next.gestureSoftEffects = result.gestureBlurPixels > 0
-if (phasePixels && (!session.phaseInputClosed && !pose.terminal || movedForCoverage) &&
+if (releaseFrame && displayFrame && nativeClippedViewport(next,displayFrame) &&
+              sameBoardViewport(releaseFrame,displayFrame)) {
+            const texture=gpu.driver.presentedContentToken?.(result.gpuTile)
+            if (texture) {
+              retireCapturedClippedRelease(session)
+              const id=ids[0],root=session.baseDocument.nodes[id]
+              const document=applyDocumentPatch(session.baseDocument,{
+                fields:{},nodes:{[id]:{...root,transform:[...pose.transforms[id]] as Matrix}},
+              })
+              const capture:CapturedClippedRelease={slot:result.gpuTile,texture,driver:gpu.driver,frame:releaseFrame,
+                document,contract:clippedReleaseContract(JSON.parse(session.options))}
+              session.capturedRelease=capture
+              session.controller.signal.addEventListener('abort',()=>{
+                if(session.capturedRelease===capture)retireCapturedClippedRelease(session)
+              },{once:true})
+              terminalDiagnostics.record('cache',{pageCommitStage:3,pageCommitReason:8,inputSequence:pose.input.sequence,
+                compileMs:poseCompileMs,graphMs:result.graphMs,finishMs:result.finishMs,scenePacketBytes:sceneUpdateBytes})
+              // Leave the visible slot and its chrome basis on the last
+              // accepted pose until the canvas lane adopts this exact texture.
+              continue
+            }
+          }
+          if (phasePixels && (!session.phaseInputClosed && !pose.terminal || movedForCoverage) &&
               !next.gestureSoftEffects && phasePixels.sameViewport(displayFrame))
             phasePixels.record(result.gpuTile,renderTransforms[ids[0]])
           if (supersededByReplay || movedForCoverage) gpu.driver.releasePresented?.([result.gpuTile])
@@ -1112,7 +1191,13 @@ if(session.patch)session.patch.accept(next,renderTransforms)
       // just like a raster failure so input never waits for an impossible ACK.
       if(runningPose && poseSession?.slot === runningPose.slot && !poseSession.stopped)rebasePose(runningPose)
       if(import.meta.env.DEV)console.warn('DESIGN_POSE',error)
-    }finally{prioritizeTerminalPose=undefined;await discardAdvance();poseQueued=false;if(pendingPose)schedulePose()}
+    }finally{
+      prioritizeTerminalPose=undefined
+      await discardAdvance()
+      if(displacedAbsolutePose)await restoreAdvance(displacedAbsolutePose)
+      poseQueued=false
+      if(pendingPose)schedulePose()
+    }
   },1)
 }
 self.onmessage = (e) => {
@@ -1293,7 +1378,8 @@ const driver = gpu?.driver
       if (heldBitmapViewport?.session === poseSession &&
           request.input.sequence > (heldBitmapViewport.frame.input?.sequence ?? 0)) resumeBitmapViewport()
       const session=poseSession
-      if (request.terminal) session.phaseInputClosed = true
+      if (session.capturedRelease)retireCapturedClippedRelease(session)
+      if (request.terminal) { session.phaseInputClosed = true; request.committed=true }
       else if (!pendingPose?.terminal && !waitingForPoseSubmission(request)) {
         try {
           // Leave one queued miss available to warm that phase. It may
@@ -1304,7 +1390,9 @@ const driver = gpu?.driver
           return
         }
       }
-      if(pendingPose?.terminal && terminalPoseDisposition(pendingPose,request)==='same') pendingPose.input=request.input
+      if(pendingPose?.terminal && terminalPoseDisposition(pendingPose,request)==='same'){
+        pendingPose.input=request.input;pendingPose.committed ||= request.committed
+      }
       else pendingPose=request
       if(pendingPose!.terminal){
         prioritizeTerminalPose?.(pendingPose!)
@@ -2062,6 +2150,31 @@ const overviewBitmapCommit = bitmapViewportCommit && !!displayFrame && allowsRed
             const clippedBitmapRepair = overviewBitmapCommit && settledPose?.fixedWindow && !settledPose.affine &&
               !!priorRepairOwner && !!gpu?.driver.beginViewportRepair && paintDamage &&
               viewportDamage(paintDamage,renderOptions.view,renderOptions.width,renderOptions.height)
+            const release=settledPose?.capturedRelease
+            if (release && settledPose && channel==='canvas' && request.documentPatch && !tileViewport.length &&
+                renderIntent==='canvas' && backend==='webgpu' && executionPolicy.desktopFullMath &&
+                !request.readback && !request.png && !exportFormat && !renderOptions.exportRegion && !renderOptions.animation &&
+                !renderOptions.grid && !renderOptions.checkerboard && !renderOptions.pixelPreview &&
+                !canvasDisplayFilters && !canvasMath && !canvasTentRadius && !canvasImageSource && !canvasMaterialSource &&
+                laneState.interactionDocument && displayFrame && sameBoardViewport(release.frame,displayFrame) &&
+                renderOptions.view.zoom===release.frame.view.zoom*release.frame.dpr &&
+                Number.isSafeInteger(renderOptions.view.x-release.frame.view.x*release.frame.dpr) &&
+                Number.isSafeInteger(renderOptions.view.y-release.frame.view.y*release.frame.dpr) &&
+                renderOptions.width===release.frame.width*release.frame.dpr && renderOptions.height===release.frame.height*release.frame.dpr &&
+                release.contract===clippedReleaseContract(renderOptions) &&
+                gpu?.driver===release.driver && !release.driver.lost &&
+                release.texture===release.driver.presentedContentToken?.(release.slot) &&
+                equalValue(laneState.interactionDocument,release.document)) {
+              settledPose.capturedRelease=undefined
+              const {view,dpr}=release.frame
+              self.postMessage({id:request.id,tile:{key:`clipped-release:${laneState.loadedRevision}:${release.slot}`,
+                x:-view.x*dpr,y:-view.y*dpr,width:renderOptions.width,height:renderOptions.height,zoom:view.zoom*dpr,
+                gutter:0,committedViewport:true,viewportPreview:true,gpuTile:release.slot,backend,
+                description:'native clipped release viewport',cached:false}})
+              terminalDiagnostics.record('cache',{pageCommitStage:3,pageCommitReason:10,requestId:request.id})
+              self.postMessage({id:request.id,backend,milliseconds:performance.now()-start,compileMs:0,loadMs,retainedCommit:true})
+              return
+            }
             const exactPhaseCommit = settledPose?.phaseCommit &&
               settledPose.phaseCommit.texture === gpu?.driver.presentedContentToken?.(settledPose.slot) &&
               settledPose.phasePixels?.sameViewport(displayFrame) ? settledPose.phaseCommit : undefined

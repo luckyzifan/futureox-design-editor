@@ -298,6 +298,10 @@ export class InteractionRenderer {
     private readonly allowIdleWarm = false, poseDiagnostics?:PoseDiagnostics, private readonly handoffTrace:HandoffTrace=createHandoffTrace()) {
     this.poseLog=poseDiagnostics??createPoseDiagnostics(this.interactionOwner)
     this.control = {
+      prioritizeClippedRelease:()=>{
+        const resident=this.resident
+        if (resident && this.useClippedPoseStartup(resident))this.control.releaseInput?.('move')
+      },
       releaseInput:gesture=>{
         const r=this.resident
         if(gesture==='rotate' && (!r?.affine || !exactInnerShadowGesture(r)))return

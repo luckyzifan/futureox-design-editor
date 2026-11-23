@@ -3528,6 +3528,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         modifiers.ctrl !== e.ctrlKey || modifiers.meta !== e.metaKey)
       if (d.kind !== 'create' && (d.kind === 'move' || release.x !== last.x || release.y !== last.y ||
         (changedModifiers && d.sampledMovement))) move(e)
+      if (d.kind==='move' && import.meta.env.VITE_DESIGN_CLIPPED_EARLY_RELEASE === '1')
+        gpuMove.current?.prioritizeClippedRelease?.()
       const pending = pendingBoardMove.current
       if (pending) {
         pendingBoardMove.current = null; retainedMove.current?.restore()
