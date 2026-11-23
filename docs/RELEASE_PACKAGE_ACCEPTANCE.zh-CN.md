@@ -38,7 +38,7 @@ node frontend/design-desktop/scripts/release-desktop-session.mjs \
   --verification=/absolute/release-verification.json
 ```
 
-这个包若没有 `--desktop-acceptance-profile`，脚本会把 `HOME` 和 `XDG_CONFIG_HOME` 指到验收目录，并先写入「打开原默认工作区」会留下的选择记录，再从「打开设计文件」进入。有验收配置钩子的包仍走原来的配置目录。
+这个包若没有 `--desktop-acceptance-profile`，脚本会把 `HOME` 和 `XDG_CONFIG_HOME` 指到验收目录，并先写入「打开原默认工作区」会留下的选择记录，再从「打开设计文件」进入。Linux 上如果环境里还没有 `XAUTHORITY`，脚本把当前家目录里已有的 `.Xauthority` 绝对路径放进 `XAUTHORITY`。cookie 不复制进验收目录，用户数据仍留在私有家目录。有验收配置钩子的包仍走原来的配置目录。
 
 在 macOS 上，已发布的 DMG 也可执行同一套桌面验收。
 
@@ -291,3 +291,45 @@ node frontend/design-desktop/scripts/release-component-inventory.mjs \
 ## 随包资源标识（#264）
 
 打包入口在 staging 内写入 `resource-list.json`，`verify-package.mjs` 核对包内实际字节。组件清单的 `packageResources` 同时记录 JS/WASM/native 的路径和hash。`formalRelease` 仍为 false，签名仍为 `not_run`；目录哈希、资源列表和已安装应用会话属于不同的证据。
+
+## 2026-11-23 当前 main 的 Linux 包
+
+源提交 `b6fbbd288c1f1358e4641bceba5377f5438e05f0`。主机是 linux x64。会话报告把 macOS 签名公证和 Windows Authenticode 标成 `blocked`，因为这台机器没有执行这两项；验收记录记为 `NOT_RUN`。`.dmg`、`.pkg`、`.msi`、`.exe`、`.rpm` 记为 `NOT_RUN`。下面两次启动都带 `--core-cpu-only`，硬件 GPU 记为 `NOT_RUN`。`releaseAcceptance` 保持 `not_closed`。
+
+### 当前源码的 package:local 目录
+
+在 `frontend/design-desktop` 执行 `bun run package:local`。它依次运行 `node scripts/build.mjs --release`、`node scripts/package.mjs --local` 和 `node scripts/verify-package.mjs --local`。宿主工具链是 Node v22.23.4、Bun 1.4.5、rustc 1.99.1、Electron 44.7.0、packager 20.3.0。`verify-package --local` 退出码 0。产物目录是 `frontend/design-desktop/release/local/futureox-desgin-linux-x64`。包内 `resource-list.json` 的 profile 是 `release`，`formalRelease` 是 false，`signature` 是 `not_run`。
+
+目录身份 SHA-256 `b7375331b567662438881c1c5b0433b27a219a72fbfae94f6f048097c5e88003`，616 个普通文件。安装副本在会话前后哈希相同。`app.asar` SHA-256 `6be6b366663129c6f3385e8add40d5ff72b5982b6c7675b390d4b695374bcfae`。sidecar SHA-256 `4f375d058aae03bbe7b3393ea42348710aea78818ee00883c7f972fb55e106c7`。
+
+```bash
+node frontend/design-desktop/scripts/release-desktop-session.mjs \
+  --package=/absolute/release/local/futureox-desgin-linux-x64 \
+  --verification=/absolute/release/local/package-verification.json
+```
+
+退出码 0。`packageFlow` 是 `executed_unsigned_release`。安装方式是 `directory_copy`。打开方式是启动参数里的 `.fd`。用户数据在验收配置目录。Electron 44.7.0，Chromium 152.0.7977.130。渲染进程 sandbox、contextIsolation、webSecurity 为真，nodeIntegration 为假，`isPackaged` 为真。Chromium sandbox 保持开启。
+
+只读原件副本 SHA-256 `19c5306e4eb304e20288eb13d6caba11be4e63dc6e24f0d084da93d82bdbf66d`。仓库原件和副本在会话前后都不变。文档名是 `Futureox / original F-D brand icon`，3 个图层。缩放从 1 到 1.25。名称加上 `acceptance` 后撤销回原名。状态为「已自动保存到工作副本」。关闭后用同一个验收配置重开，名称和图层键相同。原生导出先拒绝原件路径，再写出独立 `.fd`。包内 sidecar 打开该文件，魔数 `FXDK`，内容哈希与只读原件相同，路径不同。打开记录里的 `data-renderer` 是 null。
+
+安装器记录是目录复制。这个目录包仍然不是正式签名发布验收。
+
+### 已发布的 v0.0.0.1 linux deb
+
+同一台机器用当前脚本安装已发布的 `futureox-design-0.0.0.1-linux-x64.deb`。deb SHA-256 是 `092798551707d6c4016127afcded7404a37ada975a06262ae3b93a0877ff300c`，与 `SHA256SUMS.txt` 一致。发布记录绑定的源提交是 `58f0d7542fb7e7bfcc4ab48fecf82b96727b7ea0`。
+
+这个包没有验收配置钩子，脚本把 `HOME` 指到私有目录。第一次启动时环境里没有 `XAUTHORITY`，私有家目录里也没有 `.Xauthority`。进程报 `Authorization required, but no authorization protocol specified`，随后报缺少 X server。那一次 `packageFlow` 是 `not_launched`，桌面步骤是 `not_run`，`confirmedRuntimeFault` 是 false。
+
+脚本改为把当前家目录里已有 `.Xauthority` 的绝对路径放进 `XAUTHORITY` 后，同一份 deb 再跑了一次。cookie 留在原来的文件，验收目录里没有复制品。用户数据在私有家目录下的 `.config/futureox-desgin`，真实家目录是 `/home/ubuntu`。
+
+退出码 0。`packageFlow` 是 `executed_unsigned_release`，`releaseAcceptance` 是 `not_closed`，`signature` 是 `not_run`，`formalRelease` 是 false。
+
+- 安装后的目录身份 SHA-256 `7482de5c607a93ee6d92953b15421ae71ae608035615a309ee86444f4c1867d5`，568 个普通文件。会话前后相同，且与 deb 哈希不同
+- 安装位置是 `dpkg --root` 下的 `opt/futureox-desgin/futureox-desgin`。脚本仍写入空的软件包数据库，并使用 `--force-depends`。进程链接的是宿主机库
+- `app.asar` SHA-256 `0a4f07f291ebe64c61ab3d52d65eb62f181c760cd285573683580ce7242f8164`。sidecar SHA-256 `050c3484cb33731bfa92ef14734e5bf3c259c6ffb2125c0a8ea978120defec9b`。两者都对上 `release-verification.json`
+- 打开方式是「打开设计文件」。文档名、3 个图层、缩放 1 到 1.25、名称加上 `acceptance` 后撤销、自动保存、关闭重开，以及原生导出 `FXDK`，与上面的目录包一致。原件哈希不变。打开记录里的 `data-renderer` 是 null
+- 启动参数含 `--core-cpu-only`。Chromium sandbox 保持开启
+- 安装器记录是 `linux_deb_installed`。`.dmg`、`.pkg`、`.msi`、`.exe`、`.rpm` 记为 `NOT_RUN`
+- 会话报告里的 macOS 签名公证和 Windows Authenticode 是 `blocked`。这两项记为 `NOT_RUN`
+
+日志里有 dbus 系统总线连接错误。会话仍然完成打开、缩放、改名、撤销、自动保存、关闭重开和原生导出。这个错误不记成签名验收或硬件 GPU 验收。

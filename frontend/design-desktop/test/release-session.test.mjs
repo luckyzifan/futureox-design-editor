@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { buildDesktopFlowReport, DESKTOP_FLOW } from '../scripts/release-desktop-flow.mjs'
-import { bundleExecutable } from '../scripts/release-desktop-session.mjs'
+import { bundleExecutable, retainDisplayAuthority } from '../scripts/release-desktop-session.mjs'
 import {
   assessObservedDesktopSession,
   bindInstalledDeb,
@@ -18,6 +18,38 @@ import { describePackage, hashReadonlyFile } from '../scripts/release-package-re
 
 const HASH_A = 'a'.repeat(64)
 const SHA = 'c'.repeat(64)
+
+test('a private home keeps the current X11 display authority outside that home', () => {
+  const privateHome = '/tmp/futureox-release-home'
+  const cookie = '/home/operator/.Xauthority'
+  const retained = retainDisplayAuthority({
+    DISPLAY: ':1',
+    HOME: '/home/operator',
+    FUTUREOX_ACCEPTANCE_PROFILE: '/tmp/profile',
+  }, privateHome, cookie, 'linux')
+  assert.equal(retained.HOME, privateHome)
+  assert.equal(retained.XAUTHORITY, cookie)
+  assert.equal(retained.XDG_CONFIG_HOME, path.join(privateHome, '.config'))
+  assert.equal(retained.DISPLAY, ':1')
+  assert.equal(retained.FUTUREOX_ACCEPTANCE_PROFILE, undefined)
+
+  const preset = retainDisplayAuthority({
+    DISPLAY: ':1',
+    XAUTHORITY: 'cookies',
+    HOME: '/home/operator',
+  }, privateHome, cookie, 'linux')
+  assert.equal(preset.XAUTHORITY, path.resolve('cookies'))
+  assert.notEqual(preset.XAUTHORITY, cookie)
+
+  const headless = retainDisplayAuthority({ HOME: '/home/operator' }, privateHome, cookie, 'linux')
+  assert.equal(headless.XAUTHORITY, undefined)
+  assert.equal(headless.HOME, privateHome)
+
+  const mac = retainDisplayAuthority({ HOME: '/Users/operator', DISPLAY: ':1' }, privateHome, cookie, 'darwin')
+  assert.equal(mac.HOME, '/Users/operator')
+  assert.equal(mac.CFFIXED_USER_HOME, privateHome)
+  assert.equal(mac.XAUTHORITY, undefined)
+})
 
 test('a mounted macOS app and its containing directory resolve the same executable', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'fx-macos-app-'))
