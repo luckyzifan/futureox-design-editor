@@ -34,6 +34,24 @@ test('actual req76 transient-heavy mix reclaims one completed cohort and preserv
 test('small transient plus large reusable pool defers without uncharging',async()=>{
  const {r,calls}=fixture(400*M,300*M,20*M);await r.reclaimScratch();assert.equal(calls.wait,0);assert.equal(calls.destroy,0);assert.equal(r.workingBytes,400*M)
 })
+test('routine maintenance retains the charged transparent texel until admission pressure', async () => {
+ const {r}=fixture(400*M,300*M,20*M)
+ const zero={texture:{bytes:16,transparentZero:true}}
+ const color={texture:{bytes:256}}
+ const released=[]
+ r.release=surface=>released.push(surface)
+ r.constantTargets.set('transparent-zero',zero)
+ r.constantTargets.set('page-background',color)
+
+ await r.reclaimScratch()
+ assert.deepEqual(released,[color])
+ assert.equal(r.constantTargets.get('transparent-zero'),zero)
+ assert.equal(r.workingBytes,400*M)
+
+ await r.reclaimScratch(800*M)
+ assert.deepEqual(released,[color,zero])
+ assert.equal(r.constantTargets.has('transparent-zero'),false)
+})
 test('large reusable pool does not relax total working watermark or transient cap',()=>{
  const d=()=>new MaintenanceResidency();assert.equal(d().decide(0,false,768*M,1024*M,650*M,64*M,2,1),0)
  assert.equal(d().decide(0,false,768*M+1,1024*M,650*M,64*M,2,1),3)
