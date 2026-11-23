@@ -3438,13 +3438,10 @@ impl crate::tiled_renderer::TileRasterizer for Engine {
         &mut self,
         request: &crate::tiled_renderer::TileRequest,
     ) -> Result<Vec<u8>, String> {
-        self.render_device_rect_once(
-            &request.options,
-            0,
-            0,
-            request.options.width,
-            request.options.height,
-        )
+        let (x, y, w, h) = request
+            .clip
+            .unwrap_or((0, 0, request.options.width, request.options.height));
+        self.render_device_rect_once(&request.options, x, y, w, h)
     }
 }
 

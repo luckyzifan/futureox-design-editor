@@ -16,7 +16,7 @@
 use crate::raster_surface::RasterSurface;
 use crate::render_instruction::ColorSpaceId;
 use crate::tile_stack::raster_addresses;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Upper bound on addresses one level may hold before it evicts the least
 /// recently observed tile — the tile-budget honesty rule shared with the
@@ -267,6 +267,29 @@ impl TileMipLevel {
     fn dirty_covers(&self, address: [i32; 2]) -> bool {
         let device = self.tile_device_rect(address);
         self.dirty.rects().iter().any(|r| intersects(*r, device))
+    }
+
+    /// Tile addresses that already carry unfinished damage. A later edit must
+    /// repaint those tiles whole: their saved pixels are not a base for a
+    /// smaller clip.
+    pub fn dirty_tile_addresses(&self) -> HashSet<[i32; 2]> {
+        let mut addresses = HashSet::new();
+        let side = crate::tile_stack::TILE_SIZE;
+        for rect in self.dirty.rects() {
+            if rect.2 <= 0 || rect.3 <= 0 {
+                continue;
+            }
+            let x0 = rect.0.div_euclid(side);
+            let y0 = rect.1.div_euclid(side);
+            let x1 = (rect.0 + rect.2 - 1).div_euclid(side);
+            let y1 = (rect.1 + rect.3 - 1).div_euclid(side);
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    addresses.insert([x, y]);
+                }
+            }
+        }
+        addresses
     }
 
     /// `countExistingTilesForVisibleRect:` — how many visible addresses

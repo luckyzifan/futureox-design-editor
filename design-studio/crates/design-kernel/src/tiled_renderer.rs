@@ -9,9 +9,15 @@ use crate::renderer::{RenderOptions, View};
 use crate::tile_level::{TileMipLevel, LEVEL_TILE_LIMIT};
 use crate::tile_stack::TILE_SIZE;
 use std::sync::Arc;
-use std::collections::HashMap;
-/// Freshly rasterised tiles: address plus premultiplied RGBA8 bytes.
-type RasterisedTiles = Vec<([i32; 2], Vec<u8>)>;
+use std::collections::{HashMap, HashSet};
+/// One finished tile. `clip` is the device rectangle inside the tile when
+/// `bytes` replace only that rectangle of a resident surface.
+struct RasterisedTile {
+    address: [i32; 2],
+    bytes: Vec<u8>,
+    clip: Option<(u32, u32, u32, u32)>,
+}
+type RasterisedTiles = Vec<RasterisedTile>;
 
 pub const CORE_TEXT_RENDERING: bool = true;
 pub const GPU_OVERLAY: bool = false;
@@ -52,6 +58,62 @@ pub struct TileRequest {
     pub world: [f64; 4],
     pub options: RenderOptions,
     pub pixel_count: u64,
+    /// Device rectangle inside this tile. `None` is the whole tile.
+    /// Set only when a resident surface already holds every pixel outside
+    /// the rectangle.
+    pub clip: Option<(u32, u32, u32, u32)>,
+}
+
+/// Device clip of `damage` inside one tile, or `None` when the tile should
+/// be rasterised whole. The rectangle is expanded to every device pixel the
+/// world damage can touch. A non-finite rect cannot be bounded and forces a
+/// full tile.
+fn damage_clip(
+    world: [f64; 4],
+    scale: f64,
+    damage: &[WorldRect],
+) -> Option<(u32, u32, u32, u32)> {
+    if !scale.is_finite() || scale <= 0. {
+        return None;
+    }
+    let (origin_x, origin_y, side) = (world[0], world[1], world[2]);
+    let limit = f64::from(TILE_SIZE);
+    let mut x0 = TILE_SIZE;
+    let mut y0 = TILE_SIZE;
+    let mut x1 = 0i32;
+    let mut y1 = 0i32;
+    let mut hit = false;
+    for rect in damage {
+        if rect.iter().any(|value| !value.is_finite()) || rect[2] < 0. || rect[3] < 0. {
+            return None;
+        }
+        let left = rect[0].max(origin_x);
+        let top = rect[1].max(origin_y);
+        let right = (rect[0] + rect[2]).min(origin_x + side);
+        let bottom = (rect[1] + rect[3]).min(origin_y + side);
+        if !(right > left && bottom > top) {
+            continue;
+        }
+        let dx0 = ((left - origin_x) * scale).floor();
+        let dy0 = ((top - origin_y) * scale).floor();
+        let dx1 = ((right - origin_x) * scale).ceil();
+        let dy1 = ((bottom - origin_y) * scale).ceil();
+        if ![dx0, dy0, dx1, dy1].iter().all(|value| value.is_finite()) {
+            return None;
+        }
+        hit = true;
+        x0 = x0.min(dx0.clamp(0., limit) as i32);
+        y0 = y0.min(dy0.clamp(0., limit) as i32);
+        x1 = x1.max(dx1.clamp(0., limit) as i32);
+        y1 = y1.max(dy1.clamp(0., limit) as i32);
+    }
+    if !hit || x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    if x0 == 0 && y0 == 0 && x1 == TILE_SIZE && y1 == TILE_SIZE {
+        return None;
+    }
+    Some((x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
@@ -642,6 +704,15 @@ impl TiledRenderer {
                 | render_trait::COLOR_SPACE
                 | render_trait::OVERLAY)
             != 0;
+        // Unfinished damage from a cancelled update is stored as whole tiles.
+        // Those tiles cannot take a smaller clip: the pixels outside this
+        // call's damage were never brought up to the previous revision.
+        let previously_dirty = self
+            .levels
+            .get(index)
+            .and_then(|slot| slot.as_ref())
+            .map(TileMipLevel::dirty_tile_addresses)
+            .unwrap_or_default();
         if content_moved || first_frame {
             self.invalidate_caches_for_instruction(instruction, damage)?;
         }
@@ -685,7 +756,7 @@ impl TiledRenderer {
         }
         if !addresses.is_empty() {
             source.prepare(options)?;
-            let requests = self.tile_requests(index, scale, addresses, options);
+            let requests = self.tile_requests(index, scale, addresses, options, damage, &previously_dirty);
             self.rasterisation_in_progress = true;
             let outcome = self.rasterise_requests(source, index, instruction.content_revision, requests);
             self.rasterisation_in_progress = false;
@@ -726,12 +797,15 @@ impl TiledRenderer {
 
     fn tile_requests(
         &self,
-        level: usize,
+        level_index: usize,
         scale: f64,
         addresses: Vec<[i32; 2]>,
         frame: &RenderOptions,
+        damage: Option<&[WorldRect]>,
+        previously_dirty: &HashSet<[i32; 2]>,
     ) -> Vec<TileRequest> {
         let tile_world = f64::from(TILE_SIZE) / scale;
+        let level = self.levels.get(level_index).and_then(|slot| slot.as_ref());
         addresses
             .into_iter()
             .map(|address| {
@@ -752,12 +826,22 @@ impl TiledRenderer {
                     y: -world[1] * scale,
                     zoom: scale,
                 };
+                let resident = level.is_some_and(|level| level.tile(&address).is_some());
+                let clip = if resident && !previously_dirty.contains(&address) {
+                    damage.and_then(|rects| damage_clip(world, scale, rects))
+                } else {
+                    None
+                };
+                let pixel_count = clip
+                    .map(|(_, _, w, h)| u64::from(w) * u64::from(h))
+                    .unwrap_or(TILE_SIZE as u64 * TILE_SIZE as u64);
                 TileRequest {
-                    level,
+                    level: level_index,
                     address,
                     world,
                     options,
-                    pixel_count: TILE_SIZE as u64 * TILE_SIZE as u64,
+                    pixel_count,
+                    clip,
                 }
             })
             .collect()
@@ -809,7 +893,7 @@ impl TiledRenderer {
     ) -> Result<(), String> {
         let before = self.last_committed.len();
         self.last_committed
-            .extend(tiles.iter().map(|(address, _)| *address));
+            .extend(tiles.iter().map(|tile| tile.address));
         self.commit_rasterised(level_index, revision, tiles)?;
         if let Some(probe) = self.commit_probe.as_mut() {
             for address in &self.last_committed[before..] {
@@ -834,7 +918,15 @@ impl TiledRenderer {
                 .begin_rasterisation_with_pixel_count(request.pixel_count);
             let bytes = source.rasterize_tile(request);
             self.telemetry.end_rasterisation();
-            self.note_rasterised(level_index, revision, vec![(request.address, bytes?)])?;
+            self.note_rasterised(
+                level_index,
+                revision,
+                vec![RasterisedTile {
+                    address: request.address,
+                    bytes: bytes?,
+                    clip: request.clip,
+                }],
+            )?;
         }
         Ok(())
     }
@@ -863,7 +955,11 @@ impl TiledRenderer {
                     self.note_rasterised(
                         level_index,
                         revision,
-                        vec![(requests[index].address, bytes)],
+                        vec![RasterisedTile {
+                            address: requests[index].address,
+                            bytes,
+                            clip: requests[index].clip,
+                        }],
                     )?;
                 }
                 Err(error) if error == "PREVIEW_CANCELLED" => saw_cancel = true,
@@ -1057,42 +1153,57 @@ impl TiledRenderer {
         &mut self,
         level_index: usize,
         revision: u64,
-        tiles: Vec<([i32; 2], Vec<u8>)>,
+        tiles: RasterisedTiles,
     ) -> Result<(), String> {
         let level = self
             .levels
             .get_mut(level_index)
             .and_then(|slot| slot.as_mut())
             .expect("level ensured above");
-        for (address, bytes) in tiles {
-            if bytes.len() != TILE_SIZE as usize * TILE_SIZE as usize * 4 {
+        for tile in tiles {
+            let expected = tile.clip.map_or(TILE_SIZE as usize * TILE_SIZE as usize * 4, |(_, _, w, h)| {
+                w as usize * h as usize * 4
+            });
+            if tile.bytes.len() != expected {
                 return Err(format!(
-                    "Tile {address:?} rasterised {} bytes, expected {}",
-                    bytes.len(),
-                    TILE_SIZE as usize * TILE_SIZE as usize * 4
+                    "Tile {:?} rasterised {} bytes, expected {}",
+                    tile.address,
+                    tile.bytes.len(),
+                    expected
                 ));
             }
-            let surface = match level.find_writable_tile_at(address) {
-                Some(mut surface) => {
-                    surface.replace_region(
-                        (0, 0, TILE_SIZE as u32, TILE_SIZE as u32),
-                        &bytes,
-                        TILE_SIZE as usize * 4,
-                    )?;
+            let surface = match tile.clip {
+                Some((x, y, w, h)) => {
+                    let Some(mut surface) = level.find_writable_tile_at(tile.address) else {
+                        return Err(format!(
+                            "Tile {:?} clip has no resident surface",
+                            tile.address
+                        ));
+                    };
+                    surface.replace_region((x as i32, y as i32, w, h), &tile.bytes, w as usize * 4)?;
                     surface
                 }
-                None => {
-                    let mut surface =
-                        self.surfaces.vend(TILE_SIZE as u32, TILE_SIZE as u32);
-                    surface.replace_region(
-                        (0, 0, TILE_SIZE as u32, TILE_SIZE as u32),
-                        &bytes,
-                        TILE_SIZE as usize * 4,
-                    )?;
-                    surface
-                }
+                None => match level.find_writable_tile_at(tile.address) {
+                    Some(mut surface) => {
+                        surface.replace_region(
+                            (0, 0, TILE_SIZE as u32, TILE_SIZE as u32),
+                            &tile.bytes,
+                            TILE_SIZE as usize * 4,
+                        )?;
+                        surface
+                    }
+                    None => {
+                        let mut surface = self.surfaces.vend(TILE_SIZE as u32, TILE_SIZE as u32);
+                        surface.replace_region(
+                            (0, 0, TILE_SIZE as u32, TILE_SIZE as u32),
+                            &tile.bytes,
+                            TILE_SIZE as usize * 4,
+                        )?;
+                        surface
+                    }
+                },
             };
-            level.commit_tile(address, surface, revision);
+            level.commit_tile(tile.address, surface, revision);
         }
         Ok(())
     }
@@ -1252,4 +1363,26 @@ fn drain_ready_slots(
         }
     }
     ready
+}
+
+#[cfg(test)]
+mod damage_clip_tests {
+    use super::damage_clip;
+
+    #[test]
+    fn clip_is_the_device_intersection_or_absent_when_unbounded() {
+        let tile = [0., 0., 512., 512.];
+        assert_eq!(damage_clip(tile, 1., &[[10., 20., 30., 40.]]), Some((10, 20, 30, 40)));
+        assert_eq!(damage_clip(tile, 1., &[[0., 0., 512., 512.]]), None);
+        assert_eq!(damage_clip(tile, 1., &[[0., 0., f64::NAN, 4.]]), None);
+        let next = [512., 0., 512., 512.];
+        assert_eq!(
+            damage_clip(next, 1., &[[500., 4., 40., 10.]]),
+            Some((0, 4, 28, 10))
+        );
+        assert_eq!(
+            damage_clip([0., 0., 256., 256.], 2., &[[1.25, 2.5, 3.5, 1.25]]),
+            Some((2, 5, 8, 3))
+        );
+    }
 }
