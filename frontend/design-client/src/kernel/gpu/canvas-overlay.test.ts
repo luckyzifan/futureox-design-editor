@@ -24,6 +24,14 @@ test('grid is absent below four times zoom and remains bounded at high zoom', ()
   expect([...data].every(Number.isFinite)).toBe(true)
 })
 
+test('a dashed spacing edge is broken into screen dashes and draws no end ticks', () => {
+  const data = overlayVertices({
+    pixelGrid: false,
+    measurements: [{ from: { x: 0, y: 0 }, to: { x: 20, y: 0 }, axis: 'horizontal', dash: true, tick: false }],
+  }, { x: 0, y: 0, zoom: 1 }, 80, 40)
+  expect(data.length / 8 / 6).toBe(3)
+  expect([data[2], data[3], data[4], data[5]]).toEqual(stored(SPACING_RED))
+})
 test('spacing guides draw the gap plus six-pixel end ticks', () => {
   const data = overlayVertices({ pixelGrid: false, measurements: [{ from: { x: 10, y: 20 }, to: { x: 40, y: 20 }, axis: 'horizontal' }] }, { x: 0, y: 0, zoom: 2 }, 200, 200)
   expect(data.length / 8 / 6).toBe(3)

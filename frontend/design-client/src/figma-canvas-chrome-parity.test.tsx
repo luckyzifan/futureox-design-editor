@@ -17,6 +17,7 @@ import { boxPoints, multiply, rotate, scene, translate, unionBounds } from './ge
 import { selectionMemberCorners, sharedRotationFrame } from './selection-outline'
 import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_UNION_STROKE_PX } from './selection-blue'
 import { SPACING_RED } from './canvas-measurements'
+import { resetFigmaDevMode } from './figma-dev-mode'
 import { kernelTextLayout } from './kernel/picking'
 
 vi.mock('./kernel/Surface', async () => {
@@ -48,6 +49,9 @@ beforeEach(() => {
     clientWidth: { configurable: true, get: () => 1000 }, clientHeight: { configurable: true, get: () => 800 },
   })
   vi.spyOn(dom.window.HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, right: 1000, bottom: 800, width: 1000, height: 800, x: 0, y: 0, toJSON() {} })
+  dom.window.Element.prototype.setPointerCapture = () => {}
+  dom.window.Element.prototype.hasPointerCapture = () => false
+  dom.window.Element.prototype.releasePointerCapture = () => {}
   dom.window.HTMLElement.prototype.setPointerCapture = () => {}
   dom.window.HTMLElement.prototype.hasPointerCapture = () => false
   dom.window.HTMLElement.prototype.releasePointerCapture = () => {}
@@ -57,6 +61,7 @@ beforeEach(() => {
   mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
 })
 afterEach(async () => {
+  resetFigmaDevMode()
   await act(async () => root.unmount()); editor.dispose(); interfacePreference.set({ locale: 'zh-CN', uiMode: 'figma' }); dom.window.close()
   vi.unstubAllGlobals(); vi.restoreAllMocks()
 })
@@ -78,10 +83,10 @@ async function render(nodes: DesignNode[], roots = nodes.map(n => n.id), schemaV
   await act(async () => { root.render(<Canvas editor={editor} />); for (let i = 0; i < 8; i++) await Promise.resolve() })
   host().focus(); return editor.state.doc
 }
-function pointer(type: string, x: number, y: number, options: MouseEventInit = {}) {
+function pointer(type: string, x: number, y: number, options: MouseEventInit = {}, target: Element = host()) {
   const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, ...options })
   Object.defineProperties(event, { pointerId: { value: 7 }, isPrimary: { value: true }, pointerType: { value: 'mouse' } })
-  host().dispatchEvent(event)
+  target.dispatchEvent(event)
 }
 function key(value: string, options: KeyboardEventInit = {}, type = 'keydown') {
   const event = new KeyboardEvent(type, { key: value, code: value.length === 1 ? `Key${value.toUpperCase()}` : value, bubbles: true, cancelable: true, ...options })
@@ -569,4 +574,103 @@ test('group click, empty arrows, and Space-pan stay as they were', async () => {
   expect(editor.state.view.x).toBe(view.x + 40)
   expect(editor.state.view.y).toBe(view.y + 30)
   expect(editor.canUndo).toBe(false)
+})
+
+const measurePills = () => [...mount.querySelectorAll('[data-testid="canvas-measurement"] [data-pill="measure"]')].map(node => node.textContent).sort()
+
+test('Option hover on a partial overlap shows the matching-edge numbers', async () => {
+  const selected = node('rectangle', 40, 40, 80, 40)
+  const other = node('rectangle', 80, 50, 80, 40)
+  await render([selected, other])
+  await act(async () => editor.select([selected.id]))
+  await act(async () => pointer('pointermove', 100, 60, { altKey: true }))
+  await flush()
+  expect(measurePills()).toEqual(['10', '10', '40', '40'])
+  expect(mount.querySelector('[data-testid="canvas-measurement"] [data-measure="gap"]')?.getAttribute('stroke')).toBe(SPACING_RED)
+})
+
+test('Dev Mode hover shows spacing without Option, and Shift D turns it off', async () => {
+  const selected = node('rectangle', 40, 40, 50, 40)
+  const sibling = node('rectangle', 140, 40, 40, 40)
+  await render([selected, sibling])
+  await act(async () => editor.select([selected.id]))
+  await act(async () => pointer('pointermove', 160, 55))
+  await flush()
+  expect(mount.querySelector('[data-testid="canvas-measurement"]')).toBeNull()
+  await act(async () => key('D', { shiftKey: true, code: 'KeyD' }))
+  expect(host().getAttribute('data-dev-mode')).toBe('on')
+  await flush()
+  expect(measurePills()).toEqual(expect.arrayContaining(['50', '40']))
+  await act(async () => key('D', { shiftKey: true, code: 'KeyD' }))
+  expect(host().getAttribute('data-dev-mode')).toBe('off')
+  await flush()
+  expect(mount.querySelector('[data-testid="canvas-measurement"]')).toBeNull()
+})
+
+test('keyboard pick keeps the original selection and Option measures to the highlight', async () => {
+  const first = node('rectangle', 40, 40, 50, 40)
+  const second = node('rectangle', 140, 40, 40, 40)
+  await render([first, second])
+  await act(async () => editor.select([first.id]))
+  await act(async () => key(' ', { code: 'Space', altKey: true }))
+  await act(async () => key('Tab'))
+  await act(async () => key('Tab'))
+  expect(editor.state.selection).toEqual([first.id])
+  expect(mount.querySelector('[data-testid="keyboard-pick-outline"]')?.getAttribute('stroke')).toBe('#4597f7')
+  await act(async () => key('Alt', { altKey: true }))
+  expect(measurePills()).toEqual(expect.arrayContaining(['50', '40']))
+  expect(editor.state.selection).toEqual([first.id])
+})
+
+test('Space repeats the distance under the pointer', async () => {
+  const selected = node('rectangle', 40, 40, 50, 40)
+  const sibling = node('rectangle', 140, 40, 40, 40)
+  await render([selected, sibling])
+  await act(async () => editor.select([selected.id]))
+  await act(async () => pointer('pointermove', 160, 55, { altKey: true }))
+  await flush()
+  await act(async () => pointer('pointermove', 115, 60, { altKey: true }))
+  await flush()
+  await act(async () => key(' ', { code: 'Space' }))
+  expect(mount.querySelector('[data-testid="measurement-announcement"]')?.textContent).toBe('50')
+  expect(host().classList.contains('canvas-space-held')).toBe(false)
+})
+
+test('Option hover on a ruler guide measures from the selection, and a second guide shows positions', async () => {
+  const layer = node('rectangle', 40, 40, 50, 40)
+  await render([layer])
+  await act(async () => {
+    editor.change('参考线', document => { document.pages[0].guides = [
+      { id: 'g1', axis: 'x', position: 200 },
+      { id: 'g2', axis: 'x', position: 260 },
+    ] })
+    editor.set({ rulers: true })
+    editor.select([layer.id])
+  })
+  const hit = (id: string) => mount.querySelector(`[data-guide-id="${id}"] line[stroke="transparent"]`)!
+  await act(async () => key('Alt', { altKey: true }))
+  await act(async () => pointer('pointerover', 200, 60, {}, hit('g1')))
+  expect(measurePills()).toEqual(['110'])
+  expect(mount.querySelector('[data-testid="canvas-measurement"] [data-measure="gap"]')).not.toBeNull()
+  await act(async () => pointer('pointerdown', 200, 60, {}, hit('g1')))
+  await act(async () => pointer('pointerup', 200, 60, {}, hit('g1')))
+  await act(async () => pointer('pointerover', 260, 70, {}, hit('g2')))
+  expect(measurePills()).toEqual(['200', '260'])
+  expect(mount.querySelector('[data-testid="canvas-measurement"] line')).toBeNull()
+})
+
+test('vector edit Option-hover measures between anchors', async () => {
+  const shape = node('vector', 100, 100, 80, 40)
+  shape.network = {
+    vertices: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 80, y: 40 }],
+    edges: [{ id: 'e', from: 'a', to: 'b' }],
+    fillRule: 'nonzero',
+  }
+  await render([shape])
+  await act(async () => { editor.select([shape.id]); editor.set({ tool: 'vector', editingVertex: 'a', editingVertices: ['a'] }) })
+  await act(async () => key('Alt', { altKey: true }))
+  const anchor = mount.querySelector('[data-vertex-id="b"]')!
+  await act(async () => pointer('pointerover', 180, 140, {}, anchor))
+  expect(measurePills()).toEqual(['40', '80'])
+  expect(mount.querySelector('[data-testid="canvas-measurement"] [data-measure="gap"]')?.getAttribute('stroke')).toBe(SPACING_RED)
 })

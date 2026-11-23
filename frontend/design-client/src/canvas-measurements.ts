@@ -1,7 +1,7 @@
 import type { Bounds, Matrix, Point } from './model'
 import type { TextVerticalMeasurement } from './kernel/picking'
 export type MeasurementAxis = 'horizontal' | 'vertical'
-export type Measurement = { from: Point; to: Point; distance: number; axis: MeasurementAxis; tick?: boolean; role?: 'box' | 'span' | 'gap' | 'padding' }
+export type Measurement = { from: Point; to: Point; distance: number; axis: MeasurementAxis; tick?: boolean; role?: 'box' | 'span' | 'gap' | 'padding'; dash?: boolean }
 export type SpacingPill = { text: string; anchor: Point; offset: Point }
 /** Mac desktop Figma spacing red from gaps5. DOM and the GPU overlay both use this. */
 export const SPACING_RED = '#e05634'
@@ -51,12 +51,34 @@ export function textMeasurementBounds(box: Bounds, width: number, matrix: Matrix
   return Number.isFinite(top) && Number.isFinite(bottom) && bottom > top ? { ...box, y: top, height: bottom - top } : box
 }
 
+const spanOverlap = (a0: number, a1: number, b0: number, b1: number) => Math.min(a1, b1) - Math.max(a0, b0)
+
+/** Both axes have a positive overlap and neither box contains the other.
+ * Figma measures each pair of matching edges (left to left, right to right,
+ * top to top, bottom to bottom) through the midpoint of the other overlap.
+ * Aligned edges are omitted. The Mac desktop 126.10.13 pixel check of this
+ * formula is still outstanding. */
+function partialOverlap(selection: Bounds, target: Bounds): Measurement[] | null {
+  const sx1 = selection.x + selection.width, sy1 = selection.y + selection.height
+  const tx1 = target.x + target.width, ty1 = target.y + target.height
+  if (spanOverlap(selection.x, sx1, target.x, tx1) <= EPS) return null
+  if (spanOverlap(selection.y, sy1, target.y, ty1) <= EPS) return null
+  const mx = (Math.max(selection.x, target.x) + Math.min(sx1, tx1)) / 2
+  const my = (Math.max(selection.y, target.y) + Math.min(sy1, ty1)) / 2
+  return [
+    segment(selection.x, my, target.x, my, 'horizontal'),
+    segment(sx1, my, tx1, my, 'horizontal'),
+    segment(mx, selection.y, mx, target.y, 'vertical'),
+    segment(mx, sy1, mx, ty1, 'vertical'),
+  ].filter(item => item.distance > EPS)
+}
+
 /** Figma Mac Option/Alt spacing between a selection and one other box.
  * The first box is the selection. A containing pair reports the four edge
- * paddings. Each separated axis reports only that positive gap: centered on
- * the perpendicular overlap, or sitting on the selection's facing edge when
- * the ranges miss, so a diagonal pair forms an L. An overlapping axis does
- * not draw an edge-to-edge offset. */
+ * paddings. A partial overlap reports the matching-edge offsets. Each
+ * separated axis reports only that positive gap: centered on the
+ * perpendicular overlap, or sitting on the selection's facing edge when the
+ * ranges miss, so a diagonal pair forms an L. */
 export function measureBounds(selection: Bounds, target: Bounds): Measurement[] {
   if (encloses(selection, target) || encloses(target, selection)) {
     const outer = encloses(selection, target) ? selection : target
@@ -69,6 +91,8 @@ export function measureBounds(selection: Bounds, target: Bounds): Measurement[] 
       segment(cx, inner.y + inner.height, cx, outer.y + outer.height, 'vertical'),
     ].filter(item => item.distance > EPS)
   }
+  const overlap = partialOverlap(selection, target)
+  if (overlap) return overlap
   const result: Measurement[] = []
   const y0 = Math.max(selection.y, target.y), y1 = Math.min(selection.y + selection.height, target.y + target.height)
   const x0 = Math.max(selection.x, target.x), x1 = Math.min(selection.x + selection.width, target.x + target.width)
@@ -118,13 +142,15 @@ export function measurementLabel(measurement: Measurement, zoom = 1): { anchor: 
  * they stay off while a drag or Space-pan owns the pointer. */
 export function altMeasurementTarget(input: {
   alt: boolean
+  /** Dev Mode shows the same guides on hover, without Option/Alt. */
+  inspect?: boolean
   dragging: boolean
   space: boolean
   tool: string
   selection: readonly string[]
   hover: string | null
 }): string | null {
-  if (!input.alt || input.dragging || input.space || input.tool !== 'select') return null
+  if ((!input.alt && !input.inspect) || input.dragging || input.space || input.tool !== 'select') return null
   if (!input.selection.length || !input.hover || input.selection.includes(input.hover)) return null
   return input.hover
 }
@@ -210,4 +236,150 @@ export function spacingDiagram(selection: Bounds, target: Bounds, zoom = 1): { l
     pills.push({ text: distanceText(line.distance), anchor: placed.anchor, offset: placed.offset })
   }
   return { lines: [...outline, ...gaps], pills }
+}
+
+/** Gap from a selection box to one axis-aligned ruler guide.
+ * Outside the box, one line from the near edge. Crossing the box, both sides. */
+export function measureToGuide(selection: Bounds, guide: { axis: 'x' | 'y'; position: number }): Measurement[] {
+  const mark = (line: Measurement): Measurement => ({ ...line, tick: false, role: 'gap' })
+  if (guide.axis === 'x') {
+    const y = selection.y + selection.height / 2
+    const left = selection.x, right = selection.x + selection.width
+    if (guide.position < left - EPS) return [mark(segment(guide.position, y, left, y, 'horizontal'))].filter(item => item.distance > EPS)
+    if (guide.position > right + EPS) return [mark(segment(right, y, guide.position, y, 'horizontal'))].filter(item => item.distance > EPS)
+    return [
+      mark(segment(left, y, guide.position, y, 'horizontal')),
+      mark(segment(guide.position, y, right, y, 'horizontal')),
+    ].filter(item => item.distance > EPS)
+  }
+  const x = selection.x + selection.width / 2
+  const top = selection.y, bottom = selection.y + selection.height
+  if (guide.position < top - EPS) return [mark(segment(x, guide.position, x, top, 'vertical'))].filter(item => item.distance > EPS)
+  if (guide.position > bottom + EPS) return [mark(segment(x, bottom, x, guide.position, 'vertical'))].filter(item => item.distance > EPS)
+  return [
+    mark(segment(x, top, x, guide.position, 'vertical')),
+    mark(segment(x, guide.position, x, bottom, 'vertical')),
+  ].filter(item => item.distance > EPS)
+}
+
+/** Authored positions of two guides. No spacing line: the reader subtracts. */
+export function guidePositionReadout(positions: readonly number[], at: Point): SpacingPill[] {
+  return positions.map((position, index) => ({
+    text: distanceText(position),
+    anchor: at,
+    offset: { x: 12, y: -14 - index * 18 },
+  }))
+}
+
+/** Horizontal then vertical distance between two anchor points. */
+export function measureAnchors(from: Point, to: Point): Measurement[] {
+  const lines: Measurement[] = []
+  if (Math.abs(to.x - from.x) > EPS) lines.push({ ...segment(from.x, from.y, to.x, from.y, 'horizontal'), tick: true, role: 'gap' })
+  if (Math.abs(to.y - from.y) > EPS) lines.push({ ...segment(to.x, from.y, to.x, to.y, 'vertical'), tick: true, role: 'gap' })
+  return lines
+}
+
+/** Dashed width/height rectangle from a selected anchor to the pointer. */
+export function anchorPlacementBox(from: Point, to: Point): { lines: Measurement[]; pills: SpacingPill[] } {
+  const x0 = Math.min(from.x, to.x), y0 = Math.min(from.y, to.y)
+  const x1 = Math.max(from.x, to.x), y1 = Math.max(from.y, to.y)
+  const width = x1 - x0, height = y1 - y0
+  if (width <= EPS && height <= EPS) return { lines: [], pills: [] }
+  const edge = (ax: number, ay: number, bx: number, by: number, axis: MeasurementAxis): Measurement =>
+    ({ ...segment(ax, ay, bx, by, axis), tick: false, role: 'box', dash: true })
+  const lines = [
+    edge(x0, y0, x1, y0, 'horizontal'),
+    edge(x1, y0, x1, y1, 'vertical'),
+    edge(x0, y1, x1, y1, 'horizontal'),
+    edge(x0, y0, x0, y1, 'vertical'),
+  ].filter(item => item.distance > EPS)
+  const pills: SpacingPill[] = []
+  const mid = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 }
+  if (width > EPS) pills.push({ text: distanceText(width), anchor: mid, offset: { x: 0, y: -14 } })
+  if (height > EPS) pills.push({ text: distanceText(height), anchor: mid, offset: { x: 14, y: 0 } })
+  return { lines, pills }
+}
+
+export function diagramFromLines(lines: readonly Measurement[], zoom = 1): { lines: Measurement[]; pills: SpacingPill[] } {
+  const pills: SpacingPill[] = []
+  for (const line of lines) {
+    if (line.role === 'box') continue
+    const placed = measurementLabel(line, zoom)
+    pills.push({ text: distanceText(line.distance), anchor: placed.anchor, offset: placed.offset })
+  }
+  return { lines: [...lines], pills }
+}
+
+function pointSegmentDistance(point: Point, a: Point, b: Point) {
+  const dx = b.x - a.x, dy = b.y - a.y
+  const len2 = dx * dx + dy * dy
+  if (len2 <= EPS) return Math.hypot(point.x - a.x, point.y - a.y)
+  const t = Math.min(1, Math.max(0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / len2))
+  return Math.hypot(point.x - (a.x + dx * t), point.y - (a.y + dy * t))
+}
+
+/** Distance text under the pointer, for the Space readout. Box outlines are not values. */
+export function readoutAtPoint(lines: readonly Measurement[], pills: readonly SpacingPill[], point: Point, zoom: number, slackPx = 8): string | null {
+  const scale = Number.isFinite(zoom) && zoom > EPS ? zoom : 1
+  const lineSlack = slackPx / scale
+  const pillSlack = 16 / scale
+  let best = Infinity
+  let text: string | null = null
+  for (const line of lines) {
+    if (line.role === 'box') continue
+    const distance = pointSegmentDistance(point, line.from, line.to)
+    if (distance <= lineSlack && distance <= best) { best = distance; text = distanceText(line.distance) }
+  }
+  for (const pill of pills) {
+    const distance = Math.hypot(point.x - (pill.anchor.x + pill.offset.x / scale), point.y - (pill.anchor.y + pill.offset.y / scale))
+    if (distance <= pillSlack && distance <= best) { best = distance; text = pill.text }
+  }
+  return text
+}
+
+export type SpacingInteraction =
+  | { kind: 'layers'; id: string }
+  | { kind: 'guide' }
+  | { kind: 'guide-positions' }
+  | { kind: 'anchors' }
+  | { kind: 'anchor-place' }
+
+/** Which Option / Dev Mode / keyboard / guide / anchor measurement is showing. */
+export function spacingInteraction(input: {
+  tool: string
+  alt: boolean
+  inspect: boolean
+  dragging: boolean
+  space: boolean
+  selection: readonly string[]
+  hover: string | null
+  pick: string | null
+  guideHover: boolean
+  guideMeasurable: boolean
+  guidePair: boolean
+  vectorAnchor: boolean
+  vectorPlace: boolean
+}): SpacingInteraction | null {
+  if (input.dragging || input.space) return null
+  if (input.tool === 'vector') {
+    if (!input.alt) return null
+    if (input.vectorAnchor) return { kind: 'anchors' }
+    if (input.vectorPlace) return { kind: 'anchor-place' }
+    return null
+  }
+  if (input.tool !== 'select') return null
+  if (input.guidePair) return { kind: 'guide-positions' }
+  if (input.guideHover && input.guideMeasurable && input.alt && input.selection.length > 0) return { kind: 'guide' }
+  if (input.guideHover) return null
+  const keyboard = input.alt && input.pick && !input.selection.includes(input.pick) ? input.pick : null
+  const id = altMeasurementTarget({
+    alt: input.alt || !!keyboard,
+    inspect: input.inspect && !keyboard,
+    dragging: false,
+    space: false,
+    tool: input.tool,
+    selection: input.selection,
+    hover: keyboard ?? input.hover,
+  })
+  return id ? { kind: 'layers', id } : null
 }
