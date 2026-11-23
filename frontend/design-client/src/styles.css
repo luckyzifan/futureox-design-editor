@@ -2121,9 +2121,6 @@ footer button {
 .library-history .local-file-row { justify-content: space-between; }
 .library-history .local-file-row > span { color: var(--workspace-muted); font-size: 11px; }
 .library-history .local-file-row > button { flex: none; font-size: 11px; color: var(--workspace-accent); }
-@media (max-width: 1100px) {
-  .editor-shell .header-right .save-status { font-size: 0; width: 16px; min-width: 0; flex: none; }
-}
 @media (max-width: 700px) {
   .remote-modal { padding: 18px; }
   .library-row-action { gap: 4px; padding: 5px; }
