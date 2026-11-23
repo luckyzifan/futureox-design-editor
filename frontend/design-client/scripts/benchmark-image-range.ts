@@ -14,7 +14,7 @@ const rounds = Number(process.env.DESIGN_RANGE_ROUNDS || 5), iterations = Number
 if (!Number.isSafeInteger(rounds) || rounds < 1 || rounds > 10 || !Number.isSafeInteger(iterations) || iterations < 1 || iterations > 100)
   throw Error('Rounds must be 1..10 and iterations 1..100')
 const hash = (bytes: string | Uint8Array) => createHash('sha256').update(bytes).digest('hex')
-const baselinePath = new URL('../../../testing/verification-render-deep-20261020/image-range-scan/baseline-range.ts.txt', import.meta.url)
+const baselinePath = new URL('../../../testing/fixtures/regression/exact-image-range.before.ts.txt', import.meta.url)
 const candidatePath = new URL('../src/kernel/gpu/exact-image-x-table.ts', import.meta.url)
 const [baselineSource, candidateSource, wasm, sceneBytes, documentBytes] = await Promise.all([
   readFile(baselinePath, 'utf8'), readFile(candidatePath, 'utf8'),

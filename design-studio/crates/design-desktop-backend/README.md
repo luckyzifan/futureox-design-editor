@@ -1,17 +1,16 @@
 # Offline desktop file backend
 
-This crate is the Rust sidecar used by the Electron design desktop application.
-It reuses `futureox-design-kernel` for document validation. It has no HTTP listener,
-network client, PostgreSQL/Redis requirement, or server deployment. When main passes
-`--workspace-db`, SQLite is the durable source for local document revisions and
-their embedded resources. A separate catalog database indexes external portable
-files. `.forma` import/export and legacy recovery remain available independently.
-Editing/rendering still use the existing editor and Rust/WASM kernel; this crate
-owns durable storage, not a second editing implementation.
+This Rust sidecar serves the Electron application over local stdio. It reuses
+`futureox-design-kernel` for document validation. When main passes
+`--workspace-db`, SQLite stores local revisions and their embedded resources.
+A separate catalog database indexes portable design files. The native `.fd`
+format, legacy `.forma` files and recovery have separate routes. The desktop
+host manages optional collaboration. [Architecture](../../../docs/architecture/README.zh-CN.md)
 
 ## Build and run
 
-From the repository root, using the pinned Rust toolchain:
+Run these commands from the repository root with the pinned Rust toolchain. The
+example paths are separate application-owned locations.
 
 ```sh
 cargo build --locked --manifest-path design-studio/Cargo.toml \
@@ -27,13 +26,10 @@ design-studio/target/debug/futureox-design-desktop-backend \
   --workspace-db /absolute/app-owned/workspace-v1.sqlite3
 ```
 
-`CARGO_TARGET_DIR` can redirect build outputs. `--offline` is supported when the
-existing dependencies are cached. This revision adds backend dependencies on the
-workspace-pinned Tokio 1.53.1 (stdio/io-util/time) and sqlx 0.9.0 (SQLite and Tokio
-only), plus Windows-only same-file =1.0.6 for stable handle identity. Native font
-discovery reuses the already locked workspace `ttf-parser` 0.25.1 and `base64`
-0.22.1; no dependency versions were upgraded. Build separately for each target OS/CPU; a
-Linux executable is not a Windows or macOS artifact.
+`CARGO_TARGET_DIR` redirects build outputs. Cargo can run with `--offline` once
+the dependencies are cached. Build on the intended OS and CPU target. Use the
+test runner with disposable profile and database paths for test sessions.
+[Crate manifest](Cargo.toml) · [Local testing guide](../../../testing/README.md)
 
 ## Trust boundary
 
@@ -44,9 +40,10 @@ Linux executable is not a Windows or macOS artifact.
   renderer handle. Main retains the actual path and last acknowledged file hash.
 - A renderer cannot choose `--recovery-dir`. Main chooses a dedicated private
   application-data subdirectory. An existing symlink recovery root is refused.
-- The main process must serialize document lifecycle operations and coordinate
-  recovery writes/discards. One backend blocking worker serializes all file,
-  recovery and catalog jobs. Health/cancellation are async control-plane requests.
+- The main process serializes document lifecycle operations and coordinates
+  recovery writes and discards. The backend has separate bounded FIFO lanes for
+  ordinary work and large source files. Health and cancellation use the control
+  plane.
 - Main should enforce single-instance ownership of this recovery directory. No
   cross-process recovery-write lock is provided.
 - Native leaf symlinks and non-regular files are refused. Parent paths are
@@ -199,7 +196,7 @@ Sans SC font and twelve revisions; run it in release mode with
 `-- --ignored --nocapture`. Its timing includes the full snapshot/validation
 contract and must not be reported as UI frame time.
 
-## Native macOS fonts
+## Native system fonts
 
 `fonts.list {}` returns `{fonts, truncated, skippedCollections, skippedInvalid,
 skippedTooLarge, unavailableDirectories}`. Each font is

@@ -37,4 +37,4 @@ WASM SHA-256：`f34b99057da2ef35fe843d79eb54fdab0feabad414655a661b04d75f7d606c03
 
 本轮不代表 33 ms 可见 P95、100 ms 全场景精修、完整 G2/G5、物理扫描输出或逐个对象跨 Sketch/Figma 的独立保真验证。完整大源和高倍滤镜仍明显耗时。
 
-本机完整证据在 `testing/verification-main-electron-regression-20261109`、`testing/verification-render-repairs-20261109`、`testing/verification-gpu-followup-20261109`；私有设计输入、图像、CPU profile 和工作副本未纳入本次提交。三个目录的原始记录保留，本页只汇总可提交的结果与范围。
+本页保留当时的结果与运行范围。复跑使用当前构建与隔离 profile。[本地测试使用方式](../testing/README.md)

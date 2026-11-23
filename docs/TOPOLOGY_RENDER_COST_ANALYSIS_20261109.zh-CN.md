@@ -73,4 +73,4 @@ Apple M2 Pro / 16 GiB，macOS 26.3，Electron 44.7.0，Apple Metal，DPR 2，144
 
 ## 本机证据
 
-`testing/verification-topology-render-analysis-20261109/` 包含冻结 scope、隔离 host/生产 worker 观测脚本、完整回放、CPU profile/source-map 映射、native/worker 分段、像素比较、产物 hash 与 `analysis.json`。2675 个构建输入与已验证构建一致；WASM 仍为 `f34b99057da2ef35fe843d79eb54fdab0feabad414655a661b04d75f7d606c03`。私有设计输入与图片未纳入本次文档提交。
+该轮由隔离 host 和生产 worker 分段观测，结合回放、采样及像素比较。2675 个构建输入与已验证构建一致；WASM 仍为 `f34b99057da2ef35fe843d79eb54fdab0feabad414655a661b04d75f7d606c03`。私有设计输入与图片未纳入本次文档提交。

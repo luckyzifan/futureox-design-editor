@@ -1,4 +1,4 @@
-import fixture from '../../../../../testing/verification-sketch-effects-20261026/canvas-spatial-blur.sketch?url'
+import fixture from '../../../../../testing/fixtures/regression/canvas-spatial-blur.sketch?url'
 import init, {import_sketch_json} from '../../generated/design-kernel/design_kernel'
 import {KernelClient} from '../client'
 import type {DesignDocument} from '../../model'

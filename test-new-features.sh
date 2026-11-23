@@ -21,11 +21,11 @@ usage() {
     "Runs only the $SUITE Vitest unit selection using already-prepared local dependencies." \
     'Requires Node, local Vitest, generated kernel bindings/WASM, and the bundled test font.' \
     'Does not install, compile the app/kernel, start a browser, or validate GPU pixels/FPS.' \
-    'Creates a unique log directory; all output and the actual failure status are retained.' \
+    'Streams output by default; --log-dir retains a copy in a unique directory.' \
     'Missing prerequisites exit 2. Test failures preserve the test runner exit status.'
 }
 
-LOG_PARENT="${TMPDIR:-/tmp}"
+LOG_PARENT=""
 LIST_ONLY=0
 while (($#)); do
   case "$1" in
@@ -44,11 +44,6 @@ if ((LIST_ONLY)); then
   printf '%s\n' "Selected unit suite: $SUITE" "${TESTS[@]}"
   exit 0
 fi
-
-mkdir -p -- "$LOG_PARENT" || exit 2
-LOG_DIR="$(mktemp -d "${LOG_PARENT%/}/futureox-${SUITE}.XXXXXX")" || exit 2
-LOG="$LOG_DIR/result.log"
-printf 'Log: %s\n' "$LOG"
 
 run_suite() {
   local missing=0 file status
@@ -86,6 +81,15 @@ run_suite() {
   fi
   return "$status"
 }
+
+if [[ -z "$LOG_PARENT" ]]; then
+  run_suite
+  exit "$?"
+fi
+mkdir -p -- "$LOG_PARENT" || exit 2
+LOG_DIR="$(mktemp -d "${LOG_PARENT%/}/futureox-${SUITE}.XXXXXX")" || exit 2
+LOG="$LOG_DIR/result.log"
+printf 'Log: %s\n' "$LOG"
 
 run_suite 2>&1 | tee "$LOG"
 STATUSES=("${PIPESTATUS[@]}")

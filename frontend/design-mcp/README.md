@@ -149,7 +149,7 @@ Adapter timeout is 60 seconds; the desktop may impose a shorter deadline. Cancel
 ```sh
 cd frontend/design-mcp
 npm run check
-npm test                 # protocol/client/subprocess tests; no listener
+npm test                 # protocol, subprocess and loopback HTTP contracts
 npm run test:integration # real temporary Unix sockets + spawned stdio CLI
 npm run test:modern      # production modern-protocol dispatch with test backends
 npm run test:modern:official # requires MCP_OFFICIAL_SDK_ROOT; actual SDK/stdio, fixture backend
@@ -159,7 +159,7 @@ node_modules/.bin/vitest run src/automation/mcp-e2e.test.ts
 
 Real-Editor tests use existing WASM/font setup: native node creation, layout/text fine-editing, checks, HTML/CSS/SVG/resources, JSON, true `.fd` and Sketch resource roundtrips, full 17.77 MB font export isolation, stale-write/rollback/undo boundaries and 3,000-node paginated queries. No GPU renderer is launched. Some sandboxes reject Unix `listen` with `EPERM`; injected streams are not a substitute for OS-level socket verification. Live desktop opt-in/clipboard, Windows/macOS sockets, real preview capture and actual Codex acceptance require on-device verification.
 
-The ordinary integration suite creates real temporary Unix sockets and a stdio CLI subprocess against a deterministic bridge fixture; it does not launch Electron or a real Editor/SQLite backend. Official-SDK stdio tests are separate and skip when `MCP_OFFICIAL_SDK_ROOT` is absent; a skip is not acceptance. See the [functional merge record](../../testing/verification-functional-merge-20261021/README.md) for current local runs and the imported historical results.
+The ordinary integration suite creates real temporary Unix sockets and a stdio CLI subprocess against a deterministic bridge fixture; it does not launch Electron or a real Editor/SQLite backend. Official-SDK stdio tests are separate and skip when `MCP_OFFICIAL_SDK_ROOT` is absent; a skip is not acceptance. [Local test commands](../../testing/README.md) · [Historical validation](../../docs/verification/HISTORICAL_ACCEPTANCE_202610.zh-CN.md)
 
 ### Reproduce the original example
 
@@ -170,7 +170,7 @@ cd frontend/design-client
 FUTUREOX_MCP_EXAMPLE_DIR=/absolute/output/directory node_modules/.bin/vitest run --config ../design-mcp/examples/vitest.config.mjs
 ```
 
-This example is separate from the adapter/source distribution. `raw-api.html` and `export.css` preserve exact code-export output. The example packager extracts the actual embedded font with its unchanged SIL OFL license and adds an explicit `@font-face` plus a self-only font CSP to `index.html`/`styles.css`. This font packaging is sample glue: `code.export` itself does not export font binaries. The static pages have no authentication or live data behavior. The manifest records measured timings, export warnings and the absence of GPU/browser acceptance testing.
+The documented example uses the bundled full font and needs a document allowance large enough for its base64 data and authored nodes. Its HTML/CSS packaging adds the licensed font, `@font-face` and a self-only font CSP. The manifest records export warnings and actual test scope. [Resource capacity](../../docs/DOCUMENT_CAPACITY_V1.md) · [Draft and refinement example](examples/AI_GENERATION_README.md)
 
 ### Product CPU preview feedback
 
@@ -195,7 +195,7 @@ While the authorization session remains live, old resources retain the original 
 
 The permitted CPU regression, actual agent-selected visual refinement and native
 acceptance checklist are documented in
-`testing/verification-visual-feedback/README.md`. Browser, Electron, OS transport
+the [local testing guide](../../testing/README.md). Browser, Electron, OS transport
 and GPU presentation were not exercised by that CPU-only harness. The manual
 read-only native helper is `examples/capture-native-preview.mjs`; its default help
 path does not access credentials or start native work. Run its explicit `--run`

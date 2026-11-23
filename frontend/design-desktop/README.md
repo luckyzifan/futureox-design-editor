@@ -1,25 +1,8 @@
-# Forma desktop (Electron + React + Rust)
+# Futureox Design desktop
 
-This package is the local host for the **existing** `../design-client` React editor and
-`design-studio/crates/design-kernel` Rust/WASM engine. It does not create a second editor.
-The Rust `futureox-design-desktop-backend` sidecar owns `.fd` validation, atomic file
-writes, SHA-256 conflict detection, recovery, the local SQLite document/version store,
-system-font discovery and a separate single-user directory catalog.
-Its Tokio control loop communicates over bounded stdio;
-no PostgreSQL, Redis, HTTP listener or cloud account is needed for the offline desktop.
+Electron hosts the shared React editor and Rust/WASM kernel. The native backend owns local file authorization boundaries, validation, atomic writes, recovery, SQLite workspace revisions and the project directory catalog. The desktop starts in local mode and can connect to the separately maintained collaboration service from Settings.
 
-As of 2026-10-14, one `futureox-design-kernel` owns the design model, geometry,
-layout, text, history and rendering. Sketch archive preservation is a format
-adapter inside that crate, not another product editor. Both web and Electron use
-the same “导入 Sketch / FIG / SVG / PDF” command and editable canvas. Sketch
-compatibility export is available in the shared file menu; retain `.fd` for the
-full authored document. Missing embedded fonts and other conversion limits are
-reported explicitly. The original Sketch input is read-only.
-
-The shared React UI is local-first. Web persistence uses IndexedDB; Electron uses
-the Rust SQLite workspace. Legacy native archive bridge contracts documented below
-remain internal compatibility tooling; their former separate editor/inspection
-menu entries are no longer displayed.
+Open `.fd` for the native editable document. The file menu imports Sketch, FIG, SVG and PDF with format-specific reporting. The original remains available while edits persist to an independent working copy. For product steps and platform responsibilities, see the [desktop guide](../../docs/USAGE.zh-CN.md) and [architecture](../../docs/architecture/README.zh-CN.md).
 
 ## Develop and test
 
@@ -27,20 +10,18 @@ Prerequisites: the repository's Rust toolchain and `wasm32-unknown-unknown` targ
 `wasm-bindgen-cli` **0.2.130**, Bun **1.4.0+**, Node **24+**, and supported OS display libraries.
 Electron is pinned to **44.7.0** and the official packager to **20.3.0**.
 
-Each package owns its lockfile; there is no workspace-level install. From `frontend/`:
+Each package owns its lockfile. From `frontend/`:
 
 ```sh
-cd design-client && bun install --frozen-lockfile && cd ../design-desktop
+(cd design-client && bun install --frozen-lockfile)
+cd design-desktop
 bun install --frozen-lockfile
-bun run install:runtime
 bun run dev
 ```
 
 `install:runtime` runs Electron's official checked binary installer (the pinned package
 provides `install.js`; a dependency-only install is not evidence the binary exists).
-`dev` rebuilds the real WASM kernel, typechecks React, builds the renderer and Rust
-sidecar, then starts Electron. It serves bundled files via `design-app://app/`, not a
-localhost Vite server. For existing build caches, set `CARGO_TARGET_DIR` before building;
+`dev` installs the pinned Electron runtime, rebuilds the WASM kernel, typechecks React, builds the renderer and native programs, and starts Electron. It serves the bundled files through `design-app://app/`. For existing build caches, set `CARGO_TARGET_DIR` before building;
 `WASM_BINDGEN` may point to the exact installed binding-generator executable.
 
 Native builds default to `release` (Thin LTO and one codegen unit). `bun run dev` passes
@@ -56,18 +37,14 @@ release build.
 ```sh
 bun run build:host
 bun run test
-bun run build
-bun run start
+bun run install:runtime
+node scripts/build.mjs --fast
 bun run test:smoke
+# Start a normal editing session after the build
+bun run start
 ```
 
-The smoke test needs a working display and Chromium sandbox. It waits for the actual
-WASM-backed editor and a completed CPU canvas frame, asserts the narrow bridge and
-renderer isolation, queries Rust health, reports the frame's backend/time and saves
-`desktop-smoke.png` in the isolated app user-data directory. Never
-add `--no-sandbox`, disable the setuid sandbox, or weaken OS isolation to make CI pass.
-A container that denies Chromium's required IPC/display facilities is a blocked GUI
-check, not a successful desktop launch. Host unit tests do not substitute for GUI QA.
+The smoke test opens its own application window and needs a working display and the normal Chromium sandbox. It waits for a WASM-backed CPU canvas frame, checks the preload API and Rust health, and prints the frame result. The test wrapper removes the isolated profile and screenshot when it exits. Host unit tests exercise the package's Node paths. Run packaged GUI and GPU checks separately. [Local test commands](../../testing/README.md) · [Package acceptance](../../docs/RELEASE_PACKAGE_ACCEPTANCE.zh-CN.md)
 
 ### Optional GPU working-set ceiling
 
@@ -143,10 +120,9 @@ strict CPU path. Open a `.fd` file through the native picker, then press
 `Cmd/Ctrl+Shift+9` to save `desktop-gui-test.png` in that isolated profile. The
 test-only screenshot command appears only when this flag is passed, including
 when validating a native development bundle. Ordinary starts omit it.
-The [2026-10-10 macOS GUI record](../../testing/review/design-desktop-macos-gui-2026-10-10/README.md)
-contains a real save/open/edit/close journey and its screenshot.
+Run the manual command through `node ../../scripts/run-test.mjs --` to close owned processes and clear its profile when the command ends.
 
-## Current CPU-only and catalog scope
+## CPU-only launch and local catalog
 
 For an explicitly authorized CPU-only launch on a supported host, pass
 `--core-cpu-only` to Electron (for example `electron . --core-cpu-only`). The plain
@@ -167,71 +143,32 @@ to 16. Invalid/corrupt/future catalog databases are preserved; catalog calls fai
 explicitly while ordinary file-dialog and recovery operations remain available.
 See the [backend runtime/catalog contract](../../design-studio/crates/design-desktop-backend/README.md).
 
-The 2026-10-09 Linux cohort was limited to backend 39 cases, the exact Node host
-allowlist of 46 cases, real sidecar stdio 5 cases, pure CPU policy 11 cases, and
-isolated catalog component 6 cases. These cohorts are reported separately; the
-GPU-preference case was excluded in that cohort. The later 2026-10-10 macOS ARM64
-record adds actual Electron GUI interaction, native file dialogs, a local Rust
-sidecar and a WebGPU render of the saved document; it does not imply Windows/Linux
-GUI acceptance or full Figma feature parity. Previous package hashes and broader
-totals remain dated historical evidence in
-the [architecture record](../../docs/architecture/design-desktop.md).
-
 ## Native development bundle
 
-The macOS local variant has the distinct `Forma Local` application name and bundle ID.
-Use a fresh build tag when any earlier application bundle is running:
-
-```sh
-node scripts/build.mjs --release
-node scripts/package.mjs --local --build-tag=mac-20261010-final
-node scripts/verify-package.mjs --local --build-tag=mac-20261010-final
-```
-
-The output is under `release/local/<build-tag>/`. Never overwrite a running Mach-O
-bundle. The package verifier checks frozen build inputs, packaged WASM/host/sidecar
-identity and real-child file, SQLite, revision and portable-file round trips.
-The [local validation matrix](../../docs/architecture/design-macos-local-validation.md)
-separates automated contracts, real backend browser journeys and native Mac GUI steps.
+Build and verify the current host's unsigned development bundle:
 
 ```sh
 bun run package:native
-# Recheck an existing bundle without compiling:
 bun run verify:package
 ```
 
-If the official Electron ZIP is already installed locally and the checksum download
-is unavailable, set `ELECTRON_ZIP_DIR` to the directory containing the matching
-`electron-v<version>-<platform>-<arch>.zip`. The package script verifies that ZIP
-against Electron's installed `checksums.json` before using it. The 2026-10-10
-macOS arm64 development bundle passed the package verification gate (13/13
-packaged preload/real-child cases); details and hashes are in the
-[GUI record](../../testing/review/design-desktop-macos-gui-2026-10-10/README.md).
+For an independent macOS local bundle, use a new tag each time:
 
-Output: `release/Forma-<host-platform>-<host-arch>/`. The renderer/main/preload are in
-`resources/app.asar`; the matching native Rust sidecar is in `resources/sidecar/`.
-Packaging only targets the current machine so a Linux executable cannot be passed off
-as a Windows or macOS build. These are **unsigned development bundles**, not signed
-installers or production releases. Windows packaging, signing/notarization,
-font/IME/accessibility/GPU matrices, release fuses and update distribution require
-their own platform release validation. No signing credentials or publishing are used here.
+```sh
+node scripts/build.mjs --release
+node scripts/package.mjs --local --build-tag=local-review
+node scripts/verify-package.mjs --local --build-tag=local-review
+```
 
-The package command now fails unless the maintained verification gate passes:
-A before/after build-input hash record rejects source changes during or after a build.
-ASAR main/preload/renderer inventory and hashes must match build inputs, the packaged
-native sidecar must match the built executable, and packaged WASM must match the
-client's public WASM. Tests load the extracted packaged preload/bridge, exercise
-the real Rust executable through save/conflict/recovery/restart, and verify bounded
-termination of owned subprocesses. Results, source/toolchain/artifact hashes and
-test output are written to `release/package-verification.json` and
-`release/package-verification.log`. These identify this run; they do not establish
-byte-reproducible builds or prove native GUI interaction.
+The regular variant is under `release/` and the tagged local variant under `release/local/<build-tag>/`. Verification checks the package's JS, WASM and native identity and runs real-child file and SQLite cases. Keep the package and its verification files together while testing. The macOS packaged interaction check accepts the absolute executable path and an optional output directory:
 
-CI separates dependency-free host contracts, the real-WASM React desktop lifecycle
-with a mocked native bridge (`design-client: test:desktop-lifecycle`), and a macOS
-native build/package plus normally sandboxed Electron readiness smoke. Readiness
-smoke is not native save/open/close/recovery journey acceptance. The workflow is
-wired for a supported runner; an unexecuted CI lane is not a passing platform result.
+```sh
+bun run test:canvas-interaction --app=/absolute/tagged/Bundle.app/Contents/MacOS/futureox-desgin
+```
+
+Pass `--output=/absolute/new-directory` to retain the screenshots and results for review. The check keeps its Electron profile in disposable storage. The release documentation lists the separate target-platform and signing requirements. Historical macOS results are available in [early desktop validation](../../docs/verification/HISTORICAL_ACCEPTANCE_202610.zh-CN.md). [Release package acceptance](../../docs/RELEASE_PACKAGE_ACCEPTANCE.zh-CN.md)
+
+If the official Electron ZIP is available locally, use `ELECTRON_ZIP_DIR` to name its directory. The package script matches `electron-v<version>-<platform>-<arch>.zip` to the pinned Electron checksum.
 
 ## Local file and security contract
 
@@ -242,8 +179,7 @@ wired for a supported runner; an unexecuted CI lane is not a passing platform re
 - Saving uses the last observed hash and rejects external changes. Save As obtains a
   new destination baseline; when adding an extension changes the selected destination,
   an existing normalized target needs its own explicit replacement confirmation.
-- One window is used. New/Open/Recover/Close go through the renderer's unsaved-work
-  decision; close requests carry unique IDs and acknowledge stale replies. A stalled
+- Local windows keep their own document session and window-bound grants. New, open, recover and close use the renderer's lifecycle boundary. Close requests carry unique IDs and ignore stale replies. A stalled
   renderer gets an explicit native Keep open / Close without saving fallback, bound to
   its originating request and window so a delayed answer cannot settle a later close.
 - Recovery is under Electron's per-user `userData/recovery-v1` directory, at most 16
@@ -271,64 +207,7 @@ wired for a supported runner; an unexecuted CI lane is not a passing platform re
 - [Electron process sandboxing](https://www.electronjs.org/docs/latest/tutorial/sandbox)
 - [Electron custom protocols](https://www.electronjs.org/docs/latest/api/protocol)
 
-See [`../../docs/architecture/design-desktop.md`](../../docs/architecture/design-desktop.md)
-for the repository architecture and recorded verification boundaries.
-
-### 2026-10-10 first navigation batch (historical)
-
-The live canvas now presents completed frames through two alternating buffers,
-committing pixels and camera transform together. A rendered margin covers small
-pans without raster work. Native Cmd/Ctrl +/−/0 and the View menu control the
-canvas camera; Electron page zoom stays at 1. Modified wheel zoom preserves the
-world point under the cursor.
-
-GPU preview density is calibrated from current-frame texture use, including SDR
-scenes that need float effects. After bounded density reductions, complex previews
-use bounded tiles and assemble a complete frame before presentation. Export remains
-on its existing path. This is a memory fallback, not a persistent Figma-style tile
-cache; complex HDR previews can be visibly softer and slower.
-
-Run `bun run test:canvas-motion` in `frontend/design-client` for the real
-React/WASM/Metal regression (17-layer sample, frame/overlay alignment, front-buffer
-resize guard, cursor zoom anchor, SDR/HDR tile pixel comparison). The local macOS
-run and native Electron screenshots are recorded in
-[canvas follow-up evidence](../../testing/review/design-desktop-macos-gui-2026-10-10/canvas-motion/README.md).
-
-### Exact live preview restored (2026-10-10)
-
-The approximate preview experiment has been withdrawn. Live tiles use the same
-existing deterministic shader arithmetic, sampling fields and rational filters as
-reference rendering. The document's raster profile is preserved. No low-resolution
-overview/intermediate level, forced `figmaSubpixel`, density budget or delayed
-Retina refinement is used. Rendering requests the current device pixel density;
-resource limits report an error instead of silently reducing quality. Cached prior
-pixels may remain visible while an exact replacement is pending.
-
-The 106 material/driver comparisons passed with zero byte and float-bit differences.
-This is a scoped internal comparison, not complete Figma equivalence. See the
-[restoration record](../../testing/review/design-desktop-macos-gui-2026-10-10/exact-preview/README.md).
-
-`bun run package:exact` creates **Forma Exact** in `release/exact/`, preserving open
-Forma and Forma Preview bundles and their unsaved documents. This is an unsigned
-local verification bundle. `node scripts/verify-package.mjs --exact` verifies it.
-
-### Exact HDR and pending input follow-up (2026-10-11)
-
-The independently tagged local bundle `mac-20261011-precision-03` passed packaged
-CPU interaction, production GPU/HDR interaction, Rust/SQLite readback and startup
-smoke checks. Two actual drawing pointer events were received while a 200%, DPR 2
-HDR frame was pending after a real inspector edit. No artificial render delay was
-used. The final 56 HDR tiles retained physical pixel density.
-
-The fixed HDR benchmark now completes its 200% frame in 23.456 seconds
-(22.783 seconds with a warm backend), without budget retries or quality reductions.
-This is still far from interactive performance. Current external Figma glass
-reference pixels also remain mismatched; internal exactness does not establish
-complete Figma parity. See the [native test evidence and reproduction commands](../../testing/review/design-desktop-macos-gui-2026-10-10/precision-electron-2026-10-11/README.md).
-
-## 2026-10-11 canvas, panels and import/export follow-up
-
-See the [current parity matrix and exact-preview evidence](../../testing/review/design-desktop-parity-2026-10-11/README.md). Source inventories, actual browser workflows, GPU pixel checks and packaged Electron checks have distinct scopes. Complete Figma functionality and UI pixel equality remain unproven; format gaps and the remaining external glass pixel are recorded explicitly.
+See the [repository architecture](../../docs/architecture/README.zh-CN.md) and [rendering architecture](../../docs/architecture/RENDERING.zh-CN.md) for current boundaries.
 
 ## Legacy native archive admission and bounded read-only preview
 

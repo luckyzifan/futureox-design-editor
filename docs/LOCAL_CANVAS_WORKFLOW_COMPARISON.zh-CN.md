@@ -113,27 +113,27 @@
 - 浏览器保留刷新、查找和标签页组合键；相关本地命令可从菜单/F2/Shift+数字操作。浏览器例外是主动宿主适配，不能宣称与官方桌面逐键一致。
 - 输入框/textarea/contenteditable、菜单、模态框拥有键盘时不执行画布命令；忙碌或拖动期间不启动破坏性交互。
 
-## 8. 本轮落地与验证记录
+## 8. 早期落地与验证结论
 
 本轮已实现四项：Sketch-like 基础键盘尺寸微调、方案化全选过滤/作用域、Figma 移除自动布局绑定、Figma Windows 置顶/底修饰键修正。实现均进入 `dispatchEditorCommand`，不另写第二套几何模型，不修改渲染器或浮点精度。
 
-执行环境为当前云工作区 Node + Vitest + 实际 Rust/WASM kernel，DOM 套件使用 jsdom：
+历史回归使用 Node、Vitest、实际 Rust/WASM 和 jsdom。当前复跑使用客户端脚本。
 
 ```text
 cd frontend/design-client
-./node_modules/.bin/vitest run src/canvas-workflow-shortcuts.test.ts src/shortcut-profiles.test.ts src/shortcut-dom.test.tsx src/selection-hierarchy.test.ts src/selection-properties.test.ts src/smart-paste.test.ts --reporter=json --outputFile=../../testing/verification-canvas-workflows/results.json
-./node_modules/.bin/tsc --noEmit
+bun run test src/canvas-workflow-shortcuts.test.ts src/shortcut-profiles.test.ts src/shortcut-dom.test.tsx src/selection-hierarchy.test.ts src/selection-properties.test.ts src/smart-paste.test.ts
+bun run typecheck
 ```
 
-结果：**89/89 测试通过；TypeScript 检查通过。** `testing/verification-canvas-workflows/results.json`、`test.log`、`typecheck.log` 保存记录。覆盖真实状态变化、无关对象 identity、单步历史、undo/redo、JSON 重开、混合文本/形状、缩放父级/旋转、比例锁、隐藏/锁定祖先、空选区、事务取消、IME/输入目标隔离及全部预设/平台组合。没有任何真实 GUI、系统剪贴板或 GPU 通过声明。
+结果：**89/89 测试通过；TypeScript 检查通过。** 覆盖真实状态变化、无关对象 identity、单步历史、undo/redo、JSON 重开、混合文本/形状、缩放父级/旋转、比例锁、隐藏/锁定祖先、空选区、事务取消、IME/输入目标隔离及全部预设/平台组合。没有任何真实 GUI、系统剪贴板或 GPU 通过声明。
 
 本轮第一次执行有一条测试预期把“删除 layout 字段”误写成 `mode='none'`；核对已有 `autoLayout('none')` 实现后改正断言再全量重跑，未将失败隐藏为跳过。
 
 ### 后续已完成的有界增量（同日）
 
-- 画布选择增量：按住 X、Option 包含、Shift XOR、Escape 父级；实际挂载 Canvas/WASM 29/29，连同当时的 8 个影响套件 130/130，见 `testing/verification-canvas-selection-workflows/REPORT.md`。同一套件包含 desktop Mod+3/browser 不拦截、pending zoom 与空/隐藏/锁定选择的实际事件测试。
-- 覆盖粘贴与共享命令：`testing/verification-paste-over-selection/`。11 个影响套件 **169/169**、TypeScript 通过（包含上述部分测试，不可将总数相加）；新粘贴套件 28/28。隔离副本替换旧交付的三个命令/预设文件后，9 条尺寸/选择/复制数量行为断言失败，非导入失败。
-- 原生路由：`testing/verification-native-paste-over/REPORT.md`，focused 66/66；broader desktop-contracts 157/157（含 focused，不相加）。运行真实 main/preload 模块，Electron/OS 边界由测试替身提供；不是本机系统剪贴板验收。
+- 画布选择增量：按住 X、Option 包含、Shift XOR、Escape 父级；实际挂载 Canvas/WASM 29/29，连同当时的 8 个影响套件 130/130。同一套件包含 desktop Mod+3/browser 不拦截、pending zoom 与空/隐藏/锁定选择的实际事件测试。
+- 覆盖粘贴与共享命令。11 个影响套件 **169/169**、TypeScript 通过（包含上述部分测试，不可将总数相加）；新粘贴套件 28/28。隔离副本替换旧交付的三个命令/预设文件后，9 条尺寸/选择/复制数量行为断言失败，非导入失败。
+- 原生路由定向 66/66，包含在桌面合约 157/157 中。运行真实 main/preload 模块，Electron/OS 边界由测试替身提供；不是本机系统剪贴板验收。
 - 全量逐功能等价仍未完成。优先剩余：可配置 nudge、参考层对齐、Symbol 创建生命周期、tap-X 持续模式与明确列出的键盘/布局变体。小地图是用户要求移除，不列为补齐目标。
 
 ### 覆盖粘贴的精确合同与限制

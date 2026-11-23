@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { compositeDrawPlan as currentPlan, compositeRasterQuad } from './composite-draw-plan.ts'
 
-const frozen = readFileSync(new URL('../../../../../testing/verification-performance-publication/composite-draw-plan.before.ts', import.meta.url), 'utf8')
+const frozen = readFileSync(new URL('../../../../../testing/fixtures/regression/composite-draw-plan.before.ts.txt', import.meta.url), 'utf8')
 assert.equal(createHash('sha256').update(frozen).digest('hex'), 'c2299336e926a8c83ca3daeb92fde2db5b74a6770c4cf071d5c5ea84eae53f55')
 const reference = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(frozen))}`)
 const plan = process.env.DESIGN_COMPOSITE_BASELINE === '1' ? reference.compositeDrawPlan : currentPlan

@@ -206,4 +206,4 @@ continues passing its exact startup policy to every participant.
 A small actual available-memory reading can still yield a small document
 allowance. Large source pages therefore use explicit consecutive working sets;
 this is separate from raising a budget or claiming a full-page live scene.
-See [the measured regression record](../../testing/verification-source-page-load-20261026/README.md).
+See the [source canvas capacity record](../SOURCE_CANVAS_CAPACITY_20261027.zh-CN.md) for the scope of the source-page checks.

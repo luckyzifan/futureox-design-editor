@@ -36,6 +36,6 @@ No whole-app, fully translated page flow, native-menu or international accessibi
 
 ## Verification
 
-See `testing/verification-settings-locale/README.md` for exact commands and limits. The final slice passed full TypeScript checking, 13 suites / 187 tests with zero skips, byte-identical regenerated inventory, and Vite production bundling against the verified existing WASM. Mounted tests cover both Chinese/English and browser/desktop settings branches with real Editor/WASM. Desktop file operations are declared test doubles, not physical persistence proof.
+The historical check passed full TypeScript checking, 13 suites / 187 tests with zero skips, byte-identical regenerated inventory, and Vite production bundling against the verified existing WASM. Mounted tests cover both Chinese/English and browser/desktop settings branches with real Editor/WASM. Desktop file operations are declared test doubles, not physical persistence proof.
 
 Initial local runs found and corrected test-harness issues (React DOM initialization order, diagnostics opt-in, and an existing shallow hook dispatcher needing the new subscription hook). An initial Vite attempt failed because the overlay entry HTML was a symlink outside the project root; materializing that unchanged entry resolved it. The inventory generator was adapted to the installed parser because TypeScript 7 no longer exposes the old AST API at its package root. Initial and corrected logs are retained. Existing Vite chunk-size and ineffective-dynamic-import warnings remain, not hidden.

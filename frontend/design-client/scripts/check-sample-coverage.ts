@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path'
 import { initSync, VectorEngine } from '../src/generated/design-kernel/design_kernel.js'
 import { identicalSampleCoverage } from '../src/kernel/gpu/sample-equivalent-coverage'
 import type { PathMesh, Rect } from '../src/kernel/gpu/types'
-import { project, repository, runProof, sha256 } from './exact-prefix-proof-utils'
+import { project, runProof, sha256 } from './exact-prefix-proof-utils'
 
 type Span = [number, number, number, number, number, number]
 type Fixture = { name: string; classification: 'accepted' | 'declared-different' | 'unknown'; path: PathMesh;
@@ -18,11 +18,12 @@ const bound = {
   executionRequestSha256: 'e3fc7bdc92eaf921c387843b8d4448e603c2813c656f8fd3433b1cc84448cba7',
   wasmSha256: '4efb26d67f71bf031fed9efbdfe3ea15385c57017de46aa5fd465a13136679a9',
 }
-const scenePath = resolve(process.env.DESIGN_COVERAGE_SCENE || '/tmp/futureox-gpu-waits-117-phase3-64-scene.json')
-const documentPath = resolve(process.env.DESIGN_COVERAGE_DOCUMENT || join(repository,
-  'testing/verification-complex-navigation-20261021/verified-stress-117/fixture-document.json'))
-const requestPath = resolve(process.env.DESIGN_COVERAGE_REQUESTS || join(repository,
-  'testing/verification-complex-navigation-20261021/reference-roi-preflight/real-region-117-request-v1.json'))
+const { DESIGN_COVERAGE_SCENE, DESIGN_COVERAGE_DOCUMENT, DESIGN_COVERAGE_REQUESTS } = process.env
+if (!DESIGN_COVERAGE_SCENE || !DESIGN_COVERAGE_DOCUMENT || !DESIGN_COVERAGE_REQUESTS)
+  throw Error('Set DESIGN_COVERAGE_SCENE, DESIGN_COVERAGE_DOCUMENT and DESIGN_COVERAGE_REQUESTS to the bound real inputs')
+const scenePath = resolve(DESIGN_COVERAGE_SCENE)
+const documentPath = resolve(DESIGN_COVERAGE_DOCUMENT)
+const requestPath = resolve(DESIGN_COVERAGE_REQUESTS)
 const fontPath = join(project, 'public/fonts/NotoSansSC.ttf')
 function regions(r: Rect): Rect[] {
   return [

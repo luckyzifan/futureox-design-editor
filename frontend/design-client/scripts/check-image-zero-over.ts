@@ -3,13 +3,15 @@
  * application memory, export, interaction or latency acceptance result. */
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { project, repository, runProof, sha256 } from './exact-prefix-proof-utils'
+import { project, runProof, sha256 } from './exact-prefix-proof-utils'
 
 if (process.env.VITE_DESIGN_EXACT_CLAMP_PREFIX !== '1' || process.env.VITE_DESIGN_EXACT_IMAGE_X_TABLE === '0')
   throw Error('Run with VITE_DESIGN_EXACT_CLAMP_PREFIX=1 and actual upload range certificates enabled')
-const scenePath = resolve(process.env.DESIGN_IMAGE_IDENTITY_SCENE || '/tmp/futureox-gpu-waits-117-phase3-64-scene.json')
-const documentPath = resolve(process.env.DESIGN_IMAGE_IDENTITY_DOCUMENT || join(repository,
-  'testing/verification-complex-navigation-20261021/verified-stress-117/fixture-document.json'))
+const { DESIGN_IMAGE_IDENTITY_SCENE, DESIGN_IMAGE_IDENTITY_DOCUMENT } = process.env
+if (!DESIGN_IMAGE_IDENTITY_SCENE || !DESIGN_IMAGE_IDENTITY_DOCUMENT)
+  throw Error('Set DESIGN_IMAGE_IDENTITY_SCENE and DESIGN_IMAGE_IDENTITY_DOCUMENT to the paired real fixture')
+const scenePath = resolve(DESIGN_IMAGE_IDENTITY_SCENE)
+const documentPath = resolve(DESIGN_IMAGE_IDENTITY_DOCUMENT)
 const names = ['opaque-full', 'opaque-binary-holes', 'signed-zero-subnormal', 'contain-invalid',
   'decline-transparent', 'decline-negative', 'decline-hdr', 'decline-unknown-upload', 'decline-opacity',
   'decline-float-mask', 'decline-clip', 'decline-fractional-destination', 'decline-extent', 'decline-stage', 'bound-117-native-window']

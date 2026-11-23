@@ -10,7 +10,7 @@ import {installLibrary,prepareSketchLibrary} from './design-system'
 const root=new URL('../../../',import.meta.url)
 const read=(path:string)=>readFileSync(new URL(path,root))
 const imported=(path:string):DesignDocument=>JSON.parse(import_sketch_json(read(path))).document
-const fixture=()=>imported('testing/fixtures/design/sketch-text-layout-flow.sketch')
+const fixture=()=>imported('testing/fixtures/regression/sketch-text-layout-flow.sketch')
 beforeAll(async()=>{await initializePicking({wasm:readFileSync(new URL('../public/kernel/design_kernel_bg.wasm',import.meta.url)),font:readFileSync(new URL('../public/fonts/NotoSansSC.ttf',import.meta.url))})})
 test('native paragraph and vertical fields enter Editor, undo and FD without losing run ranges',()=>{
  const d=fixture();validateDocument(d);expect(hasSchema20Features(d)).toBe(true)
@@ -36,7 +36,7 @@ test('native hotspots navigate, slide and return through the shared player',()=>
  const returned=prototypeEvent(d,result,back.id,'click');expect(returned.current).toBe(initial.current);expect(returned.transitionStyle).toBe('slide-right')
 })
 test('selected local Sketch library adopts embedded identity, preserves overrides, updates and undoes',async()=>{
- const libraryFixtures='testing/fixtures/design/sketch-text-layout-flow'
+ const libraryFixtures='testing/fixtures/regression/sketch-text-layout-flow'
  const consumer=imported(`${libraryFixtures}/foreign-consumer.sketch`)
  const v1=imported(`${libraryFixtures}/library-v1.sketch`),v2=imported(`${libraryFixtures}/library-v2.sketch`)
  expect(v1.id).toBe(v2.id);const e=new Editor(consumer)

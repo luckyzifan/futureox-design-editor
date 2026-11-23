@@ -62,7 +62,7 @@ Apple M2 Pro / 16 GiB、macOS 26.3、Electron 44.7.0、Apple Metal、DPR 2、144
 
 ## 来源、边界与回滚
 
-本机证据位于 `testing/verification-topology-optimization-20261109/`：冻结 scope、各候选、最终 manifest、原件/产物 hash、像素检查、真实 GUI、新进程重开及被撤回候选。私有设计、截图和副本不纳入提交。此前诊断见[复杂拓扑成本分析](TOPOLOGY_RENDER_COST_ANALYSIS_20261109.zh-CN.md)。
+本页保留候选比较、像素与 GUI 检查、独立重开和撤回结果。后续复跑使用隔离的实际输入与构建。此前诊断见[复杂拓扑成本分析](TOPOLOGY_RENDER_COST_ANALYSIS_20261109.zh-CN.md)。
 
 回滚本轮 GPU 优化可用 `VITE_DESIGN_SOURCE_SOLID_LAYERS=0` 重建，或在校验没有后续改动后撤销本轮提交；不需要存储迁移，也不回滚已修正的预览遮挡、保存和逐块清晰策略。
 

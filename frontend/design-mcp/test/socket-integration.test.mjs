@@ -20,9 +20,11 @@ const sessionId = 'session-test'
 const cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url))
 
 async function bridge(t, { scope = 'write', execute, handshakeError } = {}) {
-  const directory = await mkdtemp(path.join(await realpath(os.tmpdir()), 'design-mcp-test-'))
+  // Keep the Unix socket pathname short when TMPDIR already belongs to an
+  // isolated test run. Darwin limits the address itself to 103 bytes.
+  const directory = await mkdtemp(path.join(await realpath(os.tmpdir()), 'mcp-'))
   await chmod(directory, 0o700)
-  const endpoint = path.join(directory, 'bridge.sock')
+  const endpoint = path.join(directory, 's')
   const sockets = new Set(), requests = [], cancellations = []
   const server = net.createServer(socket => {
     sockets.add(socket); socket.on('close', () => sockets.delete(socket))

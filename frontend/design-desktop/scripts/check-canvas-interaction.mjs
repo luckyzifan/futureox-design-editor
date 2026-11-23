@@ -3,13 +3,13 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { mkdir, mkdtemp, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildInputs } from './build-inputs.mjs'
 import { Sidecar } from '../src/sidecar.mjs'
+import { createTestScratch, stopTestTree } from '../../../scripts/lib/test-scratch.mjs'
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const core = path.resolve(desktop, '../..')
@@ -47,13 +47,14 @@ const sidecarBinary = path.join(resources, 'sidecar/futureox-design-desktop-back
 const runId = randomUUID()
 const requestedOutput = option('output')
 if (requestedOutput) assert.ok(path.isAbsolute(requestedOutput), '--output must be absolute and must not already exist')
-const output = requestedOutput
+const retainedOutput = requestedOutput
   ? (await mkdir(requestedOutput, { mode: 0o700 }), await realpath(requestedOutput))
-  : await realpath(await mkdtemp(path.join(tmpdir(), `forma-electron-interaction-${runId}-`)))
-const profileRoot = path.join(output, `profiles-${runId}`)
-await mkdir(profileRoot, { mode: 0o700 })
+  : null
+const scratch = await createTestScratch('canvas-interaction-')
+const output = retainedOutput ?? scratch.root
+const profileRoot = scratch.tmp
 const inputs = [], checks = [], errors = [], logs = []
-let app, page, probe, profile, saved, kernelSaved, closed = false
+let app, child, page, probe, profile, saved, kernelSaved, closed = false
 const hash = async filename => {
   const value = createHash('sha256')
   for await (const bytes of createReadStream(filename)) value.update(bytes)
@@ -74,21 +75,13 @@ const report = {
 }
 async function closeOwned() {
   if (!app || closed) return
-  const child = app.process()
   let timer
   try {
     await Promise.race([app.close(), new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Owned Electron did not close within 30 seconds')), 30000) })])
-    closed = true
   } finally {
     clearTimeout(timer)
-    // Only the process handle created by this runner is eligible for cleanup.
-    if (!closed && child && child.exitCode === null && child.signalCode === null) {
-      child.kill('SIGTERM')
-      const force = setTimeout(() => {
-        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
-      }, 3000)
-      force.unref()
-    }
+    await stopTestTree(child)
+    closed = true
   }
 }
 try {
@@ -108,11 +101,12 @@ try {
   // Its UUID parent ensures this test cannot reuse a user's profile/window.
   app = await _electron.launch({
     executablePath: executable, args: ['--desktop-gui-test', ...(!hdrFixturePath && !softwareFixturePath ? ['--core-cpu-only'] : [])], cwd: path.dirname(executable),
-    env: { ...env, TMPDIR: profileRoot, ELECTRON_ENABLE_SECURITY_WARNINGS: 'true' },
+    env: scratch.environment({ ...env, ELECTRON_ENABLE_SECURITY_WARNINGS: 'true' }),
     chromiumSandbox: true, timeout: 45000,
   })
-  app.process().stdout?.on('data', chunk => { logs.push(String(chunk)); if (logs.length > 1000) logs.shift() })
-  app.process().stderr?.on('data', chunk => { logs.push(String(chunk)); if (logs.length > 1000) logs.shift() })
+  child = app.process()
+  child.stdout?.on('data', chunk => { logs.push(String(chunk)); if (logs.length > 1000) logs.shift() })
+  child.stderr?.on('data', chunk => { logs.push(String(chunk)); if (logs.length > 1000) logs.shift() })
   page = await app.firstWindow({ timeout: 30000 })
   page.on('pageerror', error => errors.push(String(error)))
   await page.waitForURL(/^design-app:/, { waitUntil: 'domcontentloaded', timeout: 30000 })
@@ -825,7 +819,11 @@ try {
   if (probe) await probe.stop().catch(error => errors.push(String(error)))
   if (!closed) await closeOwned().catch(error => { errors.push(String(error)); report.status = 'failed'; process.exitCode = 1 })
   report.finishedAt = new Date().toISOString()
-  await writeFile(path.join(output, 'host.log'), logs.join(''))
-  await writeFile(path.join(output, 'results.json'), JSON.stringify(report, null, 2))
-  console.log(JSON.stringify({ output, status: report.status, checks: checks.length, inputs: inputs.length, error: report.error }))
+  try {
+    await writeFile(path.join(output, 'host.log'), logs.join(''))
+    await writeFile(path.join(output, 'results.json'), JSON.stringify(report, null, 2))
+    console.log(JSON.stringify({ output: retainedOutput, status: report.status, checks: checks.length, inputs: inputs.length, error: report.error }))
+  } finally {
+    if (!app || closed) await scratch.remove()
+  }
 }

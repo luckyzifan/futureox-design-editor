@@ -249,3 +249,7 @@ Official Sketch fixtures pin their upstream repositories and commits; exercise t
 ## Local filter drag and exact source revisits
 
 A proven foreground root with one supported self-filter can use its local output support; nested filters, shear and later backdrop consumers retain the prior path. The immutable native source replay cache shares the existing 64 MiB retention allowance, keeps at most 32 exact requests, preserves source/resource identity, and updates an older frame sequence before emission. It retains encoded data rather than another document or GPU owner. `CORE_SOURCE_REPLAY=0` restores compilation on revisits. Cache pressure may evict a revisit; cancellation, source/revision/policy and scope changes remain authoritative. Fresh static rendering, same-tier capture pixels, native packet fields and hardware float pixels are distinct checks. Use an independent reload oracle; retain failed comparisons rather than approving mismatched pixels. Whole-app 33/100 ms and G2/G5 remain unclosed.
+
+## Test execution and records
+
+Use the repository's isolated test runner for disposable builds, worktrees and profiles. Preserve runnable checks, fixed inputs and conclusions in Markdown. Keep raw run output only through review and record any needed metrics, hashes and differences before cleanup. [Test usage](../testing/README.md) · [Testing requirements](TESTING_CONTRIBUTIONS.zh-CN.md) · [Verification conclusions](verification/README.md)

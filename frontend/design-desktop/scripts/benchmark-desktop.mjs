@@ -2,10 +2,10 @@
 // node benchmark-desktop.mjs FIXTURE OUTPUT BEFORE_EXECUTABLE AFTER_EXECUTABLE
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
-import { readFile, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { readFile, mkdir, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
-import os from 'node:os'
+import { closeTestElectron, createTestScratch } from '../../../scripts/lib/test-scratch.mjs'
 const require=createRequire(new URL('../../design-client/package.json',import.meta.url))
 const {_electron,expect}=require('@playwright/test')
 const [fixture,output,...executables]=process.argv.slice(2)
@@ -18,12 +18,13 @@ const order=(process.env.DESIGN_BENCH_ORDER||'0,1,1,0').split(',').map(Number)
 assert(order.length&&order.every(value=>value===0||value===1))
 for(const variant of order){
  const executable=path.resolve(executables[variant]), run=rows.length
- const owned=await mkdtemp(path.join(os.tmpdir(),'forma-desktop-bench-'))
- let app,page
+ const owned=await createTestScratch('srcab-')
+ let app,page,child
  try{
   const started=performance.now()
   app=await _electron.launch({executablePath:executable,args:['--desktop-gui-test'],chromiumSandbox:true,timeout:60000,
-   env:{...Object.fromEntries(Object.entries(process.env).filter(([key])=>!/^(ELECTRON_RUN_AS_NODE|NODE_OPTIONS|LD_PRELOAD|DYLD_)/.test(key))),TMPDIR:owned}})
+   env:owned.environment(Object.fromEntries(Object.entries(process.env).filter(([key])=>!/^(ELECTRON_RUN_AS_NODE|NODE_OPTIONS|LD_PRELOAD|DYLD_)/.test(key))))})
+  child=app.process()
   page=await app.firstWindow();await page.waitForURL(/^design-app:/)
   await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setContentSize(1440,960))
   const surface=page.locator('.kernel-presentation'),canvas=page.getByTestId('canvas'),tiles=page.locator('.kernel-tiles')
@@ -96,11 +97,5 @@ for(const variant of order){
   await writeFile(path.join(output,'results.json'),JSON.stringify({fixtureSha256,scope:'Same-host packaged Electron, fresh profiles, ABBA order; UI completion latency, not physical input-to-photon',rows},null,2))
   console.log(JSON.stringify(rows.at(-1)))
  }catch(error){console.error(error);await page?.screenshot({path:path.join(output,`failure-${run}.png`)}).catch(()=>{});throw error}
- finally{
-  if(app){const child=app.process();let timer;try{await Promise.race([app.close(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Owned app close timed out')),30000)})])}
-   finally{clearTimeout(timer);if(child.exitCode===null&&child.signalCode===null){
-    child.kill('SIGTERM')
-    await new Promise(resolve=>{const deadline=setTimeout(()=>{child.kill('SIGKILL');resolve()},2000);child.once('exit',()=>{clearTimeout(deadline);resolve()})})
-   }}}
- }
+ finally{await closeTestElectron(owned,app,child)}
 }

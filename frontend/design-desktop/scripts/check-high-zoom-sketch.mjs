@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertNativeZoomFrame, zoomReplayTargets } from './lib/high-zoom-contract.mjs'
+import { closeTestElectron, createTestScratch } from '../../../scripts/lib/test-scratch.mjs'
 
 const requireClient = createRequire(new URL('../../design-client/package.json', import.meta.url))
 const desktop = fileURLToPath(new URL('..', import.meta.url))
@@ -26,13 +27,16 @@ const output = option('output') || await mkdtemp(path.join(tmpdir(), 'futureox-h
 await mkdir(output, { recursive: true })
 const application = option('application') || desktop
 const { _electron } = requireClient('playwright')
-const app = await _electron.launch({
-  executablePath: path.join(desktop, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),
-  args: [application, '--desktop-isolated-profile'], chromiumSandbox: true, timeout: 30000,
-})
 const report = { status: 'running', scope: 'Real Electron input and published renderer readiness contracts; screenshots retained for separate pixel review', pixelAcceptance: 'not-run', overallVisualAcceptance: 'incomplete-without-independent-pixel-oracle', profile: { zoomReplay, editAfterZoom }, fixture: path.basename(fixture), steps: [], errors: [] }
 const save = () => writeFile(path.join(output, 'result.json'), JSON.stringify(report, null, 2))
+const scratch = await createTestScratch('srcab-')
+let app, child
 try {
+  app = await _electron.launch({
+    executablePath: path.join(desktop, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),
+    args: [application, '--desktop-isolated-profile'], env: scratch.environment(), chromiumSandbox: true, timeout: 30000,
+  })
+  child = app.process()
   const page = await app.firstWindow({ timeout: 20000 })
   page.on('pageerror', error => report.errors.push(String(error)))
   await page.locator('.app-shell[data-editor-ready="true"]').waitFor({ timeout: 45000 })
@@ -142,6 +146,10 @@ try {
   report.status = 'failed'; report.error = String(error); process.exitCode = 1
   console.error(error)
 } finally {
-  await save(); console.log(`HIGH_ZOOM_REPORT ${output}`)
-  await app.evaluate(({ app }) => app.exit(0)).catch(() => {})
+  try {
+    await save()
+    console.log(`HIGH_ZOOM_REPORT ${output}`)
+  } finally {
+    await closeTestElectron(scratch, app, child)
+  }
 }

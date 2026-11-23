@@ -51,6 +51,6 @@ Figma 官方说明 SVG 文本默认转成字形轮廓，可关闭 Outline text�
 
 ## 验证与复现
 
-详见 `testing/verification-svg-compatibility/README.md`、完整日志、官方 Vitest JSON 和 benchmark.json。基线保留为 `.before.ts`，不是从当前文件重新拼出“旧算法”。基准用完全相同的既有 model/geometry/WASM 依赖执行保留的生产函数，校验公共子集序列化文档严格相同；JSON 将正负零编码为同一个零。
+该对照的当前 SVG 路径回归见 [path-network.test.ts](../frontend/design-client/src/path-network.test.ts)。基线保留为 `.before.ts`，不是从当前文件重新拼出“旧算法”。基准用完全相同的既有 model/geometry/WASM 依赖执行保留的生产函数，校验公共子集序列化文档严格相同；JSON 将正负零编码为同一个零。
 
 本轮无浏览器、GPU、网络取资产、OS socket、Figma/Sketch 客户端或 macOS/Windows 实机验收。CPU/WASM 真像素、DOMParser、缓存边界替身和源码合同在证据中分别标明。

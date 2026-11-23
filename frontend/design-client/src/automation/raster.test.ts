@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, expect, test, vi } from 'vitest'
 import { readFile, mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { unzlibSync } from 'fflate'
 import { blank, node } from '../model'
 import { initializePicking } from '../kernel/picking'
@@ -11,6 +12,8 @@ import { attachDesktopAutomation, type DesktopAutomationRequest, type DesktopAut
 import { OperationBackend } from '../../../design-mcp/src/operation-backend.mjs'
 import { DesignMcpServer } from '../../../design-mcp/src/server.mjs'
 import { PassThrough } from 'node:stream'
+
+const evidence = process.env.DESIGN_RASTER_TEST_OUTPUT
 type Request = {
   id: number
   document?: string
@@ -130,10 +133,11 @@ test('real CPU PNG export preserves exact 1x/2x/3x/custom dimensions, transparen
   }
   expect(JSON.stringify(doc)).toBe(before)
   expect(workers).toHaveLength(1); expect(workers[0].terminated).toBe(true)
-  const evidence = new URL('../../../../test-results/png-export/', import.meta.url)
-  await mkdir(evidence, { recursive: true })
-  for (const a of result.assets) await writeFile(new URL(`mcp-real-cpu-${a.scale}x.png`, evidence), new Uint8Array(await a.blob.arrayBuffer()))
-  await writeFile(new URL('raster-pixel-report.json', evidence), JSON.stringify({ renderer: 'actual Rust WASM CPU via in-process Worker adapter', dimensions: decoded.map(p => [p.width,p.height]), transparentCorner: [0,0,0,0], center: [255,0,0,255], gpuEquivalent: false }, null, 2))
+  if (evidence) {
+    await mkdir(evidence, { recursive: true })
+    for (const a of result.assets) await writeFile(join(evidence, `mcp-real-cpu-${a.scale}x.png`), new Uint8Array(await a.blob.arrayBuffer()))
+    await writeFile(join(evidence, 'raster-pixel-report.json'), JSON.stringify({ renderer: 'actual Rust WASM CPU via in-process Worker adapter', dimensions: decoded.map(p => [p.width,p.height]), transparentCorner: [0,0,0,0], center: [255,0,0,255], gpuEquivalent: false }, null, 2))
+  }
 })
 test('page and authored slice share exact bounds; oversized and foreign targets allocate no workers', async () => {
   installWorker()
@@ -186,8 +190,9 @@ test('real MCP tool catalog exports and reconstructs exact CPU PNG artifacts thr
       expect(await server.callTool({ name: 'design_raster_release', arguments: { params: { artifactId: file.artifactId } } }, context)).toMatchObject({ isError: false })
     }
     expect(dimensions).toEqual([[24,24],[48,48],[72,72]])
-    const path = new URL('../../../../test-results/png-export/mcp-raster-report.json', import.meta.url)
-    await mkdir(new URL('.', path), { recursive: true })
-    await writeFile(path, JSON.stringify({ path: 'DesignMcpServer -> OperationBackend -> mounted editor bridge -> shared exporter -> actual Rust WASM CPU -> bounded byte chunks -> PNG decode', dimensions, realSocket: false, renderer: 'cpu' }, null, 2))
+    if (evidence) {
+      await mkdir(evidence, { recursive: true })
+      await writeFile(join(evidence, 'mcp-raster-report.json'), JSON.stringify({ path: 'DesignMcpServer -> OperationBackend -> mounted editor bridge -> shared exporter -> actual Rust WASM CPU -> bounded byte chunks -> PNG decode', dimensions, realSocket: false, renderer: 'cpu' }, null, 2))
+    }
   } finally { dispose(); editor.dispose(); await server.close() }
 })

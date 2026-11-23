@@ -63,10 +63,9 @@ cargo test -p futureox-design-desktop-backend --locked
 ```sh
 python3 testing/automation-sqlite-benchmark.py \
   --backend /absolute/path/to/futureox-design-desktop-backend \
-  --build-kind debug \
-  --output testing/verification-automation/sqlite-benchmark.json
+  --build-kind debug
 ```
 
 脚本仅创建并清理自己的临时目录，使用虚构编辑元数据、真实stdio进程与SQLite提交。它不读取用户文档、启动GUI或使用GPU；目前要求POSIX。
 
-本次Linux x86_64 debug结果：1000次写入p50 1.172ms、p95 1.759ms；100条来源/文档筛选读取p95 6.573ms；重启校验成功，保留1000行，workspace文件258048字节，子进程峰值RSS约13.6MiB。这是一次本地测量，不是跨设备性能承诺；日志及JSON保存在`testing/verification-automation/`。
+默认输出到终端。调试时可通过 `--output` 指定单次结果路径。历史 Linux x86_64 debug 运行测得 1,000 次写入 p50 1.172 ms、p95 1.759 ms，100 条来源／文档筛选读取 p95 6.573 ms。重启校验保留 1,000 行，数据库 258,048 字节，子进程峰值 RSS 约 13.6 MiB。

@@ -30,7 +30,7 @@ schema、压缩同步帧、瓦片寻址和布局感知快捷键。
 
 - `src/kernel/graph.ts`：`Graph` RAII 包装（`Symbol.dispose`、句柄校验、facet/ops/tile 类型化助手）。
 - `bun scripts/check-graph-api.ts`（`test:graph-api`）：9 项端到端检查（句柄、遍历、facet、op undo/redo、缩放、lz4 帧、二进制文档、瓦片几何、陈旧句柄）。
-- `src/kernel/graph-history.ts` 是实际编辑历史入口；API 检查通过不能代表上述每个接口都有 GUI 入口。产品接入清单见 [Electron 验收](../testing/review/design-kernel-electron-adoption-2026-10-12/README.md)。
+- `src/kernel/graph-history.ts` 是实际编辑历史入口；API 检查通过不能代表上述每个接口都有 GUI 入口。产品接入清单见 [Electron 测试入口](../frontend/design-desktop/README.md#develop-and-test)。
 
 ## 瓦片帧规划（tile-frame）
 

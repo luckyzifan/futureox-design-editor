@@ -90,7 +90,7 @@ Sketch 布局且快捷键方案为默认 Sketch-like 时，Option/Alt+Mod+F 聚�
 - Shift+Mod+V 现在路由独立“覆盖粘贴”，原目标保留；旧“粘贴到原位”仍在菜单且无冲突 accelerator。Figma-like 仅单目标；Sketch-like 每目标一份，父局部顶左定位是明确的本地适配，未验证原生 Sketch 旋转锚点。最多 64 个目标，展开 32 MiB/20000 层；独立 root-mask 需先编组，失败不部分应用。
 - 覆盖粘贴共享命令含过期异步拒绝与单步撤销，输入控件的原生菜单命令转交文本 Paste；Cmd+3 保持落地后的 zoom，隐藏/空/异页选区不动，锁定可见对象可居中。
 - 小地图/缩略导航已依用户要求移除，不属于待补兼容功能。
-- 第一批 6 套件 89/89 的历史记录保留于 testing/verification-canvas-workflows/。新增综合影响测试 11 套件 169/169 与 tsc 通过，见 testing/verification-paste-over-selection/；真实 Canvas 29/29 包含于该客户端影响集；原生模块 66/66 是单独的 Node 测试运行（又包含于其 desktop-contracts 157/157）。真实浏览器、Windows/macOS 键盘与 GPU 未运行。
+- 第一批历史回归 6 套件 89/89。其后综合影响回归 11 套件 169/169，TypeScript 检查通过。真实 Canvas 29/29 包含于该客户端影响集；原生模块 66/66 是单独的 Node 测试运行（又包含于其 desktop-contracts 157/157）。真实浏览器、Windows/macOS 键盘与 GPU 未运行。
 - 逐操作官方来源、代码和差距见 [本地画布流程逐项对照](../../docs/LOCAL_CANVAS_WORKFLOW_COMPARISON.zh-CN.md)。
 
 ### macOS 尺寸键对照范围

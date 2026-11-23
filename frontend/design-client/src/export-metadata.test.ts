@@ -17,7 +17,7 @@ import { deepScene } from './stress-fixtures'
 // Compile and execute the actual frozen module, substituting only its import
 // bindings with the same live dependencies used by the current export module.
 // This retains the original React serializer and complete SVG strings.
-const frozen = readFileSync(new URL('../test-fixtures/export.before.tsx.txt', import.meta.url), 'utf8')
+const frozen = readFileSync(new URL('../../../testing/fixtures/regression/export.before.tsx.txt', import.meta.url), 'utf8')
 const sourceHash = '0d3804590084e0b43e486a23ed1876455e1f1788ff8624f3cfbb75559a4f83de'
 async function baseline(source = frozen) {
   const compiled = (await transformWithOxc(source, 'export.before.tsx', { jsx: { runtime: 'automatic' } })).code
@@ -41,21 +41,21 @@ function compareMetadata(doc: DesignDocument, target: ExportTarget = { kind: 'pa
   expect(JSON.stringify(doc)).toBe(before)
   return current
 }
+function taggedSrgb(source: string) {
+  return source.replace(/^<svg[^>]+/, root => root + ' color-interpolation="sRGB"')
+}
 function compareSvg(doc: DesignDocument, target: ExportTarget = { kind: 'page' }, scale = 1) {
   const before = JSON.stringify(doc)
   const current = capture(() => compatibility.svgSource(doc, doc.pages[0].id, target, scale))
   const expected = capture(() => old.svgSource(doc, doc.pages[0].id, target, scale))
-  // Main now declares sRGB at the SVG root. Keep the remainder of the
-  // historical oracle byte-for-byte, including the viewBox and path strings.
-  if (expected.value) {
-    expected.value.source = expected.value.source.replace(/^<svg[^>]+/, root => root + ' color-interpolation="sRGB"')
-  }
+  // The exporter now declares sRGB on the root. Compare every other byte.
+  if (expected.value) expected.value.source = taggedSrgb(expected.value.source)
   expect(current).toStrictEqual(expected)
   expect(JSON.stringify(doc)).toBe(before)
   return current
 }
 
-test('the retained export fixture matches its frozen hash', () => {
+test('the export reference matches its frozen source hash', () => {
   expect(createHash('sha256').update(frozen).digest('hex')).toBe(sourceHash)
 })
 
@@ -125,7 +125,7 @@ test('mutation controls detect changed metadata and complete SVG serializer outp
   doc.nodes[slice.id] = slice; doc.pages[0].children.push(slice.id)
   expect(changed.sliceExportTarget(doc, slice.id)).not.toStrictEqual(sliceExportTarget(doc, slice.id))
   expect(changed.pdfVectorIssues(doc, doc.pages[0].id)).not.toStrictEqual(pdfVectorIssues(doc, doc.pages[0].id))
-  expect(changed.svgSource(doc, doc.pages[0].id).source).not.toBe(compatibility.svgSource(doc, doc.pages[0].id).source)
+  expect(taggedSrgb(changed.svgSource(doc, doc.pages[0].id).source)).not.toBe(compatibility.svgSource(doc, doc.pages[0].id).source)
 })
 
 test('SVG font defs require explicit editable redistribution consent and preserve exact supplied bytes', () => {

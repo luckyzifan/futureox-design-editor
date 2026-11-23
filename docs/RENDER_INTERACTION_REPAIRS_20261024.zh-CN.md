@@ -4,7 +4,7 @@
 
 ## 冻结证据与失败定义
 
-- 冻结用户日志：`testing/verification-render-smooth-color-20261024/user-0529.log`，截止本地时间 2026-10-24 05:29:49。解析结果在同目录 `user-0529-summary.json`、`user-0529-recent.json`。
+- 日志观测截止本地时间 2026-10-24 05:29:49。下文记录当时观测和结论。
 - 原文件：下载目录《拓扑素材.sketch》，118,272,240 字节，SHA-256 `b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12`。所有导出用独立副本，保留原件。
 - 同一请求出现 100 次材质字段构建、449,440,000 上传字节，端到端 pipeline 1,264.1 ms；另有 pending input age 1,718.2 ms。compile 和 graph 阶段重叠，不能相加当延迟。UI 回调约 120 Hz、uiStalls=0 不证明像素跟随输入。
 - 47 条近期渲染错误都是 `PREVIEW_CANCELLED`。未见 shader/device failure；没有触发处理器的按钮，也不会留下成功/失败操作记录。
@@ -48,7 +48,7 @@
 - 控件页实际 953 个派生节点。尺寸 184→196、撤销、重做、保存、完整导出与返回已保存父文档完成。导出 `topology-render-repair-20261024-0700.sketch` 保留全部 64 个成员，63 个逐字节相同；唯一 JSON 语义变化是源控件层 frame.width 184→196。原件摘要未变。详见 `export-verification.json`。
 - 组合源码硬件增加 8 个部分场景姿态用例（两后端各平移/旋转/出界/返回）：每次 0–1 个节点更新，和完整 GPU 编译输出逐位一致。
 - 实测同时发现“主组件布局入口拒绝”和“缩放草稿阻挡保存”，均继续修复，不把该次运行当全部通过。最新 59 项视图输入、布局、语言和 owner/IME 回归通过。
-- 本轮 CPU 火焰图在 `testing/verification-render-smooth-color-20261024/flames.html`，源采样与摘要同目录。renderer 活跃归因 2642.926 ms，Worker 1026.707 ms；约 61.8 秒采样大部分为空闲。主线程显著热点在 React DOM 提交和 Lucide 路径构建，随后增加图层列表静态图标 memo 复用。此为跨操作采样合计，不是单次响应耗时。
+- 该轮 CPU 采样记录了主线程和 Worker 归因。renderer 活跃归因 2642.926 ms，Worker 1026.707 ms；约 61.8 秒采样大部分为空闲。主线程显著热点在 React DOM 提交和 Lucide 路径构建，随后增加图层列表静态图标 memo 复用。此为跨操作采样合计，不是单次响应耗时。
 - 首次 GUI 运行仍有一个 266.6 ms 的 uiStall，未达到全应用无卡顿验收；保留该失败。profile 期间结果不得与无采样窗口直接比较。
 
 - 第二轮 GUI：重新打开完整导出，目标宽度确为 196；主组件纵向布局成功并可保存。3200% 输入后直接保存不再被草稿阻挡。真实滚轮往返 12.6%→大倍率→12.6%，该窗口 uiStalls=0，uiIntervalMax=9.5 ms，无渲染 error，最终 sharp/nativePhase coverage 均为 1。最大后台 pipeline 为 683.9 ms，不能用输入 ACK 3.4 ms 代替最终细节到齐时间。

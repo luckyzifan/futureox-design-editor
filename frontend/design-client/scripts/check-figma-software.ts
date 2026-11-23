@@ -1,11 +1,10 @@
 /** Strict current-reference gate through the real worker and both browser GPUs. */
 import { readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { command, repository, runProof, sha256 } from './exact-prefix-proof-utils'
+import { command, runProof, sha256 } from './exact-prefix-proof-utils'
 
-const references = process.env.DESIGN_FIGMA_REFERENCES
-  ? resolve(process.env.DESIGN_FIGMA_REFERENCES)
-  : join(repository, 'testing/review/design-desktop-macos-gui-2026-10-10/glass-current-iteration/references')
+if (!process.env.DESIGN_FIGMA_REFERENCES) throw Error('Set DESIGN_FIGMA_REFERENCES to the directory containing cases.json')
+const references = resolve(process.env.DESIGN_FIGMA_REFERENCES)
 const casesFile = join(references, 'cases.json')
 const cases = JSON.parse(await readFile(casesFile, 'utf8'))
 if (!Array.isArray(cases) || !cases.length || new Set(cases.map(c => c.id)).size !== cases.length)

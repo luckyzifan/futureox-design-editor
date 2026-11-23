@@ -8,7 +8,7 @@
 
 ## 验证 / Validation
 
-<!-- 填写实际执行的命令与结果；纯文档改动可记录链接和展示检查。 / List actual commands and results; documentation may use link and rendering checks. -->
+<!-- 填写实际命令、源码／产物身份和结果。保留 Markdown 结论，复核后清理原始输出。 / Record actual commands, source/build identity and results. Keep the Markdown conclusion and clear raw output after review. -->
 
 | 命令或检查 / Command or check | 结果 / Result | 验证范围 / Scope |
 | --- | --- | --- |

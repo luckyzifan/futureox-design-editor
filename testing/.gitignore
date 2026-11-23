@@ -1,0 +1,6 @@
+# New maintained inputs live with the fixed regressions. Existing tracked
+# fixtures are unaffected by this rule.
+/fixtures/*
+!/fixtures/regression/
+/lib/*
+!/lib/fixture-policy.mjs

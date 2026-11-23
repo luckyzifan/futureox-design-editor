@@ -12,7 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const args = process.argv.slice(2)
 if (args.includes('--help')) {
-  console.log('node scripts/check-exact-cache-hit-cost.mjs [--output=/new/directory] [--repo=/path/to/core] [--fixture=/path/to/file.fd] [--rounds=4]')
+  console.log('node scripts/check-exact-cache-hit-cost.mjs --fixture=/path/to/document.json [--output=/new/directory] [--repo=/path/to/core] [--rounds=4]')
   console.log('Pure CPU Node/V8 microbenchmark. No browser, GPU, native latency, or rendered-pixel acceptance. Output must not already exist.')
   process.exit(0)
 }
@@ -28,7 +28,9 @@ const project = join(repository, 'frontend/design-client')
 const rounds = Number(values.get('rounds') || 4)
 if (!Number.isInteger(rounds) || rounds < 2 || rounds > 12 || rounds % 2)
   throw new Error('--rounds must be an even integer from 2 through 12')
-const fixturePath = resolve(values.get('fixture') || join(repository, 'testing/review/design-desktop-macos-gui-2026-10-10/hdr-performance/combined-fixture.forma'))
+const fixture = values.get('fixture')
+if (!fixture) throw new Error('--fixture must name a local document')
+const fixturePath = resolve(fixture)
 const requestedOutput = values.get('output')
 if (requestedOutput && !isAbsolute(requestedOutput)) throw new Error('--output must be absolute')
 // Exclusive creation intentionally rejects even an existing empty directory.

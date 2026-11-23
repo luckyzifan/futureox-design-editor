@@ -122,7 +122,7 @@ Futureox 已有：
 - TS Immer 草稿和 [shareDocument/documentPatch](../../frontend/design-client/src/document-patch.ts)。
 - Rust [NodeStore](../../design-studio/crates/design-kernel/src/snapshot.rs) 的持久化映射、Arc 节点与有界历史。
 - 渲染器 [SharedDocument](../../design-studio/crates/design-kernel/src/renderer.rs)。
-- [op-sync](../../frontend/design-client/src/kernel/op-sync.ts) 的增量操作，以及原生 [SceneDelta](../../design-studio/crates/design-kernel/src/scene_delta.rs)。
+- [op-sync](../../frontend/design-client/src/kernel/op-sync.ts) 的增量操作，以及原生 [SceneDelta](../../design-studio/crates/design-kernel/src/scene/)。
 
 可见的剩余成本：
 
@@ -160,7 +160,7 @@ Futureox 已有 [derived_invalidation](../../design-studio/crates/design-kernel/
 
 VC [fx.rs](https://github.com/storytold/vectorcraft/blob/445550ea29c2332bd9f40269ea89a547bc7b3d50/crates/render/src/fx.rs#L714) 在拖动时把新效果栅格限制到约 100 万像素；普通滤镜区域还有约 840 万像素的预算，部分路径通过降低分辨率满足预算。它在交互中复用移动前的效果栅格，随后重算。
 
-Futureox 已有 [interaction-adaptive-density](../../frontend/design-client/src/kernel/interaction-adaptive-density.ts) 的 800 万像素候选，严格默认关闭；精确结算和导出是独立通道。已有真机 [A/B](../../testing/verification-interaction-adaptive-density-20261022/README.md) 只证明该特定候选减少部分捕获成本，未完成画质/全编辑器验收。
+Futureox 已有 [interaction-adaptive-density](../../frontend/design-client/src/kernel/interaction-adaptive-density.ts) 的 800 万像素候选，严格默认关闭；精确结算和导出是独立通道。已有真机 A/B 只证明该特定候选减少部分捕获成本，未完成画质/全编辑器验收。
 
 可借鉴的是有明确生命周期的交互策略、粗画面退场和最终清晰收敛。不能把 VC 的预算数字与自动粗化直接写入正常/精确输出，也不能借此开启当前未验收的实验标志。对于背景模糊、玻璃和兄弟依赖，单对象缓存不足以证明重用正确。
 
@@ -209,7 +209,7 @@ Futureox [Images](../../design-studio/crates/design-kernel/src/paint.rs) 克隆�
 6. **正确性**：内容不丢失、阴影不裁边、当前修订与画面一致、撤销/重做及重开不变、取消不发布半成品、导出尺寸和透明边缘正确。整数/小数像素平移都覆盖。
 7. **归因**：先测 Futureox 当前基线，再逐个候选做增量对照；不能把“统一入口”“用了 SIMD”“代码少了”当性能结论。
 
-当前主线最新容量/仿射增量的最终组合构建与整机证据仍不完整，见 [合并记录](../../testing/verification-core-capacity-affine-dev-20261022/README.md)。此前 117/FIG 与高倍率的时间只能说明历史热点，不可归为当前性能，也不是双方对比。
+当时容量与仿射改动的最终组合构建和整机验证仍不完整。此前 117/FIG 与高倍率的时间只能说明历史热点，不可归为当前性能，也不是双方对比。
 
 ## 许可与后续代码引入
 

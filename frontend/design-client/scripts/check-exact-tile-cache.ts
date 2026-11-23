@@ -1,6 +1,5 @@
-/** Exact tile cache regression. Each run snapshots current sources and reads the
- * prior worker from a pinned local Git commit; it never modifies application src.
- * See testing/review/.../exact-revision-cache/README.md for phases and boundaries. */
+/** Exact tile cache regression with a caller-supplied local document.
+ * Each run snapshots current sources and reads the prior worker from Git. */
 import { chromium } from '@playwright/test'
 import { spawn, execFileSync } from 'node:child_process'
 import { cp, mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from 'node:fs/promises'
@@ -14,10 +13,14 @@ const repository = resolve(project, '../..')
 const phase = process.env.DESIGN_CACHE_PHASE || 'guards'
 if (!['guards', 'extended', 'cancel', 'eviction', 'quick-perf', 'hdr', 'all'].includes(phase))
   throw new Error('Unknown DESIGN_CACHE_PHASE')
+if (!process.env.DESIGN_CACHE_FIXTURE) throw new Error('Set DESIGN_CACHE_FIXTURE to a local document')
+const fixturePath = resolve(process.env.DESIGN_CACHE_FIXTURE)
 const output = resolve(process.env.DESIGN_TEST_OUTPUT || await mkdtemp(join(tmpdir(), 'forma-exact-cache-')))
 await mkdir(output, { recursive: true })
 if ((await readdir(output)).length) throw new Error('Use a new or empty DESIGN_TEST_OUTPUT; existing evidence is not overwritten')
-const snapshot = join(output, 'snapshot')
+const snapshot = process.env.FUTUREOX_TEST_RUN_DIR
+  ? await mkdtemp(join(process.env.FUTUREOX_TEST_RUN_DIR, 'forma-exact-cache-source-'))
+  : join(output, 'snapshot')
 const root = join(snapshot, 'frontend/design-client')
 await mkdir(root, { recursive: true })
 for (const name of ['src', 'public', 'gpu-check.html', 'index.html', 'vite.config.ts', 'package.json', 'tsconfig.json'])
@@ -51,7 +54,6 @@ const baselineWorkerCorrect = baselineClient.includes("new URL('./render-worker-
 await writeFile(join(output, 'module-paths.json'), JSON.stringify({ moduleChecks, baselineWorkerCorrect }, null, 2))
 if (!baselineWorkerCorrect || moduleChecks.some((entry) => !entry.exists))
   throw new Error('Snapshot browser module/Worker preflight failed: ' + moduleChecks.filter((entry) => !entry.exists).map((entry) => entry.module).join(', '))
-const fixturePath = resolve(process.env.DESIGN_CACHE_FIXTURE || join(repository, 'testing/review/design-desktop-macos-gui-2026-10-10/hdr-performance/combined-fixture.forma'))
 const fixtureBytes = await readFile(fixturePath)
 const fixture = JSON.parse(fixtureBytes.toString('utf8'))
 const digest = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex')

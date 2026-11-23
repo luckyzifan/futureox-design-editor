@@ -13,6 +13,6 @@ The 2026-10-22 candidate adds bounded numeric events, with no document IDs, imag
 
 Limits remain numeric and finite: sequence IDs <= 2^32-1, byte fields <= 16 GiB, batch count <= 3, table count <= 1,000,000. The existing diagnostics transport bounds/rate limits still apply. Dropped diagnostics cannot establish absence of a submission. Submission, GPU completion and physical display remain different boundaries.
 
-See [candidate evidence](../testing/verification-resident-image-retirement-20261022/README.md).
+The active diagnostics and execution commands are maintained with the [rendering guide](architecture/RENDERING.zh-CN.md) and [test usage](../testing/README.md).
 
 Routine submissions, short successful fences and small retirement batches are sampled 1/32. All rejected/lost fences and completed observations >=32 ms are retained, as are >=48 MiB retirement releases. A retained slow completion may have no start event, but carries its frozen start fields. Cumulative deviceSubmitTraceSkipped, deviceFenceTraceSkipped and deviceRetirementTraceSkipped distinguish intentional producer sampling from transport suppression/drop counters. The transport can still drop events; this is bounded diagnostic evidence, not exhaustive tracing.

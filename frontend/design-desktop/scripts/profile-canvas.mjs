@@ -2,11 +2,12 @@
 // production host/math policy and enable only existing pass/budget telemetry.
 // node scripts/profile-canvas.mjs FIXTURE_FD NEW_OUTPUT_DIRECTORY
 import assert from 'node:assert/strict'
-import { cp, mkdir, readFile, writeFile, appendFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, readdir, writeFile, appendFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { closeTestElectron, createTestScratch } from '../../../scripts/lib/test-scratch.mjs'
 const desktop=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),client=path.resolve(desktop,'../design-client')
 const require=createRequire(path.join(client,'package.json'))
 const {_electron,expect}=require('@playwright/test')
@@ -16,33 +17,40 @@ assert(fixture&&rawOutput,'Usage: profile-canvas.mjs FIXTURE NEW_OUTPUT_DIRECTOR
 const output=path.resolve(rawOutput);await mkdir(output,{recursive:false})
 const zooms=(process.env.DESIGN_PROFILE_ZOOMS||'50,100,47.3').split(',').map(Number)
 assert(zooms.length&&zooms.every(n=>Number.isFinite(n)&&n>0&&n<=6400),'Invalid profile zooms')
-const host=path.join(output,'host');await mkdir(path.join(host,'dist'),{recursive:true})
-await cp(path.join(desktop,'src'),path.join(host,'src'),{recursive:true})
-await cp(path.join(desktop,'assets'),path.join(host,'assets'),{recursive:true})
-await writeFile(path.join(host,'package.json'),JSON.stringify({name:'forma-owned-profiler',version:'0.0.0',type:'module',main:'src/main.mjs'}))
-// A later rebuild must not mutate the native participants of an earlier run.
-for(const name of ['bin','sidecar','fonts'])await cp(path.join(desktop,'dist',name),path.join(host,'dist',name),{recursive:true})
-process.env.VITE_DESIGN_GPU_TIMINGS='1';process.env.VITE_DESIGN_TRACE_PASSES='tile'
-await build({root:client,configFile:path.join(client,'vite.config.ts'),base:'./',define:{'import.meta.env.DEV':'true'},
- build:{outDir:path.join(host,'dist/renderer'),emptyOutDir:true,sourcemap:true}})
-const fixtureText=await readFile(fixture,'utf8'),envelope=JSON.parse(fixtureText),document=envelope.document??envelope
-await writeFile(path.join(output,'identity.json'),JSON.stringify({fixtureSha256:createHash('sha256').update(fixtureText).digest('hex'),
- instrumented:true,hidden:process.env.DESIGN_PROFILE_VISIBLE!=='1',mathPolicy:'unmodified Electron desktopFullMath',sources:await Promise.all([
-  'src/kernel/gpu/renderer.ts','src/kernel/gpu/webgpu.ts','src/kernel/gpu/types.ts',
-  'src/kernel/gpu/scalar-coverage.ts','src/kernel/gpu/exact-filter.ts','src/kernel/gpu/working-set-budget.ts',
-  'src/kernel/gpu/texture-prefix.ts','src/kernel/gpu/texture-prefix.wgsl','src/kernel/gpu/prefix-module.ts',
-  'src/kernel/gpu/prefix-int128.wgsl','src/kernel/gpu/area-shader.ts','src/kernel/gpu/scene-index.ts','src/kernel/gpu/sampling.glsl',
-  'src/kernel/client.ts','src/kernel/render-worker.ts','src/kernel/render-policy.ts',
-  'src/kernel/ProgressiveSurface.tsx','src/kernel/canvas-raster-plan.ts','src/kernel/tile-scheduler.ts',
-  '../../design-studio/crates/design-kernel/shaders/sampling.wgsl',
-  '../../design-studio/crates/design-kernel/shaders/vector.wgsl',
-  '../../design-studio/crates/design-kernel/shaders/certified-rational.wgsl',
- ].map(async name=>({name,sha256:createHash('sha256').update(await readFile(path.join(client,name))).digest('hex')})))},null,2))
+const scratch=await createTestScratch()
 let app,page,child;const events=[],rows=[];let phase='startup'
 try{
+ const host=path.join(scratch.root,'host');await mkdir(path.join(host,'dist'),{recursive:true})
+ await cp(path.join(desktop,'src'),path.join(host,'src'),{recursive:true})
+ await cp(path.join(desktop,'assets'),path.join(host,'assets'),{recursive:true})
+ await writeFile(path.join(host,'package.json'),JSON.stringify({name:'forma-owned-profiler',version:'0.0.0',type:'module',main:'src/main.mjs'}))
+ // A later rebuild must not mutate the native participants of an earlier run.
+ for(const name of ['bin','sidecar','fonts'])await cp(path.join(desktop,'dist',name),path.join(host,'dist',name),{recursive:true})
+ process.env.VITE_DESIGN_GPU_TIMINGS='1';process.env.VITE_DESIGN_TRACE_PASSES='tile'
+ await build({root:client,configFile:path.join(client,'vite.config.ts'),base:'./',define:{'import.meta.env.DEV':'true'},
+  build:{outDir:path.join(host,'dist/renderer'),emptyOutDir:true,sourcemap:true}})
+ const assets = path.join(host, 'dist/renderer/assets')
+ const maps = path.join(output, 'sourcemaps')
+ await mkdir(maps)
+ for (const name of await readdir(assets)) {
+   if (name.endsWith('.map')) await cp(path.join(assets, name), path.join(maps, name))
+ }
+ const fixtureText=await readFile(fixture,'utf8'),envelope=JSON.parse(fixtureText),document=envelope.document??envelope
+ await writeFile(path.join(output,'identity.json'),JSON.stringify({fixtureSha256:createHash('sha256').update(fixtureText).digest('hex'),
+  instrumented:true,hidden:process.env.DESIGN_PROFILE_VISIBLE!=='1',mathPolicy:'unmodified Electron desktopFullMath',sources:await Promise.all([
+   'src/kernel/gpu/renderer.ts','src/kernel/gpu/webgpu.ts','src/kernel/gpu/types.ts',
+   'src/kernel/gpu/scalar-coverage.ts','src/kernel/gpu/exact-filter.ts','src/kernel/gpu/working-set-budget.ts',
+   'src/kernel/gpu/texture-prefix.ts','src/kernel/gpu/texture-prefix.wgsl','src/kernel/gpu/prefix-module.ts',
+   'src/kernel/gpu/prefix-int128.wgsl','src/kernel/gpu/area-shader.ts','src/kernel/gpu/scene-index.ts','src/kernel/gpu/sampling.glsl',
+   'src/kernel/client.ts','src/kernel/render-worker.ts','src/kernel/render-policy.ts',
+   'src/kernel/ProgressiveSurface.tsx','src/kernel/canvas-raster-plan.ts','src/kernel/tile-scheduler.ts',
+   '../../design-studio/crates/design-kernel/shaders/sampling.wgsl',
+   '../../design-studio/crates/design-kernel/shaders/vector.wgsl',
+   '../../design-studio/crates/design-kernel/shaders/certified-rational.wgsl',
+  ].map(async name=>({name,sha256:createHash('sha256').update(await readFile(path.join(client,name))).digest('hex')})))},null,2))
  app=await _electron.launch({executablePath:path.join(desktop,'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),
   args:[host,'--desktop-gui-test'],chromiumSandbox:true,timeout:60000,
-  env:{...Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(ELECTRON_RUN_AS_NODE|NODE_OPTIONS|LD_PRELOAD|DYLD_)/.test(k))),TMPDIR:output}})
+  env:scratch.environment(Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(ELECTRON_RUN_AS_NODE|NODE_OPTIONS|LD_PRELOAD|DYLD_)/.test(k))))})
  child=app.process()
  for(const [name,stream] of [['stdout',child.stdout],['stderr',child.stderr]])stream?.on('data',data=>void appendFile(path.join(output,`host-${name}.log`),data))
  child.on('exit',(code,signal)=>{events.push({phase,at:Date.now(),event:'host-exit',code,signal});void appendFile(path.join(output,'host-exit.jsonl'),JSON.stringify({at:Date.now(),code,signal})+'\n')})
@@ -124,4 +132,4 @@ try{
  console.log(JSON.stringify({output,profiles:profiles.profiles.map(p=>p.target),rows:rows.map(({phase,ms,error,fallback,drawing})=>({phase,ms,error,fallback,sha256:drawing?.sha256}))}))
  await page.getByTestId('canvas').focus();await page.keyboard.press('Meta+s');await expect(page.locator('.save-status')).toHaveText('已保存到本机',{timeout:120000})
 }catch(error){await writeFile(path.join(output,'events.json'),JSON.stringify(events));throw error}
-finally{if(app){let timer;try{await Promise.race([app.close(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Owned profiler close timeout')),30000)})])}finally{clearTimeout(timer);if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL')}}}
+finally{await closeTestElectron(scratch,app,child)}

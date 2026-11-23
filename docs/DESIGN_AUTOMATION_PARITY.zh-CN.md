@@ -302,8 +302,8 @@ Figma REST API 适合作为读取/导出与部分管理接口的参考，但它�
 | 本地临时授权与Electron桥接 | 部分支持 | 默认关闭；原生确认；只读/读写范围；文档+session+revision围栏；撤销/断开/超时；凭据不在status/SQLite；可信主frame IPC | 独立源码审查及内存传输测试通过；真实Unix socket测试在本环境因`listen EPERM`阻塞，未据此宣称跨平台打包运行已验收 |
 | MCP stdio协议适配 | 部分支持 | initialize、tools、resources、prompts、结构化结果、取消/超时、输入输出预算；工具来自实际操作schema；不提供任意JS/文件/网络执行 | MCP与host内存测试合计49通过；协议测试不等同于每种设计结构和每个导出格式的端到端验收 |
 | 包装与交付路径 | 部分支持 | Electron脚本复制完整src目录，包含新的bridge模块；MCP CLI为独立Node程序，不是Electron自动附带的可执行文件 | 需Node>=22和CLI目录；正式安装包、签名、公证、Windows命名管道行为仍需目标平台验证 |
-| 性能基线 | 已验收（单次本机测量） | Linux x86_64 debug后端，真实stdio+SQLite；1000次编辑记录写入p50=1.172ms、p95=1.759ms；100条过滤读取p95=6.573ms；保留1000条、数据库258048字节 | `testing/automation-sqlite-benchmark.py`和结果JSON可复现；不包含GUI/GPU/渲染，也不是发布版SLA |
+| 性能基线 | 历史单次测量 | Linux x86_64 debug 后端，真实 stdio 和 SQLite。1,000 次编辑记录写入 p50 1.172 ms、p95 1.759 ms，100 条过滤读取 p95 6.573 ms | [独立性能命令](DESIGN_AUTOMATION_STORAGE.zh-CN.md) |
 
-后端实现在`design-studio/crates/design-desktop-backend/`。验证日志位于`testing/verification-automation/`。存储接口、隐私边界与运行命令见[本地记录与SQLite说明](DESIGN_AUTOMATION_STORAGE.zh-CN.md)。
+后端实现在 `design-studio/crates/design-desktop-backend/`。存储接口、隐私边界、历史结论和复跑命令见[本地记录与 SQLite](DESIGN_AUTOMATION_STORAGE.zh-CN.md)。
 
 当前仍需分别验收：真实桌面UI到MCP再回到UI的完整编辑闭环、对应revision的视觉结果、正式分发包启动、各目标平台本地IPC。任务元数据仅保存任务状态，不会自动恢复或重新执行任务；重启后必须重新授权桥接。没有实现的Figma云端生成、部署、Weave计费和发布能力继续保留计划/非目标状态。

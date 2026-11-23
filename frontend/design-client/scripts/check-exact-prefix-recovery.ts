@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const project = fileURLToPath(new URL('..', import.meta.url))
 const repository = resolve(project, '../..')
 const shaderRoot = join(repository, 'design-studio/crates/design-kernel/shaders')
-const fixturePath = join(repository, 'testing/review/design-desktop-macos-gui-2026-10-10/hdr-performance/combined-fixture.forma')
+const fixturePath = process.env.DESIGN_CACHE_FIXTURE && resolve(process.env.DESIGN_CACHE_FIXTURE)
 const runId = randomUUID(), startedAt = new Date().toISOString()
 let output = process.env.DESIGN_TEST_OUTPUT || ''
 let ownedOutput = false
@@ -24,7 +24,7 @@ const evidence = async (name: string, value: unknown) =>
 const changedInputs = () => before && after
   ? [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(name => before![name] !== after![name]) : []
 
-async function inputHashes() {
+async function inputHashes(fixturePath: string) {
   const hashes: Record<string, string> = {}
   async function walk(root: string, directory: string, label: string, ancestors = new Set<string>()) {
     const canonical = await realpath(directory)
@@ -59,7 +59,7 @@ async function stopOwned(server: ChildProcess) {
 try {
   const args = process.argv.slice(2)
   if (args.includes('--help')) {
-    console.log('bun scripts/check-exact-prefix-recovery.ts [--prepare-only] [--zoom=2|4] [--output=/new-or-empty/directory]')
+    console.log('DESIGN_CACHE_FIXTURE=/absolute/document.json bun scripts/check-exact-prefix-recovery.ts [--prepare-only] [--zoom=2|4] [--output=/new-or-empty/directory]')
     console.log('Default: both existing HDR cameras, tile index 1 at zoom 2 and index 9 at zoom 4. GPU faults are explicit test controls, not physical OOM claims.')
     process.exit(0)
   }
@@ -74,6 +74,7 @@ try {
   if (zoomOption !== undefined && zoomOption !== '2' && zoomOption !== '4') throw Error('--zoom must be 2 or 4')
   const zooms = zoomOption === undefined ? [2, 4] : [Number(zoomOption)]
   const prepareOnly = flags.has('--prepare-only')
+  if (!fixturePath) throw Error('Set DESIGN_CACHE_FIXTURE to a local document')
   if (options.has('output')) output = options.get('output')!
   if (output && !isAbsolute(output)) throw Error('Evidence output must be absolute')
   output ||= await mkdtemp(join(tmpdir(), `forma-prefix-recovery-${runId}-`))
@@ -81,7 +82,7 @@ try {
   if ((await readdir(output)).length) throw Error(`Refusing non-empty evidence directory: ${output}`)
   await evidence('run-owner.json', { runId, pid: process.pid, startedAt })
   ownedOutput = true
-  before = await inputHashes()
+  before = await inputHashes(fixturePath)
   await evidence('inputs-before.json', before)
 
   // CPU preparation also exercises the actual WASM, font, fixture and planner.
@@ -269,7 +270,7 @@ try {
       await writeFile(join(output, `server-${zoom}.log`), serverLogs.join(''), { flag: 'wx' })
     }
   }
-  after = await inputHashes()
+  after = await inputHashes(fixturePath)
   await evidence('inputs-after.json', after)
   if (browserErrors.length) throw Error(`${browserErrors.length} browser error events occurred`)
   if (changedInputs().length) throw Error(`Inputs changed during gate: ${changedInputs().join(', ')}`)
@@ -281,7 +282,7 @@ try {
   const requestedOutput = output
   if (!ownedOutput) output = await mkdtemp(join(tmpdir(), `forma-prefix-recovery-failure-${runId}-`))
   let hashError: string | undefined
-  if (before && !after) try { after = await inputHashes() } catch (failure) { hashError = String(failure) }
+  if (fixturePath && before && !after) try { after = await inputHashes(fixturePath) } catch (failure) { hashError = String(failure) }
   await evidence('failure.json', { status: 'failed', runId, startedAt, finishedAt: new Date().toISOString(), requestedOutput,
     error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
     rows, browserErrors, messages, inputsBefore: before, inputsAfter: after, changedInputs: changedInputs(), hashError })

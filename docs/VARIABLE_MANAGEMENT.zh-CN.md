@@ -29,4 +29,4 @@
 
 ## 验证边界
 
-已执行真实 React/jsdom 事件、Editor/WASM、撤销、原型播放、自动化 API、二进制磁盘重新打开和本地保存流程测试。本地保存测试的 IndexedDB 边界使用测试替身；没有声称完成真实浏览器、Electron、GPU、截图或像素验收。具体结果见 `testing/verification-variable-management/README.md`。
+已执行真实 React/jsdom 事件、Editor/WASM、撤销、原型播放、自动化 API、二进制磁盘重新打开和本地保存流程测试。本地保存测试的 IndexedDB 边界使用测试替身；没有声称完成真实浏览器、Electron、GPU、截图或像素验收。测试入口见[本地测试使用方式](../testing/README.md)。

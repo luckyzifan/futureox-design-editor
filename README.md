@@ -62,7 +62,7 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-[桌面开发与构建](frontend/design-desktop/README.md#develop-and-test) · [本地 MCP](frontend/design-mcp/README.md)
+[桌面使用方式](docs/USAGE.zh-CN.md) · [桌面开发与构建](frontend/design-desktop/README.md#develop-and-test) · [本地 MCP](frontend/design-mcp/README.md)
 
 ### 云端协作
 
@@ -79,12 +79,14 @@ design-studio/
 ├── crates/design-kernel/      文档、几何、布局、历史、格式与 CPU 渲染
 ├── crates/design-gpu/         原生 GPU 设备、资源与渲染执行
 ├── crates/design-desktop-backend/  本地文件、SQLite 与恢复
+├── crates/design-agent/       本地 Agent 进程与工具适配
 └── scripts/                  内核构建与验证工具
-docs/                         架构、功能契约与开发记录
-testing/                      格式夹具与兼容性扫描
+scripts/                      本地测试隔离及工程工具
+docs/                         架构、使用说明、功能契约与验证结论
+testing/                      测试使用方式与回归夹具
 ```
 
-界面与自动化使用同一套编辑事务，桌面能力通过宿主适配接入。详细职责见[架构分层](docs/architecture/README.zh-CN.md)；按主题查找资料，请从[文档索引](docs/README.md)开始。
+界面与自动化使用同一套编辑事务，桌面能力通过宿主适配接入。[架构分层](docs/architecture/README.zh-CN.md) · [本地测试使用方式](testing/README.md) · [文档索引](docs/README.md)
 
 ## 一起把它做得更好
 

@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 const originalCanvas=fileURLToPath(new URL('./src/Canvas.tsx',import.meta.url))
-const baseline=fileURLToPath(new URL('../../testing/verification-canvas-scene-reuse-20261019/baseline/Canvas.tsx',import.meta.url))
+const baseline=fileURLToPath(new URL('../../testing/fixtures/regression/Canvas.before.tsx.txt',import.meta.url))
 export default defineConfig({
   plugins:process.env.CANVAS_SCENE_BASELINE==='1'?[{name:'exact-delivered-canvas',enforce:'pre',load(id){
     if(id.split('?')[0]!==originalCanvas)return

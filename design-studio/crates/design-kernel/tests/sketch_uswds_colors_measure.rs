@@ -187,17 +187,10 @@ fn fixed_line_box_baseline_matches_sketch_text_preview_and_keeps_fractional_x() 
 
 #[test]
 fn sketch_fixed_paragraphs_share_a_baseline_with_variable_heights_and_blank_lines() {
-    // The flow archive is a local testing fixture, not part of the git tree.
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../testing/fixtures/design/sketch-text-layout-flow.sketch");
-    let source = match std::fs::read(&path) {
-        Ok(bytes) => bytes,
-        Err(error) => {
-            eprintln!("NOT_RUN {}: {error}", path.display());
-            return;
-        }
-    };
-    let doc = import_sketch_report(&source).unwrap().document;
+    let source = include_bytes!(
+        "../../../../testing/fixtures/regression/sketch-text-layout-flow.sketch"
+    );
+    let doc = import_sketch_report(source).unwrap().document;
     let fonts = Fonts::new().with_resources(&doc.fonts).unwrap();
     let node = doc
         .nodes

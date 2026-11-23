@@ -62,7 +62,7 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-[Desktop build and development](frontend/design-desktop/README.md#develop-and-test) · [Local MCP](frontend/design-mcp/README.md)
+[Using the desktop app (Chinese)](docs/USAGE.zh-CN.md) · [Desktop build and development](frontend/design-desktop/README.md#develop-and-test) · [Local MCP](frontend/design-mcp/README.md)
 
 ### Cloud collaboration
 
@@ -79,12 +79,14 @@ design-studio/
 ├── crates/design-kernel/      Documents, geometry, layout, history, formats, CPU rendering
 ├── crates/design-gpu/         Native GPU devices, resources, rendering
 ├── crates/design-desktop-backend/  Local files, SQLite, recovery
+├── crates/design-agent/       Local agent process and tool adapters
 └── scripts/                  Kernel builds and verification tools
-docs/                         Architecture, feature contracts, development records
-testing/                      Format fixtures and compatibility scans
+scripts/                      Local test isolation and engineering tools
+docs/                         Architecture, guides, feature contracts, test conclusions
+testing/                      Test commands and regression fixtures
 ```
 
-UI actions and automation use the same editing transactions; desktop capabilities connect through host adapters. Read the [architecture guide (Chinese)](docs/architecture/README.zh-CN.md) for responsibilities, or browse the [documentation index](docs/README.md).
+UI actions and automation use the same editing transactions. Desktop capabilities connect through host adapters. [Architecture guide (Chinese)](docs/architecture/README.zh-CN.md) · [Local test commands](testing/README.md) · [Documentation index](docs/README.md)
 
 ## Help shape the project
 

@@ -6,11 +6,16 @@
 **/test-results/
 **/playwright-report/
 
-# Local verification dumps stay untracked. Tracked files under testing/ still
-# clone: fig-tools-public, the design oracles restored for kernel tests, and
-# the synthetic design/io generator, provenance, and images. Do not drop this
-# rule to publish local dumps.
-/testing/
+# Keep local verification dumps out of Git. These paths admit maintained
+# documentation and dedicated regression inputs alongside existing fixtures.
+/testing/*
+!/testing/README.md
+!/testing/.gitignore
+!/testing/automation-sqlite-benchmark.py
+!/testing/fixture-policy.test.mjs
+!/testing/generate-multifont-fixtures.py
+!/testing/fixtures/
+!/testing/lib/
 .zcode/
 .grok-bot-shots/
 *.mac-local.*

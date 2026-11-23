@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { PassThrough } from 'node:stream'
-import { readFile, mkdir, writeFile } from 'node:fs/promises'
+import { readFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
@@ -105,9 +105,11 @@ function decode(blob: Blob) {
   })
 }
 
-it('three original font families survive MCP authoring, multipage mixed runs, real glyphs, pixels, FD reopen and atomic replacement', async () => {
-  const evidence = process.env.MULTIFONT_EVIDENCE || join(tmpdir(), 'core-multifont-evidence')
-  await mkdir(evidence, { recursive: true })
+it('three original font families survive MCP authoring, multipage mixed runs, real glyphs, pixels, FD reopen and atomic replacement', async ({ onTestFinished }) => {
+  const retained = process.env.MULTIFONT_EVIDENCE
+  const evidence = retained || await mkdtemp(join(tmpdir(), 'core-multifont-'))
+  if (retained) await mkdir(evidence, { recursive: true })
+  else onTestFinished(() => rm(evidence, { recursive: true, force: true }))
   execFileSync(process.env.PYTHON || 'python3', [new URL('../../../../testing/generate-multifont-fixtures.py', import.meta.url).pathname, join(evidence, 'fonts')])
   const f = await fixture()
   for (let i = 0; i < 3; i++) {
