@@ -2,11 +2,19 @@ import { terminalQualityMessage } from './terminal-quality'
 import type { ResidentFrame } from './resident-presenter'
 import type { Bounds } from '../../model'
 
+/** 8-bit sRGB clear. Alpha must be exactly 1: a fractional page still composites
+ * over the workspace backdrop and is not a stored unorm page plate. */
+export function opaqueByteClear(color: readonly number[] | undefined): [number, number, number, number] | undefined {
+  if (!color || color.length !== 4 || color[3] !== 1 || color.some(value => !Number.isFinite(value) || value < 0 || value > 1)) return
+  return [color[0], color[1], color[2], 1]
+}
+
 const boundsMessage = ({ x, y, width, height }: Bounds) => ({ x, y, width, height })
 
 /** Explicit wire projection: painted tiles also carry their document and
  * diagnostics at runtime. A TypeScript type does not remove those fields. */
 export function residentFrameMessage(frame: ResidentFrame): ResidentFrame {
+  const pageBackground = opaqueByteClear(frame.pageBackground)
   return {
     diagnosticSequence: Number.isSafeInteger(frame.diagnosticSequence) && frame.diagnosticSequence! > 0 ? frame.diagnosticSequence : undefined,
     presentationId: frame.presentationId,
@@ -36,6 +44,7 @@ export function residentFrameMessage(frame: ResidentFrame): ResidentFrame {
     } : undefined,
     linearBlend: frame.linearBlend,
     backgroundLinear: frame.backgroundLinear ? [...frame.backgroundLinear] : undefined,
+    ...(pageBackground ? { pageBackground } : {}),
     input: frame.input ? { sequence: frame.input.sequence, at: frame.input.at,owner:frame.input.owner,
       guides:frame.input.guides?.slice(0,2).map(g=>({axis:g.axis,position:g.position,start:g.start,end:g.end})) } : undefined,
     items: frame.items.map((item) => ({
@@ -106,6 +115,7 @@ export function residentFrameSignature(frame: ResidentFrame) {
     frame.backgroundBoard,
     frame.linearBlend,
     frame.backgroundLinear,
+    opaqueByteClear(frame.pageBackground),
     active
       .map(({ tile, layer, placement, clip, gutter, blend }) => [
         tile.gpuTile,

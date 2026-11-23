@@ -45,6 +45,40 @@ test('one physical pixel hole blocks publication but a complete old backing perm
   expect(f.reports.at(-1)?.missingTextureCount).toBe(1)
 })
 
+function recordClears(device: { createCommandEncoder: () => { beginRenderPass: (descriptor: { colorAttachments?: { clearValue?: unknown }[] }) => unknown } }) {
+  const clears: unknown[] = []
+  const create = device.createCommandEncoder.bind(device)
+  device.createCommandEncoder = () => {
+    const encoder = create()
+    const begin = encoder.beginRenderPass.bind(encoder)
+    encoder.beginRenderPass = (descriptor) => {
+      clears.push(descriptor.colorAttachments?.[0]?.clearValue)
+      return begin(descriptor)
+    }
+    return encoder
+  }
+  return clears
+}
+
+test('a retained object drag clears uncovered pixels to the opaque page, not the workspace backdrop', () => {
+  const f = descriptorPresenter(() => {})
+  const clears = recordClears(f.device as unknown as Parameters<typeof recordClears>[0])
+  const tile = f.presenter.capture(8, 16)
+  f.presenter.draw({
+    ...frame([item(tile.id, 8)]), interaction: true, allowEmpty: true,
+    items: [{ ...frame([item(tile.id, 8)]).items[0], blend: true }],
+    pageBackground: [1, 1, 1, 1],
+  })
+  expect(clears.at(-1)).toEqual([1, 1, 1, 1])
+  clears.length = 0
+  f.presenter.draw({ ...frame([item(tile.id, 8)]), interaction: true, allowEmpty: true, pageBackground: [1, 1, 1, 0.5] })
+  expect(clears.at(-1)).toEqual([0, 0, 0, 0])
+  const full = f.presenter.capture(16, 16)
+  clears.length = 0
+  f.presenter.draw({ ...frame([item(full.id, 16)]), pageBackground: [1, 1, 1, 1] })
+  expect(clears.at(-1)).toEqual([0, 0, 0, 0])
+})
+
 test('explicit empty interaction clears remain permitted instead of retaining deleted content', () => {
   const f = descriptorPresenter(() => {}), full = f.presenter.capture(16, 16)
   f.presenter.draw(frame([item(full.id, 16)])); const epoch = f.queue.epoch
