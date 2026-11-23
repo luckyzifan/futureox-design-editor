@@ -16,8 +16,9 @@ import { webPath } from '../web-path'
 import { imageCacheVictims, validDecodedImage, type ImageCacheMetadata } from './decoded-image-cache'
 
 const STORE = 'design-image-mip-cache'
+const METADATA_STORE = 'image-metadata'
 const DB_NAME = 'forma-image-cache'
-const DB_VERSION = 1
+const DB_VERSION = 2
 /** Persistent payload cap, separate from worker decoded-image residency. */
 const MAX_STORE_BYTES = 256 * 1024 * 1024
 
@@ -31,29 +32,76 @@ export type CachedImage = {
 
 let dbPromise: Promise<IDBDatabase> | undefined
 
+/** Upgrade existing profiles once. Normal eviction never opens a pixel cursor. */
+function indexLegacyImages(images: IDBObjectStore, metadata: IDBObjectStore): void {
+  const entries: ImageCacheMetadata<IDBValidKey>[] = []
+  const request = images.openCursor()
+  request.onsuccess = () => {
+    const cursor = request.result
+    if (!cursor) {
+      const victims = new Set(imageCacheVictims(entries, MAX_STORE_BYTES))
+      for (const entry of entries) {
+        if (victims.has(entry.key)) images.delete(entry.key)
+        else metadata.put(entry)
+      }
+      return
+    }
+    const record = cursor.value as CachedImage | undefined
+    entries.push({
+      key: cursor.key,
+      bytes: validDecodedImage(record) ? record.data.buffer.byteLength : NaN,
+      lastUsed: record?.lastUsed ?? NaN,
+    })
+    cursor.continue()
+  }
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
-    request.onupgradeneeded = () => {
+    let blocked = false
+    request.onupgradeneeded = ({ oldVersion }) => {
       const db = request.result
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE)
+      if (oldVersion === 0) db.createObjectStore(STORE)
+      const metadata = db.createObjectStore(METADATA_STORE, { keyPath: 'key' })
+      if (oldVersion > 0) indexLegacyImages(request.transaction!.objectStore(STORE), metadata)
     }
-    request.onsuccess = () => resolve(request.result)
+    request.onblocked = () => {
+      blocked = true
+      reject(new Error('image cache upgrade blocked'))
+    }
+    request.onsuccess = () => {
+      const db = request.result
+      if (blocked) {
+        db.close()
+        return
+      }
+      db.onversionchange = () => {
+        db.close()
+        dbPromise = undefined
+      }
+      resolve(db)
+    }
     request.onerror = () => reject(request.error ?? new Error('image cache open failed'))
   })
   return dbPromise
 }
 
-function transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  return openDatabase().then(
-    (db) =>
-      new Promise<T>((resolve, reject) => {
-        const tx = db.transaction(STORE, mode)
-        const request = run(tx.objectStore(STORE))
-        request.onsuccess = () => resolve(request.result)
-        request.onerror = () => reject(request.error ?? new Error('image cache request failed'))
-      }),
-  )
+async function modifyCache(run: (images: IDBObjectStore, metadata: IDBObjectStore) => void): Promise<void> {
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    // A writer and an eviction cannot interleave between reading metadata
+    // and deleting its matching payload.
+    const tx = db.transaction([STORE, METADATA_STORE], 'readwrite')
+    tx.oncomplete = () => resolve()
+    tx.onabort = () => reject(tx.error ?? new Error('image cache transaction aborted'))
+    try {
+      run(tx.objectStore(STORE), tx.objectStore(METADATA_STORE))
+    } catch (error) {
+      tx.abort()
+      reject(error)
+    }
+  })
 }
 
 /** One-time kernel-build digest: cached decodes are only valid for the exact
@@ -94,7 +142,12 @@ export async function imageCacheKey(
  * re-decodes. */
 export async function readCachedImage(key: string): Promise<CachedImage | undefined> {
   try {
-    const record = await transaction<CachedImage | undefined>('readonly', (store) => store.get(key))
+    const db = await openDatabase()
+    const record = await new Promise<CachedImage | undefined>((resolve, reject) => {
+      const request = db.transaction(STORE, 'readonly').objectStore(STORE).get(key)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error ?? new Error('image cache read failed'))
+    })
     if (!validDecodedImage(record) || record.data.buffer.byteLength > MAX_STORE_BYTES) return undefined
     return record
   } catch {
@@ -102,23 +155,16 @@ export async function readCachedImage(key: string): Promise<CachedImage | undefi
   }
 }
 
-async function allMetadata(): Promise<ImageCacheMetadata<IDBValidKey>[]> {
-  const db = await openDatabase()
-  return new Promise((resolve, reject) => {
-    const entries: ImageCacheMetadata<IDBValidKey>[] = []
-    const tx = db.transaction(STORE, 'readonly'), request = tx.objectStore(STORE).openCursor()
+function evictOldImages(): Promise<void> {
+  return modifyCache((images, metadata) => {
+    const request = metadata.getAll()
     request.onsuccess = () => {
-      const cursor = request.result
-      if (!cursor) return
-      const record = cursor.value as CachedImage
-      entries.push({ key: cursor.key, bytes: validDecodedImage(record) ? record.data.buffer.byteLength : NaN,
-        lastUsed: record?.lastUsed })
-      // Drop the current decoded buffer before advancing. getAll/Promise.all
-      // would materialize the entire disk cache on every individual write.
-      cursor.continue()
+      const entries: ImageCacheMetadata<IDBValidKey>[] = request.result
+      for (const key of imageCacheVictims(entries, MAX_STORE_BYTES)) {
+        images.delete(key)
+        metadata.delete(key)
+      }
     }
-    tx.oncomplete = () => resolve(entries)
-    tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('image cache scan failed'))
   })
 }
 
@@ -131,8 +177,7 @@ function trimStore() {
     try {
       while (trimAgain) {
         trimAgain = false
-        const victims = imageCacheVictims(await allMetadata(), MAX_STORE_BYTES)
-        for (const key of victims) await transaction('readwrite', store => store.delete(key))
+        await evictOldImages()
       }
     } finally { trimming = undefined }
   })()
@@ -145,7 +190,11 @@ export function writeCachedImage(key: string, record: Omit<CachedImage, 'lastUse
   void (async () => {
     try {
       if (!key || !validDecodedImage(record) || record.data.buffer.byteLength > MAX_STORE_BYTES) return
-      await transaction('readwrite', (store) => store.put({ ...record, lastUsed: Date.now() }, key))
+      await modifyCache((images, metadata) => {
+        const lastUsed = Date.now()
+        images.put({ ...record, lastUsed }, key)
+        metadata.put({ key, lastUsed, bytes: record.data.buffer.byteLength })
+      })
       await trimStore()
     } catch {
       /* Storage is optional; decoding stays the fallback. */
