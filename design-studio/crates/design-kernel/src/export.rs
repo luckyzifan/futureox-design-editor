@@ -800,6 +800,19 @@ mod backdrop_budget_tests {
     }
 
     #[test]
+    fn tiled_frame_rejects_over_budget_backdrops_before_residency() {
+        let mut engine = Engine::new();
+        engine.load_document(&document(false)).unwrap();
+        let analytic = RenderOptions { raster_profile: RasterProfile::Analytic, ..options() };
+        let error = match engine.render_tiled_frame(&analytic, None) {
+            Err(error) => error,
+            Ok(_) => panic!("over-budget backdrop tiles must be rejected"),
+        };
+        assert!(error.contains("1024"), "{error}");
+        assert_eq!(engine.tiled_renderer().map(|renderer| renderer.resident_tile_count()).unwrap_or(1), 0);
+    }
+
+    #[test]
     fn genuinely_local_over_budget_chain_remains_rejected() {
         let mut engine = Engine::new();
         engine.load_document(&document(false)).unwrap();

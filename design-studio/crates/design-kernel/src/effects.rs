@@ -654,22 +654,30 @@ fn nonzero(value:f32)->bool { value.to_bits()&0x7fff_ffff!=0 }
 // Those sliding sums are exact in f64; the odd box divisor leaves enough
 // separation from a binary32 midpoint to preserve the final rounding.
 fn exact_unit_line(line:&[f32],window:i32)->bool {
-    let (mut smallest,mut largest)=(i32::MAX,i32::MIN);
-    for &value in line {
-        let bits=value.to_bits();let magnitude=bits&0x7fff_ffff;
-        if magnitude==0 {continue}
-        if bits>>31!=0||magnitude>1_f32.to_bits(){return false}
-        let exponent=((bits>>23)&255) as i32;let fraction=bits&0x7f_ffff;
-        let (unit,top)=if exponent==0 {
-            (-149+fraction.trailing_zeros() as i32,-149+(31-fraction.leading_zeros()) as i32)
-        }else{
-            (exponent-150+(fraction|0x80_0000).trailing_zeros() as i32,exponent-127)
+    exact_sample_span(line.iter().copied(), window)
+}
+
+/// Same dyadic span as [`exact_unit_line`], over one channel of a packed line.
+fn exact_sample_span(values: impl IntoIterator<Item = f32>, window: i32) -> bool {
+    let (mut smallest, mut largest) = (i32::MAX, i32::MIN);
+    for value in values {
+        let bits = value.to_bits();
+        let magnitude = bits & 0x7fff_ffff;
+        if magnitude == 0 { continue }
+        if bits >> 31 != 0 || magnitude > 1_f32.to_bits() { return false }
+        let exponent = ((bits >> 23) & 255) as i32;
+        let fraction = bits & 0x7f_ffff;
+        let (unit, top) = if exponent == 0 {
+            (-149 + fraction.trailing_zeros() as i32, -149 + (31 - fraction.leading_zeros()) as i32)
+        } else {
+            (exponent - 150 + (fraction | 0x80_0000).trailing_zeros() as i32, exponent - 127)
         };
-        smallest=smallest.min(unit);largest=largest.max(top);
+        smallest = smallest.min(unit);
+        largest = largest.max(top);
     }
-    if smallest==i32::MAX{return true}
-    let extra=32-((window as u32).saturating_sub(1)).leading_zeros();
-    largest-smallest+1+extra as i32<=52
+    if smallest == i32::MAX { return true }
+    let extra = 32 - ((window as u32).saturating_sub(1)).leading_zeros();
+    largest - smallest + 1 + extra as i32 <= 52
 }
 
 fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core: Option<Rect>) -> Result<(), String> {
@@ -830,7 +838,14 @@ fn box_pass_in_place_domain_core<const CHANNELS: usize>(
     // Same rounding test for every pixel of this pass. Building it inside the
     // pixel loop repeats the same captures on each sample.
     let window = f64::from(2 * r + 1);
-    let certified = |sum: &[f64; CHANNELS], steps: i32| -> Option<[f32; CHANNELS]> {
+    let certified = |sum: &[f64; CHANNELS], steps: i32, exact_line: bool| -> Option<[f32; CHANNELS]> {
+        // A line whose every channel fits the unit-interval dyadic proof has
+        // an exact f64 sliding sum. One division rounds to the same binary32
+        // as the rational kernel, including the odd box divisor. Channels
+        // outside that proof keep the interval test and the exact fallback.
+        if exact_line {
+            return Some(std::array::from_fn(|c| domain(sum[c] / denominator) as f32));
+        }
         let steps = f64::from(steps.max(0));
         let mut out = [0_f32; CHANNELS];
         for c in 0..CHANNELS {
@@ -859,6 +874,9 @@ fn box_pass_in_place_domain_core<const CHANNELS: usize>(
                 source_line[at] = std::array::from_fn(|c| pixel[4 - CHANNELS + c]);
             }
         }
+        let exact_line = (0..CHANNELS).all(|channel| {
+            exact_sample_span(source_line.iter().map(|pixel| pixel[channel]), 2 * r + 2)
+        });
         let sample = |at: i32| {
             if clamp_edges && len != 0 {
                 source_line[at.clamp(0, len - 1) as usize]
@@ -944,7 +962,7 @@ fn box_pass_in_place_domain_core<const CHANNELS: usize>(
             let written = if nonzeros == 0 {
                 sum=[0.;CHANNELS];since_sync=0;
                 Some([0_f32; CHANNELS])
-            } else if let Some(values) = certified(&sum, since_sync) {
+            } else if let Some(values) = certified(&sum, since_sync, exact_line) {
                 Some(values)
             } else {
                 sum = [0.; CHANNELS];
@@ -955,7 +973,7 @@ fn box_pass_in_place_domain_core<const CHANNELS: usize>(
                     }
                 }
                 since_sync = 0;
-                certified(&sum, 0)
+                certified(&sum, 0, exact_line)
             };
             if let Some(values) = written {
                 for c in 0..CHANNELS {
@@ -2397,6 +2415,25 @@ mod gaussian_scanline_memory_tests {
                         assert_eq!(a.0.map(f32::to_bits), b.0.map(f32::to_bits));
                     }
                     for(a,b)in alpha.pixels.iter().zip(&expected.pixels){assert_eq!(a.0[3].to_bits(),b.0[3].to_bits());}
+                }
+            }
+        }
+        // The dyadic fast path: every channel stays inside the unit proof,
+        // so the sliding sum replaces the rational kernel and must keep its bits.
+        let mut proven = Surface::new(Rect::new(-4, 9, 24, 15)).unwrap();
+        for (i, pixel) in proven.pixels.iter_mut().enumerate() {
+            *pixel = Pixel(std::array::from_fn(|c| {
+                let bits = [0.0_f32, 1., 0.5, 1. / 255., 0.12345679];
+                bits[(i * 5 + c) % bits.len()]
+            }));
+        }
+        for radius in [1, 8, 17, 32] {
+            for horizontal in [true, false] {
+                let expected = box_pass_reference(&proven, radius, horizontal).unwrap();
+                let mut actual = proven.try_clone().unwrap();
+                box_pass_in_place_domain::<4>(&mut actual, radius, horizontal, false).unwrap();
+                for (a, b) in actual.pixels.iter().zip(&expected.pixels) {
+                    assert_eq!(a.0.map(f32::to_bits), b.0.map(f32::to_bits), "radius={radius} horizontal={horizontal}");
                 }
             }
         }

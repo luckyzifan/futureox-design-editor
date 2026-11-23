@@ -305,6 +305,13 @@ pub trait TileRasterSource: TileRasterizer {
     /// prepared scene. `None` means this source cannot be shared; the update
     /// degrades to the calling-thread rasterizer.
     fn spawn_worker(&self) -> Option<Box<dyn TileRasterizer + Send>>;
+    /// Reject a tile the source cannot rasterize before any pixel work.
+    /// The default admits every request. A budget failure here leaves the
+    /// batch unstarted, so earlier tiles of the same frame are not painted
+    /// and then discarded.
+    fn admit_tile(&mut self, _request: &TileRequest) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 pub struct CacheManager {
@@ -770,6 +777,10 @@ impl TiledRenderer {
         let count = requests.len();
         if count == 0 {
             return Ok(());
+        }
+        for request in &requests {
+            crate::render_cancellation::checkpoint()?;
+            source.admit_tile(request)?;
         }
         let parallel = self.flags.rasterize_concurrently
             && !self.flags.single_threaded_content_rendering

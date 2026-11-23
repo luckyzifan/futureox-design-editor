@@ -3300,6 +3300,17 @@ impl crate::tiled_renderer::TileRasterSource for Engine {
         Ok(())
     }
 
+    fn admit_tile(&mut self, request: &crate::tiled_renderer::TileRequest) -> Result<(), String> {
+        if request.options.raster_profile != crate::fidelity::RasterProfile::Analytic
+            || self.color_settings().is_some()
+        {
+            return Ok(());
+        }
+        let tile = crate::math::Rect::new(0, 0, request.options.width, request.options.height);
+        let _padding = crate::export::tile_backdrop_padding(self, &request.options, tile)?;
+        Ok(())
+    }
+
     fn spawn_worker(&self) -> Option<Box<dyn crate::tiled_renderer::TileRasterizer + Send>> {
         Some(Box::new(self.snapshot_worker()))
     }

@@ -3,6 +3,7 @@
 //! PAN_FOLLOW_117=1 cargo run --release -p futureox-design-kernel --example pan_follow_117
 use futureox_design_kernel::render_cancellation::with_probe;
 use futureox_design_kernel::scene::Document;
+use futureox_design_kernel::tiled_renderer::RenderFeatureFlags;
 use futureox_design_kernel::{Engine, RenderOptions};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -115,9 +116,29 @@ fn main() {
     );
     let json = serde_json::to_string(&doc).unwrap();
     check_simple_grid();
-    for round in 1..=3 {
-        eprintln!("-- round {round}");
-        measure_round(&json, &font, &page, bx, by);
+    let phase = std::env::var("PAN_FOLLOW_PHASE").unwrap_or_else(|_| "all".into());
+    match phase.as_str() {
+        "all" => {
+            for round in 1..=3 {
+                eprintln!("-- round {round} scheduling=parallel");
+                measure_round(&json, &font, &page, bx, by, false, "all");
+            }
+            eprintln!("-- round single scheduling=calling-thread");
+            measure_round(&json, &font, &page, bx, by, true, "all");
+        }
+        "pan" => {
+            eprintln!("-- phase pan-after-shrink-finished");
+            measure_round(&json, &font, &page, bx, by, false, "pan");
+        }
+        "shrink-pan" => {
+            eprintln!("-- phase shrink-then-immediate-pan");
+            measure_round(&json, &font, &page, bx, by, false, "shrink-pan");
+        }
+        "zoom4" => {
+            eprintln!("-- phase zoom4-budget");
+            measure_round(&json, &font, &page, bx, by, false, "zoom4");
+        }
+        other => eprintln!("unknown PAN_FOLLOW_PHASE={other}"),
     }
 }
 
@@ -142,27 +163,111 @@ fn options_of(page: &str, view_x: f64, view_y: f64, zoom: f64) -> RenderOptions 
     options(page, view_x, view_y, zoom)
 }
 
-fn measure_round(json: &str, font: &[u8], page: &str, bx: f64, by: f64) {
+fn pin_scheduling(engine: &mut Engine, single: bool) {
+    if !single {
+        return;
+    }
+    // Explicit flags stay on the calling thread. The default native path
+    // turns parallelism on; this round is only the comparison.
+    engine.tiled_renderer_mut().set_flags(RenderFeatureFlags {
+        rasterize_concurrently: false,
+        single_threaded_content_rendering: true,
+        worker_limit: Some(1),
+    });
+}
+
+#[inline(never)]
+fn record_zoom4_attempt(engine: &mut Engine, zoom4: &RenderOptions) {
+    let t = Instant::now();
+    match engine.render_tiled_frame(zoom4, None) {
+        Ok(z4) => eprintln!(
+            "zoom4_ms={:.1} tiles={} visible={} raster_count={} raster_ms={:?}",
+            ms(t),
+            z4.visible_tiles,
+            z4.visible_tiles,
+            z4.telemetry.rasterisation_count,
+            z4.telemetry.rasterisation_duration_ms
+        ),
+        Err(error) => eprintln!("zoom4_error_ms={:.1} error={error}", ms(t)),
+    }
+}
+
+#[inline(never)]
+fn record_pan_after_shrink_finished(engine: &mut Engine, pan: &RenderOptions) -> Vec<u8> {
+    let t = Instant::now();
+    let panned = engine.render_tiled_frame(pan, None).unwrap();
+    eprintln!(
+        "pan_ms={:.1} visible={} raster_count={} raster_ms={:?}",
+        ms(t),
+        panned.visible_tiles,
+        panned.telemetry.rasterisation_count,
+        panned.telemetry.rasterisation_duration_ms
+    );
+    panned.rgba
+}
+
+#[inline(never)]
+fn record_shrink_then_immediate_pan(engine: &mut Engine, zoom1: &RenderOptions, pan: &RenderOptions) -> Vec<u8> {
+    let flag = Arc::new(AtomicBool::new(false));
+    let flag2 = flag.clone();
+    let started = Instant::now();
+    let signalled = Arc::new(std::sync::Mutex::new(None::<Instant>));
+    let mark = signalled.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(400));
+        *mark.lock().unwrap() = Some(Instant::now());
+        flag2.store(true, Ordering::Release);
+    });
+    let probe = flag.clone();
+    let outcome = with_probe(
+        move || probe.load(Ordering::Acquire),
+        || engine.render_tiled_frame(zoom1, None),
+    );
+    let returned = Instant::now();
+    let signal = *signalled.lock().unwrap();
+    let abort_ms = signal.map(|s| returned.saturating_duration_since(s).as_secs_f64() * 1000.);
+    eprintln!(
+        "interrupt_wall_ms={:.1} abort_after_signal_ms={abort_ms:?} result={}",
+        started.elapsed().as_secs_f64() * 1000.,
+        outcome.as_ref().map(|f| format!("ok visible={}", f.visible_tiles)).unwrap_or_else(|e| e.clone())
+    );
+    let t = Instant::now();
+    let followed = engine.render_tiled_frame(pan, None).unwrap();
+    eprintln!(
+        "follow_after_interrupt_ms={:.1} visible={} raster_count={}",
+        ms(t),
+        followed.visible_tiles,
+        followed.telemetry.rasterisation_count
+    );
+    followed.rgba
+}
+
+fn measure_round(json: &str, font: &[u8], page: &str, bx: f64, by: f64, single: bool, phase: &str) {
     let mut engine = Engine::new();
     engine.load_font(font).unwrap();
     engine.load_document(json).unwrap();
     engine.load_font(font).unwrap();
+    pin_scheduling(&mut engine, single);
 
     // Top-left of the artboard at the viewport origin.
     let zoom4 = options(&page, -bx * 4., -by * 4., 4.);
     let zoom1 = options(&page, -bx, -by, 1.);
     let pan = options(&page, -bx - 768., -by - 384., 1.);
 
-    let t = Instant::now();
-    let z4 = engine.render_tiled_frame(&zoom4, None).unwrap();
-    eprintln!(
-        "zoom4_ms={:.1} tiles={} visible={} raster_count={} raster_ms={:?}",
-        ms(t),
-        z4.visible_tiles,
-        z4.visible_tiles,
-        z4.telemetry.rasterisation_count,
-        z4.telemetry.rasterisation_duration_ms
-    );
+    if phase == "zoom4" {
+        record_zoom4_attempt(&mut engine, &zoom4);
+        return;
+    }
+    if phase != "pan" && phase != "shrink-pan" {
+        record_zoom4_attempt(&mut engine, &zoom4);
+    }
+    if phase == "shrink-pan" {
+        let followed = record_shrink_then_immediate_pan(&mut engine, &zoom1, &pan);
+        let reference = engine.render(&pan).unwrap();
+        let (bytes, max) = diff(&followed, &reference);
+        eprintln!("follow_differ_bytes={bytes} max_channel={max}");
+        return;
+    }
 
     let t = Instant::now();
     let z1 = engine.render_tiled_frame(&zoom1, None).unwrap();
@@ -173,28 +278,33 @@ fn measure_round(json: &str, font: &[u8], page: &str, bx: f64, by: f64) {
         z1.telemetry.rasterisation_count,
         z1.telemetry.rasterisation_duration_ms
     );
-
-    let t = Instant::now();
-    let panned = engine.render_tiled_frame(&pan, None).unwrap();
-    eprintln!(
-        "pan_ms={:.1} visible={} raster_count={} raster_ms={:?}",
-        ms(t),
-        panned.visible_tiles,
-        panned.telemetry.rasterisation_count,
-        panned.telemetry.rasterisation_duration_ms
-    );
+    let panned = record_pan_after_shrink_finished(&mut engine, &pan);
+    if phase == "pan" {
+        let t = Instant::now();
+        let reference = engine.render(&pan).unwrap();
+        let (bytes, max) = diff(&panned, &reference);
+        eprintln!("full_present_ms={:.1} differ_bytes={bytes} max_channel={max} frame_bytes={}", ms(t), panned.len());
+        return;
+    }
     let t = Instant::now();
     let again = engine.render_tiled_frame(&pan, None).unwrap();
     eprintln!("pan_repeat_ms={:.1} visible={} raster_count={}", ms(t), again.visible_tiles, again.telemetry.rasterisation_count);
 
-    let t = Instant::now();
+    let loaded = Instant::now();
     let mut fresh = Engine::new();
     fresh.load_font(&font).unwrap();
     fresh.load_document(&json).unwrap();
     fresh.load_font(&font).unwrap();
+    let load_ms = ms(loaded);
+    let t = Instant::now();
     let reference = fresh.render(&pan).unwrap();
-    let (bytes, max) = diff(&panned.rgba, &reference);
-    eprintln!("full_reference_ms={:.1} differ_bytes={bytes} max_channel={max} rgba={} ref={}", ms(t), panned.rgba.len(), reference.len());
+    let (bytes, max) = diff(&panned, &reference);
+    eprintln!(
+        "full_present_ms={:.1} full_load_ms={load_ms:.1} differ_bytes={bytes} max_channel={max} frame_bytes={} ref={}",
+        ms(t),
+        panned.len(),
+        reference.len()
+    );
 
     // Interrupt the zoom-out. A second thread raises the existing probe.
     // Current code either returns quickly or runs the whole frame.
@@ -202,7 +312,11 @@ fn measure_round(json: &str, font: &[u8], page: &str, bx: f64, by: f64) {
     interrupted.load_font(&font).unwrap();
     interrupted.load_document(&json).unwrap();
     interrupted.load_font(&font).unwrap();
-    let _ = interrupted.render_tiled_frame(&zoom4, None).unwrap();
+    pin_scheduling(&mut interrupted, single);
+    match interrupted.render_tiled_frame(&zoom4, None) {
+        Ok(frame) => eprintln!("interrupt_zoom4_ms visible={}", frame.visible_tiles),
+        Err(error) => eprintln!("interrupt_zoom4_error={error}"),
+    }
     let flag = Arc::new(AtomicBool::new(false));
     let flag2 = flag.clone();
     let started = Instant::now();
