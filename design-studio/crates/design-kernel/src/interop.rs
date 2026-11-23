@@ -2736,15 +2736,6 @@ impl<'a> Importer<'a> {
                     && let Some(bg) = layer.get("backgroundColor")
                 {
                     node.fills.insert(0, solid_paint(bg, 1., "normal", self.color_space));
-                } else if inside_artboard && class == "artboard" && layer.get("backgroundColor").is_some()
-                    && !layer.pointer("/userInfo/com.futureox.design-kernel").is_some_and(Value::is_object)
-                {
-                    // A legacy Sketch artboard embedded in another artboard
-                    // contributes its white viewport even with the background
-                    // checkbox off. A top-level artboard remains transparent.
-                    node.fills.insert(0, solid_paint(&json!({"red":1.,"green":1.,"blue":1.,"alpha":1.}), 1., "normal", self.color_space));
-                    node.bindings.insert("sketchOmitFrameFillInExport".into(), "true".into());
-                    node.bindings.insert("sketchNestedArtboardViewport".into(), "true".into());
                 }
                 import_layout_grid(&mut node, layer, &mut import_lossy);
             }
