@@ -15,10 +15,22 @@ fn ordinary(n:&Node)->bool {
         n.layout.as_ref().is_none_or(|l|l.mode==Flow::None) &&
         n.sizing.as_ref().is_none_or(|s|s.width==SizeMode::Fixed&&s.height==SizeMode::Fixed)
 }
+/// Placement of a component, not a generated layer inside one. Child geometry
+/// is already resident. A later rigid edit does not change the component id,
+/// overrides, or child-local layout, and full resolution rebuilds those
+/// children identically. Slots, nested layers, and definitions do not qualify.
+fn top_level_instance(n:&Node)->bool {
+    n.instance.as_ref().is_some_and(|spec| spec.slot_contents.is_empty())
+        && n.instance_origin.is_none() && n.component.is_none() && !n.component_set
+        && n.component_key.is_none() && n.boolean_operation.is_none() && n.bindings.is_empty()
+        && n.style_refs.is_empty() && n.variable_modes.is_empty() && n.repeat.is_none()
+        && n.text_path.is_none() && n.connector.is_none() && n.board.is_none()
+        && n.vector_brush.is_none() && n.path_offset==0.
+}
 /// The moved node may keep children, effects, masks and its own flow. Those do
 /// not rewrite its transform when width and height stay put. Ancestors still
 /// use `ordinary`: an auto-layout parent would reflow this node.
-fn pose_subject(n:&Node)->bool { dependency_free(n) }
+fn pose_subject(n:&Node)->bool { dependency_free(n) || top_level_instance(n) }
 fn transform_only(old:&Node,next:&Node)->Result<bool,String> {
     if old.derived_path.is_some() || next.derived_path.is_some() || old.repeat_origin.is_some() || next.repeat_origin.is_some() {
         return Ok(false);
@@ -235,5 +247,73 @@ mod tests {
             assert!(reply["nodes"].get("wire").is_some(),"{target}");
             assert_eq!(serde_json::to_vec(state.document.as_ref().unwrap()).unwrap(),serde_json::to_vec(&oracle).unwrap(),"{target}");
         }
+    }
+    fn symbol_document()->Document {
+        serde_json::from_value(json!({"schemaVersion":21,"id":"symbol","name":"top-level instance",
+            "pages":[{"id":"p","name":"page","children":["board","master","icon"],"background":"#ffffff"}],
+            "nodes":{
+                "board":{"id":"board","kind":"frame","width":420,"height":280,"clip":true,"children":["instance","other"]},
+                "master":{"id":"master","kind":"frame","width":80,"height":48,"children":["mark","nested"],"component":{"variants":{},"properties":{"show":{"name":"Show","kind":"boolean","targetKey":"mark","defaultValue":true}}}},
+                "mark":{"id":"mark","kind":"rectangle","width":28,"height":16,"transform":[1,0,0,1,6,8],"fills":[{"kind":"solid","color":"#336699"}],
+                    "effects":[{"kind":"shadow","radius":4,"x":2,"y":3,"spread":0,"color":"#204060","opacity":0.8}]},
+                "icon":{"id":"icon","kind":"frame","width":12,"height":12,"children":["icon-shape"],"component":{}},
+                "icon-shape":{"id":"icon-shape","kind":"ellipse","width":12,"height":12,"fills":[{"kind":"solid","color":"#d45500"}]},
+                "nested":{"id":"nested","kind":"frame","width":12,"height":12,"transform":[1,0,0,1,40,8],"instance":{"componentId":"icon"}},
+                "instance":{"id":"instance","kind":"frame","width":80,"height":48,"clip":true,"transform":[1,0,0,1,24,30],
+                    "instance":{"componentId":"master","overrides":{"mark":{"fills":[{"kind":"solid","color":"#11aa55"}]}}}},
+                "other":{"id":"other","kind":"frame","width":80,"height":48,"transform":[1,0,0,1,140,30],"instance":{"componentId":"master"}}
+            }})).unwrap()
+    }
+    #[test]
+    fn a_top_level_instance_pose_matches_full_resolve_and_keeps_the_other_instance() {
+        let fonts=Fonts::new();let mut state=State::default();
+        state.full(&serde_json::to_string(&symbol_document()).unwrap(),&fonts).unwrap();
+        let other=state.document.as_ref().unwrap().nodes["other"].clone();
+        for (i,transform) in [
+            Transform([1.,0.,0.,1.,51.25,-4.5]),
+            Transform([0.6,0.8,-0.8,0.6,36.,28.]),
+            Transform([1.25,0.,0.,0.75,18.,22.]),
+        ].into_iter().enumerate() {
+            let mut next=state.document.as_ref().unwrap().nodes["instance"].clone();
+            next.transform=transform;
+            let edit=patch(next.clone());
+            assert!(eligible(state.document.as_ref().unwrap(),&edit).unwrap(),"step {i}");
+            let mut oracle=state.document.as_ref().unwrap().clone();
+            oracle.nodes.insert("instance".into(),next);
+            resolve_full(&mut oracle,&fonts).unwrap();
+            let reply:serde_json::Value=serde_json::from_str(&state.patch_pose(&serde_json::to_string(&edit).unwrap(),state.receipt,&fonts).unwrap()).unwrap();
+            assert_eq!(reply["stats"]["pose"],true,"step {i}");
+            assert_eq!(reply["nodes"],json!({}),"step {i}");
+            assert_eq!(serde_json::to_vec(state.document.as_ref().unwrap()).unwrap(),serde_json::to_vec(&oracle).unwrap(),"step {i}");
+            assert_eq!(state.document.as_ref().unwrap().nodes["other"],other,"step {i}");
+        }
+    }
+    #[test]
+    fn nested_layers_slots_and_descendant_wires_do_not_take_the_instance_pose() {
+        let fonts=Fonts::new();let mut state=State::default();
+        state.full(&serde_json::to_string(&symbol_document()).unwrap(),&fonts).unwrap();
+        let doc=state.document.as_ref().unwrap();
+        let generated=doc.nodes.values().find(|n| n.instance_origin.as_ref().is_some_and(|o| o.owner=="instance" && o.source=="mark")).unwrap();
+        let mut moved=generated.clone();
+        moved.transform.0[4]+=6.;
+        assert!(!eligible(doc,&patch(moved)).unwrap(),"generated layer");
+        let nested=doc.nodes.values().find(|n| n.instance_origin.as_ref().is_some_and(|o| o.owner=="instance" && n.instance.is_some())).unwrap().id.clone();
+        let mut moved=doc.nodes[&nested].clone();
+        moved.transform.0[4]+=6.;
+        assert!(!eligible(doc,&patch(moved)).unwrap(),"nested instance");
+        let mut slotted=doc.clone();
+        slotted.nodes.get_mut("instance").unwrap().instance.as_mut().unwrap().slot_contents.insert("body".into(),vec!["x".into()]);
+        let mut moved=slotted.nodes["instance"].clone();
+        moved.transform.0[4]+=6.;
+        assert!(!eligible(&slotted,&patch(moved)).unwrap(),"slot");
+        let mut wired=doc.clone();
+        let child=wired.nodes.values().find(|n| n.instance_origin.as_ref().is_some_and(|o| o.owner=="instance")).unwrap().id.clone();
+        let wire:Node=serde_json::from_value(json!({"id":"wire","kind":"vector","width":40,"height":10,
+            "connector":{"from":{"point":{"x":0,"y":0},"nodeId":child,"anchor":{"x":0.5,"y":0.5}},"to":{"point":{"x":40,"y":0}},"style":"straight"}})).unwrap();
+        wired.pages[0].children.push(wire.id.clone());
+        wired.nodes.insert(wire.id.clone(),wire);
+        let mut moved=wired.nodes["instance"].clone();
+        moved.transform.0[4]+=6.;
+        assert!(!eligible(&wired,&patch(moved)).unwrap(),"descendant wire");
     }
 }
