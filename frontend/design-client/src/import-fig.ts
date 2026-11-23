@@ -217,6 +217,25 @@ export function decodeFig(bytes: Uint8Array) {
 }
 const guid = (g: any) => (typeof g === 'string' ? g : g ? `${g.sessionID}:${g.localID}` : '')
 type FigColorSpace = 'srgb' | 'display-p3'
+function pageBackground(record: any, space: FigColorSpace) {
+  if (record.backgroundEnabled !== undefined && typeof record.backgroundEnabled !== 'boolean')
+    throw new Error('FIG 页面背景开关无效')
+  const opacity = record.backgroundOpacity
+  if (opacity !== undefined && (typeof opacity !== 'number' || !Number.isFinite(opacity) || opacity < 0 || opacity > 1))
+    throw new Error('FIG 页面背景透明度无效')
+  const color = record.backgroundColor
+  const alpha = color?.a
+  if (alpha !== undefined && (typeof alpha !== 'number' || !Number.isFinite(alpha) || alpha < 0 || alpha > 1))
+    throw new Error('FIG 页面背景颜色透明度无效')
+  const enabled = record.backgroundEnabled !== false
+  const factor = enabled ? (alpha ?? 1) * (opacity ?? 1) : 0
+  const source = color ?? { r: 1, g: 1, b: 1 }
+  if (factor === 1) return rgb(source, space)
+  const values = ['r', 'g', 'b'].map(key => source?.[key] ?? (color ? 0 : 1))
+  if (values.some(value => typeof value !== 'number' || !Number.isFinite(value)))
+    throw new Error('FIG 页面背景颜色无效')
+  return `color(${space} ${values.join(' ')} / ${factor})`
+}
 const rgb = (c: any, space: FigColorSpace) => {
   const values = ['r','g','b'].map(k=>c?.[k] ?? 0)
   if(values.some(v=>typeof v!=='number'||!Number.isFinite(v)))throw new Error('FIG 颜色数值无效')
@@ -444,6 +463,10 @@ function figStrokeAlign(align: unknown): Stroke['align'] {
     default: throw new Error(`FIG 描边对齐 ${String(align)} 暂不支持；原文件未修改`)
   }
 }
+function figMiterLimit(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 1 && value <= 1000) return value
+  return undefined
+}
 function figStrokeJoin(join: unknown): Stroke['join'] {
   switch (join ?? 'MITER') {
     case 'ROUND': return 'round'
@@ -641,6 +664,9 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       (dash.length > 0 && dash.every((value) => value === 0)))
       throw new Error('FIG 虚线参数暂不能无损表达；原文件未修改')
     const mappedCap = figStrokeCap(record.strokeCap, warnings)
+    const miterLimit = record.miterLimit === undefined ? undefined : figMiterLimit(record.miterLimit)
+    if (record.miterLimit !== undefined && miterLimit === undefined)
+      note?.(`miterLimit=${JSON.stringify(record.miterLimit)}`)
     return (record.strokePaints || []).map((p: any) => ({
       ...stroke(),
       paint: toPaint(p),
@@ -649,6 +675,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       align: figStrokeAlign(record.strokeAlign),
       cap: mappedCap.cap,
       join: figStrokeJoin(record.strokeJoin),
+      ...(miterLimit !== undefined && miterLimit !== 4 ? { miterLimit } : {}),
       ...(mappedCap.endMarker ? { endMarker: mappedCap.endMarker } : {}),
     }))
   }
@@ -734,7 +761,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
         id,
         name: r.name || '页面',
         children: [],
-        background: rgb(r.backgroundColor || { r: 1, g: 1, b: 1 }, colorSpace),
+        background: pageBackground(r, colorSpace),
         ...(guides ? { guides } : {}),
       })
       continue

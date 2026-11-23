@@ -473,6 +473,12 @@ fn write_stroke(
         };
         pdf.content.push_str(cap);
         pdf.content.push_str(join);
+        // PDF's implicit miter limit is 10. Emit the authored limit only when
+        // it is not the editor default, so existing files keep their bytes.
+        if s.join == "miter" && s.miter_limit != 4. {
+            pdf.content
+                .push_str(&format!("{} M\n", num(s.miter_limit)?));
+        }
         if let Some((values, phase)) = dash(s)? {
             let pattern = values
                 .iter()

@@ -2066,6 +2066,7 @@ impl<'a, 'f> Runner<'a, 'f> {
                 align: "center".into(),
                 cap: "butt".into(),
                 join: "miter".into(),
+                miter_limit: 4.,
                 dash: String::new(),
                 dash_offset: 0.,
                 center_dashes: false,

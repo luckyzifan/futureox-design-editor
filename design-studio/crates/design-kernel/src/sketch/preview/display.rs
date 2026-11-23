@@ -448,6 +448,7 @@ impl Projection<'_> {
                     _ => "miter",
                 }
                 .into(),
+                miter_limit: 4.,
                 dash: array(opts, "dashPattern")
                     .iter()
                     .map(Value::to_string)

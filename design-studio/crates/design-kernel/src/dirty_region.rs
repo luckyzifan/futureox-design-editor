@@ -654,7 +654,7 @@ fn effect_margin(n: &Node, m: Transform) -> f64 {
 fn stroke_margin(n: &Node, m: Transform) -> f64 {
     let mut strokes: f64 = 0.;
     for stroke in n.strokes.iter().filter(|s| s.visible) {
-        let width = crate::stroke::maximum_width(stroke) * 4. * m.max_scale();
+        let width = crate::stroke::maximum_width(stroke) * crate::stroke::allowance_scale(stroke) * m.max_scale();
         if !width.is_finite() {
             return f64::NAN;
         }

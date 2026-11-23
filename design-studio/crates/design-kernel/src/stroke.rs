@@ -5,7 +5,10 @@ use crate::{
 mod markers;
 pub use markers::{Marker, has_markers};
 mod profile;
-pub use profile::{WidthPoint, expand, handles, maximum_width, validate};
+pub use profile::{
+    WidthPoint, allowance_scale, default_miter_limit, expand, handles, is_default_miter_limit,
+    maximum_width, validate, MITER_LIMIT_MAX,
+};
 fn polygon(mut points: Vec<Point>) -> Contour {
     if area(&points) < 0. {
         points.reverse();
@@ -469,7 +472,7 @@ pub fn outline(
     if !width.is_finite() || !(0. ..=20000.).contains(&width) {
         return Err("Invalid stroke width".into());
     }
-    outline_geometry(cs, width, cap, join, tolerance, &mut 0)
+    outline_geometry(cs, width, cap, join, default_miter_limit(), tolerance, &mut 0)
 }
 // Internal normalized units must not be tested against authored width limits.
 pub(super) fn outline_geometry(
@@ -477,6 +480,7 @@ pub(super) fn outline_geometry(
     width: f64,
     cap: &str,
     join: &str,
+    miter_limit: f64,
     tolerance: f64,
     output_points: &mut usize,
 ) -> Result<Vec<Contour>, String> {
@@ -570,7 +574,10 @@ pub(super) fn outline_geometry(
             if join == "miter" {
                 let t = (right - left).cross(b) / turn;
                 let m = left + a * t;
-                if (m - p).length() <= r * 4. {
+                // Distance from the centerline vertex to the tip is
+                // strokeWidth / (2 * sin(theta/2)), so the SVG limit is
+                // `miter_limit * r` with r = strokeWidth / 2.
+                if (m - p).length() <= r * miter_limit {
                     poly.push(m);
                 }
             }

@@ -359,7 +359,7 @@ pub(crate) fn fig_outline_key(node: &crate::scene::Node, children: &[&crate::sce
     for child in children {
         let fills = child.fills.iter().any(|p| p.visible && p.opacity > 0.);
         let strokes: Vec<_> = child.strokes.iter().map(|s| (
-            s.width, &s.align, &s.cap, &s.join, &s.dash, s.dash_offset, s.center_dashes, s.visible, s.paint.visible,
+            s.width, &s.align, &s.cap, &s.join, s.miter_limit, &s.dash, s.dash_offset, s.center_dashes, s.visible, s.paint.visible,
             s.paint.opacity > 0., &s.width_profile, s.start_marker, s.end_marker,
         )).collect();
         hash.update(serde_json::to_vec(&(child.kind.as_str(), child.transform, child.width, child.height,
