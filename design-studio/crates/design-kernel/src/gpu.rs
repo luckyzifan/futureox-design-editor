@@ -11,6 +11,7 @@ use crate::{
 use serde::Serialize;
 mod suffix;
 mod fragments;
+mod scratch;
 mod source_filter;
 mod dense_paint;
 mod dense_coverage;
@@ -2973,12 +2974,12 @@ impl Engine {
             backdrop_outputs,
             shadow_outputs,
             stages,
-            curves: Vec::new(),
+            curves: scratch::take_curves(),
             area_paths: HashMap::new(),
             fragments, fragment_targets, compiled_order:Vec::new(),
             programs,
             nodes: BTreeMap::new(),
-            vertices: Vec::new(),
+            vertices: scratch::take_vertices(),
         };
         for root in &page.children {
             compiler.node(root, camera, regional_foreground.then_some(viewport))?;

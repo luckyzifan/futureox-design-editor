@@ -377,7 +377,10 @@ impl FrameSceneContext {
         });
         let plan=scene.scene_plan();
         let curve_spans = if !self.scope.is_empty() && curve_resources_requested(request) { curve_partition(&scene) } else { None };
-        let vertices=std::mem::take(&mut scene.vertices);let curves=std::mem::take(&mut scene.curves);
+        // Scene drop would see empty buffers after these takes. Recycle the
+        // allocations the encoder still owns, including when encoding fails.
+        let vertices=super::scratch::RecycledF32::vertices(std::mem::take(&mut scene.vertices));
+        let curves=super::scratch::RecycledF32::curves(std::mem::take(&mut scene.curves));
         let mut nodes=std::mem::take(&mut scene.nodes);
         #[derive(Serialize)]
         #[serde(rename_all="camelCase")]
