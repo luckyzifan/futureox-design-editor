@@ -175,7 +175,7 @@ fn page_and_raster_options_rebuild_tiles_at_the_same_revision() {
     options.page_id = "other".into();
     let other = engine.render_tiled_frame(&options, Some(&[])).unwrap();
     assert_ne!(original, other.rgba);
-    assert_eq!(other.rgba, engine.render(&options).unwrap());
+    assert_eq!(other.rgba, engine.render_unretained(&options).unwrap());
     options.transparent = true;
     let clear = engine.render_tiled_frame(&options, Some(&[])).unwrap();
     assert!(clear.rgba.iter().all(|&channel| channel == 0));
@@ -301,7 +301,7 @@ fn panning_after_an_offscreen_edit_does_not_promote_stale_pixels() {
     let after_pan = instruction(&source.engine, right, 1.);
     renderer.update_with_instruction(&mut source, &panned, &after_pan, None).unwrap();
     let tile = renderer.level(3).unwrap().tile(&[1, 0]).unwrap();
-    let expected = source.engine.render(&panned).unwrap();
+    let expected = source.engine.render_unretained(&panned).unwrap();
     assert!(tile.surface.bytes() == expected, "returning pixels must match the new fill");
     assert_eq!(source.rasterized(), 3);
 }
@@ -328,7 +328,7 @@ fn returning_to_a_completed_camera_after_cancelled_zoom_recovers_its_tiles() {
     assert_eq!(cancel.unwrap_err(), "PREVIEW_CANCELLED");
     renderer.update_with_instruction(&mut source, &home, &home_plan, None).unwrap();
     let tile = renderer.level(3).unwrap().tile(&[0, 0]).expect("return viewport has pixels");
-    let expected = source.engine.render(&home).unwrap();
+    let expected = source.engine.render_unretained(&home).unwrap();
     assert!(tile.surface.bytes() == expected, "the completed viewport remains intact");
 }
 
@@ -468,7 +468,7 @@ fn panned_tiled_frame_assembly_equals_full_render() {
     let mut engine = Engine::new();
     engine.load_document(&doc()).expect("document");
     let options = frame(View { x: -512., y: -256., zoom: 1. }, 1024, 768);
-    let full = engine.render(&options).expect("full render");
+    let full = engine.render_unretained(&options).expect("full render");
     let assembled = engine
         .render_tiled_frame(&options, None)
         .expect("tiled frame");
@@ -488,7 +488,7 @@ fn panned_tiled_frame_assembly_equals_full_render() {
     // viewport edge — the case whose missing source-column offset once
     // shifted the whole blit.
     let mid = frame(View { x: -576., y: -288., zoom: 1. }, 1024, 768);
-    let mid_full = engine.render(&mid).expect("mid-tile full render");
+    let mid_full = engine.render_unretained(&mid).expect("mid-tile full render");
     let mid_assembled = engine
         .render_tiled_frame(&mid, None)
         .expect("mid-tile tiled frame");
@@ -531,7 +531,7 @@ fn off_bucket_assembly_stays_close_to_direct_render() {
     let mut engine = Engine::new();
     engine.load_document(&doc()).expect("document");
     let options = frame(View { x: 0., y: 0., zoom: 0.9 }, 512, 384);
-    let direct = engine.render(&options).expect("direct render");
+    let direct = engine.render_unretained(&options).expect("direct render");
     let assembled = engine
         .render_tiled_frame(&options, None)
         .expect("assembled frame");
@@ -586,7 +586,7 @@ fn bucket_zoom_after_off_bucket_is_byte_exact() {
     let assembled = engine
         .render_tiled_frame(&snapped, None)
         .expect("snapped frame");
-    let direct = engine.render(&snapped).expect("direct render");
+    let direct = engine.render_unretained(&snapped).expect("direct render");
     assert_eq!(assembled.rgba, direct, "snapped zoom must stay byte-exact");
 }
 
@@ -721,14 +721,14 @@ fn managed_document_tiles_are_byte_identical_to_full_render() {
         .expect("managed document");
     assert!(engine.color_settings().is_some());
     let options = frame(View { x: -128., y: -64., zoom: 1. }, 1024, 768);
-    let full = engine.render(&options).expect("full managed render");
+    let full = engine.render_unretained(&options).expect("full managed render");
     let assembled = engine
         .render_tiled_frame(&options, None)
         .expect("managed tiled frame");
     assert_eq!(assembled.rgba, full, "managed tiles must equal the full render");
     // And one pan keeps the parity at mid-tile offsets.
     let pan = frame(View { x: -576., y: -288., zoom: 1. }, 1024, 768);
-    let pan_full = engine.render(&pan).expect("panned full render");
+    let pan_full = engine.render_unretained(&pan).expect("panned full render");
     let pan_assembled = engine.render_tiled_frame(&pan, None).expect("panned tiles");
     assert_eq!(pan_assembled.rgba, pan_full);
 }
@@ -903,4 +903,118 @@ fn parallel_cancel_keeps_one_finished_tile() {
     assert_eq!(status, UpdateStatus::Completed);
     assert!(renderer.resident_tile_count() > 1);
     assert!(finished.load(Ordering::Acquire) > 1);
+}
+
+/// Integer bucket cameras on the display entry reuse world tiles. The
+/// unretained renderer is the oracle, including after a fill edit.
+#[test]
+fn integer_bucket_display_matches_unretained_and_skips_a_full_repaint() {
+    use futureox_design_kernel::editing::DocumentPatch;
+    use futureox_design_kernel::fidelity::RasterProfile;
+    use futureox_design_kernel::scene::Document;
+
+    let mut retained = Engine::new();
+    let mut oracle = Engine::new();
+    retained.load_document(&doc()).unwrap();
+    oracle.load_document(&doc()).unwrap();
+    let views = [
+        View { x: -16., y: -8., zoom: 1. },
+        View { x: -40., y: -8., zoom: 1. },
+        View { x: -40., y: -32., zoom: 1. },
+    ];
+    let mut cold = 0u64;
+    let mut previous = 0u64;
+    for (index, view) in views.into_iter().enumerate() {
+        let options = frame(view, 640, 480);
+        assert_eq!(
+            retained.render(&options).unwrap(),
+            oracle.render_unretained(&options).unwrap(),
+            "pan {index}"
+        );
+        let rasters = retained
+            .tiled_renderer()
+            .unwrap()
+            .telemetry()
+            .report_statistics()
+            .rasterisation_count;
+        if index == 0 {
+            assert!(rasters >= 1, "the cold frame must rasterise");
+            cold = rasters;
+        } else {
+            assert!(
+                rasters - previous < cold,
+                "pan {index} rasterised {} tiles after a cold frame of {cold}",
+                rasters - previous
+            );
+        }
+        previous = rasters;
+    }
+
+    for zoom in [0.5, 2.0] {
+        let options = frame(View { x: -8., y: -4., zoom }, 320, 240);
+        let mut shown = Engine::new();
+        let mut full = Engine::new();
+        shown.load_document(&doc()).unwrap();
+        full.load_document(&doc()).unwrap();
+        assert_eq!(
+            shown.render(&options).unwrap(),
+            full.render_unretained(&options).unwrap(),
+            "zoom {zoom}"
+        );
+    }
+
+    let mut fractional = frame(View { x: -16.5, y: 0., zoom: 1. }, 128, 96);
+    let mut skipped = Engine::new();
+    let mut full = Engine::new();
+    skipped.load_document(&doc()).unwrap();
+    full.load_document(&doc()).unwrap();
+    assert_eq!(skipped.render(&fractional).unwrap(), full.render_unretained(&fractional).unwrap());
+    assert!(skipped.tiled_renderer().is_none(), "a fractional camera must not open residency");
+    fractional.view = View { x: -16., y: 0., zoom: 1. };
+    fractional.checkerboard = true;
+    let mut skipped = Engine::new();
+    let mut full = Engine::new();
+    skipped.load_document(&doc()).unwrap();
+    full.load_document(&doc()).unwrap();
+    assert_eq!(skipped.render(&fractional).unwrap(), full.render_unretained(&fractional).unwrap());
+    assert!(skipped.tiled_renderer().is_none(), "a checkerboard is screen-anchored");
+
+    let mut grid = frame(View { x: -24., y: -8., zoom: 1. }, 160, 120);
+    grid.grid = true;
+    grid.transparent = true;
+    let mut shown = Engine::new();
+    let mut full = Engine::new();
+    shown.load_document(&doc()).unwrap();
+    full.load_document(&doc()).unwrap();
+    assert_eq!(shown.render(&grid).unwrap(), full.render_unretained(&grid).unwrap());
+
+    for profile in [RasterProfile::Figma, RasterProfile::FigmaSubpixel] {
+        let mut options = frame(View { x: -24., y: -8., zoom: 1. }, 160, 120);
+        options.raster_profile = profile;
+        let mut shown = Engine::new();
+        let mut full = Engine::new();
+        shown.load_document(&doc()).unwrap();
+        full.load_document(&doc()).unwrap();
+        assert_eq!(
+            shown.render(&options).unwrap(),
+            full.render_unretained(&options).unwrap(),
+            "{}",
+            profile.tag()
+        );
+    }
+
+    let before: Document = serde_json::from_str(&doc()).unwrap();
+    let mut after_value: serde_json::Value = serde_json::from_str(&doc()).unwrap();
+    after_value["nodes"]["r"]["fills"][0]["color"] = json!("#da4014");
+    let after: Document = serde_json::from_value(after_value).unwrap();
+    let mut edited = Engine::new();
+    edited.load_document(&serde_json::to_string(&before).unwrap()).unwrap();
+    let options = frame(View { x: 0., y: 0., zoom: 1. }, 256, 192);
+    edited.render(&options).unwrap();
+    edited
+        .apply_document_patch(&DocumentPatch::between(&before, &after).unwrap())
+        .unwrap();
+    let mut fresh = Engine::new();
+    fresh.load_document(&serde_json::to_string(&after).unwrap()).unwrap();
+    assert_eq!(edited.render(&options).unwrap(), fresh.render_unretained(&options).unwrap());
 }

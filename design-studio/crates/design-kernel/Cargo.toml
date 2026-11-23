@@ -100,6 +100,10 @@ harness = false
 name = "rotate_settle"
 harness = false
 
+[[bench]]
+name = "pan_residency"
+harness = false
+
 [build-dependencies]
 serde_json.workspace = true
 
