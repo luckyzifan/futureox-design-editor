@@ -43,6 +43,8 @@ pub mod heic_export;
 pub mod ffmpeg_encode;
 pub mod facet;
 pub mod fidelity;
+#[cfg(any(test, feature = "frame-split-profile"))]
+pub mod frame_split_profile;
 pub mod fig;
 pub mod figma_gradient;
 pub mod figma_sampling;

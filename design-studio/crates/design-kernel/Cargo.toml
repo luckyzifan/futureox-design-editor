@@ -13,6 +13,8 @@ default = []
 native-sonic-json = ["dep:sonic-rs"]
 compact-node-vectors = ["dep:thin-vec"]
 mapped-source-snapshot = ["dep:rkyv", "dep:memmap2"]
+# Measurement-only example. Lib tests compile the same module via cfg(test).
+frame-split-profile = []
 
 [dependencies]
 serde.workspace = true
@@ -99,6 +101,10 @@ harness = false
 [[bench]]
 name = "rotate_settle"
 harness = false
+
+[[example]]
+name = "profile_frame_split"
+required-features = ["frame-split-profile"]
 
 [build-dependencies]
 serde_json.workspace = true
