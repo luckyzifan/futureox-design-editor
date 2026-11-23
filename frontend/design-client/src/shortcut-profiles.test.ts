@@ -8,7 +8,7 @@ import { closeLayerFind } from './layer-find-session'
 import { dispatchEditorShortcut } from './editor-shortcuts'
 import { canvasMenuItems } from './canvas-menu-model'
 import { createShortcutPreference, SHORTCUT_PROFILE_KEY } from './shortcut-preference'
-import { resolveShortcut, shortcutBindings, shortcutLabel, shortcutPlatform, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
+import { formatShortcutCombo, resolveShortcut, shortcutBindings, shortcutLabel, shortcutLabels, shortcutPlatform, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 const editors: Editor[] = []
 afterEach(() => { closeCommandSearch(); closeLayerFind(); editors.splice(0).forEach(editor => editor.dispose()); vi.unstubAllGlobals() })
 function fixture() {
@@ -30,7 +30,7 @@ describe('bounded keyboard presets', () => {
     const layoutGuides = bindings.filter(binding => binding.command === 'toggle-layout-guides').map(binding => binding.combo)
     expect(layoutGuides).toEqual(context.profile === 'figma-like' ? ['Shift+G'] : [])
     const search = bindings.filter(binding => binding.command === 'open-command-search').map(binding => binding.combo).sort()
-    expect(search).toEqual(context.profile === 'sketch-like' ? ['Mod+K', 'S'] : ['Mod+K'])
+    expect(search).toEqual(context.profile === 'sketch-like' ? ['Mod+K', 'S'] : ['Mod+/', 'Mod+K'])
     const find = bindings.filter(binding => binding.command === 'open-layer-find').map(binding => binding.combo)
     expect(find).toEqual(context.profile === 'figma-like' && context.desktop ? ['Mod+F'] : [])
     expect(bindings.some(binding => binding.command === 'set-tool-slice' && binding.combo === (context.profile === 'figma-like' ? 'S' : 'E'))).toBe(true)
@@ -285,6 +285,12 @@ describe('bounded keyboard presets', () => {
     expect(resolveShortcut(key('s', { metaKey: true }), sketch)).toBeNull()
     expect(resolveShortcut(key('s'), figma)?.command).toBe('set-tool-slice')
     expect(resolveShortcut(key('k', { metaKey: true }), figma)?.command).toBe('open-command-search')
+    expect(formatShortcutCombo('Mod++', 'mac')).toBe('⌘ + +')
+    expect(formatShortcutCombo('+', 'windows')).toBe('+')
+    expect(formatShortcutCombo('Ctrl+Shift+/', 'mac')).toBe('⌃ ⇧ /')
+    expect(formatShortcutCombo('Mod+/', 'mac')).toBe('⌘ /')
+    expect(shortcutLabels('open-command-search', figma)).toBe('⌘ K / ⌘ /')
+    expect(shortcutLabels('open-command-search', sketch)).toBe('⌘ K / S')
     await dispatchEditorShortcut(editor, key('s'), sketch)
     expect(editor.state.doc).toBe(before)
     expect(editor.state.tool).toBe('select')
@@ -314,6 +320,68 @@ describe('bounded keyboard presets', () => {
     expect(editor.state.tool).toBe('slice')
     expect(editor.state.doc).toBe(before)
     expect(commandSearchSnapshot()).toBe(0)
+  })
+  test('Figma keyboard-layout quick actions open search and do not enter history', async () => {
+    const { editor } = fixture()
+    const before = editor.state.doc
+    const version = editor.state.version
+    const mac: ShortcutContext = { profile: 'figma-like', platform: 'mac', uiMode: 'figma', keyboardLayout: 'us-qwerty' }
+    const slash = key('/', { code: 'Slash', metaKey: true })
+    expect(resolveShortcut(slash, mac)?.command).toBe('open-command-search')
+    expect(resolveShortcut(key('+', { code: 'Equal', metaKey: true, shiftKey: true }), mac)?.command).toBe('zoom-in')
+    expect(resolveShortcut(key('/', { code: 'Slash', metaKey: true, shiftKey: true }), mac)).toBeNull()
+    expect(resolveShortcut(key('/', { code: 'Slash', ctrlKey: true }), mac)).toBeNull()
+    expect(resolveShortcut(key('?', { code: 'Slash', ctrlKey: true, shiftKey: true }), mac)?.command).toBe('open-shortcut-reference')
+    expect(await dispatchEditorShortcut(editor, slash, mac)).toBe(true)
+    expect(commandSearchSnapshot()).toBeGreaterThan(0)
+    expect(editor.state.doc).toBe(before)
+    expect(editor.state.version).toBe(version)
+    expect(editor.canUndo).toBe(false)
+    editor.undo()
+    expect(editor.state.doc).toBe(before)
+    expect(editor.canUndo).toBe(false)
+    expect(commandSearchSnapshot()).toBeGreaterThan(0)
+    const generation = commandSearchSnapshot()
+    const repeat = key('/', { code: 'Slash', metaKey: true, repeat: true })
+    expect(await dispatchEditorShortcut(editor, repeat, mac)).toBe(true)
+    expect(repeat.preventDefault).toHaveBeenCalledOnce()
+    expect(commandSearchSnapshot()).toBe(generation)
+    closeCommandSearch()
+    const typing = key('/', { code: 'Slash', metaKey: true, target: { closest: (query: string) => query.includes('textarea') ? {} : null } as unknown as EventTarget })
+    expect(await dispatchEditorShortcut(editor, typing, mac)).toBe(false)
+    expect(commandSearchSnapshot()).toBe(0)
+    expect(editor.state.doc).toBe(before)
+    for (const platform of ['windows', 'linux'] as const) {
+      const context: ShortcutContext = { ...mac, platform }
+      const chord = key('/', { code: 'Slash', ctrlKey: true })
+      expect(resolveShortcut(chord, context)?.command).toBe('open-command-search')
+      expect(shortcutLabels('open-command-search', context)).toBe('Ctrl+K / Ctrl+/')
+      await dispatchEditorShortcut(editor, chord, context)
+      expect(commandSearchSnapshot()).toBeGreaterThan(0)
+      expect(editor.state.doc).toBe(before)
+      expect(editor.state.version).toBe(version)
+      expect(editor.canUndo).toBe(false)
+      editor.undo()
+      closeCommandSearch()
+    }
+    const german: ShortcutContext = { ...mac, keyboardLayout: 'de-qwertz' }
+    expect(resolveShortcut(key('/', { code: 'Slash', metaKey: true }), german)).toBeNull()
+    expect(resolveShortcut(key('k', { code: 'KeyK', metaKey: true }), german)?.command).toBe('open-command-search')
+    const comma = key(',', { code: 'Comma', metaKey: true })
+    expect(resolveShortcut(comma, german)?.command).toBe('open-command-search')
+    expect(shortcutLabels('open-command-search', german)).toBe('⌘ K / ⌘ ,')
+    expect(resolveShortcut(key(',', { code: 'Comma', metaKey: true, shiftKey: true }), german)).toBeNull()
+    expect(resolveShortcut(key(',', { code: 'Comma', altKey: true }), german)?.command).toBe('remove-fill')
+    await dispatchEditorShortcut(editor, comma, german)
+    expect(commandSearchSnapshot()).toBeGreaterThan(0)
+    expect(editor.state.doc).toBe(before)
+    expect(editor.canUndo).toBe(false)
+    editor.undo()
+    expect(editor.state.doc).toBe(before)
+    closeCommandSearch()
+    const sketch: ShortcutContext = { profile: 'sketch-like', platform: 'mac', uiMode: 'sketch' }
+    expect(resolveShortcut(key('/', { code: 'Slash', metaKey: true }), sketch)).toBeNull()
+    expect(resolveShortcut(key(',', { code: 'Comma', metaKey: true }), sketch)).toBeNull()
   })
   test('Figma Option+/ removes fills in one undo while Shift+/ removes strokes', async () => {
     const doc = blank('Remove fill')

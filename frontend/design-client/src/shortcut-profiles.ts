@@ -167,7 +167,10 @@ export function shortcutBindings(context: ShortcutContext): readonly ShortcutBin
   )
   // Figma Quick Actions and the Sketch command bar share Mod+K. S is
   // reserved for the Sketch command bar and remains Slice in Figma.
+  // The keyboard-layout table also opens Quick Actions with Mod+/ on
+  // US/Generic, remapped to Mod+, for German QWERTZ. Mod+K stays.
   bindings.push({ command: 'open-command-search', combo: 'Mod+K' })
+  if (profile === 'figma-like') bindings.push({ command: 'open-command-search', combo: 'Mod+/', physicalCode: 'Slash' })
   if (profile === 'sketch-like') bindings.push({ command: 'open-command-search', combo: 'S' })
   // Desktop Figma Find. Browsers keep Mod+F. Sketch desktop Mod+F remains frame-selection.
   if (profile === 'figma-like' && desktop) bindings.push({ command: 'open-layer-find', combo: 'Mod+F' })
@@ -186,14 +189,23 @@ function germanBinding(binding: ShortcutBinding): ShortcutBinding {
   if (command === 'toggle-pixel-snapping') return { ...binding, combo: 'Shift+#', physicalCode: 'Backslash' }
   if (command === 'remove-stroke') return { ...binding, combo: 'Shift+,', physicalCode: 'Comma' }
   if (command === 'remove-fill') return { ...binding, combo: 'Alt+,', physicalCode: 'Comma' }
+  if (command === 'open-command-search' && combo === 'Mod+/') return { ...binding, combo: 'Mod+,', physicalCode: 'Comma' }
   if (command === 'bring-forward' || command === 'bring-to-front') return { ...binding, combo: combo.replace(']', 'Ä') }
   if (command === 'send-backward' || command === 'send-to-back') return { ...binding, combo: combo.replace('[', 'Ö') }
   return binding
 }
+/** '+' and 'Mod++' are the plus key. A slash chord such as 'Mod+/' is not. */
+function splitShortcutCombo(combo: string): { modifiers: string[]; key: string } {
+  if (combo === '+' || combo.endsWith('++')) {
+    const head = combo === '+' ? '' : combo.slice(0, -2)
+    return { modifiers: head ? head.split('+').filter(Boolean) : [], key: '+' }
+  }
+  const parts = combo.split('+')
+  const key = parts.pop() ?? ''
+  return { modifiers: parts.filter(Boolean), key }
+}
 function matches(event: ShortcutKey, { combo, physicalCode }: ShortcutBinding, platform: ShortcutPlatform) {
-  // A trailing '+' is the actual plus key, not an empty chord component.
-  const key = combo.endsWith('+') ? '+' : combo.split('+').at(-1)!
-  const modifiers = (key === '+' ? combo.slice(0, -1) : combo.slice(0, -key.length)).split('+')
+  const { modifiers, key } = splitShortcutCombo(combo)
   const mod = modifiers.includes('Mod')
   const meta = modifiers.includes('Meta') || (mod && platform === 'mac')
   const ctrl = modifiers.includes('Ctrl') || (mod && platform !== 'mac')
@@ -226,16 +238,34 @@ export function resolveShortcut(event: ShortcutKey, context: ShortcutContext): S
   if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.key === 'Process' || event.getModifierState?.('AltGraph')) return null
   return shortcutBindings(context).find(binding => (event.key !== 'Dead' || binding.physicalCode) && matches(event, binding, context.platform)) || null
 }
+function normalizedShortcutCommand(command: ShortcutAction): ShortcutAction {
+  return command === 'lock-selection' || command === 'unlock-selection' ? 'toggle-lock' : command === 'hide-selection' || command === 'show-selection' ? 'toggle-visibility' : command
+}
 export function shortcutLabel(command: ShortcutAction, context: ShortcutContext): string | undefined {
-  const normalized = command === 'lock-selection' || command === 'unlock-selection' ? 'toggle-lock' : command === 'hide-selection' || command === 'show-selection' ? 'toggle-visibility' : command
+  const normalized = normalizedShortcutCommand(command)
   const combo = shortcutBindings(context).find(binding => binding.command === normalized)?.combo
   return combo ? formatShortcutCombo(combo, context.platform) : undefined
+}
+/** Every distinct label for a command, in binding order. */
+export function shortcutLabels(command: ShortcutAction, context: ShortcutContext): string {
+  const normalized = normalizedShortcutCommand(command)
+  const labels: string[] = []
+  for (const binding of shortcutBindings(context)) {
+    if (binding.command !== normalized) continue
+    const label = formatShortcutCombo(binding.combo, context.platform)
+    if (!labels.includes(label)) labels.push(label)
+  }
+  return labels.join(' / ')
 }
 /** File/host commands share the same modifier presentation as editor commands. */
 export function formatShortcutCombo(combo: string, platform: ShortcutPlatform): string {
   const names: Record<string, string> = platform === 'mac' ? { Mod: '⌘', Ctrl: '⌃', Alt: '⌥', Shift: '⇧', Backspace: '⌫' } : { Mod: 'Ctrl', Backspace: 'Backspace' }
-  if (combo.endsWith('+')) return `${combo.slice(0, -1).split('+').filter(Boolean).map(part => names[part] || part).join(' + ')}${combo.length > 1 ? ' + ' : ''}+`
-  return combo.split('+').map(part => names[part] || part).join(platform === 'mac' ? ' ' : '+')
+  const { modifiers, key } = splitShortcutCombo(combo)
+  if (key === '+') {
+    const prefix = modifiers.map(part => names[part] || part).join(' + ')
+    return prefix ? `${prefix} + +` : '+'
+  }
+  return [...modifiers, key].map(part => names[part] || part).join(platform === 'mac' ? ' ' : '+')
 }
 export function toolShortcutLabel(tool: string, context: ShortcutContext): string {
   const command = TOOL_COMMANDS.find(entry => entry.tool === tool)?.id
