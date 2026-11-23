@@ -191,6 +191,8 @@ type Drag = {
   actionSelection?: number
 
   pointerId: number
+  /** Mouse button that owns a pan: 0 left, 1 middle. Release waits for this button. */
+  pointerButton?: 0 | 1
   session: number
   page: string
   cropFrame?: string
@@ -2179,7 +2181,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (navigation) {
       // Navigation needs no selection bounds, hierarchy walk or editable
       // snapshot. Keep it responsive while geometry/refinement is pending.
-      drag.current = { pointerId: e.pointerId, session: editor.sessionGeneration, page: s.page,
+      drag.current = { pointerId: e.pointerId, pointerButton: e.button === 1 ? 1 : 0, session: editor.sessionGeneration, page: s.page,
         kind: 'pan', sourceTap:!!onSelectSourcePoint && e.button===0 && !space.current, start: p, screen, view: editor.flushPendingView(), ids: [], matrices: {}, box: emptyBox, originSelection: s.selection }
       beginDragTrace(drag.current, e)
       setPanning(true); editor.hoverLayer(null, 'canvas')
@@ -3143,8 +3145,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   function recoverMouseCapture(e: React.PointerEvent, draft: Drag) {
     const canvas = host.current
     const canvasWindow = canvas?.ownerDocument.defaultView
+    const recoverable = draft.kind === 'move' || draft.kind === 'rotate' || draft.kind === 'pan'
     if (!canvas || !canvasWindow || e.target !== canvas || e.pointerType !== 'mouse' ||
-        (draft.kind !== 'move' && draft.kind !== 'rotate') ||
+        !recoverable ||
         draft.session !== editor.sessionGeneration || draft.page !== editor.state.page ||
         !canvas.isConnected || canvas.ownerDocument.hidden) return false
     clearMouseCaptureRecovery()
@@ -3152,6 +3155,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     recoveringMouseCapture.current = controller
     const options = { capture: true, signal: controller.signal }
     const pointerId = draft.pointerId
+    // Space and the hand tool press the left button. Middle-button pan uses bit 4.
+    // Move and rotate stay on the left button.
+    const pressedButtons = draft.kind === 'pan' && draft.pointerButton === 1 ? 4 : 1
+    const releaseButton = draft.pointerButton === 1 ? 1 : 0
     const current = (event: PointerEvent) => {
       if (event.pointerId !== pointerId) return false
       if (drag.current === draft && draft.session === editor.sessionGeneration && draft.page === editor.state.page &&
@@ -3168,7 +3175,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     recapture()
     canvasWindow.addEventListener('pointermove', event => {
       if (!current(event)) return
-      if (!(event.buttons & 1)) {
+      if (!(event.buttons & pressedButtons)) {
         // Chromium can report zero buttons during capture loss before the
         // real pointer-up. Hold the pose without treating hover as movement.
         event.stopPropagation()
@@ -3184,6 +3191,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }, options)
     canvasWindow.addEventListener('pointerup', event => {
       if (!current(event)) return
+      // Hand pan keeps the gesture until the button that started it comes up.
+      // That event's coordinates are the release; a different button is not.
+      if (draft.kind === 'pan' && event.button !== releaseButton) return
       event.stopPropagation()
       endCallback.current(event)
     }, options)
