@@ -124,10 +124,13 @@ export function shortcutBindings(context: ShortcutContext): readonly ShortcutBin
       // documented layout, including US/Generic. The zoom-page Control+G
       // chord is not this binding. Sketch keeps its own Ctrl+L handler.
       { command: 'toggle-layout-guides', combo: 'Shift+G' },
-      // Figma keyboard layout: Remove fill is Option+/ on Mac (Alt+/ elsewhere).
-      // US Option+/ reports "÷"; the matcher maps that glyph back to Slash.
-      { command: 'remove-fill', combo: 'Alt+/' },
     )
+    // Official US QWERTY table: Mac Remove fill is Option+/. Windows is
+    // Alt+,. Linux uses the Windows chord. US Option+/ reports "÷".
+    // Shift+/ stays Remove stroke on every platform.
+    bindings.push(platform === 'mac'
+      ? { command: 'remove-fill', combo: 'Alt+/' }
+      : { command: 'remove-fill', combo: 'Alt+,', physicalCode: 'Comma' })
     // Figma documents Shift, rather than Alt, for the Windows front/back chord.
     if (platform !== 'mac') for (const binding of bindings) {
       if (binding.command === 'bring-to-front') binding.combo = 'Mod+Shift+]'

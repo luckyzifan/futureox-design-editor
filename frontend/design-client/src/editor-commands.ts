@@ -425,13 +425,15 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         break
       case 'remove-fill':
       case 'remove-stroke': {
+        // Figma clears the whole stack on the unlocked top selection. A locked
+        // layer, a child of a locked ancestor, and a descendant of another
+        // selected layer are not targets. One undo restores those same layers.
+        // An empty stack does not write history.
         const fills = command === 'remove-fill'
         const stack = fills ? 'fills' : 'strokes'
-        const selection = fills ? editor.state.selection : editor.topSelection()
-        const ids = selection.filter(id => nodeHasRemovablePaint(editor.state.doc.nodes[id], stack))
+        const ids = editor.topSelection().filter(id => nodeHasRemovablePaint(editor.state.doc.nodes[id], stack))
         if (!ids.length) break
-        if (fills) editor.updateProperties(ids, node => clearStyleStack(node, stack), '去掉填充')
-        else editor.update(ids, node => clearStyleStack(node, stack), '去掉描边')
+        editor.update(ids, node => clearStyleStack(node, stack), fills ? '去掉填充' : '去掉描边')
         break
       }
       case 'flatten': await editor.flattenSelection(); break
