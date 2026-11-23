@@ -1,6 +1,7 @@
-import { allParents, intersects, type SceneEntry } from './geometry'
+import { allParents, intersects, type ParentMap, type SceneEntry } from './geometry'
 import type { Bounds, DesignDocument } from './model'
 import { interactivePath, marqueeScope } from './selection-hierarchy'
+import { createMatchingKeyCache, matchingLayerKey } from './selection-queries'
 
 export type MarqueeSelectionOptions = {
   deep: boolean
@@ -8,6 +9,53 @@ export type MarqueeSelectionOptions = {
   additive: boolean
   toggle: boolean
   ignoreId?: string | null
+  /** Figma Shift: add or remove only layers matching the nested selection. */
+  matching?: boolean
+}
+
+/** Shift at the start or the release, and not a deep or Sketch marquee. */
+export function marqueeUsesMatchingSelection(input: {
+  sketch: boolean
+  deep: boolean
+  shift: boolean
+  startedWithShift: boolean
+}): boolean {
+  return !input.sketch && !input.deep && (input.shift || input.startedWithShift)
+}
+
+function boundsInside(bounds: Bounds, area: Bounds) {
+  return bounds.x >= area.x && bounds.y >= area.y &&
+    bounds.x + bounds.width <= area.x + area.width &&
+    bounds.y + bounds.height <= area.y + area.height
+}
+
+/** Toggle matching layers inside the marquee. Null means the selection has no
+ * nested match, so the caller keeps the ordinary scoped marquee. */
+function matchingMarqueeSelection(document: DesignDocument, page: string,
+  origin: readonly string[], entries: readonly SceneEntry[], area: Bounds,
+  options: MarqueeSelectionOptions, parents: ParentMap): string[] | null {
+  const cache = createMatchingKeyCache()
+  const keys = new Set<string>()
+  for (const id of origin) {
+    const key = matchingLayerKey(document, id, parents, cache)
+    if (key) keys.add(key)
+  }
+  if (!keys.size) return null
+  const ignored = new Set(options.ignoreId ? interactivePath(document, page, options.ignoreId, false, parents) : [])
+  const ids: string[] = []
+  const seen = new Set<string>()
+  for (const entry of entries) {
+    if (seen.has(entry.id) || ignored.has(entry.id) || entry.locked) continue
+    if (!(options.contained ? boundsInside(entry.bounds, area) : intersects(entry.bounds, area))) continue
+    if (!interactivePath(document, page, entry.id, false, parents).length) continue
+    const key = matchingLayerKey(document, entry.id, parents, cache)
+    if (!key || !keys.has(key)) continue
+    seen.add(entry.id)
+    ids.push(entry.id)
+  }
+  const selected = new Set(origin)
+  const matches = new Set(ids)
+  return [...origin.filter(id => !matches.has(id)), ...ids.filter(id => !selected.has(id))]
 }
 
 /** Use the existing world-space selection AABBs, including the presented
@@ -17,6 +65,10 @@ export function canvasMarqueeSelection(document: DesignDocument, page: string,
   origin: readonly string[], entries: readonly SceneEntry[], area: Bounds,
   options: MarqueeSelectionOptions): string[] {
   const parents = allParents(document)
+  if (options.matching && !options.deep) {
+    const matched = matchingMarqueeSelection(document, page, origin, entries, area, options, parents)
+    if (matched !== null) return matched
+  }
   const scope = marqueeScope(document, page, origin, parents)
   // Forced X starts inside an occupied hierarchy. Removing only its leaf
   // would accidentally promote its container when no other child intersects.
