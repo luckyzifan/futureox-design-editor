@@ -1280,6 +1280,17 @@ impl Compositor<'_, '_, '_> {
         dst: Surface,
         sample: usize,
     ) -> Result<Surface, String> {
+        self.paint_over_opacity(n, paint, mask, dst, sample, 0.)
+    }
+    fn paint_over_opacity(
+        &mut self,
+        n: &GpuNode,
+        paint: &GpuPaint,
+        mask: Surface,
+        dst: Surface,
+        sample: usize,
+        post_byte_opacity: f32,
+    ) -> Result<Surface, String> {
         if !self.scene.float_compositing
             && paint.blend == "normal"
             && let Some(color) = paint.constant_color()
@@ -1311,6 +1322,7 @@ impl Compositor<'_, '_, '_> {
                 .frame
                 .run(42., dst.rect, &[dst, mask, lookup, field], |u| {
                     u[32] = paint.opacity as f32;
+                    u[33] = post_byte_opacity;
                     u[52..56].copy_from_slice(&[
                         n.rect.x as f32,
                         n.rect.y as f32,
@@ -1511,7 +1523,9 @@ impl Compositor<'_, '_, '_> {
                 } else {
                     let phase = (sample < 4).then_some(sample);
                     let values = if self.scene.float_compositing {
-                        futureox_design_kernel::paint::image_sampling_grid_with_sketch_sampling(
+                        // Large axis-aligned bitmap layers keep two address rows.
+                        // Rotated and patterned fills still receive the dense grid.
+                        futureox_design_kernel::paint::image_sampling_field_with_sketch_sampling(
                             n.rect, n.matrix, n.size, dims, &p.paint, phase, level, origin, sketch_bitmap, motion_axis,
                         )?
                     } else {
@@ -1519,18 +1533,19 @@ impl Compositor<'_, '_, '_> {
                             n.rect, n.matrix, n.size, dims, &p.paint, phase, level, origin,
                         )?
                     };
+                    let compact = (!self.scene.float_compositing && values.get(3) == Some(&1.))
+                        || (self.scene.float_compositing && values.get(3) == Some(&-1.));
                     let grid = if let Some((_, grid)) = known {
                         // Only the next sample's addresses change. All previous
                         // reads are encoded before this ordered queue update.
                         self.frame.rewrite_parameters(grid, &values)?;
                         grid
                     } else {
-                        let field_rect =
-                            if !self.scene.float_compositing && values.get(3) == Some(&1.) {
-                                Rect::new(0, 0, n.rect.w.max(n.rect.h), 2)
-                            } else {
-                                n.rect
-                            };
+                        let field_rect = if compact {
+                            Rect::new(0, 0, n.rect.w.max(n.rect.h), 2)
+                        } else {
+                            n.rect
+                        };
                         self.frame.upload_parameters(field_rect, &values)?
                     };
                     self.image_grids.insert(key, (sample, grid));
@@ -1585,6 +1600,17 @@ impl Compositor<'_, '_, '_> {
         self.configure_paint(&mut u, n, p, sample)?;
         if atlased_image {
             u[186] = 1.;
+        }
+        // Compact float rows are indexed from the node origin, matching the
+        // hosted WebGPU rewrite of linearImage. Dense fields keep u(0).
+        if self.scene.float_compositing
+            && let Some(grid) = inputs.get(3)
+            && grid.rect.h == 2
+            && n.rect.h > 2
+            && grid.rect.w == n.rect.w.max(n.rect.h)
+        {
+            u[204] = n.rect.x as f32;
+            u[205] = n.rect.y as f32;
         }
         self.frame.draw(out, u, &inputs, false, None)?;
         Ok(out)
@@ -1776,6 +1802,77 @@ impl Compositor<'_, '_, '_> {
                     self.configure_paint(&mut u, n, &n.fills[0], i)?;
                     u[16..20].copy_from_slice(&[16., 0., 1., f32::from(clip.is_some())]);
                     self.frame.draw(targets[i], u, &inputs, true, None)?;
+                }
+                continue;
+            }
+            // Same isolating gradient group as the CPU export: quantize the
+            // opaque measured gradient, then scale those bytes by group opacity.
+            if !scene.float_compositing
+                && !scene.software_raster
+                && n.opacity > 0.
+                && n.opacity < 1.
+                && !n.passthrough
+                && n.blend == "normal"
+                && n.mask_id.is_none()
+                && !n.mask
+                && n.fills.is_empty()
+                && n.strokes.is_empty()
+                && n.effects.is_empty()
+                && n.children.len() == 1
+                && scene.nodes.get(&n.children[0]).is_some_and(|child| {
+                    !child.passthrough
+                        && child.opacity == 1.
+                        && child.blend == "normal"
+                        && !child.mask
+                        && child.mask_id.is_none()
+                        && child.children.is_empty()
+                        && child.strokes.is_empty()
+                        && child.effects.is_empty()
+                        && child.fills.len() == 1
+                        && child.fills[0].visible
+                        && child.fills[0].figma_gradient
+                        && child.fills[0].opacity == 1.
+                        && child.fills[0].blend == "normal"
+                })
+            {
+                let child_id = n.children[0].clone();
+                let opacity = n.opacity as f32;
+                let clip_group = n.clip;
+                let child = &scene.nodes[&child_id];
+                let paint = child.fills[0].clone();
+                let child_fill = child.fill.clone();
+                let group_fill = n.fill.clone();
+                let child_rect = child.rect;
+                let child_node = child.clone();
+                for i in 0..4 {
+                    let child_mask = self.mask(&child_fill, i)?;
+                    let mut coverage = child_mask;
+                    let mut owned = None;
+                    if clip_group {
+                        let group_mask = self.mask(&group_fill, i)?;
+                        let next = self.combine(coverage, group_mask, child_rect, false)?;
+                        owned = Some(next);
+                        coverage = next;
+                    }
+                    if let Some(parent) = clip {
+                        let next = self.combine(coverage, parent[i], child_rect, false)?;
+                        if let Some(previous) = owned.take() {
+                            self.frame.release(&[previous]);
+                        }
+                        owned = Some(next);
+                        coverage = next;
+                    }
+                    targets[i] = self.paint_over_opacity(
+                        &child_node,
+                        &paint,
+                        coverage,
+                        targets[i],
+                        i,
+                        opacity,
+                    )?;
+                    if let Some(extra) = owned {
+                        self.frame.release(&[extra]);
+                    }
                 }
                 continue;
             }

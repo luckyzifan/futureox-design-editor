@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { crispOutlinePath, overlayVertices, translateOverlay } from './canvas-overlay'
+import { ALIGNMENT_GUIDE, crispOutlinePath, crispSegmentPath, overlayVertices, translateOverlay } from './canvas-overlay'
 import { SELECTION_BLUE, srgbUnit } from '../../selection-blue'
 import { SPACING_RED } from '../../canvas-measurements'
 
@@ -45,6 +45,34 @@ function pathQuads(d: string) {
   return [...d.matchAll(/M([-\d.eE]+) ([-\d.eE]+) L([-\d.eE]+) ([-\d.eE]+) L([-\d.eE]+) ([-\d.eE]+) L([-\d.eE]+) ([-\d.eE]+) Z/g)]
     .map(match => match.slice(1).map(Number))
 }
+
+test('an alignment guide is one solid pixel on the selection hairline grid', () => {
+  const view = { x: 0.4, y: -3.2, zoom: 2 }
+  const guide = { axis: 'x' as const, position: 10.2, start: 4, end: 18.6 }
+  const data = overlayVertices({ pixelGrid: false, guides: [guide] }, view, 400, 400)
+  expect(data.length / 8).toBe(6)
+  expect(data[7]).toBe(-1)
+  expect([data[2], data[3], data[4], data[5]]).toEqual(stored(ALIGNMENT_GUIDE))
+  expect(ALIGNMENT_GUIDE).toBe('#ed6996')
+  const quads = pathQuads(crispSegmentPath(
+    { x: guide.position, y: guide.start },
+    { x: guide.position, y: guide.end },
+    view, 1))
+  expect(quads).toHaveLength(1)
+  const corner = [0, 1, 2, 5]
+  const xs: number[] = [], ys: number[] = []
+  for (let vertex = 0; vertex < 4; vertex++) {
+    const screenX = quads[0][vertex * 2] * view.zoom + view.x
+    const screenY = quads[0][vertex * 2 + 1] * view.zoom + view.y
+    const sample = corner[vertex] * 8
+    expect(screenX).toBeCloseTo(data[sample], 6)
+    expect(screenY).toBeCloseTo(data[sample + 1], 6)
+    xs.push(screenX); ys.push(screenY)
+  }
+  expect(Math.max(...xs) - Math.min(...xs)).toBe(1)
+  expect(Math.min(...xs)).toBe(Math.floor(guide.position * view.zoom + view.x))
+  expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(1)
+})
 
 test('hover and marquee outlines reuse the selection crisp fill', () => {
   const corners = [{ x: 10.2, y: 20.8 }, { x: 40.2, y: 20.8 }, { x: 40.2, y: 50.8 }, { x: 10.2, y: 50.8 }]

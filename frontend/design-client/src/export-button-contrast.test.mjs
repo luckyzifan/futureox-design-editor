@@ -119,10 +119,17 @@ test('headed Chrome measures Export contrast on the live header', { timeout: 120
       assert.ok(shot.textBox.w >= 12, `${shot.id} label width ${shot.textBox.w}`)
       assert.ok(shot.textInk, `${shot.id} label was not painted`)
       assert.ok(shot.textInk.contrast >= 4.5, `${shot.id} painted text ${shot.textInk.contrast} ${shot.textInk.hex}`)
+      assert.equal(shot.icons[0].display, 'none', `${shot.id} wide download icon`)
+      assert.notEqual(shot.icons[1].display, 'none', `${shot.id} wide chevron`)
     } else {
       assert.equal(shot.font, '0px', shot.id)
       assert.equal(shot.density, 'desk', shot.id)
       assert.ok(shot.textBox.w < 1, `${shot.id} icon state still lays out the label at ${shot.textBox.w}`)
+      assert.notEqual(shot.icons[0].display, 'none', `${shot.id} download icon stayed hidden`)
+      assert.ok(shot.icons[0].w >= 12 && shot.icons[0].h >= 12, `${shot.id} download ${shot.icons[0].w}×${shot.icons[0].h}`)
+      assert.notEqual(shot.icons[1].display, 'none', `${shot.id} chevron`)
+      const gap = shot.icons[1].x - (shot.icons[0].x + shot.icons[0].w)
+      assert.ok(gap >= 2 && gap <= 12, `${shot.id} icon gap ${gap}`)
     }
   }
   assert.match(measured.environment.browser, /Chrome\/\d+/)
@@ -160,9 +167,9 @@ function probeHtml() {
       </div>
       <label class="locale-switch"><select aria-label="语言"><option>中文</option></select></label>
       <button type="button" class="prototype-preview-button" aria-label="预览原型"><span>预览</span></button>
-      <button type="button" class="primary" id="export">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-        导出
+      <button type="button" class="primary" id="export" aria-label="导出">
+        <svg class="header-export-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        <span class="header-export-label">导出</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
       </button>
       <button type="button" class="app-settings-button"><span>设置</span></button>
@@ -180,7 +187,8 @@ function readExport() {
   const button = document.getElementById('export')
   const style = getComputedStyle(button)
   const box = button.getBoundingClientRect()
-  const textNode = [...button.childNodes].find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.includes('导出'))
+  const label = button.querySelector('.header-export-label')
+  const textNode = label ? label.firstChild : [...button.childNodes].find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.includes('导出'))
   const range = document.createRange()
   range.selectNodeContents(textNode)
   const textBox = range.getBoundingClientRect()

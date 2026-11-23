@@ -1,6 +1,6 @@
 import {expect,test} from 'vitest'
 import {blank} from '../model'
-import {allowIncompletePanPreview} from './pan-preview'
+import {allowIncompletePanPreview,suppressCameraPreviewForZoom} from './pan-preview'
 
 function fixture(){
  const document=blank(),pageId=document.pages[0].id
@@ -8,6 +8,16 @@ function fixture(){
  return {allowed:true,frame,document,revision:4,pageId,width:800,height:600,dpr:2,
   items:[{active:true,layer:1,tile:{key:'known',serial:1,gpuTile:1,x:0,y:0,width:256,height:256,zoom:2,document,revision:4}}] as any}
 }
+test('a zoom change keeps the accepted picture instead of clearing it for missing tiles',()=>{
+  expect(suppressCameraPreviewForZoom(1,1)).toBe(false)
+  expect(suppressCameraPreviewForZoom(1,1.25)).toBe(true)
+  expect(suppressCameraPreviewForZoom(32,1)).toBe(true)
+  expect(suppressCameraPreviewForZoom(1,32)).toBe(true)
+  expect(suppressCameraPreviewForZoom(2,1)).toBe(true)
+  expect(suppressCameraPreviewForZoom(undefined,1)).toBe(false)
+  expect(suppressCameraPreviewForZoom(0,1)).toBe(false)
+  expect(suppressCameraPreviewForZoom(Number.NaN,1)).toBe(false)
+})
 test('partial same-source pan may move known pixels and leave unknown strips pending',()=>{
  expect(allowIncompletePanPreview(fixture())).toBe(true)
  expect(allowIncompletePanPreview({...fixture(),items:[]})).toBe(true)

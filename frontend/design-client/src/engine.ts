@@ -22,6 +22,7 @@ import { hasSchema15Features } from './schema-features'
 import { expandRepeats, repeatSourceId } from './repeat-transforms'
 import * as ComponentSlots from './component-slots'
 import { previewLayoutSuggestion, applyLayoutSuggestion, type LayoutSuggestionPreview } from './layout-suggestions'
+import { applyIslandLayout, layoutFlowIsland, sameChildOrder } from './layout-reorder-island'
 import { sameLiveRotation, type LiveRotation } from './rotation-field'
 import { sameLiveBlur, type LiveBlur } from './live-blur'
 import { selectedTopLevelFrameId } from './canvas-navigation'
@@ -1868,6 +1869,18 @@ export class Editor {
     const children = p.children.filter((child) => child !== id)
     const at = before ? children.indexOf(before) + Number(!!reverse) : reverse ? 0 : children.length
     children.splice(at, 0, id)
+    // Most pointer samples stay in the same slot. Publishing a new document
+    // there re-solves and invalidates the whole scene for an unchanged order.
+    if (sameChildOrder(p.children, children)) return true
+    try {
+      const island = layoutFlowIsland(base, parents, p.id, children)
+      if (island) {
+        this.set({ doc: applyIslandLayout(base, island, kernelLayout(island)) })
+        return true
+      }
+    } catch {
+      // A rejected subset keeps the original full-document solve below.
+    }
     try {
       const candidate = { ...base, nodes: { ...base.nodes, [p.id]: { ...p, children } } }
       Components.captureOverrides(base, candidate)

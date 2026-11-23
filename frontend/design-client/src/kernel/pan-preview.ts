@@ -4,6 +4,16 @@ import type {CompositeItem} from './gpu/tile-compositor'
 export type PanPreviewBacking={document:DesignDocument;revision:number;pageId:string;epoch:number;
  residents:ReadonlyMap<string,CompositeItem['tile']>}
 
+/** White camera-preview fill is a same-zoom pan strip. A different zoom must
+ * not submit it: the fill clears the accepted picture and paints every tile
+ * that has not arrived yet as an empty region. A 2× return and a small wheel
+ * step are the same class of clear. */
+export function suppressCameraPreviewForZoom(retainedZoom: number | undefined, viewZoom: number) {
+  if (retainedZoom === undefined || !(retainedZoom > 0) || !(viewZoom > 0)) return false
+  if (!Number.isFinite(retainedZoom) || !Number.isFinite(viewZoom)) return false
+  return retainedZoom !== viewZoom
+}
+
 /** Only a same-content, same-output camera preview may expose still-unpainted
  * edge strips. Missing native coverage remains a preview, never terminal
  * quality. The caller's completed backing proves the page/session/device. */

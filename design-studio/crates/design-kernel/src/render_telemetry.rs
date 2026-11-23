@@ -41,6 +41,17 @@ struct OverlayStart {
     started: Option<f64>,
 }
 
+/// The ring starts without a total. The first timed sample seeds it. A later
+/// sample adds only while every preceding sample in that ring was timed. One
+/// missing clock clears the total: an untimed span is not zero.
+fn add_timed_sample(total: &mut Option<f64>, sample: Option<f64>, first: bool) {
+    match (sample, *total) {
+        (Some(sample), None) if first => *total = Some(sample),
+        (Some(sample), Some(sum)) => *total = Some(sum + sample),
+        _ => *total = None,
+    }
+}
+
 /// Monotonic milliseconds where a clock exists; `None` on targets without
 /// one (wasm32-unknown-unknown), where telemetry stays count-based.
 fn monotonic_ms() -> Option<f64> {
@@ -178,27 +189,23 @@ impl RenderingTelemetry {
             frame_count: self.frame_count,
             ..TelemetryReport::default()
         };
-        for statistic in &self.rasterisation_statistics {
+        for (index, statistic) in self.rasterisation_statistics.iter().enumerate() {
             report.rasterisation_count += 1;
             report.rasterisation_pixel_count += statistic.pixel_count;
-            if let (Some(duration), Some(total)) =
-                (statistic.duration_ms, report.rasterisation_duration_ms.as_mut())
-            {
-                *total += duration;
-            } else {
-                report.rasterisation_duration_ms = None;
-            }
+            add_timed_sample(
+                &mut report.rasterisation_duration_ms,
+                statistic.duration_ms,
+                index == 0,
+            );
         }
-        for statistic in &self.overlay_statistics {
+        for (index, statistic) in self.overlay_statistics.iter().enumerate() {
             report.overlay_count += 1;
             report.overlay_item_count += statistic.item_count;
-            if let (Some(duration), Some(total)) =
-                (statistic.duration_ms, report.overlay_duration_ms.as_mut())
-            {
-                *total += duration;
-            } else {
-                report.overlay_duration_ms = None;
-            }
+            add_timed_sample(
+                &mut report.overlay_duration_ms,
+                statistic.duration_ms,
+                index == 0,
+            );
         }
         report
     }
@@ -298,6 +305,68 @@ mod tests {
         telemetry.reset();
         let report = telemetry.report_statistics();
         assert_eq!(report, TelemetryReport::default());
+    }
+
+    #[test]
+    fn timed_spans_sum_and_one_missing_clock_clears_the_total() {
+        let mut telemetry = RenderingTelemetry::new(8);
+        telemetry.rasterisation_statistics.push_back(RasterStatistic {
+            pixel_count: 4,
+            duration_ms: Some(1.25),
+        });
+        telemetry.rasterisation_statistics.push_back(RasterStatistic {
+            pixel_count: 8,
+            duration_ms: Some(2.5),
+        });
+        telemetry.overlay_statistics.push_back(OverlayStatistic {
+            item_count: 1,
+            duration_ms: Some(0.5),
+        });
+        telemetry.overlay_statistics.push_back(OverlayStatistic {
+            item_count: 2,
+            duration_ms: Some(0.25),
+        });
+        let report = telemetry.report_statistics();
+        assert_eq!(report.rasterisation_duration_ms, Some(3.75));
+        assert_eq!(report.rasterisation_pixel_count, 12);
+        assert_eq!(report.overlay_duration_ms, Some(0.75));
+        assert_eq!(report.overlay_item_count, 3);
+
+        telemetry.rasterisation_statistics.push_back(RasterStatistic {
+            pixel_count: 1,
+            duration_ms: None,
+        });
+        telemetry.overlay_statistics.push_back(OverlayStatistic {
+            item_count: 1,
+            duration_ms: None,
+        });
+        let cleared = telemetry.report_statistics();
+        assert_eq!(cleared.rasterisation_duration_ms, None);
+        assert_eq!(cleared.overlay_duration_ms, None);
+        assert_eq!(cleared.rasterisation_count, 3);
+        assert_eq!(cleared.rasterisation_pixel_count, 13);
+        assert_eq!(cleared.overlay_item_count, 4);
+    }
+
+    #[test]
+    fn closed_native_spans_keep_a_finite_duration_when_a_clock_exists() {
+        let mut telemetry = RenderingTelemetry::new(8);
+        telemetry.begin_rasterisation_with_pixel_count(32);
+        telemetry.end_rasterisation();
+        telemetry.begin_rasterisation_with_pixel_count(16);
+        telemetry.end_rasterisation();
+        telemetry.begin_overlay_rasterisation_with_item_count(2);
+        telemetry.end_overlay_rasterisation();
+        let report = telemetry.report_statistics();
+        if cfg!(target_arch = "wasm32") {
+            assert_eq!(report.rasterisation_duration_ms, None);
+            assert_eq!(report.overlay_duration_ms, None);
+        } else {
+            let raster = report.rasterisation_duration_ms.expect("native raster clock");
+            let overlay = report.overlay_duration_ms.expect("native overlay clock");
+            assert!(raster.is_finite() && raster >= 0.);
+            assert!(overlay.is_finite() && overlay >= 0.);
+        }
     }
 
     #[test]

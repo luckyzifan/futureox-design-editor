@@ -175,7 +175,7 @@ fn page_and_raster_options_rebuild_tiles_at_the_same_revision() {
     options.page_id = "other".into();
     let other = engine.render_tiled_frame(&options, Some(&[])).unwrap();
     assert_ne!(original, other.rgba);
-    assert_eq!(other.rgba, engine.render(&options).unwrap());
+    assert_eq!(other.rgba, engine.render_unretained(&options).unwrap());
     options.transparent = true;
     let clear = engine.render_tiled_frame(&options, Some(&[])).unwrap();
     assert!(clear.rgba.iter().all(|&channel| channel == 0));
@@ -301,7 +301,7 @@ fn panning_after_an_offscreen_edit_does_not_promote_stale_pixels() {
     let after_pan = instruction(&source.engine, right, 1.);
     renderer.update_with_instruction(&mut source, &panned, &after_pan, None).unwrap();
     let tile = renderer.level(3).unwrap().tile(&[1, 0]).unwrap();
-    let expected = source.engine.render(&panned).unwrap();
+    let expected = source.engine.render_unretained(&panned).unwrap();
     assert!(tile.surface.bytes() == expected, "returning pixels must match the new fill");
     assert_eq!(source.rasterized(), 3);
 }
@@ -328,7 +328,7 @@ fn returning_to_a_completed_camera_after_cancelled_zoom_recovers_its_tiles() {
     assert_eq!(cancel.unwrap_err(), "PREVIEW_CANCELLED");
     renderer.update_with_instruction(&mut source, &home, &home_plan, None).unwrap();
     let tile = renderer.level(3).unwrap().tile(&[0, 0]).expect("return viewport has pixels");
-    let expected = source.engine.render(&home).unwrap();
+    let expected = source.engine.render_unretained(&home).unwrap();
     assert!(tile.surface.bytes() == expected, "the completed viewport remains intact");
 }
 
@@ -468,7 +468,7 @@ fn panned_tiled_frame_assembly_equals_full_render() {
     let mut engine = Engine::new();
     engine.load_document(&doc()).expect("document");
     let options = frame(View { x: -512., y: -256., zoom: 1. }, 1024, 768);
-    let full = engine.render(&options).expect("full render");
+    let full = engine.render_unretained(&options).expect("full render");
     let assembled = engine
         .render_tiled_frame(&options, None)
         .expect("tiled frame");
@@ -488,7 +488,7 @@ fn panned_tiled_frame_assembly_equals_full_render() {
     // viewport edge — the case whose missing source-column offset once
     // shifted the whole blit.
     let mid = frame(View { x: -576., y: -288., zoom: 1. }, 1024, 768);
-    let mid_full = engine.render(&mid).expect("mid-tile full render");
+    let mid_full = engine.render_unretained(&mid).expect("mid-tile full render");
     let mid_assembled = engine
         .render_tiled_frame(&mid, None)
         .expect("mid-tile tiled frame");
@@ -531,7 +531,7 @@ fn off_bucket_assembly_stays_close_to_direct_render() {
     let mut engine = Engine::new();
     engine.load_document(&doc()).expect("document");
     let options = frame(View { x: 0., y: 0., zoom: 0.9 }, 512, 384);
-    let direct = engine.render(&options).expect("direct render");
+    let direct = engine.render_unretained(&options).expect("direct render");
     let assembled = engine
         .render_tiled_frame(&options, None)
         .expect("assembled frame");
@@ -586,7 +586,7 @@ fn bucket_zoom_after_off_bucket_is_byte_exact() {
     let assembled = engine
         .render_tiled_frame(&snapped, None)
         .expect("snapped frame");
-    let direct = engine.render(&snapped).expect("direct render");
+    let direct = engine.render_unretained(&snapped).expect("direct render");
     assert_eq!(assembled.rgba, direct, "snapped zoom must stay byte-exact");
 }
 
@@ -721,14 +721,14 @@ fn managed_document_tiles_are_byte_identical_to_full_render() {
         .expect("managed document");
     assert!(engine.color_settings().is_some());
     let options = frame(View { x: -128., y: -64., zoom: 1. }, 1024, 768);
-    let full = engine.render(&options).expect("full managed render");
+    let full = engine.render_unretained(&options).expect("full managed render");
     let assembled = engine
         .render_tiled_frame(&options, None)
         .expect("managed tiled frame");
     assert_eq!(assembled.rgba, full, "managed tiles must equal the full render");
     // And one pan keeps the parity at mid-tile offsets.
     let pan = frame(View { x: -576., y: -288., zoom: 1. }, 1024, 768);
-    let pan_full = engine.render(&pan).expect("panned full render");
+    let pan_full = engine.render_unretained(&pan).expect("panned full render");
     let pan_assembled = engine.render_tiled_frame(&pan, None).expect("panned tiles");
     assert_eq!(pan_assembled.rgba, pan_full);
 }
@@ -903,4 +903,459 @@ fn parallel_cancel_keeps_one_finished_tile() {
     assert_eq!(status, UpdateStatus::Completed);
     assert!(renderer.resident_tile_count() > 1);
     assert!(finished.load(Ordering::Acquire) > 1);
+}
+
+/// The center tile becomes resident while the other workers are still
+/// drawing. Three workers stay in the pool. Final bytes follow the address,
+/// and the batch wall stays near the slow tile rather than the sum.
+#[test]
+fn parallel_center_tile_is_resident_before_the_slow_edges() {
+    use futureox_design_kernel::tiled_renderer::TileRequest;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::{Duration, Instant};
+
+    struct Pool {
+        busy: Arc<AtomicUsize>,
+        revision: u64,
+    }
+    struct Worker {
+        busy: Arc<AtomicUsize>,
+    }
+    fn paint(address: [i32; 2]) -> Vec<u8> {
+        let mut pixels = vec![0u8; TILE_SIZE as usize * TILE_SIZE as usize * 4];
+        pixels[0] = address[0] as u8;
+        pixels[1] = address[1] as u8;
+        pixels
+    }
+    impl TileRasterizer for Worker {
+        fn rasterize_tile(&mut self, request: &TileRequest) -> Result<Vec<u8>, String> {
+            self.busy.fetch_add(1, Ordering::AcqRel);
+            let wait = if request.address == [1, 0] { 40 } else { 220 };
+            std::thread::sleep(Duration::from_millis(wait));
+            self.busy.fetch_sub(1, Ordering::AcqRel);
+            Ok(paint(request.address))
+        }
+    }
+    impl TileRasterizer for Pool {
+        fn rasterize_tile(&mut self, request: &TileRequest) -> Result<Vec<u8>, String> {
+            Worker {
+                busy: Arc::clone(&self.busy),
+            }
+            .rasterize_tile(request)
+        }
+    }
+    impl TileRasterSource for Pool {
+        fn content_revision(&self) -> u64 {
+            self.revision
+        }
+        fn prepare(&mut self, _options: &RenderOptions) -> Result<(), String> {
+            Ok(())
+        }
+        fn spawn_worker(&self) -> Option<Box<dyn TileRasterizer + Send>> {
+            Some(Box::new(Worker {
+                busy: Arc::clone(&self.busy),
+            }))
+        }
+    }
+
+    let mut engine = Engine::new();
+    engine.load_document(&doc()).expect("document");
+    let busy = Arc::new(AtomicUsize::new(0));
+    let center_at = Arc::new(std::sync::Mutex::new(None));
+    let others_busy = Arc::new(AtomicUsize::new(0));
+    let started = Instant::now();
+    let mut renderer = TiledRenderer::new(RenderFeatureFlags {
+        rasterize_concurrently: true,
+        single_threaded_content_rendering: false,
+        worker_limit: Some(3),
+    });
+    let probe_busy = Arc::clone(&busy);
+    let probe_at = Arc::clone(&center_at);
+    let probe_others = Arc::clone(&others_busy);
+    renderer.set_commit_probe(Some(Box::new(move |address| {
+        if address == [1, 0] {
+            *probe_at.lock().expect("center time") = Some(started.elapsed());
+            // The center worker has already left. The two edge workers are
+            // still inside their sleep when this region is published.
+            if probe_busy.load(Ordering::Acquire) >= 2 {
+                probe_others.fetch_add(1, Ordering::Release);
+            }
+        }
+    })));
+    let mut source = Pool {
+        busy,
+        revision: engine.content_revision(),
+    };
+    let options = frame(
+        View {
+            x: 0.,
+            y: 0.,
+            zoom: 1.,
+        },
+        1536,
+        512,
+    );
+    let planned = instruction(&engine, [0., 0., 1536., 512.], 1.);
+    let status = renderer
+        .update_with_instruction(&mut source, &options, &planned, None)
+        .expect("parallel batch");
+    let wall = started.elapsed();
+    assert_eq!(status, UpdateStatus::Completed);
+    assert_eq!(renderer.resident_tile_count(), 3);
+    let center_elapsed = center_at
+        .lock()
+        .expect("center time")
+        .expect("center tile committed");
+    eprintln!(
+        "parallel zoom batch: center resident {:.1} ms, batch wall {:.1} ms, workers 3, edges still inside rasterise {}",
+        center_elapsed.as_secs_f64() * 1_000.0,
+        wall.as_secs_f64() * 1_000.0,
+        others_busy.load(Ordering::Acquire) > 0
+    );
+    assert!(
+        center_elapsed + Duration::from_millis(80) < wall,
+        "center {:.1} ms, batch {:.1} ms",
+        center_elapsed.as_secs_f64() * 1_000.0,
+        wall.as_secs_f64() * 1_000.0
+    );
+    assert!(
+        others_busy.load(Ordering::Acquire) > 0,
+        "the other workers were still rasterising"
+    );
+    assert!(
+        wall < Duration::from_millis(400),
+        "three workers must overlap the 220 ms edges"
+    );
+    let level =
+        futureox_design_kernel::tiled_renderer::level_index_for_scale(exact_bucket_scale(1.));
+    for address in [[0, 0], [1, 0], [2, 0]] {
+        let actual = renderer
+            .level(level)
+            .and_then(|level| level.tile(&address))
+            .expect("tile")
+            .surface
+            .bytes();
+        assert_eq!(&actual[..2], &[address[0] as u8, address[1] as u8]);
+    }
+}
+
+/// Stage split for one multi-tile zoom on this machine. The numbers are the
+/// run's own clock, not a frame-time promise. Parallel and sequential pixels
+/// stay equal, and the worker snapshot is reported beside one tile.
+#[test]
+fn continuous_zoom_stage_costs_keep_parallel_pixels() {
+    use futureox_design_kernel::tiled_renderer::{TileRasterSource, TileRequest};
+    use std::time::Instant;
+
+    let mut nodes = serde_json::Map::new();
+    let mut children = Vec::new();
+    for index in 0..48 {
+        let id = format!("r{index}");
+        children.push(id.clone());
+        nodes.insert(id.clone(), json!({
+            "id": id, "kind": "rectangle",
+            "transform": [1.0, 0.0, 0.0, 1.0, (index % 8) as f64 * 40.0, (index / 8) as f64 * 30.0],
+            "width": 28.0, "height": 18.0,
+            "fills": [{"kind": "solid", "color": "#224466"}],
+            "strokes": [{"align": "center", "width": 1.0, "paint": {"kind": "solid", "color": "#000000"}}],
+        }));
+    }
+    let document = json!({
+        "schemaVersion": 1, "id": "zoom-stages", "name": "zoom-stages",
+        "pages": [{"id": "p", "name": "p", "children": children, "background": "#ffffff"}],
+        "nodes": nodes,
+    })
+    .to_string();
+    let options = frame(
+        View {
+            x: -80.,
+            y: -40.,
+            zoom: 4.,
+        },
+        1024,
+        512,
+    );
+    let mut parallel_engine = Engine::new();
+    parallel_engine.load_document(&document).expect("document");
+    let handoff_started = Instant::now();
+    let mut worker = TileRasterSource::spawn_worker(&parallel_engine).expect("snapshot");
+    let handoff_ms = handoff_started.elapsed().as_secs_f64() * 1_000.0;
+    let tile_request = TileRequest {
+        level: 0,
+        address: [0, 0],
+        world: [20.0, 10.0, 128.0, 128.0],
+        options: frame(
+            View {
+                x: -80.,
+                y: -40.,
+                zoom: 4.,
+            },
+            TILE_SIZE as u32,
+            TILE_SIZE as u32,
+        ),
+        pixel_count: TILE_SIZE as u64 * TILE_SIZE as u64,
+        clip: None,
+    };
+    let tile_started = Instant::now();
+    let tile_bytes = worker.rasterize_tile(&tile_request).expect("one tile");
+    let tile_ms = tile_started.elapsed().as_secs_f64() * 1_000.0;
+    drop(worker);
+    parallel_engine
+        .tiled_renderer_mut()
+        .set_flags(RenderFeatureFlags {
+            rasterize_concurrently: true,
+            single_threaded_content_rendering: false,
+            worker_limit: Some(3),
+        });
+    let parallel_started = Instant::now();
+    let parallel_frame = parallel_engine
+        .render_tiled_frame(&options, None)
+        .expect("parallel frame");
+    let parallel_ms = parallel_started.elapsed().as_secs_f64() * 1_000.0;
+
+    let mut sequential_engine = Engine::new();
+    sequential_engine
+        .load_document(&document)
+        .expect("document");
+    sequential_engine
+        .tiled_renderer_mut()
+        .set_flags(RenderFeatureFlags {
+            rasterize_concurrently: false,
+            single_threaded_content_rendering: true,
+            worker_limit: Some(1),
+        });
+    let sequential_started = Instant::now();
+    let sequential_frame = sequential_engine
+        .render_tiled_frame(&options, None)
+        .expect("sequential frame");
+    let sequential_ms = sequential_started.elapsed().as_secs_f64() * 1_000.0;
+    eprintln!(
+        "continuous zoom stages, 48 stroked rects, 1024x512 at zoom 4, analytic CPU: snapshot {handoff_ms:.3} ms, one 512 tile {tile_ms:.3} ms ({} bytes), parallel 3 workers {parallel_ms:.3} ms, single thread {sequential_ms:.3} ms, tiles {}",
+        tile_bytes.len(),
+        parallel_frame.visible_tiles
+    );
+    assert_eq!(parallel_frame.rgba, sequential_frame.rgba);
+    assert!(parallel_frame.visible_tiles >= 2);
+    if sequential_ms > 30.0 {
+        assert!(
+            parallel_ms < sequential_ms,
+            "parallel {parallel_ms:.3} ms should stay under the single-thread {sequential_ms:.3} ms"
+        );
+    }
+}
+
+/// Integer bucket cameras on the display entry reuse world tiles. The
+/// unretained renderer is the oracle, including after a fill edit.
+#[test]
+fn integer_bucket_display_matches_unretained_and_skips_a_full_repaint() {
+    use futureox_design_kernel::editing::DocumentPatch;
+    use futureox_design_kernel::fidelity::RasterProfile;
+    use futureox_design_kernel::scene::Document;
+
+    let mut retained = Engine::new();
+    let mut oracle = Engine::new();
+    retained.load_document(&doc()).unwrap();
+    oracle.load_document(&doc()).unwrap();
+    let views = [
+        View { x: -16., y: -8., zoom: 1. },
+        View { x: -40., y: -8., zoom: 1. },
+        View { x: -40., y: -32., zoom: 1. },
+    ];
+    let mut cold = 0u64;
+    let mut previous = 0u64;
+    for (index, view) in views.into_iter().enumerate() {
+        let options = frame(view, 640, 480);
+        assert_eq!(
+            retained.render(&options).unwrap(),
+            oracle.render_unretained(&options).unwrap(),
+            "pan {index}"
+        );
+        let rasters = retained
+            .tiled_renderer()
+            .unwrap()
+            .telemetry()
+            .report_statistics()
+            .rasterisation_count;
+        if index == 0 {
+            assert!(rasters >= 1, "the cold frame must rasterise");
+            cold = rasters;
+        } else {
+            assert!(
+                rasters - previous < cold,
+                "pan {index} rasterised {} tiles after a cold frame of {cold}",
+                rasters - previous
+            );
+        }
+        previous = rasters;
+    }
+
+    for zoom in [0.5, 2.0] {
+        let options = frame(View { x: -8., y: -4., zoom }, 320, 240);
+        let mut shown = Engine::new();
+        let mut full = Engine::new();
+        shown.load_document(&doc()).unwrap();
+        full.load_document(&doc()).unwrap();
+        assert_eq!(
+            shown.render(&options).unwrap(),
+            full.render_unretained(&options).unwrap(),
+            "zoom {zoom}"
+        );
+    }
+
+    let mut fractional = frame(View { x: -16.5, y: 0., zoom: 1. }, 128, 96);
+    let mut skipped = Engine::new();
+    let mut full = Engine::new();
+    skipped.load_document(&doc()).unwrap();
+    full.load_document(&doc()).unwrap();
+    assert_eq!(skipped.render(&fractional).unwrap(), full.render_unretained(&fractional).unwrap());
+    assert!(skipped.tiled_renderer().is_none(), "a fractional camera must not open residency");
+    fractional.view = View { x: -16., y: 0., zoom: 1. };
+    fractional.checkerboard = true;
+    let mut skipped = Engine::new();
+    let mut full = Engine::new();
+    skipped.load_document(&doc()).unwrap();
+    full.load_document(&doc()).unwrap();
+    assert_eq!(skipped.render(&fractional).unwrap(), full.render_unretained(&fractional).unwrap());
+    assert!(skipped.tiled_renderer().is_none(), "a checkerboard is screen-anchored");
+
+    let mut grid = frame(View { x: -24., y: -8., zoom: 1. }, 160, 120);
+    grid.grid = true;
+    grid.transparent = true;
+    let mut shown = Engine::new();
+    let mut full = Engine::new();
+    shown.load_document(&doc()).unwrap();
+    full.load_document(&doc()).unwrap();
+    assert_eq!(shown.render(&grid).unwrap(), full.render_unretained(&grid).unwrap());
+
+    for profile in [RasterProfile::Figma, RasterProfile::FigmaSubpixel] {
+        let mut options = frame(View { x: -24., y: -8., zoom: 1. }, 160, 120);
+        options.raster_profile = profile;
+        let mut shown = Engine::new();
+        let mut full = Engine::new();
+        shown.load_document(&doc()).unwrap();
+        full.load_document(&doc()).unwrap();
+        assert_eq!(
+            shown.render(&options).unwrap(),
+            full.render_unretained(&options).unwrap(),
+            "{}",
+            profile.tag()
+        );
+    }
+
+    let before: Document = serde_json::from_str(&doc()).unwrap();
+    let mut after_value: serde_json::Value = serde_json::from_str(&doc()).unwrap();
+    after_value["nodes"]["r"]["fills"][0]["color"] = json!("#da4014");
+    let after: Document = serde_json::from_value(after_value).unwrap();
+    let mut edited = Engine::new();
+    edited.load_document(&serde_json::to_string(&before).unwrap()).unwrap();
+    let options = frame(View { x: 0., y: 0., zoom: 1. }, 256, 192);
+    edited.render(&options).unwrap();
+    edited
+        .apply_document_patch(&DocumentPatch::between(&before, &after).unwrap())
+        .unwrap();
+    let mut fresh = Engine::new();
+    fresh.load_document(&serde_json::to_string(&after).unwrap()).unwrap();
+    assert_eq!(edited.render(&options).unwrap(), fresh.render_unretained(&options).unwrap());
+}
+
+fn populated(board_x: f64, mark_x: f64) -> futureox_design_kernel::scene::Document {
+    let mut nodes = serde_json::Map::new();
+    let mut roots = vec!["board".to_string(), "mark".to_string()];
+    for i in 0..48 {
+        let id = format!("n{i}");
+        roots.push(id.clone());
+        nodes.insert(id.clone(), json!({
+            "id": id, "kind": "rectangle",
+            "transform": [1, 0, 0, 1, (i % 12) * 70, (i / 12) * 80],
+            "width": 36, "height": 24,
+            "fills": [{"kind": "solid", "color": "#7865cb"}]
+        }));
+    }
+    nodes.insert("board".into(), json!({
+        "id": "board", "kind": "frame", "clip": true,
+        "transform": [1, 0, 0, 1, board_x, 420.],
+        "width": 160, "height": 80,
+        "fills": [{"kind": "solid", "color": "#dce7ee"}],
+        "children": ["label"]
+    }));
+    nodes.insert("label".into(), json!({
+        "id": "label", "kind": "rectangle",
+        "transform": [1, 0, 0, 1, 12, 18],
+        "width": 90, "height": 16,
+        "fills": [{"kind": "solid", "color": "#203040"}]
+    }));
+    nodes.insert("mark".into(), json!({
+        "id": "mark", "kind": "rectangle",
+        "transform": [1, 0, 0, 1, mark_x, 36.],
+        "width": 48, "height": 32,
+        "fills": [{"kind": "solid", "color": "#c4554a"}],
+        "effects": [{"kind": "shadow", "x": 6., "y": 4., "radius": 8., "color": "#000000", "opacity": 0.45}]
+    }));
+    serde_json::from_value(json!({
+        "schemaVersion": 1, "id": "partial", "name": "partial",
+        "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": roots}],
+        "nodes": nodes
+    })).unwrap()
+}
+
+fn fresh_rgba(doc: &futureox_design_kernel::scene::Document, options: &RenderOptions) -> Vec<u8> {
+    let mut engine = Engine::new();
+    engine.load_document(&serde_json::to_string(doc).unwrap()).unwrap();
+    engine.render(options).unwrap()
+}
+
+/// A resident tile keeps the pixels outside a bounded edit and matches a
+/// renderer that never reused those pixels. The repainted device area stays
+/// inside one tile.
+#[test]
+fn partial_shadow_edit_matches_fresh_pixels_inside_one_tile() {
+    use futureox_design_kernel::editing::DocumentPatch;
+    let before = populated(480., 40.);
+    let mut engine = Engine::new();
+    engine.load_document(&serde_json::to_string(&before).unwrap()).unwrap();
+    let options = frame(View { x: 0., y: 0., zoom: 1. }, 1024, 768);
+    let cold = engine.render_tiled_frame(&options, None).unwrap();
+    assert_eq!(cold.rgba, fresh_rgba(&before, &options));
+    let before_px = cold.telemetry.rasterisation_pixel_count;
+    let mut after = before.clone();
+    after.nodes.get_mut("mark").unwrap().transform.0[4] += 9.;
+    let patch = DocumentPatch::between(&before, &after).unwrap();
+    let damage = engine.apply_document_patch_with_damage(&patch).unwrap();
+    assert!(!damage.full, "shadow move should stay bounded: {:?}", damage.reason);
+    let rects = damage.rects.clone().unwrap();
+    let updated = engine.render_tiled_frame(&options, Some(&rects)).unwrap();
+    assert_eq!(updated.rgba, fresh_rgba(&after, &options));
+    let delta = updated.telemetry.rasterisation_pixel_count.saturating_sub(before_px);
+    assert!(delta > 0 && delta < (TILE_SIZE as u64) * (TILE_SIZE as u64), "repaint pixels {delta}");
+}
+
+/// Moving a clipped frame that straddles a tile boundary must keep the same
+/// pixels as a fresh render. Bounded damage repaints the intersection only.
+#[test]
+fn clipped_frame_translation_matches_fresh_pixels() {
+    use futureox_design_kernel::editing::DocumentPatch;
+    let before = populated(480., 40.);
+    let mut engine = Engine::new();
+    engine.load_document(&serde_json::to_string(&before).unwrap()).unwrap();
+    let options = frame(View { x: 0., y: 0., zoom: 1. }, 1024, 768);
+    let cold = engine.render_tiled_frame(&options, None).unwrap();
+    assert_eq!(cold.rgba, fresh_rgba(&before, &options));
+    let before_px = cold.telemetry.rasterisation_pixel_count;
+    let mut after = before.clone();
+    after.nodes.get_mut("board").unwrap().transform.0[4] += 18.5;
+    after.nodes.get_mut("board").unwrap().transform.0[5] += 7.25;
+    let patch = DocumentPatch::between(&before, &after).unwrap();
+    let damage = engine.apply_document_patch_with_damage(&patch).unwrap();
+    let rects = damage.rects.clone().unwrap_or_default();
+    let updated = engine
+        .render_tiled_frame(&options, if damage.full { None } else { Some(&rects) })
+        .unwrap();
+    assert_eq!(updated.rgba, fresh_rgba(&after, &options), "full={}", damage.full);
+    if !damage.full {
+        let delta = updated.telemetry.rasterisation_pixel_count.saturating_sub(before_px);
+        assert!(
+            delta > 0 && delta < 2 * (TILE_SIZE as u64) * (TILE_SIZE as u64),
+            "repaint pixels {delta}"
+        );
+    }
 }

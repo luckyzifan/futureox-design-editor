@@ -47,7 +47,7 @@ import {
   type RenderPolicy,
 } from './render-policy'
 import type { GpuRenderer } from './gpu/renderer'
-import { decodeScenePacket, scenePacketWitness, CompiledScenePacket, type ScenePacket } from './gpu/scene-packet'
+import { decodeScenePacket, scenePacketTransport, scenePacketWitness, CompiledScenePacket, type ScenePacket } from './gpu/scene-packet'
 import type {CompilationWitness} from './compilation-witness'
 import type { ColorSettings } from '../color'
 import { intersect, type BackendPreference, type Driver, type GpuScene, type Rect } from './gpu/types'
@@ -201,13 +201,9 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
         if (result instanceof CompiledScenePacket) {
           const scene=result.scene
           packet={...result.transport,width:scene.extent.w,height:scene.extent.h,count:Object.keys(scene.nodes).length}
-        } else if (result instanceof Uint8Array && result.byteLength >= 24) {
-          const header = new DataView(result.buffer, result.byteOffset, result.byteLength)
-          if (header.getUint32(0, true) === 0x43534746 && header.getUint32(4, true)===1)
-            packet = { scenePacketProtocol: 2, scenePacketVersion: header.getUint32(4, true), scenePacketBytes: result.byteLength,
-              scenePacketMetadataBytes: header.getUint32(8, true), scenePacketResourceBytes: header.getUint32(20, true) }
+        } else if (result instanceof Uint8Array && result.byteLength >= 8) {
           const scene=decodeScenePacket(result)
-          packet={...packet,width:scene.extent.w,height:scene.extent.h,count:Object.keys(scene.nodes).length}
+          packet={...scenePacketTransport(result),width:scene.extent.w,height:scene.extent.h,count:Object.keys(scene.nodes).length}
         }
         return result
       } finally { terminalDiagnostics.record('compile',{requestId,durationMs:performance.now()-started,...packet}) }
@@ -218,8 +214,11 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
   navigationJournal.record(4, { sequence })
   return work().finally(() => { if (generation === navigationCaptureGeneration) navigationJournal.record(5, { sequence }) })
 }
-function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal, curvePrograms=false) {
-  return journalCompile(async () => (await kernel.prepare_gpu_scene(options, signal, curvePrograms)).consume())
+function posePacketTransport(terminal: boolean): 'curves' | 'inline-lz4' {
+  return terminal ? 'inline-lz4' : 'curves'
+}
+function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal, transport: boolean | 'curves' | 'inline-lz4' = false) {
+  return journalCompile(async () => (await kernel.prepare_gpu_scene(options, signal, transport)).consume())
 }
 let reportedResidentAttachment = ''
 function prepareDisplay(capture = true) {
@@ -764,7 +763,7 @@ function schedulePose(){
               if(terminalPoseDisposition(pose,terminal)==='changed')superseded.abort()
             }
             try {
-              const compile=()=>compilePacket(kernel,session.options,signal,bitmapTerminal)
+              const compile=()=>compilePacket(kernel,session.options,signal,posePacketTransport(pose.terminal===true))
               packet=await (preparation ? preparation.withPoseTransport(compile) : compile())
             } catch(error) {
               // The next absolute pose still owns this lease and reapplies
@@ -847,7 +846,7 @@ function schedulePose(){
                   work.mutated=true
                   if(!await kernel.apply_interaction_transforms(JSON.stringify(terminal.transforms))){work.mutated=false;return {packet:undefined,compileMs:0}}
                   const at=performance.now()
-                  const packet=await journalCompile(()=>kernel.prepare_gpu_scene(session.options,session.controller.signal,bitmapTerminal))
+                  const packet=await journalCompile(()=>kernel.prepare_gpu_scene(session.options,session.controller.signal,'inline-lz4'))
                   return {packet,compileMs:performance.now()-at}
                 }
                 ahead.start(terminal.input.sequence,()=>preparation?preparation.withPoseTransport(prepare):prepare())
@@ -2169,6 +2168,16 @@ self.onmessage = (e) => {
             const tileFence = (enforceFill: boolean, allowGapFill = false, canFillGap = false) =>
               admitAction(liveChoice(enforceFill, allowGapFill, canFillGap))
             const current = () => tileFence(channel === 'canvas') !== 'cancel'
+            // A pan bumps the fill generation before the queued edge tiles
+            // compile. Abort and a new document still stop the batch. A tile
+            // that still paints an uncovered part of the live camera does not:
+            // dropping it is the blank strip, and the next request only
+            // repeats the same world tile.
+            const abandonStaleBatch = (tile: RasterTile | undefined) => {
+              if (tileFence(true) !== 'cancel') return false
+              return !(tile && !retainCoverage && !cameraDependent && preparedTileCanFill(tile, displayFrame) &&
+                tileFence(true, true, true) === 'cover-gap')
+            }
             const canStreamGaussian = regionalGaussianDisplay({backend,channel,profile:renderOptions.rasterProfile,colorSpace:color?.documentSpace,
               displayOnly:!request.readback&&!request.png&&!request.referenceGpu&&!exportFormat&&(renderIntent==='preview'||renderIntent==='canvas'),
               regional:renderOptions.gpuGaussianRegions,hdr:executionPolicy.hdrCompositing,pixelPreview:renderOptions.pixelPreview,
@@ -2179,7 +2188,7 @@ self.onmessage = (e) => {
               tile.x, tile.y, tile.width, tile.height, tile.zoom, tile.phaseX ?? 0, tile.phaseY ?? 0,
               ...(cameraDependent ? [renderOptions.view.x, renderOptions.view.y, tile.zoom] : [])])
             const compileTile = async (tile: RasterTile) => {
-              if (!current()) throw Error('PREVIEW_CANCELLED')
+              if (abandonStaleBatch(tile)) throw Error('PREVIEW_CANCELLED')
               const at = performance.now()
               // Only the CPU packet preparation can be interrupted. The
               // batch still owns synchronization and previously drawn tiles.
@@ -2235,7 +2244,7 @@ self.onmessage = (e) => {
                 // A camera-wide preparation window is optional reuse, not
                 // admission for a bounded tile. Retry this exact crop once.
                 prepareViewport = undefined
-                if (!current()) throw Error('PREVIEW_CANCELLED')
+                if (abandonStaleBatch(tile)) throw Error('PREVIEW_CANCELLED')
                 bytes = await compile()
               }
               finally { if (tilePreparation) canvasTilePreparations.delete(tilePreparation) }
@@ -2247,7 +2256,7 @@ self.onmessage = (e) => {
               let undelivered: { bitmap?: ImageBitmap; gpuTile?: number } | undefined
               let nextColumnPlan: { index: number | undefined; changed: boolean; deltaY: number } | undefined
               try {
-              if (tileFence(true) === 'cancel') throw new Error('PREVIEW_CANCELLED')
+              if (abandonStaleBatch(tile)) throw new Error('PREVIEW_CANCELLED')
               // World slots retain the computation camera for measured byte
               // dithering, grids and pixel preview. Those established paths
               // cannot certify a translated hit from world address alone.
@@ -2493,7 +2502,10 @@ self.onmessage = (e) => {
               await queue.yieldToHigherPriority(channel === 'interaction' ? 1 : 0, GPU_PRIORITY_BURST)
               // A canceled returning lane must not retire the interaction's
               // current resources merely to restore an obsolete canvas owner.
-              if (tileFence(true) === 'cancel') throw new Error('PREVIEW_CANCELLED')
+              // The next queued tile may still be the uncovered pan strip.
+              const following = order.indexAt(tileOrderIndex + 1)
+              if (abandonStaleBatch(following === undefined ? undefined : tileViewport[following] as RasterTile))
+                throw new Error('PREVIEW_CANCELLED')
               selectLane(channel)
               if (settingsJson !== colorKey || preference !== requestPreference || referenceGpu !== wantsReference || solidBatchGpu !== wantsBatch) {
                 noteRetiredDevice(gpu); gpu?.dispose(); gpu = undefined; invalidateTileCache(); unavailable.clear()

@@ -74,6 +74,7 @@ impl Fixture {
             png_region: false,
             flush_backdrop_frame: None,
             compact_export_groups: false,
+            post_byte_opacity: None,
             sample,
             raster_workspace: RasterWorkspace::default(),
             pose_prefix: None,

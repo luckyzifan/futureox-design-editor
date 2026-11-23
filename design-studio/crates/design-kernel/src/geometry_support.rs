@@ -73,6 +73,12 @@ pub(crate) fn primitive_device_box(node: &Node, matrix: Transform) -> Option<Rec
     if !w.is_finite() || !h.is_finite() || w < 0. || h < 0. {
         return None;
     }
+    axis_box(matrix, w, h)
+}
+
+/// Device hull of a local width/height box. Same corner product and the same
+/// finite-coordinate refusal as `primitive_device_box`.
+pub(crate) fn axis_box(matrix: Transform, w: f64, h: f64) -> Option<Rect> {
     let points = [
         Point::new(0., 0.),
         Point::new(w, 0.),

@@ -4,11 +4,29 @@ import { decodeFrameValue } from './frame-wire'
 import { bindSourceIdentity, bindSourcePrograms } from './source-identity'
 import { FrameResources, frameResource, type FrameResource, type ResourceLease } from './frame-resources'
 import {segmentedWitness,type CompilationWitness} from '../compilation-witness'
+import { inflateScenePacket } from './lz4-block.mjs'
 const decoded=new WeakMap<Uint8Array,GpuScene>()
 const witnesses=new WeakMap<Uint8Array,CompilationWitness>()
 const byteEstimates = new WeakMap<Uint8Array, number>()
+const transportStats = new WeakMap<Uint8Array, PacketTransportStats>()
+const FGSC = 0x43534746
 type PacketTransportStats = Readonly<{scenePacketProtocol:number;scenePacketVersion:number;
   scenePacketBytes:number;scenePacketMetadataBytes:number;scenePacketResourceBytes:number}>
+
+function rememberTransport(wire: Uint8Array, packet: Uint8Array) {
+  const header = new DataView(packet.buffer, packet.byteOffset, packet.byteLength)
+  transportStats.set(wire, Object.freeze({
+    scenePacketProtocol: 2,
+    scenePacketVersion: header.getUint32(4, true),
+    scenePacketBytes: wire.byteLength,
+    scenePacketMetadataBytes: header.getUint32(8, true),
+    scenePacketResourceBytes: header.getUint32(20, true),
+  }))
+}
+
+export function scenePacketTransport(bytes: Uint8Array): PacketTransportStats | undefined {
+  return transportStats.get(bytes)
+}
 
 function copyProgramStorage(scene: GpuScene) {
   const vertices = scene.vertices, curves = scene.curves
@@ -29,15 +47,14 @@ export class CompiledScenePacket {
     readonly transport: PacketTransportStats, readonly retainedBytes: number) { Object.freeze(this) }
   static from(bytes: Uint8Array, independent: boolean) {
     let scene=decodeScenePacket(bytes),witness=scenePacketWitness(bytes)
-    const h=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength)
+    const transport=transportStats.get(bytes)
+    if(!transport)throw Error('Unsupported GPU scene packet')
     if(independent){
       const { geometry, copied } = copyProgramStorage(scene)
       scene = copied
       witness=witness instanceof Uint8Array?witness.slice():segmentedWitness([witness.parts[0],geometry])
     }
-    return new CompiledScenePacket(scene,witness,Object.freeze({scenePacketProtocol:2,scenePacketVersion:h.getUint32(4,true),
-      scenePacketBytes:bytes.length,scenePacketMetadataBytes:h.getUint32(8,true),scenePacketResourceBytes:h.getUint32(20,true)}),
-      byteEstimates.get(bytes) ?? Infinity)
+    return new CompiledScenePacket(scene,witness,transport,byteEstimates.get(bytes) ?? Infinity)
   }
 }
 export type ScenePacket = Uint8Array | CompiledScenePacket
@@ -56,10 +73,12 @@ export function decodeScenePacket(input:ScenePacket,store?:FrameResources,lease?
     return input.scene
   }
   const known=decoded.get(input);if(known)return known
-  const bytes=input.byteOffset%4||!(input.buffer instanceof ArrayBuffer)?input.slice():input as Uint8Array<ArrayBuffer>
+  const opened=inflateScenePacket(input)
+  const bytes=opened.byteOffset%4||!(opened.buffer instanceof ArrayBuffer)?opened.slice():opened as Uint8Array<ArrayBuffer>
   if(bytes.length<24)throw Error('Truncated GPU scene packet')
   const header=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength)
-  if(header.getUint32(0,true)!==0x43534746||header.getUint32(4,true)!==1)throw Error('Unsupported GPU scene packet')
+  if(header.getUint32(0,true)!==FGSC||header.getUint32(4,true)!==1)throw Error('Unsupported GPU scene packet')
+  rememberTransport(input, bytes)
   const metadataLength=header.getUint32(8,true),nv=header.getUint32(12,true),nc=header.getUint32(16,true),payload=header.getUint32(20,true)
   const start=Math.ceil((24+metadataLength)/4)*4,resourceStart=start+(nv+nc)*4
   if(resourceStart+payload!==bytes.length)throw Error('Invalid GPU scene packet length')
@@ -163,6 +182,8 @@ export function scenePacketWitness(bytes:ScenePacket){return bytes instanceof Co
  * resources may be shared, exactly as their frame leases already permit. */
 export function copyScenePacket(input:Uint8Array):Uint8Array {
   const copy=input.slice(),scene=decoded.get(input)
+  const transport=transportStats.get(input)
+  if(transport)transportStats.set(copy,Object.freeze({...transport,scenePacketBytes:copy.byteLength}))
   if(scene){
     const { geometry, copied } = copyProgramStorage(scene)
     decoded.set(copy,copied)

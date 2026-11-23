@@ -2246,11 +2246,14 @@ impl FigImporter {
             match line_height_multiplier(lh, node.font_size) {
                 Some(m) => {
                     style.line_height = m;
-                    if str_of(lh, "units") == Some("PIXELS") {
-                        style.line_box_baseline = "figma-pixel-leading".into();
-                    } else if has_fig_automatic_line_height(change, node.font_size) {
+                    if has_fig_automatic_line_height(change, node.font_size) {
                         style.line_height_auto = true;
                         style.line_box_baseline = "figma-font-metrics".into();
+                    } else {
+                        // Explicit PIXELS, PERCENT, and RAW boxes use the same
+                        // centered half-leading as a Figma pixel line box.
+                        // Auto stays on the rounded font line box above.
+                        style.line_box_baseline = "figma-pixel-leading".into();
                     }
                 }
                 None => untranslated.push(format!("lineHeight={lh}")),
@@ -5037,6 +5040,12 @@ mod tests {
             assert_eq!(style.line_box_baseline, "figma-font-metrics");
             text["derivedTextData"]["layoutSize"]["y"] = json!(30);
             assert!(!has_fig_automatic_line_height(&text, 30.));
+            changes.pop();
+            changes.push(text);
+            let explicit = document_from_canvas(&json!({"nodeChanges": changes}), BTreeMap::new(), Vec::new()).unwrap();
+            let explicit_style = node_of(&explicit, 1, 2).text_style.as_ref().unwrap();
+            assert!(!explicit_style.line_height_auto);
+            assert_eq!(explicit_style.line_box_baseline, "figma-pixel-leading");
         }
 
         #[test]
@@ -5058,6 +5067,7 @@ mod tests {
             assert!((n.font_size - 18.).abs() < 1e-9);
             let style = n.text_style.as_ref().unwrap();
             assert!((style.line_height - 1.5).abs() < 1e-9);
+            assert_eq!(style.line_box_baseline, "figma-pixel-leading");
             assert!((style.letter_spacing - 2.).abs() < 1e-9);
             assert_eq!(style.align, "center");
             assert!((style.paragraph_spacing - 4.).abs() < 1e-9);

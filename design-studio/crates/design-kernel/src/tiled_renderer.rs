@@ -9,9 +9,15 @@ use crate::renderer::{RenderOptions, View};
 use crate::tile_level::{TileMipLevel, LEVEL_TILE_LIMIT};
 use crate::tile_stack::TILE_SIZE;
 use std::sync::Arc;
-use std::collections::HashMap;
-/// Freshly rasterised tiles: address plus premultiplied RGBA8 bytes.
-type RasterisedTiles = Vec<([i32; 2], Vec<u8>)>;
+use std::collections::{HashMap, HashSet};
+/// One finished tile. `clip` is the device rectangle inside the tile when
+/// `bytes` replace only that rectangle of a resident surface.
+struct RasterisedTile {
+    address: [i32; 2],
+    bytes: Vec<u8>,
+    clip: Option<(u32, u32, u32, u32)>,
+}
+type RasterisedTiles = Vec<RasterisedTile>;
 
 pub const CORE_TEXT_RENDERING: bool = true;
 pub const GPU_OVERLAY: bool = false;
@@ -52,6 +58,62 @@ pub struct TileRequest {
     pub world: [f64; 4],
     pub options: RenderOptions,
     pub pixel_count: u64,
+    /// Device rectangle inside this tile. `None` is the whole tile.
+    /// Set only when a resident surface already holds every pixel outside
+    /// the rectangle.
+    pub clip: Option<(u32, u32, u32, u32)>,
+}
+
+/// Device clip of `damage` inside one tile, or `None` when the tile should
+/// be rasterised whole. The rectangle is expanded to every device pixel the
+/// world damage can touch. A non-finite rect cannot be bounded and forces a
+/// full tile.
+fn damage_clip(
+    world: [f64; 4],
+    scale: f64,
+    damage: &[WorldRect],
+) -> Option<(u32, u32, u32, u32)> {
+    if !scale.is_finite() || scale <= 0. {
+        return None;
+    }
+    let (origin_x, origin_y, side) = (world[0], world[1], world[2]);
+    let limit = f64::from(TILE_SIZE);
+    let mut x0 = TILE_SIZE;
+    let mut y0 = TILE_SIZE;
+    let mut x1 = 0i32;
+    let mut y1 = 0i32;
+    let mut hit = false;
+    for rect in damage {
+        if rect.iter().any(|value| !value.is_finite()) || rect[2] < 0. || rect[3] < 0. {
+            return None;
+        }
+        let left = rect[0].max(origin_x);
+        let top = rect[1].max(origin_y);
+        let right = (rect[0] + rect[2]).min(origin_x + side);
+        let bottom = (rect[1] + rect[3]).min(origin_y + side);
+        if !(right > left && bottom > top) {
+            continue;
+        }
+        let dx0 = ((left - origin_x) * scale).floor();
+        let dy0 = ((top - origin_y) * scale).floor();
+        let dx1 = ((right - origin_x) * scale).ceil();
+        let dy1 = ((bottom - origin_y) * scale).ceil();
+        if ![dx0, dy0, dx1, dy1].iter().all(|value| value.is_finite()) {
+            return None;
+        }
+        hit = true;
+        x0 = x0.min(dx0.clamp(0., limit) as i32);
+        y0 = y0.min(dy0.clamp(0., limit) as i32);
+        x1 = x1.max(dx1.clamp(0., limit) as i32);
+        y1 = y1.max(dy1.clamp(0., limit) as i32);
+    }
+    if !hit || x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    if x0 == 0 && y0 == 0 && x1 == TILE_SIZE && y1 == TILE_SIZE {
+        return None;
+    }
+    Some((x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
@@ -305,6 +367,13 @@ pub trait TileRasterSource: TileRasterizer {
     /// prepared scene. `None` means this source cannot be shared; the update
     /// degrades to the calling-thread rasterizer.
     fn spawn_worker(&self) -> Option<Box<dyn TileRasterizer + Send>>;
+    /// Reject a tile the source cannot rasterize before any pixel work.
+    /// The default admits every request. A budget failure here leaves the
+    /// batch unstarted, so earlier tiles of the same frame are not painted
+    /// and then discarded.
+    fn admit_tile(&mut self, _request: &TileRequest) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 pub struct CacheManager {
@@ -449,6 +518,11 @@ pub struct TiledRenderer {
     /// rasterised) — the compositor's redraw set. An equal-instruction
     /// update leaves it empty.
     last_committed: Vec<[i32; 2]>,
+    /// Optional parent-thread probe. A parallel batch calls it when a tile
+    /// becomes resident, while other workers may still be rasterising.
+    /// `Send` keeps an engine snapshot movable onto a worker thread; the
+    /// probe itself is not invoked from those workers.
+    commit_probe: Option<Box<dyn FnMut([i32; 2]) + Send>>,
 }
 
 impl Default for TiledRenderer {
@@ -477,7 +551,14 @@ impl TiledRenderer {
             caches: CacheManager::default(),
             last_level: None,
             last_committed: Vec::new(),
+            commit_probe: None,
         }
+    }
+
+    /// Observe each tile as it becomes resident. The parallel pool still
+    /// runs the rest of the batch; this does not reduce the worker count.
+    pub fn set_commit_probe(&mut self, probe: Option<Box<dyn FnMut([i32; 2]) + Send>>) {
+        self.commit_probe = probe;
     }
 
     /// Tiles committed by the most recent update — the compositor's redraw
@@ -623,6 +704,15 @@ impl TiledRenderer {
                 | render_trait::COLOR_SPACE
                 | render_trait::OVERLAY)
             != 0;
+        // Unfinished damage from a cancelled update is stored as whole tiles.
+        // Those tiles cannot take a smaller clip: the pixels outside this
+        // call's damage were never brought up to the previous revision.
+        let previously_dirty = self
+            .levels
+            .get(index)
+            .and_then(|slot| slot.as_ref())
+            .map(TileMipLevel::dirty_tile_addresses)
+            .unwrap_or_default();
         if content_moved || first_frame {
             self.invalidate_caches_for_instruction(instruction, damage)?;
         }
@@ -666,7 +756,7 @@ impl TiledRenderer {
         }
         if !addresses.is_empty() {
             source.prepare(options)?;
-            let requests = self.tile_requests(index, scale, addresses, options);
+            let requests = self.tile_requests(index, scale, addresses, options, damage, &previously_dirty);
             self.rasterisation_in_progress = true;
             let outcome = self.rasterise_requests(source, index, instruction.content_revision, requests);
             self.rasterisation_in_progress = false;
@@ -707,12 +797,15 @@ impl TiledRenderer {
 
     fn tile_requests(
         &self,
-        level: usize,
+        level_index: usize,
         scale: f64,
         addresses: Vec<[i32; 2]>,
         frame: &RenderOptions,
+        damage: Option<&[WorldRect]>,
+        previously_dirty: &HashSet<[i32; 2]>,
     ) -> Vec<TileRequest> {
         let tile_world = f64::from(TILE_SIZE) / scale;
+        let level = self.levels.get(level_index).and_then(|slot| slot.as_ref());
         addresses
             .into_iter()
             .map(|address| {
@@ -733,12 +826,22 @@ impl TiledRenderer {
                     y: -world[1] * scale,
                     zoom: scale,
                 };
+                let resident = level.is_some_and(|level| level.tile(&address).is_some());
+                let clip = if resident && !previously_dirty.contains(&address) {
+                    damage.and_then(|rects| damage_clip(world, scale, rects))
+                } else {
+                    None
+                };
+                let pixel_count = clip
+                    .map(|(_, _, w, h)| u64::from(w) * u64::from(h))
+                    .unwrap_or(TILE_SIZE as u64 * TILE_SIZE as u64);
                 TileRequest {
-                    level,
+                    level: level_index,
                     address,
                     world,
                     options,
-                    pixel_count: TILE_SIZE as u64 * TILE_SIZE as u64,
+                    pixel_count,
+                    clip,
                 }
             })
             .collect()
@@ -746,8 +849,8 @@ impl TiledRenderer {
 
     /// `_doParallelRasterisationOfScene:inRects:…` — sequential or bounded
     /// worker-pool rasterisation of the queued tiles, chosen by the feature
-    /// flags. Deterministic order: results return in request order whatever
-    /// the scheduling.
+    /// flags. Resident bytes do not depend on completion order. A parallel
+    /// batch commits each tile when it finishes and queues the center first.
     fn rasterise_requests(
         &mut self,
         source: &mut dyn TileRasterSource,
@@ -758,6 +861,10 @@ impl TiledRenderer {
         let count = requests.len();
         if count == 0 {
             return Ok(());
+        }
+        for request in &requests {
+            crate::render_cancellation::checkpoint()?;
+            source.admit_tile(request)?;
         }
         let parallel = self.flags.rasterize_concurrently
             && !self.flags.single_threaded_content_rendering
@@ -784,9 +891,16 @@ impl TiledRenderer {
         revision: u64,
         tiles: RasterisedTiles,
     ) -> Result<(), String> {
+        let before = self.last_committed.len();
         self.last_committed
-            .extend(tiles.iter().map(|(address, _)| *address));
-        self.commit_rasterised(level_index, revision, tiles)
+            .extend(tiles.iter().map(|tile| tile.address));
+        self.commit_rasterised(level_index, revision, tiles)?;
+        if let Some(probe) = self.commit_probe.as_mut() {
+            for address in &self.last_committed[before..] {
+                probe(*address);
+            }
+        }
+        Ok(())
     }
 
     fn rasterise_sequential(
@@ -804,33 +918,90 @@ impl TiledRenderer {
                 .begin_rasterisation_with_pixel_count(request.pixel_count);
             let bytes = source.rasterize_tile(request);
             self.telemetry.end_rasterisation();
-            self.note_rasterised(level_index, revision, vec![(request.address, bytes?)])?;
+            self.note_rasterised(
+                level_index,
+                revision,
+                vec![RasterisedTile {
+                    address: request.address,
+                    bytes: bytes?,
+                    clip: request.clip,
+                }],
+            )?;
         }
         Ok(())
     }
 
-    /// Bounded worker-pool rasterisation. `Ok(None)` means the source could
-    /// not share workers and this thread already drew the tiles.
-    /// `Ok(Some)` is every tile, in request order, not yet committed.
+    fn accept_parallel_slots(
+        &mut self,
+        level_index: usize,
+        revision: u64,
+        requests: &[TileRequest],
+        telemetry_pixels: &[u64],
+        handled: &mut [bool],
+        ready: Vec<(usize, Result<Vec<u8>, String>)>,
+    ) -> Result<bool, String> {
+        let mut saw_cancel = false;
+        let mut real_error: Option<String> = None;
+        for (index, result) in ready {
+            if handled[index] {
+                continue;
+            }
+            handled[index] = true;
+            match result {
+                Ok(bytes) => {
+                    self.telemetry
+                        .begin_rasterisation_with_pixel_count(telemetry_pixels[index]);
+                    self.telemetry.end_rasterisation();
+                    self.note_rasterised(
+                        level_index,
+                        revision,
+                        vec![RasterisedTile {
+                            address: requests[index].address,
+                            bytes,
+                            clip: requests[index].clip,
+                        }],
+                    )?;
+                }
+                Err(error) if error == "PREVIEW_CANCELLED" => saw_cancel = true,
+                Err(error) => {
+                    if real_error.is_none() {
+                        real_error = Some(error);
+                    }
+                }
+            }
+        }
+        if let Some(error) = real_error {
+            return Err(error);
+        }
+        Ok(saw_cancel)
+    }
+
+    /// Bounded worker-pool rasterisation. `Ok(None)` means every successful
+    /// tile is already resident, including the fallback that drew on this
+    /// thread because the source could not share workers.
     ///
+    /// The tile nearest the batch center is queued first. Each finished tile
+    /// is committed while the other workers keep drawing, so a ready region
+    /// does not wait for the slowest tile. The worker count is unchanged.
     /// The calling thread owns the cancellation probe. Workers do not, so
     /// this loop publishes a shared flag when the probe fires and stops
     /// before the next tile. Tiles that already returned stay committed;
     /// the batch itself is not a completed instruction. Telemetry spans are
-    /// booked after the join, so parallel durations are not wall-accurate.
+    /// booked at commit, not across the worker, so they are not wall-accurate.
     #[cfg(not(target_arch = "wasm32"))]
     fn rasterise_parallel(
         &mut self,
         source: &mut dyn TileRasterSource,
         level_index: usize,
         revision: u64,
-        requests: Vec<TileRequest>,
+        mut requests: Vec<TileRequest>,
     ) -> Result<Option<RasterisedTiles>, String> {
         use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
         use std::sync::{Arc, Condvar, Mutex};
         use std::time::Duration;
         /// One worker's slot in the parallel rasterisation result vector.
         type RasterSlot = Option<Result<Vec<u8>, String>>;
+        bring_center_tile_forward(&mut requests);
         let worker_count = self
             .flags
             .worker_limit
@@ -864,6 +1035,9 @@ impl TiledRenderer {
                 }
             }
         }
+        let mut handled = vec![false; requests.len()];
+        let mut real_error: Option<String> = None;
+        let mut stopped = false;
         std::thread::scope(|scope| {
             for mut worker in workers {
                 let next = &next;
@@ -873,16 +1047,24 @@ impl TiledRenderer {
                 let arrived = Arc::clone(&arrived);
                 scope.spawn(move || {
                     let _arrived = Arrival(&arrived);
-                    let _guard = crate::render_cancellation::SharedCancelGuard::bind(Arc::clone(&cancel));
+                    let _guard =
+                        crate::render_cancellation::SharedCancelGuard::bind(Arc::clone(&cancel));
                     loop {
-                        if cancel.load(Ordering::Acquire) { break; }
+                        if cancel.load(Ordering::Acquire) {
+                            break;
+                        }
                         let index = next.fetch_add(1, Ordering::Relaxed);
-                        if index >= requests.len() { break; }
-                        if cancel.load(Ordering::Acquire) { break; }
+                        if index >= requests.len() {
+                            break;
+                        }
+                        if cancel.load(Ordering::Acquire) {
+                            break;
+                        }
                         let outcome = worker.rasterize_tile(&requests[index]);
                         if let Ok(mut guard) = slots.lock() {
                             guard[index] = Some(outcome);
                         }
+                        arrived.1.notify_one();
                     }
                 });
             }
@@ -890,86 +1072,138 @@ impl TiledRenderer {
             loop {
                 if crate::render_cancellation::checkpoint().is_err() {
                     cancel.store(true, Ordering::Release);
+                    stopped = true;
+                }
+                let ready = drain_ready_slots(&slots, &handled);
+                match self.accept_parallel_slots(
+                    level_index,
+                    revision,
+                    &requests,
+                    &telemetry_pixels,
+                    &mut handled,
+                    ready,
+                ) {
+                    Ok(true) => stopped = true,
+                    Ok(false) => {}
+                    Err(error) => {
+                        cancel.store(true, Ordering::Release);
+                        if real_error.is_none() {
+                            real_error = Some(error);
+                        }
+                    }
+                }
+                // Do not hold the arrival lock while taking the slot lock.
+                // A worker stores a tile, then drops its arrival guard.
+                let arrived_count = *lock.lock().expect("worker arrival lock");
+                if arrived_count == worker_count {
+                    break;
+                }
+                let pending = slots
+                    .lock()
+                    .expect("tile slot")
+                    .iter()
+                    .any(|slot| slot.is_some());
+                if pending {
+                    continue;
                 }
                 let guard = lock.lock().expect("worker arrival lock");
-                if *guard == worker_count { break; }
-                let (guard, _) = cvar.wait_timeout(guard, Duration::from_millis(2)).expect("worker arrival wait");
+                if *guard == worker_count {
+                    drop(guard);
+                    continue;
+                }
+                let (guard, _) = cvar
+                    .wait_timeout(guard, Duration::from_millis(2))
+                    .expect("worker arrival wait");
                 drop(guard);
             }
         });
-        let results = slots.into_inner().expect("scope joined all lock guards");
-        let cancelled = cancel.load(Ordering::Acquire);
-        let mut tiles = Vec::new();
-        let mut real_error: Option<String> = None;
-        let mut stopped = cancelled;
-        for (index, result) in results.into_iter().enumerate() {
-            match result {
-                Some(Ok(bytes)) => {
-                    self.telemetry.begin_rasterisation_with_pixel_count(telemetry_pixels[index]);
-                    self.telemetry.end_rasterisation();
-                    tiles.push((requests[index].address, bytes));
-                }
-                Some(Err(error)) if error == "PREVIEW_CANCELLED" => stopped = true,
-                Some(Err(error)) => { if real_error.is_none() { real_error = Some(error); } }
-                None if cancelled => stopped = true,
-                None => {
-                    if real_error.is_none() {
-                        real_error = Some("Parallel rasterisation ended with an unanswered tile".into());
-                    }
+        if cancel.load(Ordering::Acquire) {
+            stopped = true;
+        }
+        let ready = drain_ready_slots(&slots, &handled);
+        match self.accept_parallel_slots(
+            level_index,
+            revision,
+            &requests,
+            &telemetry_pixels,
+            &mut handled,
+            ready,
+        ) {
+            Ok(true) => stopped = true,
+            Ok(false) => {}
+            Err(error) => {
+                if real_error.is_none() {
+                    real_error = Some(error);
                 }
             }
         }
         if let Some(error) = real_error {
-            if !tiles.is_empty() { self.note_rasterised(level_index, revision, tiles)?; }
             return Err(error);
         }
-        if stopped {
-            if !tiles.is_empty() { self.note_rasterised(level_index, revision, tiles)?; }
+        if stopped || cancel.load(Ordering::Acquire) {
             return Err("PREVIEW_CANCELLED".into());
         }
-        Ok(Some(tiles))
+        if handled.iter().any(|done| !done) {
+            return Err("Parallel rasterisation ended with an unanswered tile".into());
+        }
+        Ok(None)
     }
 
     fn commit_rasterised(
         &mut self,
         level_index: usize,
         revision: u64,
-        tiles: Vec<([i32; 2], Vec<u8>)>,
+        tiles: RasterisedTiles,
     ) -> Result<(), String> {
         let level = self
             .levels
             .get_mut(level_index)
             .and_then(|slot| slot.as_mut())
             .expect("level ensured above");
-        for (address, bytes) in tiles {
-            if bytes.len() != TILE_SIZE as usize * TILE_SIZE as usize * 4 {
+        for tile in tiles {
+            let expected = tile.clip.map_or(TILE_SIZE as usize * TILE_SIZE as usize * 4, |(_, _, w, h)| {
+                w as usize * h as usize * 4
+            });
+            if tile.bytes.len() != expected {
                 return Err(format!(
-                    "Tile {address:?} rasterised {} bytes, expected {}",
-                    bytes.len(),
-                    TILE_SIZE as usize * TILE_SIZE as usize * 4
+                    "Tile {:?} rasterised {} bytes, expected {}",
+                    tile.address,
+                    tile.bytes.len(),
+                    expected
                 ));
             }
-            let surface = match level.find_writable_tile_at(address) {
-                Some(mut surface) => {
-                    surface.replace_region(
-                        (0, 0, TILE_SIZE as u32, TILE_SIZE as u32),
-                        &bytes,
-                        TILE_SIZE as usize * 4,
-                    )?;
+            let surface = match tile.clip {
+                Some((x, y, w, h)) => {
+                    let Some(mut surface) = level.find_writable_tile_at(tile.address) else {
+                        return Err(format!(
+                            "Tile {:?} clip has no resident surface",
+                            tile.address
+                        ));
+                    };
+                    surface.replace_region((x as i32, y as i32, w, h), &tile.bytes, w as usize * 4)?;
                     surface
                 }
-                None => {
-                    let mut surface =
-                        self.surfaces.vend(TILE_SIZE as u32, TILE_SIZE as u32);
-                    surface.replace_region(
-                        (0, 0, TILE_SIZE as u32, TILE_SIZE as u32),
-                        &bytes,
-                        TILE_SIZE as usize * 4,
-                    )?;
-                    surface
-                }
+                None => match level.find_writable_tile_at(tile.address) {
+                    Some(mut surface) => {
+                        surface.replace_region(
+                            (0, 0, TILE_SIZE as u32, TILE_SIZE as u32),
+                            &tile.bytes,
+                            TILE_SIZE as usize * 4,
+                        )?;
+                        surface
+                    }
+                    None => {
+                        let mut surface = self.surfaces.vend(TILE_SIZE as u32, TILE_SIZE as u32);
+                        surface.replace_region(
+                            (0, 0, TILE_SIZE as u32, TILE_SIZE as u32),
+                            &tile.bytes,
+                            TILE_SIZE as usize * 4,
+                        )?;
+                        surface
+                    }
+                },
             };
-            level.commit_tile(address, surface, revision);
+            level.commit_tile(tile.address, surface, revision);
         }
         Ok(())
     }
@@ -1081,5 +1315,74 @@ impl TiledRenderer {
     /// The budget guard shared with the dirty-region derivation.
     pub fn tile_limit() -> usize {
         LEVEL_TILE_LIMIT
+    }
+}
+
+/// Queue the tile nearest the middle of this batch first. The other tiles
+/// keep their relative order. Pixel results do not depend on this order.
+fn bring_center_tile_forward(requests: &mut [TileRequest]) {
+    if requests.len() < 2 {
+        return;
+    }
+    let mut sx = 0.0;
+    let mut sy = 0.0;
+    for request in requests.iter() {
+        sx += request.world[0] + request.world[2] * 0.5;
+        sy += request.world[1] + request.world[3] * 0.5;
+    }
+    let n = requests.len() as f64;
+    let (cx, cy) = (sx / n, sy / n);
+    let mut best = 0usize;
+    let mut best_distance = f64::INFINITY;
+    for (index, request) in requests.iter().enumerate() {
+        let dx = request.world[0] + request.world[2] * 0.5 - cx;
+        let dy = request.world[1] + request.world[3] * 0.5 - cy;
+        let distance = dx * dx + dy * dy;
+        if distance < best_distance {
+            best_distance = distance;
+            best = index;
+        }
+    }
+    if best != 0 {
+        requests.swap(0, best);
+    }
+}
+
+fn drain_ready_slots(
+    slots: &std::sync::Mutex<Vec<Option<Result<Vec<u8>, String>>>>,
+    handled: &[bool],
+) -> Vec<(usize, Result<Vec<u8>, String>)> {
+    let mut guard = slots.lock().expect("tile slot");
+    let mut ready = Vec::new();
+    for (index, slot) in guard.iter_mut().enumerate() {
+        if handled[index] {
+            continue;
+        }
+        if let Some(result) = slot.take() {
+            ready.push((index, result));
+        }
+    }
+    ready
+}
+
+#[cfg(test)]
+mod damage_clip_tests {
+    use super::damage_clip;
+
+    #[test]
+    fn clip_is_the_device_intersection_or_absent_when_unbounded() {
+        let tile = [0., 0., 512., 512.];
+        assert_eq!(damage_clip(tile, 1., &[[10., 20., 30., 40.]]), Some((10, 20, 30, 40)));
+        assert_eq!(damage_clip(tile, 1., &[[0., 0., 512., 512.]]), None);
+        assert_eq!(damage_clip(tile, 1., &[[0., 0., f64::NAN, 4.]]), None);
+        let next = [512., 0., 512., 512.];
+        assert_eq!(
+            damage_clip(next, 1., &[[500., 4., 40., 10.]]),
+            Some((0, 4, 28, 10))
+        );
+        assert_eq!(
+            damage_clip([0., 0., 256., 256.], 2., &[[1.25, 2.5, 3.5, 1.25]]),
+            Some((2, 5, 8, 3))
+        );
     }
 }

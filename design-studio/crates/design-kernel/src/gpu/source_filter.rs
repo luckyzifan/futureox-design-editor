@@ -422,6 +422,8 @@ impl Compiler<'_> {
             backdrop_outputs: Default::default(),
             shadow_outputs: Default::default(),
             curves: std::mem::take(&mut self.curves),
+            device_shift: None,
+            keep_program_phase: false,
             vertices: std::mem::take(&mut self.vertices),
             area_paths: std::mem::take(&mut self.area_paths),
             programs: Default::default(),
@@ -536,6 +538,7 @@ impl Compiler<'_> {
                     ),
                     l.input,
                     even_odd,
+                    None,
                     None,
                 )?;
                 if path.count > 0 {

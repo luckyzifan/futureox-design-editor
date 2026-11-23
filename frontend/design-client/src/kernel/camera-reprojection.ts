@@ -12,6 +12,29 @@ export function atomicPresentationContext(canvas:HTMLCanvasElement) {
   if(import.meta.env.VITE_DESIGN_CAMERA_REPROJECTION==='0'||typeof OffscreenCanvas==='undefined'||typeof ImageBitmapRenderingContext==='undefined')return null
   return canvas.getContext('bitmaprenderer')
 }
+/** A same-zoom sample that has not been committed yet. Zoom changes stay on
+ * the render that owns scale, gaps and the exact frame. */
+export function coalescedSameZoomPan(live: CanvasCamera, committed: CanvasCamera) {
+  return [live.x, live.y, live.zoom, committed.x, committed.y, committed.zoom].every(Number.isFinite)
+    && live.zoom === committed.zoom && (live.x !== committed.x || live.y !== committed.y)
+}
+
+export type PanFollowOwner = {
+  subscribeCamera?: (listener: () => void) => () => void
+  effectiveView?: () => CanvasCamera
+}
+
+/** Camera listeners already run for samples that have not re-rendered the
+ * editor. Project those samples without waiting for the next animation frame. */
+export function subscribeCoalescedPan(owner: PanFollowOwner | undefined, project: (view: CanvasCamera) => void) {
+  if (!owner?.subscribeCamera || !owner.effectiveView) return () => {}
+  const read = owner.effectiveView.bind(owner)
+  return owner.subscribeCamera(() => {
+    const live = read()
+    if ([live.x, live.y, live.zoom].every(Number.isFinite)) project(live)
+  })
+}
+
 export function consumePresentationBitmap(context:ImageBitmapRenderingContext,canvas:HTMLCanvasElement,bitmap:ImageBitmap) {
   if(canvas.width!==bitmap.width)canvas.width=bitmap.width
   if(canvas.height!==bitmap.height)canvas.height=bitmap.height
@@ -122,6 +145,7 @@ export class CameraReprojection {
     this.canvas.dataset.cameraReprojected = String(!!placed)
     this.canvas.dataset.previewUpscaleRejected = String(active && !scaleOk)
     this.canvas.dataset.projectedCamera = JSON.stringify(active ? view : backing?.view || view)
+    this.syncStageTransform()
     this.displayedView = allowed && backing ? {...view} : undefined
     this.gaps.forEach(gap => { gap.style.display = 'none' })
     // A same-zoom pan still marks the new strip. A 3200% return is outside
@@ -147,5 +171,14 @@ export class CameraReprojection {
     else this.history.hide()
     return { active: !!placed, changed }
   }
-  dispose() { this.history.dispose(); clearTimeout(this.zoomTimer);clearTimeout(this.zoomHold);this.zoomTimer=this.zoomHold=undefined;this.zooming=false;this.displayedView=undefined;this.heldRequest=undefined;this.displayedBacking=undefined;this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.visibility = ''; this.canvas.style.imageRendering = '' }
+  /** The selection stage is drawn in the committed camera. The same CSS delta
+   * that slides the bitmap keeps that chrome on the picture between commits. */
+  private syncStageTransform() {
+    const stage = this.canvas.closest('[data-testid="canvas"]')?.querySelector('svg.stage')
+    if (!stage || !('style' in stage)) return
+    const style = (stage as SVGSVGElement).style
+    style.transformOrigin = '0 0'
+    style.transform = this.canvas.style.transform
+  }
+  dispose() { this.history.dispose(); clearTimeout(this.zoomTimer);clearTimeout(this.zoomHold);this.zoomTimer=this.zoomHold=undefined;this.zooming=false;this.displayedView=undefined;this.heldRequest=undefined;this.displayedBacking=undefined;this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.visibility = ''; this.canvas.style.imageRendering = ''; this.syncStageTransform() }
 }

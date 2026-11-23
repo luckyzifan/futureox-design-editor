@@ -12,8 +12,8 @@ import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_ME
 import { rotationChromeHeldToTexture, rotationDocumentChromeSuppressed, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
-import { crispOutlinePath } from './kernel/gpu/canvas-overlay'
-import { altMeasurementTarget, measurementTicks, SPACING_RED, textMeasurementBounds } from './canvas-measurements'
+import { ALIGNMENT_GUIDE, crispOutlinePath, crispSegmentPath } from './kernel/gpu/canvas-overlay'
+import { altMeasurementTarget, DISTANCE_PILL_BASELINE_LEAD, DISTANCE_PILL_EXTRA_HEIGHT, DISTANCE_PILL_PAD_X, DISTANCE_PILL_RADIUS, measurementTicks, SPACING_RED, textMeasurementBounds } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
 import { frameTitleShown } from './page-frame-chrome'
 import { interfacePreference, useInterfacePreferences } from './interface-preference'
@@ -191,6 +191,8 @@ type Drag = {
   actionSelection?: number
 
   pointerId: number
+  /** Mouse button that owns a pan: 0 left, 1 middle. Release waits for this button. */
+  pointerButton?: 0 | 1
   session: number
   page: string
   cropFrame?: string
@@ -316,16 +318,16 @@ function SelectionChromeChip({ testId, x, y, text, size, zoom, fill, opacity, ce
   testId: string; x: number; y: number; text: string; size: number; zoom: number; fill: string; opacity: number; centered?: boolean
   tone?: 'paper' | 'accent' | 'measure'
 }) {
-  const width = selectionChromeChipWidth(text, size), pad = tone === 'measure' ? 4 : 6
-  const boxW = (width + pad * 2) / zoom, boxH = (size + (tone === 'measure' ? 4 : 8)) / zoom
+  const width = selectionChromeChipWidth(text, size), pad = tone === 'measure' ? DISTANCE_PILL_PAD_X : 6
+  const boxW = (width + pad * 2) / zoom, boxH = (size + (tone === 'measure' ? DISTANCE_PILL_EXTRA_HEIGHT : 8)) / zoom
   const textFill = tone === 'paper' ? fill : '#ffffff'
   const frame = tone === 'accent' ? 'selection-chrome-frame selection-size-pill'
     : tone === 'measure' ? 'selection-chrome-frame measurement-distance-pill'
     : 'selection-chrome-frame'
   return <g data-testid={testId} data-pill={tone} opacity={opacity} pointerEvents="none">
     <rect className={frame} vectorEffect="non-scaling-stroke"
-      x={centered ? x - boxW / 2 : x - pad / zoom} y={y - (size + 3) / zoom}
-      width={boxW} height={boxH} rx={(tone === 'measure' ? 3 : 4) / zoom} />
+      x={centered ? x - boxW / 2 : x - pad / zoom} y={y - (size + (tone === 'measure' ? DISTANCE_PILL_BASELINE_LEAD : 3)) / zoom}
+      width={boxW} height={boxH} rx={(tone === 'measure' ? DISTANCE_PILL_RADIUS : 4) / zoom} />
     <text x={x} y={y} textAnchor={centered ? 'middle' : 'start'} fontSize={size / zoom} fill={textFill}>{text}</text>
   </g>
 }
@@ -2179,7 +2181,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (navigation) {
       // Navigation needs no selection bounds, hierarchy walk or editable
       // snapshot. Keep it responsive while geometry/refinement is pending.
-      drag.current = { pointerId: e.pointerId, session: editor.sessionGeneration, page: s.page,
+      drag.current = { pointerId: e.pointerId, pointerButton: e.button === 1 ? 1 : 0, session: editor.sessionGeneration, page: s.page,
         kind: 'pan', sourceTap:!!onSelectSourcePoint && e.button===0 && !space.current, start: p, screen, view: editor.flushPendingView(), ids: [], matrices: {}, box: emptyBox, originSelection: s.selection }
       beginDragTrace(drag.current, e)
       setPanning(true); editor.hoverLayer(null, 'canvas')
@@ -2491,12 +2493,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       return [d.basis, d.localBox, d.start, p, d.handle || 0,
         d.kind === 'scale' || (!e.ctrlKey && (!!n.constrainProportions || e.shiftKey)),
         e.altKey,
-        d.kind !== 'scale' && (forcedPixelSnap(n) || (editor.state.snapPixels && !e.ctrlKey))]
+        // Control suspends object snap and the aspect lock. Pixel-grid snap
+        // stays on for a layer resize. Figma suspends it only in vector edit
+        // once the pixel grid is visible.
+        d.kind !== 'scale' && (forcedPixelSnap(n) || editor.state.snapPixels)]
     }
     return [[1, 0, 0, 1, d.box.x, d.box.y], { x: 0, y: 0, width: d.box.width, height: d.box.height },
       d.start, p, d.handle || 0,
       d.kind === 'scale' || (e.shiftKey && !e.ctrlKey), e.altKey,
-      d.kind !== 'scale' && editor.state.snapPixels && !e.ctrlKey]
+      d.kind !== 'scale' && editor.state.snapPixels]
   }
   function publishRotation(d: Drag, transform: Matrix) {
     const parents = editor.parentMap()
@@ -2589,7 +2594,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       guidedY = !!gy
     }
     const force = d.ids.some(id => forcedPixelSnap(editor.state.doc.nodes[id]))
-    const snapped = snapMove(d.box, { x: dx, y: dy }, force || (editor.state.snapPixels && !e.ctrlKey),
+    // Control already skipped object snap above. Pixel-grid snap still applies.
+    const snapped = snapMove(d.box, { x: dx, y: dy }, force || editor.state.snapPixels,
       { x: moveAxes.x && (force || !guidedX), y: moveAxes.y && (force || !guidedY) })
     return {
       matrix: translate(snapped.x, snapped.y),
@@ -3143,8 +3149,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   function recoverMouseCapture(e: React.PointerEvent, draft: Drag) {
     const canvas = host.current
     const canvasWindow = canvas?.ownerDocument.defaultView
+    const recoverable = draft.kind === 'move' || draft.kind === 'rotate' || draft.kind === 'pan'
     if (!canvas || !canvasWindow || e.target !== canvas || e.pointerType !== 'mouse' ||
-        (draft.kind !== 'move' && draft.kind !== 'rotate') ||
+        !recoverable ||
         draft.session !== editor.sessionGeneration || draft.page !== editor.state.page ||
         !canvas.isConnected || canvas.ownerDocument.hidden) return false
     clearMouseCaptureRecovery()
@@ -3152,6 +3159,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     recoveringMouseCapture.current = controller
     const options = { capture: true, signal: controller.signal }
     const pointerId = draft.pointerId
+    // Space and the hand tool press the left button. Middle-button pan uses bit 4.
+    // Move and rotate stay on the left button.
+    const pressedButtons = draft.kind === 'pan' && draft.pointerButton === 1 ? 4 : 1
+    const releaseButton = draft.pointerButton === 1 ? 1 : 0
     const current = (event: PointerEvent) => {
       if (event.pointerId !== pointerId) return false
       if (drag.current === draft && draft.session === editor.sessionGeneration && draft.page === editor.state.page &&
@@ -3168,7 +3179,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     recapture()
     canvasWindow.addEventListener('pointermove', event => {
       if (!current(event)) return
-      if (!(event.buttons & 1)) {
+      if (!(event.buttons & pressedButtons)) {
         // Chromium can report zero buttons during capture loss before the
         // real pointer-up. Hold the pose without treating hover as movement.
         event.stopPropagation()
@@ -3184,6 +3195,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }, options)
     canvasWindow.addEventListener('pointerup', event => {
       if (!current(event)) return
+      // Hand pan keeps the gesture until the button that started it comes up.
+      // That event's coordinates are the release; a different button is not.
+      if (draft.kind === 'pan' && event.button !== releaseButton) return
       event.stopPropagation()
       endCallback.current(event)
     }, options)
@@ -4055,6 +4069,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           })()}
           {!hidePanChrome && hover &&
             (!selection.has(hover) || contextMenu?.layerPickerOnly) &&
+            hover !== measurementTarget &&
             !drag.current &&
             (() => {
               const e = entries.find((v) => v.id === hover)
@@ -4507,26 +4522,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               {Number(rubber.width.toFixed(2))} × {Number(rubber.height.toFixed(2))}
             </text>}</g>
           )}
-          {!guides.surface && guides.x && (
-            <line
-              x1={guides.x.position}
-              x2={guides.x.position}
-              y1={guides.x.start}
-              y2={guides.x.end}
-              stroke="#ed6996"
-              strokeWidth={1 / zoom}
-            />
-          )}{' '}
-          {!guides.surface && guides.y && (
-            <line
-              y1={guides.y.position}
-              y2={guides.y.position}
-              x1={guides.y.start}
-              x2={guides.y.end}
-              stroke="#ed6996"
-              strokeWidth={1 / zoom}
-            />
-          )}
+          {!guides.surface && (['x', 'y'] as const).map(axis => {
+            const guide = guides[axis]
+            if (!guide) return null
+            const d = crispSegmentPath(
+              axis === 'x' ? { x: guide.position, y: guide.start } : { x: guide.start, y: guide.position },
+              axis === 'x' ? { x: guide.position, y: guide.end } : { x: guide.end, y: guide.position },
+              displayView, 1)
+            if (!d) return null
+            return <path key={axis} data-testid="canvas-alignment-guide" data-axis={axis} data-position={guide.position}
+              d={d} fill={ALIGNMENT_GUIDE} stroke="none" shapeRendering="crispEdges" pointerEvents="none" />
+          })}
           {pen && (
             <g
               transform={pen.id ? matrixString(worldMatrix(state.doc, pen.id)) : undefined}

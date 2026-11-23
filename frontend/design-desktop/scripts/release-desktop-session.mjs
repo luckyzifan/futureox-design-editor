@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { chmod, cp, mkdir, mkdtemp, readFile, readdir, realpath, writeFile } from 'node:fs/promises'
-import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
@@ -70,6 +70,38 @@ async function prepareOriginal(source, destination) {
   return destination
 }
 
+export function retainDisplayAuthority(env, privateHome, authorityFile, platform = process.platform) {
+  const next = { ...env }
+  delete next.FUTUREOX_ACCEPTANCE_PROFILE
+  if (next.XAUTHORITY && !path.isAbsolute(next.XAUTHORITY)) next.XAUTHORITY = path.resolve(next.XAUTHORITY)
+  if (platform === 'darwin') {
+    next.CFFIXED_USER_HOME = privateHome
+    return next
+  }
+  next.HOME = privateHome
+  next.XDG_CONFIG_HOME = path.join(privateHome, '.config')
+  next.XDG_DATA_HOME = path.join(privateHome, '.local', 'share')
+  next.XDG_CACHE_HOME = path.join(privateHome, '.cache')
+  // X11 looks in $HOME/.Xauthority after HOME moves. Keep the existing cookie
+  // path so a private home can open the current display without storing user data there.
+  if (!next.XAUTHORITY && next.DISPLAY && typeof authorityFile === 'string' && path.isAbsolute(authorityFile)) {
+    next.XAUTHORITY = authorityFile
+  }
+  return next
+}
+
+function existingXauthority() {
+  const home = homedir()
+  if (!home) return null
+  const candidate = path.join(home, '.Xauthority')
+  try {
+    if (!statSync(candidate).isFile()) return null
+    return realpathSync(candidate)
+  } catch {
+    return null
+  }
+}
+
 function launchEnv(profile, launch = {}) {
   const env = {}
   for (const [key, value] of Object.entries(process.env)) {
@@ -77,18 +109,7 @@ function launchEnv(profile, launch = {}) {
     env[key] = value
   }
   env.ELECTRON_ENABLE_SECURITY_WARNINGS = 'true'
-  if (launch.privateHome) {
-    delete env.FUTUREOX_ACCEPTANCE_PROFILE
-    if (process.platform === 'darwin') {
-      env.CFFIXED_USER_HOME = launch.privateHome
-    } else {
-      env.HOME = launch.privateHome
-      env.XDG_CONFIG_HOME = path.join(launch.privateHome, '.config')
-      env.XDG_DATA_HOME = path.join(launch.privateHome, '.local', 'share')
-      env.XDG_CACHE_HOME = path.join(launch.privateHome, '.cache')
-    }
-    return env
-  }
+  if (launch.privateHome) return retainDisplayAuthority(env, launch.privateHome, existingXauthority())
   env.FUTUREOX_ACCEPTANCE_PROFILE = profile
   return env
 }

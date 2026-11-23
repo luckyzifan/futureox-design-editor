@@ -776,7 +776,17 @@ fn measuredGradientOver(p:vec2<f32>)->vec4<f32>{
  let color:vec4<f32>=mulRN4(figmaSampleQ8(a,b,c,d,figmaFractionQ8(addRN(coordinate,-f32(left))),1u),vec4<f32>(u(8).x));
  if(color.a==0.){return dst;}
  var source:vec4<f32>=min(abs(addRN4(color,vec4<f32>(field.y))),vec4<f32>(1));
- if(color.a==1.){source.a=1.;}source=mulRN4(source,vec4<f32>(coverage));let factor:f32=addRN(1.,-source.a);
+ if(color.a==1.){source.a=1.;}
+ // u(8).y is isolating group opacity applied after this RGBA8 stage.
+ // Decode the bytes and round each scaling step as binary32. Metal may
+ // lower division by 255 to multiplication by a rounded reciprocal.
+ if(u(8).y>0.){
+  let encoded=vec4<u32>(figmaEncodeUnorm8(clamp(source.x,0.,1.)),figmaEncodeUnorm8(clamp(source.y,0.,1.)),figmaEncodeUnorm8(clamp(source.z,0.,1.)),figmaEncodeUnorm8(clamp(source.w,0.,1.)));
+  source=mulRN4(mulRN4(figmaByteValue(encoded),vec4<f32>(u(8).y)),vec4<f32>(coverage));
+ }else{
+  source=mulRN4(source,vec4<f32>(coverage));
+ }
+ let factor:f32=addRN(1.,-source.a);
  if(softwareRasterByte()){return softwareOver(dst,source);}
  return captureEncode(vec4<f32>(positiveFmaRN(dst.x,factor,source.x),positiveFmaRN(dst.y,factor,source.y),positiveFmaRN(dst.z,factor,source.z),positiveFmaRN(dst.w,factor,source.w)));
 }
@@ -983,6 +993,21 @@ fn byteImageAddress(p:vec2<f32>)->vec4<f32>{
 }
 fn hostedStraightByteImage(p:vec2<f32>)->vec4<f32>{return linearImage(p);}
 fn linearImage(p:vec2<f32>)->vec4<f32>{
+ // A two-row field whose first word is negative is the compact axis layout
+ // (W=-1). Taller fields, and a two-row dense strip, keep u(0) indexing.
+ // Hosted WebGPU replaces this body; the replacement uses the same W test.
+ let dims:vec2<u32>=textureDimensions(sourceD);
+ if(dims.y==2u){
+  let probe:vec4<f32>=textureLoad(sourceD,vec2<i32>(0),0);
+  if(probe.w<0.){
+   let pixel:vec2<i32>=vec2<i32>(floor(p-u(51).xy));
+   let x:vec4<f32>=textureLoad(sourceD,vec2<i32>(pixel.x,0),0);
+   let y:vec4<f32>=textureLoad(sourceD,vec2<i32>(pixel.y,1),0);
+   if(x.z==0.||y.z==0.){return vec4<f32>(0.);}
+   let q:vec2<i32>=vec2<i32>(i32(x.x),i32(y.x));
+   return bsBilinear4(linearImageTexel(q),linearImageTexel(q+vec2<i32>(1,0)),linearImageTexel(q+vec2<i32>(0,1)),linearImageTexel(q+vec2<i32>(1,1)),vec2<f32>(x.y,y.y),u32(u(63).w),u32(u(63).z));
+  }
+ }
  let grid:vec4<f32>=textureLoad(sourceD,vec2<i32>(floor(p-u(0).xy)),0);let q:vec2<i32>=vec2<i32>(grid.xy);
  return bsBilinear4(linearImageTexel(q),linearImageTexel(q+vec2<i32>(1,0)),linearImageTexel(q+vec2<i32>(0,1)),linearImageTexel(q+vec2<i32>(1,1)),grid.zw,u32(u(63).w),u32(u(63).z));
 }

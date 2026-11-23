@@ -7,6 +7,7 @@ import { createHandoffTrace, gestureCode, type HandoffTrace } from './handoff-tr
 import { createPoseDiagnostics, type PoseDiagnostics } from './pose-diagnostics'
 import { PoseFeedback } from './pose-feedback'
 import type { Bounds, DesignDocument, Matrix } from '../model'
+import { opaquePageClear } from '../color'
 import { translateOverlay, transformOverlay, type CanvasOverlay } from './gpu/canvas-overlay'
 import type { CanvasCamera } from '../canvas-camera'
 import { allowsReducedSampling } from './render-quality'
@@ -1309,6 +1310,14 @@ export class InteractionRenderer {
   }
   get ready() { return !!this.resident?.tiles.length }
   get mode() { return this.resident?.live && !this.resident.retainedFallback && !this.resident.held?.blend ? 'live-kernel' : 'retained-layers' }
+  /** Page plate for a transparent retained-layer composite. Live captures
+   * already include the page, and a non-opaque fill must not be flattened. */
+  get pageBackground() {
+    const resident = this.resident
+    if (!resident || this.mode === 'live-kernel') return
+    const page = resident.plan.document.pages.find(page => page.id === resident.plan.pageId)
+    return opaquePageClear(page?.background)
+  }
   get presentedInput() { return this.resident?.live ? this.lastPresentedInput : this.lastInput }
   get backgroundLinear(){return this.resident?.backgroundLinear}
   /** Only the compositor's owner-validated presented-frame acknowledgement

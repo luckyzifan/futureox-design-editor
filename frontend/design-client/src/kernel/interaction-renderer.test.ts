@@ -54,6 +54,7 @@ test('an active retained board keeps its complete pixels while a structural move
  owner.prepare(props,doc.pages[0].id,view,1,'analytic','webgpu',doc,size)
  for(let i=0;i<2;i++){await vi.waitFor(()=>expect(worker.jobs.length).toBeGreaterThan(i));worker.jobs[i].resolve({gpuTile:600+i,bytes:new Uint8Array()})}
  await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ expect(owner.pageBackground).toEqual([245 / 255, 245 / 255, 245 / 255, 1])
  owner.control.apply(doc,{[a.id]:{transform:[1,0,0,1,10,0]}})
  const held=owner.items(view)!.map(i=>({slot:i.tile.gpuTile,placement:i.placement,blend:i.blend}))
  const after={...doc,pages:[{...doc.pages[0],children:[b.id]}],nodes:{...doc.nodes,[b.id]:{...b,children:[a.id]},[a.id]:{...a,transform:[1,0,0,1,10,0] as typeof a.transform}}}
@@ -63,6 +64,7 @@ test('an active retained board keeps its complete pixels while a structural move
  await vi.waitFor(()=>expect(worker.jobs).toHaveLength(3));worker.jobs[2].resolve({gpuTile:602,residentInteraction:true,bytes:new Uint8Array()})
  await vi.waitFor(()=>expect(owner.tiles[0].gpuTile).toBe(602))
  expect(owner.mode).toBe('live-kernel')
+ expect(owner.pageBackground).toBeUndefined()
  expect(owner.control.apply(after,{[a.id]:{transform:[1,0,0,1,12,0]}})).not.toBeNull()
  expect(worker.poses.at(-1)?.[0]).toBe(602)
 })

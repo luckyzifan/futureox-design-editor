@@ -895,6 +895,23 @@ impl Engine {
             }
         }
         if let Some(damage) = self.apply_clipped_root_translation(patch, translation)? { return Ok(damage); }
+        let nested_translation = if self.layout_dirty { None } else {
+            let fonts = &self.fonts;
+            self.source_doc.as_ref().zip(self.doc.as_ref()).zip(self.render_index.as_ref()).and_then(|((source, resolved), index)| {
+                let moves = crate::component_updates::nested_drag::translation(source, patch)?;
+                // Authored and derived copies of every patched node must still
+                // be the same materialized instance. A layout rewrite on the
+                // owner cannot be patched as a pure translation.
+                if !patch.nodes.keys().all(|id| source.nodes.get(id) == resolved.nodes.get(id)) {
+                    return None;
+                }
+                let damage = crate::dirty_region::resolved_leaf_pose_damage(resolved, &index.parents, &moves, fonts)?;
+                Some((moves, damage))
+            })
+        };
+        if let Some((moves, damage)) = nested_translation {
+            if self.apply_nested_instance_translation(patch, &moves)? { return Ok(damage); }
+        }
         let source = self
             .source_doc
             .as_ref()
@@ -959,7 +976,7 @@ impl Engine {
             self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), next_bytes));
             self.geo_revision += 1;
             if let Some(cache) = &mut self.camera_prepare {
-                cache.translated(self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
+                cache.translated(self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents, None);
             }
             damage.translation_only = Some(true);
         } else if let Some((bounds_dirty, focus_only)) = retained_paint {
@@ -988,7 +1005,7 @@ impl Engine {
             }
             if let Some(cache) = &mut self.camera_prepare {
                 if !bounds_dirty.is_empty() {
-                    cache.translated(self.doc.as_ref().unwrap(), bounds_dirty.into_iter(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
+                    cache.translated(self.doc.as_ref().unwrap(), bounds_dirty.into_iter(), self.geo_revision, &self.render_index.as_ref().unwrap().parents, None);
                 }
                 cache.paint_changed(self.geo_revision,self.doc.as_ref().unwrap(),patch.nodes.keys().cloned(),&self.render_index.as_ref().unwrap().parents,focus_only);
             }
@@ -1123,9 +1140,27 @@ impl Engine {
             if translated != *next { return false; }
             for id in std::iter::once(id.as_str()).chain(parents.ancestors(id)) {
                 let node = &source.nodes[id];
+                // A boolean group's resolved outline lives in its local space and
+                // its children are not painted separately. Translating that group
+                // keeps the outline and the stroke-owner cache. An ancestor
+                // boolean still has to be solved again, and checked_boolean is
+                // the separate operand-outline proof.
+                let ancestor_boolean = id != old.id.as_str() && node.boolean_operation.is_some();
+                // A top-level instance is a placement. Its generated children
+                // stay in the resolved scene and move with this transform.
+                // Full component resolution rebuilds those children
+                // identically, so the drag does not re-instantiate them.
+                // Generated layers, slots, definitions, and component keys
+                // still take the resolver.
+                let top_level_instance = id == old.id
+                    && node.instance.as_ref().is_some_and(|spec| spec.slot_contents.is_empty())
+                    && node.instance_origin.is_none() && node.component.is_none() && !node.component_set
+                    && node.component_key.is_none() && node.style_refs.is_empty()
+                    && node.boolean_operation.is_none() && node.repeat.is_none() && node.connector.is_none();
                 if !node.bindings.is_empty() || !node.variable_modes.is_empty() || node.component.is_some()
-                    || node.component_set || node.instance.is_some() || node.instance_origin.is_some()
-                    || node.component_key.is_some() || (!checked_boolean && node.boolean_operation.is_some()) { return false; }
+                    || node.component_set || node.instance_origin.is_some() || node.component_key.is_some()
+                    || (node.instance.is_some() && !top_level_instance)
+                    || (!checked_boolean && ancestor_boolean) { return false; }
                 // Descendant local layout survives rigid movement. An ancestor
                 // flow/hug layout can reposition siblings and must resolve normally.
                 if id != old.id && (node.layout.as_ref().is_some_and(|l| l.mode != crate::layout::Flow::None)
@@ -1222,6 +1257,10 @@ impl Engine {
         let resolved_parents = transforms.keys().any(|id| index.in_sketch_mask_chain(id))
             .then(|| crate::render_index::Parents::new(self.doc.as_ref().unwrap()));
         let parents = resolved_parents.as_ref().unwrap_or(&index.parents);
+        let device_shift = if affine { None } else {
+            integer_page_root_device_shift(self.source_doc.as_ref().unwrap(), &transforms, &index.page_roots,
+                self.camera_prepare.as_ref().map(|cache| cache.key.2.2))
+        };
         // All fallible checks have completed. Release the Weak receipt before
         // mutating so a sole owner need not detach only because of this cache.
         self.retained_source_size = None;
@@ -1242,22 +1281,29 @@ impl Engine {
             let node = &self.doc.as_ref().unwrap().nodes[id];
             node.children.is_empty() && (!affine || node.effects.iter().all(|effect| !effect.visible))
         });
-        if local_support_only && self.source_compile_context.is_none() {
+        if self.source_compile_context.is_none() {
             if let Some(cache)=&mut self.world_support {
                 if cache.revision==previous_revision {
                     // A shared snapshot must keep its own exact certificates.
-                    // A private cache can conservatively forget moved leaves
-                    // without flattening every unrelated path on each input.
+                    // A private cache can forget the moved geometry without
+                    // rebuilding every untouched sibling on the next sample.
                     if let Some(support)=Arc::get_mut(&mut cache.index) {
-                        support.invalidate_leaf_transforms(transforms.keys(),parents);
-                        cache.revision=self.geo_revision;
-                        // Translations preserve halo coefficients. An affine
-                        // leaf with no visible effects is absent from
-                        // every effect path in MarginIndex, so it cannot change
-                        // that index either. Stroke support belongs to the
-                        // removed leaf/ancestor certificates and is rebuilt.
-                        // PageProperties has no placement
-                        // facts; transformed() still refreshes camera metadata.
+                        if affine {
+                            if local_support_only {
+                                support.invalidate_leaf_transforms(transforms.keys(),parents);
+                                cache.revision=self.geo_revision;
+                            }
+                        } else {
+                            // Translation does not change effect scale or the
+                            // linear part of any matrix, so the margin index
+                            // stays valid. Descendants lose their world bounds.
+                            support.invalidate_rigid_translation(self.doc.as_ref().unwrap(),transforms.keys(),parents);
+                            cache.revision=self.geo_revision;
+                        }
+                        // An affine leaf with no visible effects is absent from
+                        // every effect path in MarginIndex. Stroke support
+                        // belongs to the removed certificates and is rebuilt.
+                        // PageProperties has no placement facts.
                     }
                 }
             }
@@ -1266,7 +1312,7 @@ impl Engine {
             if affine {
                 cache.transformed(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, parents);
             } else {
-                cache.translated(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, parents);
+                cache.translated(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, parents, device_shift);
             }
         }
         self.note_pose_prefix(patch);
@@ -1337,6 +1383,70 @@ impl Engine {
         }
         Some((parent, edited.clone(), child_index))
     }
+    /// Keep a nested instance's materialized subtree when a drag only translates
+    /// it. The owner records the same transform override; variant id, property
+    /// values and every other override stay on the authoritative resolver.
+    fn apply_nested_instance_translation(
+        &mut self,
+        patch: &crate::editing::DocumentPatch,
+        moves: &std::collections::BTreeMap<String, Transform>,
+    ) -> Result<bool, String> {
+        let source = self.source_doc.as_ref().ok_or("Load document before interaction")?;
+        source.validate_nodes(patch.nodes.iter().map(|(id, node)| (id, node.as_ref().unwrap())))?;
+        let mut bytes = match self.source_doc_bytes.or_else(|| {
+            self.retained_source_size.as_ref().and_then(|receipt| receipt.bytes_for(source))
+        }) {
+            Some(bytes) => bytes,
+            None => crate::editing::serialized_document_size(source).map_err(|e| e.to_string())?,
+        };
+        for (id, next) in &patch.nodes {
+            let old = &source.nodes[id];
+            let next = next.as_ref().unwrap();
+            if old.transform != next.transform {
+                bytes = bytes - crate::editing::serialized_size(&old.transform).map_err(|e| e.to_string())?
+                    + crate::editing::serialized_size(&next.transform).map_err(|e| e.to_string())?;
+            }
+            if old.instance != next.instance {
+                bytes = bytes - crate::editing::serialized_size(&old.instance).map_err(|e| e.to_string())?
+                    + crate::editing::serialized_size(&next.instance).map_err(|e| e.to_string())?;
+            }
+        }
+        crate::capacity::check_document_bytes(bytes)?;
+        #[cfg(test)]
+        crate::component_updates::nested_drag::FAST_REDRAW.with(|count| count.set(count.get().saturating_add(1)));
+        self.retained_source_size = None;
+        self.pose_prefix = None;
+        self.clear_settled_cuts();
+        {
+            let source = self.source_doc.as_mut().unwrap();
+            source.nodes.share();
+            for (id, next) in &patch.nodes {
+                let next = next.as_ref().unwrap();
+                let node = source.nodes.get_mut(id).unwrap();
+                node.transform = next.transform;
+                node.instance.clone_from(&next.instance);
+            }
+        }
+        for (id, next) in &patch.nodes {
+            let next = next.as_ref().unwrap();
+            let node = self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap();
+            node.transform = next.transform;
+            node.instance.clone_from(&next.instance);
+            if let Some(node) = self.text_base.as_mut().and_then(|doc| doc.nodes.get_mut(id)) {
+                node.transform = next.transform;
+                node.instance.clone_from(&next.instance);
+            }
+        }
+        self.source_doc_bytes = Some(bytes);
+        let previous_revision = self.geo_revision;
+        self.geo_revision += 1;
+        self.interaction_transform_revision = Some((previous_revision, self.geo_revision, moves.keys().cloned().collect()));
+        let parents = &self.render_index.as_ref().unwrap().parents;
+        if let Some(cache) = &mut self.camera_prepare {
+            cache.translated(self.doc.as_ref().unwrap(), moves.keys().cloned(), self.geo_revision, parents, None);
+        }
+        Ok(true)
+    }
     fn apply_clipped_root_translation(&mut self, patch: &crate::editing::DocumentPatch, translation: bool)
         -> Result<Option<crate::dirty_region::PatchDamage>, String> {
         if self.source_doc_bytes.is_none() || !translation { return Ok(None); }
@@ -1391,7 +1501,7 @@ impl Engine {
         self.source_doc_bytes = Some(bytes);
         self.geo_revision += 1;
         if let Some(cache) = &mut self.camera_prepare {
-            cache.translated(self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
+            cache.translated(self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents, None);
         }
         Ok(Some(crate::dirty_region::clipped_translation_damage(
             self.doc.as_ref().unwrap(), rects, patch.nodes.keys().cloned().collect(), &self.fonts)))
@@ -1924,7 +2034,61 @@ impl Engine {
             Err(last_error)
         }
     }
+    /// Byte display. An integer camera on an exact zoom bucket reuses
+    /// world-anchored tiles in the display profiles. Export profiles and
+    /// screen-anchored checkerboards keep their exact viewport sampling.
     pub(crate) fn render_exact(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
+        if self.integer_bucket_residency(options) {
+            match self.render_tiled_frame(options, None) {
+                Ok(frame) => return Ok(frame.rgba),
+                // The tiled route must admit the support of complete world
+                // tiles. The existing viewport renderer can still paint a
+                // smaller certified dependency region and keeps its own cap.
+                Err(error) if error == crate::export::BACKDROP_PADDING_BUDGET_ERROR => {}
+                Err(error) => return Err(error),
+            }
+        }
+        self.render_unretained(options)
+    }
+    fn integer_bucket_residency(&self, options: &RenderOptions) -> bool {
+        // File-backed image rows share an in-flight read budget. Keep their
+        // exact viewport path until tile workers can share that admission.
+        #[cfg(not(target_arch="wasm32"))]
+        if self.images.source.is_some() {
+            return false;
+        }
+        if self.display_degrade
+            || options.pixel_preview.is_some()
+            || options.animation.is_some()
+            || self.animation_sample.is_some()
+            || options.checkerboard
+            || options.interactive_effects
+        {
+            return false;
+        }
+        if !matches!(
+            options.raster_profile,
+            crate::fidelity::RasterProfile::Analytic
+                | crate::fidelity::RasterProfile::FigmaSubpixel
+        ) {
+            return false;
+        }
+        // `fract` of an integer is signed zero, which compares equal to 0.
+        if options.view.x.fract() != 0. || options.view.y.fract() != 0. || !options.view.zoom.is_finite() {
+            return false;
+        }
+        if options.view.zoom != crate::tile_stack::exact_bucket_scale(options.view.zoom) {
+            return false;
+        }
+        options.width > 0
+            && options.height > 0
+            && options.width <= 8192
+            && options.height <= 8192
+            && u64::from(options.width) * u64::from(options.height) <= 8_388_608
+    }
+    /// Full-viewport render that does not read or write tile residency.
+    /// Pixel oracles use this so a retained display cannot confirm itself.
+    pub fn render_unretained(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
         if self
             .doc
             .as_ref()
@@ -1953,7 +2117,7 @@ impl Engine {
         self.resolve_layout()?;
         if options.pixel_preview.is_some() {
             let plan = crate::preview::plan(options)?;
-            let source = self.render_exact(&plan.source)?;
+            let source = self.render_unretained(&plan.source)?;
             return Ok(crate::preview::resample(&source, &plan));
         }
         if matches!(
@@ -2168,7 +2332,23 @@ impl Engine {
             }
         }
         let epoch = self.degrade_frame.as_ref().map(|frame| frame.epoch);
-        for root in &page.children {
+        // Plain offscreen leaves match the early geometry reject. Skipping
+        // them avoids a map entry and a later paint lookup per hidden layer.
+        // Frame plans keep the established per-tile geometry cache.
+        let plain_roots = if geometry.is_none() {
+            crate::display_cull::classify(doc, &page.children)
+        } else {
+            Vec::new()
+        };
+        let mut draw_root = vec![true; page.children.len()];
+        for (index, root) in page.children.iter().enumerate() {
+            if plain_roots.get(index).and_then(|plain| plain.as_ref()).is_some_and(|plain| {
+                crate::display_cull::outside_guard(plain, camera, prepare_guard)
+            }) {
+                draw_root[index] = false;
+                self.stats.culled += 1;
+                continue;
+            }
             let context = (doc as &Document, &self.fonts, prepare_guard, coverage_compatible);
             if let Some(cache) = geometry.as_deref_mut() {
                 crate::geometry_snapshot::prepare_cpu_frame_geometry(root, camera, context, &mut self.paths,
@@ -2234,7 +2414,7 @@ impl Engine {
             && options.raster_profile == crate::fidelity::RasterProfile::Figma
             && options.transparent && !self.display_degrade
         {
-            clipped_opaque_frame(doc, &page.children).map(|frame| prepared[&frame.id].fill_program_bounds)
+            clipped_opaque_frame(doc, &page.children).and_then(|frame| prepared.get(&frame.id).map(|p| p.fill_program_bounds))
         } else { None };
         if extended_target
             && zoom_guard.is_none()
@@ -2378,6 +2558,7 @@ impl Engine {
                 }).flatten(),
             compact_export_groups: required.is_some(),
             sample: None,
+            post_byte_opacity: None,
             raster_workspace: RasterWorkspace::default(),
             pose_prefix: self.pose_prefix.as_mut().filter(|_| use_pose_prefix && !self.display_degrade && !synchronized),
             settled_cuts: Arc::clone(&self.settled_cuts),
@@ -2419,19 +2600,30 @@ impl Engine {
                 }
                 return Ok(output);
             }
-            painter.paint_siblings(&page.children, &mut targets, None, false, None)?;
+            if draw_root.iter().all(|draw| *draw) {
+                painter.paint_siblings(&page.children, &mut targets, None, false, None)?;
+            } else {
+                let roots: Vec<String> = page.children.iter().enumerate().filter(|(index, _)| draw_root[*index]).map(|(_, id)| id.clone()).collect();
+                painter.paint_siblings(&roots, &mut targets, None, false, None)?;
+            }
             Ok(targets.into_iter().collect())
         } else {
             // Reverse paint order: earlier layers must retain every input read
             // by later backdrop consumers, not merely their own visible output.
+            // Hidden plain leaves were not prepared; they add no backdrop input.
             let mut needed = viewport;
             let mut outputs = Vec::with_capacity(page.children.len());
-            for root in page.children.iter().rev() {
+            for (index, root) in page.children.iter().enumerate().rev() {
+                if !draw_root[index] {
+                    outputs.push(Rect::default());
+                    continue;
+                }
                 let output = if regional && painter.bounded_node(root) { needed } else { extent };
                 if regional { needed = needed.union(painter.leaf_backdrop_input(root, output)?); }
                 outputs.push(output);
             }
-            for (root, output) in page.children.iter().zip(outputs.into_iter().rev()) {
+            for (index, (root, output)) in page.children.iter().zip(outputs.into_iter().rev()).enumerate() {
+                if !draw_root[index] { continue; }
                 painter.node_region(root, &mut target, None, regional.then_some(output), extent, false)?;
             }
             Ok(vec![target])
@@ -3252,13 +3444,10 @@ impl crate::tiled_renderer::TileRasterizer for Engine {
         &mut self,
         request: &crate::tiled_renderer::TileRequest,
     ) -> Result<Vec<u8>, String> {
-        self.render_device_rect_once(
-            &request.options,
-            0,
-            0,
-            request.options.width,
-            request.options.height,
-        )
+        let (x, y, w, h) = request
+            .clip
+            .unwrap_or((0, 0, request.options.width, request.options.height));
+        self.render_device_rect_once(&request.options, x, y, w, h)
     }
 }
 
@@ -3270,6 +3459,17 @@ impl crate::tiled_renderer::TileRasterSource for Engine {
     fn prepare(&mut self, options: &RenderOptions) -> Result<(), String> {
         self.prepare_frame(options)?;
         self.resolve_layout()?;
+        Ok(())
+    }
+
+    fn admit_tile(&mut self, request: &crate::tiled_renderer::TileRequest) -> Result<(), String> {
+        if request.options.raster_profile != crate::fidelity::RasterProfile::Analytic
+            || self.color_settings().is_some()
+        {
+            return Ok(());
+        }
+        let tile = crate::math::Rect::new(0, 0, request.options.width, request.options.height);
+        let _padding = crate::export::tile_backdrop_padding(self, &request.options, tile)?;
         Ok(())
     }
 
@@ -3303,6 +3503,9 @@ struct Painter<'a> {
     flush_backdrop_frame: Option<&'a Node>,
     compact_export_groups: bool,
     sample: Option<usize>,
+    /// Group opacity applied after the measured gradient's RGBA8 stage.
+    /// Paint opacity stays inside the gradient sample when this is absent.
+    post_byte_opacity: Option<f32>,
     raster_workspace: RasterWorkspace,
     pose_prefix: Option<&'a mut PosePrefix>,
     settled_cuts: Arc<Mutex<SettledCuts>>,
@@ -3627,7 +3830,7 @@ impl Painter<'_> {
         if !n.visible || n.opacity <= 0. {
             return Ok(());
         }
-        let prepared = &self.prepared[id];
+        let Some(prepared) = self.prepared.get(id) else { return Ok(()) };
         if prepared.bounds.intersect(targets[0].rect).empty() && prepared.bounds.intersect(self.viewport).empty() {
             self.stats.culled += 1;
             return Ok(());
@@ -3686,6 +3889,52 @@ impl Painter<'_> {
                         |x, y| clip.map_or(1., |mask| mask.at(sample, x, y)),
                     )?;
                 }
+            }
+            self.sample = None;
+            return Ok(());
+        }
+        // An isolating frame around an opaque measured gradient has its own
+        // RGBA8 stage before opacity. Scaling the quantized sample, then
+        // source-over, is the Chrome export. Isolating the leaf and blending
+        // with the rational byte weight moves that export by one code.
+        if mask_id.is_none() && self.direct_isolated_gradient_opacity(n) {
+            let child_id = n.render_children()[0].clone();
+            let child_prepared = &self.prepared[&child_id];
+            let child_fill_path = Arc::clone(&child_prepared.fill);
+            let child_matrix = child_prepared.matrix;
+            let child_bounds = child_prepared.bounds.intersect(self.extent);
+            let group_fill_path = n.clip.then(|| Arc::clone(&self.prepared[id].fill));
+            let opacity = n.opacity as f32;
+            let child = self.doc.nodes[&child_id].clone();
+            let paint = child
+                .fills
+                .iter()
+                .find(|paint| paint.visible && paint.opacity > 0.)
+                .expect("opaque measured gradient")
+                .clone();
+            let child_fill = self.rasterize_bundle(&child_fill_path, child_bounds, false)?;
+            let group_fill = group_fill_path
+                .as_ref()
+                .map(|path| self.rasterize_bundle(path, r, false))
+                .transpose()?;
+            for sample in 0..4 {
+                self.sample = Some(sample);
+                self.post_byte_opacity = Some(opacity);
+                let painted = self.paint(
+                    &child,
+                    &paint,
+                    child_matrix,
+                    &child_fill.plane(sample),
+                    &mut targets[sample],
+                    false,
+                    |x, y| {
+                        let parent = clip.map_or(1., |mask| mask.at(sample, x, y));
+                        let group = group_fill.as_ref().map_or(1., |mask| mask.at(sample, x, y));
+                        parent * group
+                    },
+                );
+                self.post_byte_opacity = None;
+                painted?;
             }
             self.sample = None;
             return Ok(());
@@ -3807,10 +4056,12 @@ impl Painter<'_> {
                         });
                         // The trailing half of a fractional capture texel can
                         // cross a device pixel edge. Retain that edge sample
-                        // for the first tap beyond the cropped Figma surface.
+                        // for the first tap beyond the cropped export surface.
+                        // figma and figmaSoftware share the tap. The read stays
+                        // at origin + i + 0.5. Exact-frame dither stays on figma.
                         let edge = right.floor();
                         let input = backdrop_inputs[0].rect;
-                        let trailing = (self.profile == crate::fidelity::RasterProfile::Figma
+                        let trailing = (self.profile.is_export()
                             && radius > 0. && edge > right - 0.5 && edge < right
                             && n.kind == "rectangle"
                             && edge > f64::from(input.x) && edge < f64::from(input.right())
@@ -4456,7 +4707,12 @@ impl Painter<'_> {
                         if color[3] == 1. {
                             source[3] = 1.;
                         }
-                        let source = source.map(|v| v * alpha);
+                        let source = if let Some(opacity) = self.post_byte_opacity {
+                            let encoded = source.map(crate::figma_sampling::encode_unorm8);
+                            encoded.map(|byte| f32::from(byte) / 255. * opacity * alpha)
+                        } else {
+                            source.map(|v| v * alpha)
+                        };
                         let i = layer.rect.index(x, y).expect("gradient paint");
                         if self.profile.is_software() {
                             layer.pixels[i] =
@@ -4922,6 +5178,53 @@ impl Painter<'_> {
     /// Rectangle leaf whose only visible paint is a partial-opacity measured
     /// linear gradient. Group opacity, software export, and opaque gradients
     /// keep the isolated path.
+    /// Isolating opacity around one opaque measured linear gradient.
+    /// The Chrome phase control quantizes that gradient, then scales the bytes.
+    fn direct_isolated_gradient_opacity(&self, n: &Node) -> bool {
+        if !self.compatible || self.profile != crate::fidelity::RasterProfile::Figma {
+            return false;
+        }
+        if !(n.opacity > 0. && n.opacity < 1.)
+            || n.blend != "normal"
+            || n.mask
+            || n.boolean_operation.is_some()
+            || n.effects.iter().any(|effect| effect.visible)
+            || n.strokes.iter().any(|stroke| stroke.visible && stroke.width > 0.)
+            || n.fills.iter().any(|paint| paint.visible && paint.opacity > 0.)
+        {
+            return false;
+        }
+        let children = n.render_children();
+        if children.len() != 1 {
+            return false;
+        }
+        let child_id = &children[0];
+        let Some(child) = self.doc.nodes.get(child_id) else {
+            return false;
+        };
+        let Some(prepared) = self.prepared.get(child_id) else {
+            return false;
+        };
+        if child.kind != "rectangle"
+            || child.opacity != 1.
+            || child.blend != "normal"
+            || child.mask
+            || child.boolean_operation.is_some()
+            || !child.children.is_empty()
+            || child.effects.iter().any(|effect| effect.visible)
+            || child.strokes.iter().any(|stroke| stroke.visible && stroke.width > 0.)
+        {
+            return false;
+        }
+        let mut visible = child.fills.iter().filter(|paint| paint.visible && paint.opacity > 0.);
+        let Some(paint) = visible.next() else {
+            return false;
+        };
+        visible.next().is_none()
+            && paint.blend == "normal"
+            && paint.opacity == 1.
+            && crate::figma_gradient::supported(paint, prepared.matrix)
+    }
     fn direct_partial_gradient(&self, n: &Node, matrix: Transform) -> bool {
         if !self.compatible || self.profile != crate::fidelity::RasterProfile::Figma {
             return false;
@@ -4993,7 +5296,7 @@ impl Painter<'_> {
         let n = &self.doc.nodes[id];
         if !n.visible || n.opacity <= 0. { return Ok(output); }
         if !self.bounded_node(id) { return Ok(self.extent); }
-        let p = &self.prepared[id];
+        let Some(p) = self.prepared.get(id) else { return Ok(Rect::default()) };
         let basis = p.bounds.intersect(self.extent);
         let output = output.intersect(basis);
         if output.empty() { return Ok(output); }
@@ -5241,7 +5544,7 @@ impl Painter<'_> {
         if !n.visible {
             return Ok(None);
         }
-        let prepared = &self.prepared[id];
+        let Some(prepared) = self.prepared.get(id) else { return Ok(None) };
         // Nonlocal effects read their source/geometry before ancestor clipping.
         // Cropping first creates artificial blur edges AND glass distance-field
         // boundaries, especially when a deep or dispersed lens crosses a frame.
@@ -5717,12 +6020,24 @@ mod export_metadata_tests;
 mod translation_retention_tests;
 
 #[cfg(test)]
+#[path = "renderer_tests/nested_instance_drag.rs"]
+mod nested_instance_drag_tests;
+
+#[cfg(test)]
+#[path = "renderer_tests/instance_drag.rs"]
+mod instance_drag_tests;
+
+#[cfg(test)]
 #[path = "renderer_tests/linear_tile_residency.rs"]
 mod linear_tile_residency_tests;
 
 #[cfg(test)]
 #[path = "renderer_tests/cpu_frame.rs"]
 mod cpu_frame_tests;
+
+#[cfg(test)]
+#[path = "renderer_tests/plain_root_cull.rs"]
+mod plain_root_cull_tests;
 
 #[cfg(test)]
 mod image_payload_owner_tests {
@@ -5742,6 +6057,39 @@ mod image_payload_owner_tests {
         assert_eq!(stored.nodes["a"].fills[0].image.as_ref().unwrap().as_ptr(),stored.nodes["b"].fills[0].image.as_ref().unwrap().as_ptr());
         assert_eq!(serde_json::to_vec(&**stored).unwrap(),before);
     }
+}
+
+/// Page-root translations share one world delta. Device coverage can reuse
+/// the previous scanline program only when that delta lands on whole pixels
+/// of the camera that compiled those programs.
+fn integer_page_root_device_shift(
+    source: &Document,
+    transforms: &std::collections::BTreeMap<String, Transform>,
+    page_roots: &HashSet<String>,
+    zoom: Option<f64>,
+) -> Option<(i32, i32)> {
+    let zoom = zoom.filter(|zoom| zoom.is_finite() && *zoom > 0.)?;
+    let mut delta: Option<(f64, f64)> = None;
+    for (id, next) in transforms {
+        if !page_roots.contains(id) { return None; }
+        let old = &source.nodes.get(id)?.transform;
+        let (dx, dy) = (next.0[4] - old.0[4], next.0[5] - old.0[5]);
+        if let Some((px, py)) = delta {
+            if (dx - px).abs() > 1e-9 || (dy - py).abs() > 1e-9 { return None; }
+        } else {
+            delta = Some((dx, dy));
+        }
+    }
+    let (dx, dy) = delta?;
+    let (sx, sy) = (dx * zoom, dy * zoom);
+    let (rx, ry) = (sx.round(), sy.round());
+    if !sx.is_finite() || !sy.is_finite() || (sx - rx).abs() > 1e-6 || (sy - ry).abs() > 1e-6
+        || rx.abs() > i32::MAX as f64 || ry.abs() > i32::MAX as f64
+    {
+        return None;
+    }
+    let shift = (rx as i32, ry as i32);
+    (shift != (0, 0)).then_some(shift)
 }
 
 #[cfg(all(test,not(target_arch="wasm32")))]

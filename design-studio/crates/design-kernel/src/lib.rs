@@ -28,6 +28,7 @@ pub mod shape_builder;
 mod curve_boolean_cache;
 pub mod design_system;
 pub mod dirty_region;
+pub mod drag_profile;
 pub mod editing;
 pub mod effects;
 pub mod spatial_blur;
@@ -43,6 +44,8 @@ pub mod heic_export;
 pub mod ffmpeg_encode;
 pub mod facet;
 pub mod fidelity;
+#[cfg(any(test, feature = "frame-split-profile"))]
+pub mod frame_split_profile;
 pub mod fig;
 pub mod figma_gradient;
 pub mod figma_sampling;
@@ -55,6 +58,8 @@ pub mod fixed_gradient;
 pub mod font;
 #[cfg(not(target_arch = "wasm32"))]
 mod font_splash;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod text_drag_profile;
 #[cfg(target_arch = "wasm32")]
 mod font_splash {
     pub(crate) fn sketch_device_mask(
@@ -73,6 +78,7 @@ pub mod freehand;
 mod geometry_snapshot;
 mod cpu_frame_plan;
 mod geometry_support;
+mod display_cull;
 mod world_support;
 mod margin_index;
 mod render_index;

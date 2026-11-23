@@ -3613,4 +3613,125 @@ mod persistent_font_cache_tests {
         let ends: Vec<usize> = layout.lines.iter().map(|line| line.end).collect();
         assert_eq!(ends, vec![39, text.len()]);
     }
+
+    /// Explicit 150% is the same line box as a 1.5× pixel height. FIG pixel
+    /// baselines in `01有料素材.fig` sit on the centered half-leading; a bare
+    /// multiplier leaves that space below the baseline.
+    #[test]
+    fn explicit_percent_line_box_matches_fig_half_leading_pixels() {
+        let mut fonts = Fonts::new();
+        fonts.load(&poppins_v2("Bold")).unwrap();
+        let face = fonts.face("default", 400.).unwrap();
+        let face = face.borrow_face();
+        let units = f64::from(face.units_per_em());
+        let size = 30.;
+        let natural =
+            f64::from(face.ascender() - face.descender() + face.line_gap()) * size / units;
+        let shift = (size * 1.5 - natural) / 2.;
+        let mut plain = node(
+            "H",
+            serde_json::json!({"lineHeight": 1.5, "fontId": "default"}),
+        );
+        plain.font_size = size;
+        plain.width = 80.;
+        plain.height = 80.;
+        plain.fills = vec![
+            serde_json::from_value(serde_json::json!({"kind":"solid","color":"#112233"})).unwrap(),
+        ];
+        let mut centered = plain.clone();
+        centered.text_style.as_mut().unwrap().line_box_baseline = "figma-pixel-leading".into();
+        let below = fonts.node_layout(&plain, Some(80.)).unwrap();
+        let half = fonts.node_layout(&centered, Some(80.)).unwrap();
+        assert!(
+            (half.glyphs[0].y - below.glyphs[0].y - shift).abs() < 1e-6,
+            "half-leading shift {} measured {}",
+            shift,
+            half.glyphs[0].y - below.glyphs[0].y
+        );
+
+        fn render(sample: &Node, zoom: u32) -> Vec<u8> {
+            let mut placed = sample.clone();
+            placed.id = "t".into();
+            placed.transform = crate::math::Transform([1., 0., 0., 1., 8., 8.]);
+            placed.width = 80.;
+            placed.height = 80.;
+            let doc = serde_json::json!({
+                "schemaVersion": 21,
+                "id": "d",
+                "name": "leading",
+                "rasterProfile": "figma",
+                "pages": [{"id":"p","name":"p","background":"#ffffff","children":["t"]}],
+                "nodes": {"t": placed}
+            });
+            let mut engine = crate::Engine::new();
+            engine.load_font(&poppins_v2("Bold")).unwrap();
+            engine.load_document(&doc.to_string()).unwrap();
+            let side = 96 * zoom;
+            let options = serde_json::from_value(serde_json::json!({
+                "pageId": "p",
+                "width": side,
+                "height": side,
+                "view": {"x": 0, "y": 0, "zoom": zoom},
+                "transparent": false,
+                "grid": false,
+                "rasterProfile": "figma"
+            }))
+            .unwrap();
+            let pixels = engine.render(&options).unwrap();
+            assert_eq!(pixels.len(), (side as usize).pow(2) * 4);
+            pixels
+        }
+        fn diff(before: &[u8], after: &[u8]) -> (usize, u8) {
+            assert_eq!(before.len(), after.len());
+            let mut count = 0usize;
+            let mut max = 0u8;
+            for (left, right) in before.chunks(4).zip(after.chunks(4)) {
+                let mut changed = false;
+                for (a, b) in left.iter().zip(right) {
+                    let delta = a.abs_diff(*b);
+                    if delta > max {
+                        max = delta;
+                    }
+                    changed |= delta != 0;
+                }
+                count += usize::from(changed);
+            }
+            (count, max)
+        }
+        fn sha(bytes: &[u8]) -> String {
+            use sha2::{Digest, Sha256};
+            Sha256::digest(bytes)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect()
+        }
+        for zoom in [1u32, 2] {
+            let before = render(&plain, zoom);
+            let after = render(&centered, zoom);
+            let (count, max) = diff(&before, &after);
+            eprintln!(
+                "percent-leading zoom={zoom} differentPixels={count} maxChannel={max} beforeSha={} afterSha={}",
+                sha(&before),
+                sha(&after)
+            );
+            let (expect_count, expect_max, expect_before, expect_after) = match zoom {
+                1 => (
+                    126usize,
+                    238u8,
+                    "dc9dc10baf8b5a4f6ff72e09b9fb562f520a30f76a3c667b23d6d1c28937ea7d",
+                    "1bfaee31d1b2b7349d6462929de8c6a07fb1ec182b1c5a7fde9de0e1ac565475",
+                ),
+                2 => (
+                    445,
+                    238,
+                    "1b2948fa5a939f097fb6f0001153b7f15e35850402be3e0fc7ab2e1184bbe8c5",
+                    "d4c41dfc7cd200f000756e46d3ebda0aea31d06a1097a6abfd12bfb17be210d4",
+                ),
+                _ => unreachable!(),
+            };
+            assert_eq!((count, max), (expect_count, expect_max), "zoom {zoom}");
+            assert_eq!(sha(&before), expect_before, "zoom {zoom} uncentered");
+            assert_eq!(sha(&after), expect_after, "zoom {zoom} half-leading");
+        }
+    }
 }

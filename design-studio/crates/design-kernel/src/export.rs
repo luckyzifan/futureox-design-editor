@@ -663,11 +663,13 @@ pub(crate) fn tile_backdrop_padding(
     Ok(original_padding.min(total.ceil() as i32))
 }
 
+pub(crate) const BACKDROP_PADDING_BUDGET_ERROR: &str = "PNG backdrop dependency padding exceeds its 1024-pixel budget";
+
 pub(crate) fn checked_backdrop_padding(total: f64, density: f64) -> Result<i32, String> {
     // Backdrop reads depend on earlier siblings' filter inputs as well as
     // ancestor filters. Reserve their source support before cropping a tile.
     if !total.is_finite() || total * density > 1024. {
-        return Err("PNG backdrop dependency padding exceeds its 1024-pixel budget".into());
+        return Err(BACKDROP_PADDING_BUDGET_ERROR.into());
     }
     Ok(total.ceil() as i32)
 }
@@ -797,6 +799,19 @@ mod backdrop_budget_tests {
             .collect();
         let actual = engine.render_device_rect(&options, 512, 0, 64, 80).unwrap();
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn tiled_frame_rejects_over_budget_backdrops_before_residency() {
+        let mut engine = Engine::new();
+        engine.load_document(&document(false)).unwrap();
+        let analytic = RenderOptions { raster_profile: RasterProfile::Analytic, ..options() };
+        let error = match engine.render_tiled_frame(&analytic, None) {
+            Err(error) => error,
+            Ok(_) => panic!("over-budget backdrop tiles must be rejected"),
+        };
+        assert!(error.contains("1024"), "{error}");
+        assert_eq!(engine.tiled_renderer().map(|renderer| renderer.resident_tile_count()).unwrap_or(1), 0);
     }
 
     #[test]

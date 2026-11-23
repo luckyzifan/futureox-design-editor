@@ -104,14 +104,31 @@ test('Figma lifts opaque sRGB board pixels and falls back when the board would c
   const items = [{ tile, active: true, layer: 0 }]
   const view = { x: 0, y: 0, zoom: 1 }
   const camera = { view, width: 512, height: 512 }
-  const native = vi.fn(() => null)
+  const native = vi.fn(() => ({ x: .25, y: .5 }))
   const movement = new PageTranslation(vi.fn(), native)
   expect(movement.prepare(props, pageId, doc, items, doc, true, false, camera)).toBe(false)
   const figma = { ...props, figmaBoardPreview: true }
   expect(movement.prepare(figma, pageId, doc, items, doc, true, false, camera)).toBe(true)
+  // 0.25 and 0.5 device pixels are a fractional phase. Keep the settled page
+  // and hand the pose to native on the original document.
+  expect(movement.items(view)).toBeNull()
   expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 20.25, 20.5] } })).toEqual({ x: .25, y: .5 })
-  expect(movement.items(view)?.every(item => item.tile === tile)).toBe(true)
+  expect(native).toHaveBeenCalledTimes(1)
+  expect(native).toHaveBeenCalledWith(doc, { [board.id]: { transform: [1, 0, 0, 1, 20.25, 20.5] } }, doc, undefined)
+  expect(movement.handingOff).toBe(true)
+  expect(movement.items(view)).toBeNull()
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 21, 21] } })).toBeNull()
+  expect(movement.items(view)).toBeNull()
+
+  movement.clear()
+  native.mockClear()
+  expect(movement.prepare(figma, pageId, doc, items, doc, true, false, camera)).toBe(true)
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 40, 50] } })).toEqual({ x: 20, y: 30 })
   expect(native).not.toHaveBeenCalled()
+  expect(movement.items(view)?.every(item => item.tile === tile)).toBe(true)
+
+  movement.clear()
+  expect(movement.prepare(figma, pageId, doc, items, doc, true, false, camera)).toBe(true)
   movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 190, 20] } })
   expect(native).toHaveBeenCalledTimes(1)
   expect(native).toHaveBeenCalledWith(doc, { [board.id]: { transform: [1, 0, 0, 1, 190, 20] } }, doc, undefined)
@@ -119,6 +136,86 @@ test('Figma lifts opaque sRGB board pixels and falls back when the board would c
   movement.clear()
   paint.color = 'color(srgb 0.8 0.9 1 / 0.9999)'
   expect(movement.prepare(figma, pageId, doc, items, doc, true, false, camera)).toBe(false)
+})
+
+test('clipped boards reuse resident textures only when both physical axes are whole pixels', () => {
+  const doc = blank(), board = node('frame', 20, 30, 80, 60), other = node('frame', 400, 30, 40, 40)
+  for (const root of [board, other]) { root.blend = 'normal'; root.clip = true; doc.nodes[root.id] = root }
+  const paint = board.fills[0]
+  if (paint.kind !== 'solid') throw Error('Missing solid board paint')
+  paint.color = 'color(srgb 0.86 0.91 0.94 / 1)'
+  doc.pages[0].children = [board.id, other.id]
+  const pageId = doc.pages[0].id
+  // 80% CSS zoom at DPR 2. Resident zoom 1.6 is the physical sample scale.
+  const view = { x: -10, y: 4, zoom: 0.8 }
+  const tile = { key: 'page', serial: 1, gpuTile: 9, bytes: new Uint8Array(), x: -1, y: -1, width: 514, height: 514, zoom: 1.6 }
+  const items = [{ tile, active: true, layer: 0 }]
+  const camera = { view, width: 1143, height: 800 }
+  const props: InteractionProps = { document: doc, selection: [board.id], active: true, epoch: 2,
+    figmaBoardPreview: true, control: { current: null }, onReady() {} }
+  const native = vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[1]>>(() => ({ x: 28, y: 7 }))
+  const movement = new PageTranslation(vi.fn(), native)
+  expect(movement.prepare(props, pageId, doc, items, doc, true, true, camera)).toBe(true)
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 100, 50] } })).toEqual({ x: 80, y: 20 })
+  expect(native).not.toHaveBeenCalled()
+  const held = movement.items(view)!.map(item => ({ placement: item.placement, clip: item.clip, layer: item.layer }))
+  const moved = held.find(item => item.layer === 4)
+  expect(moved?.placement?.left).toBe((tile.x) * view.zoom / tile.zoom + view.x + 80 * view.zoom)
+  expect(moved?.clip?.left).toBe(20 * view.zoom + view.x + 80 * view.zoom)
+  const decisionStarted = performance.now()
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 48, 37] } })).toEqual({ x: 28, y: 7 })
+  const decisionMs = performance.now() - decisionStarted
+  expect(native).toHaveBeenCalledTimes(1)
+  // Shown sRGB pixels have not advanced, so native keeps the original sample document.
+  expect(native.mock.calls[0][2]).toBe(doc)
+  expect(native.mock.calls[0][1][board.id].transform).toEqual([1, 0, 0, 1, 48, 37])
+  expect(movement.handingOff).toBe(true)
+  expect(movement.items(view)!.map(item => ({ placement: item.placement, clip: item.clip, layer: item.layer }))).toEqual(held)
+  expect(movement.prepare(props, pageId, doc, items, doc, true, true, camera)).toBe(false)
+  expect(decisionMs).toBeLessThan(50)
+  console.info(`[issue-818] fractional board handoff decision ${decisionMs.toFixed(3)} ms, document clone=false`)
+
+  movement.clear()
+  native.mockClear()
+  const density = { ...tile, zoom: 1.5 }
+  expect(movement.prepare(props, pageId, doc, [{ ...items[0], tile: density }], doc, true, true, camera)).toBe(true)
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 48, 37] } })).toEqual({ x: 28, y: 7 })
+  expect(native).toHaveBeenCalledTimes(1)
+  expect(native.mock.calls[0][2]).toBe(doc)
+  expect(movement.items(view)).toBeNull()
+
+  movement.clear()
+  native.mockClear()
+  expect(movement.prepare(props, pageId, doc, [{ ...items[0], tile: density }], doc, true, true, camera)).toBe(true)
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 100, 50] } })).toEqual({ x: 80, y: 20 })
+  expect(native).not.toHaveBeenCalled()
+  const integer75 = movement.items(view)!.map(item => item.placement)
+  movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 48, 37] } })
+  expect(native.mock.calls[0][2]).toBe(doc)
+  expect(movement.items(view)!.map(item => item.placement)).toEqual(integer75)
+})
+
+test('desktop fractional reprojection leaves a clipped hex board on its last integer frame', () => {
+  const doc = blank(), board = node('frame', 20, 30, 80, 60), other = node('frame', 400, 30, 40, 40)
+  for (const root of [board, other]) { root.blend = 'normal'; root.clip = true; doc.nodes[root.id] = root }
+  doc.pages[0].children = [board.id, other.id]
+  const pageId = doc.pages[0].id
+  const view = { x: 0, y: 0, zoom: 0.8 }
+  const tile = { key: 'page', serial: 1, gpuTile: 9, bytes: new Uint8Array(), x: -1, y: -1, width: 514, height: 514, zoom: 1.6 }
+  const props: InteractionProps = { document: doc, selection: [board.id], active: true, epoch: 1,
+    control: { current: null }, onReady() {} }
+  const native = vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[1]>>(() => ({ x: 28, y: 7 }))
+  const movement = new PageTranslation(vi.fn(), native)
+  expect(movement.prepare(props, pageId, doc, [{ tile, active: true, layer: 0 }], doc, true, true)).toBe(true)
+  movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 100, 50] } })
+  const held = movement.items(view)!.map(item => item.placement)
+  movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 48, 37] } })
+  expect(native).toHaveBeenCalledTimes(1)
+  const displayed = native.mock.calls[0][2]
+  expect(displayed).not.toBe(doc)
+  expect(displayed.nodes[board.id].transform).toEqual([1, 0, 0, 1, 100, 50])
+  expect(movement.items(view)!.map(item => item.placement)).toEqual(held)
+  expect(movement.handingOff).toBe(true)
 })
 
 test('retained pointer samples do not enumerate the document and reject unrelated edits', () => {

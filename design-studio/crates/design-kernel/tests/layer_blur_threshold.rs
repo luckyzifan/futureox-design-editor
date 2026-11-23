@@ -132,7 +132,7 @@ fn issue_282_frozen_layer_blur_references_do_not_regress() {
         (
             "frontend/design-client/public/fidelity/blur-threshold-2026-10-08/cases.json",
             "BlurThreshold-0p251-2x",
-            704,
+            430,
             1,
         ),
         (
@@ -423,5 +423,113 @@ fn frame_clip_keeps_the_page_clear_of_layer_blur() {
     assert_eq!(pixel(&actual, 128, 70, 20), [0, 255, 0, 255]);
     let inside = pixel(&actual, 128, 58, 64);
     assert_ne!(inside, [0, 255, 0, 255], "blur was clipped away entirely");
+    assert!(inside[0] > 0, "blur did not reach the bar: {inside:?}");
+}
+
+fn load_case(manifest: &str, id: &str) -> serde_json::Value {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .join(manifest);
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    cases.into_iter().find(|case| case["id"] == id).unwrap()
+}
+
+fn over_red(dst: [u8; 4], opacity: f32) -> [u8; 4] {
+    let src = [255u32, 0, 0, 255];
+    let weight = (opacity * 65535.).round_ties_even() as u32;
+    const DENOMINATOR: u32 = 255 * 65535;
+    std::array::from_fn(|channel| {
+        let numerator =
+            u32::from(dst[channel]) * (DENOMINATOR - src[3] * weight) + src[channel] * 255 * weight;
+        let quotient = numerator / DENOMINATOR;
+        let remainder = numerator % DENOMINATOR;
+        (quotient + u32::from(remainder * 2 > DENOMINATOR)) as u8
+    })
+}
+
+#[test]
+fn odd_half_stays_on_the_composite_input_under_a_translucent_overlay() {
+    // BlurThreshold-0p251-2x. The export 2×2 of this interior is the odd half
+    // 233.5. Final quantization keeps ties-even 234. A 30% red veil is
+    // source-over of the unbumped 233, so the veil does not inherit the code.
+    let mut case = load_case(
+        "frontend/design-client/public/fidelity/blur-threshold-2026-10-08/cases.json",
+        "BlurThreshold-0p251-2x",
+    );
+    let plain = render_figma(case["document"].clone(), 256, 256, 2., false);
+    assert_eq!(pixel(&plain, 256, 126, 33), [234, 234, 234, 255]);
+    assert_eq!(pixel(&plain, 256, 126, 80), [234, 234, 234, 255]);
+    case["document"]["nodes"]["frame"]["children"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!("veil"));
+    case["document"]["nodes"]["veil"] = json!({
+        "id": "veil", "kind": "rectangle", "width": 128, "height": 128,
+        "fills": [{"kind": "solid", "color": "#ff0000", "opacity": 0.3}]
+    });
+    let stacked = render_figma(case["document"].clone(), 256, 256, 2., false);
+    let covered = pixel(&stacked, 256, 126, 33);
+    assert_eq!(covered, over_red([233, 233, 233, 255], 0.3), "{covered:?}");
+    assert_eq!(
+        pixel(&stacked, 256, 126, 80),
+        over_red([233, 233, 233, 255], 0.3)
+    );
+    assert_ne!(covered, over_red([234, 234, 234, 255], 0.3));
+}
+
+#[test]
+fn odd_half_split_coverage_keeps_the_uncovered_device_sample() {
+    let mut case = load_case(
+        "frontend/design-client/public/fidelity/blur-threshold-2026-10-08/cases.json",
+        "BlurThreshold-0p251-2x",
+    );
+    let plain = render_figma(case["document"].clone(), 256, 256, 2., false);
+    // Output pixel x=126 is device samples at document [63, 63.25) and
+    // [63.25, 63.5). The red rect covers only the second sample.
+    case["document"]["nodes"]["frame"]["children"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!("cover"));
+    case["document"]["nodes"]["cover"] = json!({
+        "id": "cover", "kind": "rectangle", "width": 0.25, "height": 96,
+        "transform": [1, 0, 0, 1, 63.25, 16],
+        "fills": [{"kind": "solid", "color": "#ff0000", "opacity": 1}]
+    });
+    let covered = render_figma(case["document"].clone(), 256, 256, 2., false);
+    assert_eq!(pixel(&covered, 256, 127, 80), pixel(&plain, 256, 127, 80));
+    let split = pixel(&covered, 256, 126, 80);
+    let untouched = pixel(&plain, 256, 126, 80);
+    assert_eq!(untouched, [234, 234, 234, 255]);
+    // Right sample is opaque red, left sample stays 212. The 2×2 is no longer
+    // gray, so final quantization keeps the binary32 mean instead of 234.
+    assert_eq!(split, [233, 106, 106, 255]);
+    assert_ne!(split, [234, 107, 107, 255]);
+}
+
+#[test]
+fn odd_half_frame_clip_keeps_the_page_clear() {
+    let scene = json!({
+        "schemaVersion": 4, "id": "clip251", "name": "clip251",
+        "pages": [{"id": "p", "name": "p", "background": "#00ff00", "children": ["frame"]}],
+        "nodes": {
+            "frame": {"id": "frame", "kind": "frame", "width": 63.5, "height": 128, "clip": true,
+                "fills": [{"kind": "solid", "color": "#000000", "opacity": 1}],
+                "children": ["bar"]},
+            "bar": {"id": "bar", "kind": "rectangle", "width": 1, "height": 96,
+                "transform": [1, 0, 0, 1, 63, 16],
+                "fills": [{"kind": "solid", "color": "#ffffff", "opacity": 1}],
+                "effects": [{"kind": "blur", "radius": 0.25099998712539673, "color": "#000000"}]}
+        }
+    });
+    let actual = render_figma(scene, 256, 256, 2., false);
+    assert_eq!(pixel(&actual, 256, 140, 80), [0, 255, 0, 255]);
+    assert_eq!(pixel(&actual, 256, 128, 80), [0, 255, 0, 255]);
+    let inside = pixel(&actual, 256, 125, 80);
+    assert_ne!(
+        inside,
+        [0, 255, 0, 255],
+        "blur was clipped away entirely: {inside:?}"
+    );
     assert!(inside[0] > 0, "blur did not reach the bar: {inside:?}");
 }

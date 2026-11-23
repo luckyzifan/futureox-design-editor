@@ -4,6 +4,7 @@ use crate::{components,curve_boolean,design_system,editing::DocumentPatch,font::
 use serde::Serialize;
 use std::collections::{BTreeMap,BTreeSet};
 mod byte_ledger;
+pub(crate) mod nested_drag;
 mod pose;
 
 pub(crate) struct Plan { pub instances:BTreeSet<String>, pub roots:BTreeSet<String> }
@@ -173,6 +174,7 @@ impl State{
   // Only complete affected islands are copied for rollback. Font/image payloads
   // and cold nodes keep their original resident allocation. Global validation
   // and byte admission still run before committing the next receipt.
+  let nested_translation=nested_drag::translation(previous,&patch).is_some();
   let ids=collect(previous,&scope.roots);
   let backup:BTreeMap<_,_>=ids.iter().map(|id|(id.clone(),previous.nodes[id].clone())).collect();
   let mut doc=self.document.take().unwrap();
@@ -181,9 +183,17 @@ impl State{
   let result=(||{
    let changed=patch.nodes.keys().cloned().collect();
    doc.validate_scoped_edit(&changed)?;
-   let source_bytes=if let Some(ledger)=&self.ledger{Some(ledger.prepare(&doc,&changed)?.bytes())}
-   else{crate::capacity::check_document_bytes(crate::editing::serialized_document_size(&doc).map_err(|e|e.to_string())?)?;None};
-   resolve_scoped_model(&mut doc,&fonts,&scope,source_bytes)?;
+   if nested_translation {
+    #[cfg(test)] nested_drag::FAST_DERIVATION.with(|count| count.set(count.get().saturating_add(1)));
+    // The materialized instances already carry this translation. Variant
+    // selection, property values and every other override stay put, so
+    // expanding the owner again would rebuild the same nested tree.
+    if self.ledger.is_none(){components::check_budget(&doc)?;}
+   } else {
+    let source_bytes=if let Some(ledger)=&self.ledger{Some(ledger.prepare(&doc,&changed)?.bytes())}
+    else{crate::capacity::check_document_bytes(crate::editing::serialized_document_size(&doc).map_err(|e|e.to_string())?)?;None};
+    resolve_scoped_model(&mut doc,&fonts,&scope,source_bytes)?;
+   }
    let current=collect(&doc,&scope.roots);
    let affected=ids.union(&current).cloned().collect();
    doc.validate_scoped_edit(&affected)?;
@@ -363,5 +373,100 @@ mod tests{
   assert_eq!(placed(state.document.as_ref().unwrap()),20.);
   resolve_full(&mut next,&fonts).unwrap();
   assert_eq!(state.document.as_ref().unwrap(),&next);
+ }
+ fn generated(doc:&Document, owner:&str, key:&str)->String{
+  doc.nodes.values().find(|n| n.instance_origin.as_ref().is_some_and(|o| o.owner==owner && o.key==key)).unwrap().id.clone()
+ }
+ fn nested_fixture()->Document{
+  serde_json::from_value(json!({"schemaVersion":21,"id":"nested","name":"nested",
+   "pages":[{"id":"p","name":"p","background":"#ffffff","children":["badge","icon","button-set","card","card-instance","solo","solo-instance"]}],
+   "nodes":{
+    "mark":{"id":"mark","kind":"rectangle","width":8,"height":8,"fills":[{"kind":"solid","color":"#336699"}]},
+    "badge":{"id":"badge","kind":"frame","width":16,"height":12,"children":["mark"],"component":{"variants":{},"properties":{}}},
+    "badge-slot":{"id":"badge-slot","kind":"frame","width":16,"height":12,"componentKey":"badgeSlot","instance":{"componentId":"badge","overrides":{},"propertyValues":{}}},
+    "swatch":{"id":"swatch","kind":"rectangle","width":10,"height":10,"transform":[1,0,0,1,12,0],"fills":[{"kind":"solid","color":"#336699"}]},
+    "icon":{"id":"icon","kind":"frame","width":28,"height":16,"children":["badge-slot","swatch"],"component":{"variants":{},"properties":{}}},
+    "icon-slot":{"id":"icon-slot","kind":"frame","width":28,"height":16,"componentKey":"iconSlot","instance":{"componentId":"icon","overrides":{},"propertyValues":{}}},
+    "button-default":{"id":"button-default","kind":"frame","width":80,"height":24,"children":["icon-slot"],"component":{"variants":{"状态":"默认"},"properties":{}}},
+    "button-hover-icon":{"id":"button-hover-icon","kind":"frame","width":28,"height":16,"componentKey":"iconSlot","instance":{"componentId":"icon","overrides":{},"propertyValues":{}}},
+    "button-hover":{"id":"button-hover","kind":"frame","width":80,"height":24,"children":["button-hover-icon"],"component":{"variants":{"状态":"悬停"},"properties":{}}},
+    "button-set":{"id":"button-set","kind":"section","width":200,"height":40,"componentSet":true,"children":["button-default","button-hover"]},
+    "action":{"id":"action","kind":"frame","width":80,"height":24,"componentKey":"action","instance":{"componentId":"button-default","overrides":{},"propertyValues":{}}},
+    "card":{"id":"card","kind":"frame","width":120,"height":48,"children":["action"],"component":{"variants":{},"properties":{}}},
+    "card-instance":{"id":"card-instance","kind":"frame","width":120,"height":48,"transform":[1,0,0,1,20,16],
+     "instance":{"componentId":"card","overrides":{"action/iconSlot/swatch":{"fills":[{"kind":"solid","color":"#c4552a"}]}},"propertyValues":{}}},
+    "solo-mark":{"id":"solo-mark","kind":"rectangle","width":12,"height":8,"fills":[{"kind":"solid","color":"#224466"}]},
+    "solo":{"id":"solo","kind":"frame","width":20,"height":14,"children":["solo-mark"],"component":{"variants":{},"properties":{}}},
+    "solo-instance":{"id":"solo-instance","kind":"frame","width":20,"height":14,"transform":[1,0,0,1,180,16],"instance":{"componentId":"solo","overrides":{},"propertyValues":{}}}
+   }})).unwrap()
+ }
+ #[test]
+ fn nested_instance_drag_skips_reexpansion_without_switching_variant(){
+  let fonts=Fonts::new();
+  let mut state=State::default();
+  state.full(&serde_json::to_string(&nested_fixture()).unwrap(),&fonts).unwrap();
+  let base=state.document.clone().unwrap();
+  let moved=generated(&base,"card-instance","action");
+  assert!(base.nodes[&moved].instance.is_some()&&base.nodes[&moved].instance_origin.is_some());
+  assert_eq!(base.nodes[&moved].instance.as_ref().unwrap().component_id,"button-default");
+  let painted=generated(&base,"card-instance","action/iconSlot/swatch");
+  assert_eq!(serde_json::to_value(&base.nodes[&painted].fills).unwrap()[0]["color"],"#c4552a");
+  let mut drag=base.clone();
+  drag.nodes.get_mut(&moved).unwrap().transform.0[4]+=9.5;
+  let transform=serde_json::to_value(drag.nodes[&moved].transform).unwrap();
+  drag.nodes.get_mut("card-instance").unwrap().instance.as_mut().unwrap().overrides.entry("action".into()).or_default().insert("transform".into(),transform);
+  let fast=nested_drag::fast_derivation_count();
+  let patch=DocumentPatch::between(&base,&drag).unwrap();
+  let reply:serde_json::Value=serde_json::from_str(&state.patch(&serde_json::to_string(&patch).unwrap(),state.receipt,&fonts).unwrap()).unwrap();
+  assert_eq!(nested_drag::fast_derivation_count(),fast+1,"nested translation must keep the materialized tree");
+  assert_eq!(reply["nodes"],json!({}));
+  assert_eq!(reply["removed"],json!([]));
+  let mut oracle=drag.clone();
+  resolve_full(&mut oracle,&fonts).unwrap();
+  assert_eq!(state.document.as_ref().unwrap(),&oracle);
+  assert_eq!(state.document.as_ref().unwrap().nodes[&moved].instance.as_ref().unwrap().component_id,"button-default");
+  assert_eq!(serde_json::to_value(&state.document.as_ref().unwrap().nodes[&painted].fills).unwrap()[0]["color"],"#c4552a");
+  let mut swapped=state.document.clone().unwrap();
+  swapped.nodes.get_mut("card-instance").unwrap().instance.as_mut().unwrap().overrides.entry("action".into()).or_default().insert("swapComponent".into(),json!("button-hover"));
+  let fast=nested_drag::fast_derivation_count();
+  let patch=DocumentPatch::between(state.document.as_ref().unwrap(),&swapped).unwrap();
+  state.patch(&serde_json::to_string(&patch).unwrap(),state.receipt,&fonts).unwrap();
+  assert_eq!(nested_drag::fast_derivation_count(),fast,"variant switching stays on the full resolver");
+  let moved=generated(state.document.as_ref().unwrap(),"card-instance","action");
+  assert_eq!(state.document.as_ref().unwrap().nodes[&moved].instance.as_ref().unwrap().component_id,"button-hover");
+  let mut oracle=swapped;
+  resolve_full(&mut oracle,&fonts).unwrap();
+  assert_eq!(state.document.as_ref().unwrap(),&oracle);
+ }
+ #[test]
+ fn top_level_instance_layout_and_images_do_not_use_nested_translation(){
+  let fonts=Fonts::new();
+  let mut state=State::default();
+  state.full(&serde_json::to_string(&nested_fixture()).unwrap(),&fonts).unwrap();
+  let base=state.document.clone().unwrap();
+  let mut top=base.clone();
+  top.nodes.get_mut("solo-instance").unwrap().transform.0[4]+=6.;
+  assert!(nested_drag::translation(&base,&DocumentPatch::between(&base,&top).unwrap()).is_none());
+  let moved=generated(&base,"card-instance","action");
+  let mut flowed=base.clone();
+  flowed.nodes.get_mut("card-instance").unwrap().layout=Some(serde_json::from_value(json!({"mode":"horizontal"})).unwrap());
+  flowed.nodes.get_mut(&moved).unwrap().transform.0[4]+=4.;
+  let transform=serde_json::to_value(flowed.nodes[&moved].transform).unwrap();
+  flowed.nodes.get_mut("card-instance").unwrap().instance.as_mut().unwrap().overrides.entry("action".into()).or_default().insert("transform".into(),transform);
+  assert!(nested_drag::translation(&base,&DocumentPatch::between(&base,&flowed).unwrap()).is_none());
+  let mut laid=base.clone();
+  laid.nodes.get_mut("card-instance").unwrap().layout=Some(serde_json::from_value(json!({"mode":"horizontal"})).unwrap());
+  let mut laid_drag=laid.clone();
+  laid_drag.nodes.get_mut(&moved).unwrap().transform.0[4]+=4.;
+  let transform=serde_json::to_value(laid_drag.nodes[&moved].transform).unwrap();
+  laid_drag.nodes.get_mut("card-instance").unwrap().instance.as_mut().unwrap().overrides.entry("action".into()).or_default().insert("transform".into(),transform);
+  assert!(nested_drag::translation(&laid,&DocumentPatch::between(&laid,&laid_drag).unwrap()).is_none());
+  let mut imaged=base.clone();
+  imaged.nodes.get_mut(&moved).unwrap().fills.push(serde_json::from_value(json!({"kind":"image","color":"#ffffff","image":"mem://nested"})).unwrap());
+  let mut drag=imaged.clone();
+  drag.nodes.get_mut(&moved).unwrap().transform.0[4]+=3.;
+  let transform=serde_json::to_value(drag.nodes[&moved].transform).unwrap();
+  drag.nodes.get_mut("card-instance").unwrap().instance.as_mut().unwrap().overrides.entry("action".into()).or_default().insert("transform".into(),transform);
+  assert!(nested_drag::translation(&imaged,&DocumentPatch::between(&imaged,&drag).unwrap()).is_none());
  }
 }

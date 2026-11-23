@@ -197,6 +197,7 @@ test('in-file auto-layout and font variants execute while missing targets stay r
   const textFields = doc.nodes[instance.id].instance!.overrides[text.id]
   expect((textFields.textStyle as { features: string[]; letterSpacing: number; lineHeight: number; weight: number }).letterSpacing).toBe(120)
   expect((textFields.textStyle as { lineHeight: number }).lineHeight).toBe(1.5)
+  expect((textFields.textStyle as { lineBoxBaseline?: string }).lineBoxBaseline).toBe('figma-pixel-leading')
   expect((textFields.textStyle as { weight: number }).weight).toBe(700)
   expect((textFields.textStyle as { features: string[] }).features).toEqual(expect.arrayContaining(['-liga', '-clig', 'smcp', 'kern']))
   expect((textFields.bindings as Record<string, string>)['radii.0']).toBe('9:3')

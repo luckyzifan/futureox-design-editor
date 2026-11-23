@@ -916,10 +916,16 @@ pub fn image_sampling_grid_with_sketch_sampling(
     let coordinates = ImageCoordinates::new(paint, size, matrix, rect, image)?
         .with_sketch_magnification(matrix, sketch_bitmap && level == 0)
         .with_sketch_motion_phase(matrix, if sketch_bitmap && level == 0 { motion_axis } else { None });
-    let mut values =
+    // Pattern tiles and Sketch's integer-magnification / motion phase are not
+    // this affine chain. Every other fill keeps the same per-pixel operations
+    // as `ImageCoordinates::at` plus `coordinate_grid`, without a closure.
+    let mut values = if let Some(values) = affine_image_coordinate_grid(&coordinates, rect, offset, image)? {
+        values
+    } else {
         crate::sampling::coordinate_grid(rect, Rect::new(0, 0, image[0], image[1]), |x, y| {
             coordinates.at(Point::new(f64::from(x) + offset.0, f64::from(y) + offset.1))
-        })?;
+        })?
+    };
     // Atlas placement shifts emitted texel cells into page space. Valid
     // coordinates are >= -1, so the -2 marker is unambiguous; integer shifts
     // stay exact in f32 at page sizes.
@@ -933,6 +939,114 @@ pub fn image_sampling_grid_with_sketch_sampling(
     }
     Ok(values)
 }
+/// Float image addresses for one sample plane. Separable placements return the
+/// compact axis field (`W = -1`); every other placement returns the dense grid.
+/// The two representations store the same binary64 cell and fraction bits.
+#[allow(clippy::too_many_arguments)]
+pub fn image_sampling_field_with_sketch_sampling(
+    rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2],
+    paint: &Paint, sample: Option<usize>, level: u32, origin: [i32; 2],
+    sketch_bitmap: bool, motion_axis: Option<u8>,
+) -> Result<Vec<f32>, String> {
+    let axes = image_sampling_axes_with_sketch_sampling(
+        rect, matrix, size, image, paint, sample, level, origin, sketch_bitmap, motion_axis,
+    )?;
+    if axes.get(3) == Some(&-1.) {
+        return Ok(axes);
+    }
+    image_sampling_grid_with_sketch_sampling(
+        rect, matrix, size, image, paint, sample, level, origin, sketch_bitmap, motion_axis,
+    )
+}
+
+/// Dense coordinate field for an affine image fill. Returns `Ok(None)` when
+/// the paint is a pattern or a Sketch magnification/motion sample; those keep
+/// the closure over [`ImageCoordinates::at`]. The emitted f32 cells match
+/// `coordinate_grid` for every other fill.
+fn affine_image_coordinate_grid(
+    coordinates: &ImageCoordinates,
+    rect: Rect,
+    offset: (f64, f64),
+    image: [u32; 2],
+) -> Result<Option<Vec<f32>>, String> {
+    if coordinates.pattern.is_some()
+        || coordinates.sketch_integer_magnification
+        || coordinates.sketch_motion_phase.is_some()
+    {
+        return Ok(None);
+    }
+    let width = rect.w as usize;
+    let count = width
+        .checked_mul(rect.h as usize)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or("Sampling coordinate size overflow")?;
+    if count > 16_777_216 {
+        return Err("Sampling coordinate field exceeds 64 MiB".into());
+    }
+    let right = rect.checked_right().ok_or("Invalid sampling coordinate width")?;
+    let bottom = rect.checked_bottom().ok_or("Invalid sampling coordinate height")?;
+    let mut values = Vec::new();
+    if count == 0 {
+        return Ok(Some(values));
+    }
+    values
+        .try_reserve_exact(count)
+        .map_err(|_| "Sampling coordinate allocation failed")?;
+    values.resize(count, 0.);
+    let source_origin = (f64::from(0i32), f64::from(0i32));
+    let source_size = (f64::from(image[0]), f64::from(image[1]));
+    let inverse = coordinates.inverse.0;
+    let paint = coordinates.paint_inverse.map(|transform| transform.0);
+    let placement = coordinates.linear_placement;
+    let contain = coordinates.fit == "contain";
+    let image_f = coordinates.image;
+    let size = coordinates.size;
+    for (y, row) in (rect.y..bottom).zip(values.chunks_exact_mut(width * 4)) {
+        for (x, cell) in (rect.x..right).zip(row.chunks_exact_mut(4)) {
+            let device = Point::new(f64::from(x) + offset.0, f64::from(y) + offset.1);
+            let local = Point::new(
+                inverse[0] * device.x + inverse[2] * device.y + inverse[4],
+                inverse[1] * device.x + inverse[3] * device.y + inverse[5],
+            );
+            let q = if let Some((ratio, inset)) = placement {
+                Point::new((local.x - inset[0]) / ratio, (local.y - inset[1]) / ratio)
+            } else {
+                let uv = Point::new(local.x / size[0], local.y / size[1]);
+                let uv = if let Some(m) = paint {
+                    Point::new(
+                        m[0] * uv.x + m[2] * uv.y + m[4],
+                        m[1] * uv.x + m[3] * uv.y + m[5],
+                    )
+                } else {
+                    uv
+                };
+                Point::new(uv.x * image_f[0], uv.y * image_f[1])
+            };
+            if contain && (q.x < 0. || q.y < 0. || q.x >= image_f[0] || q.y >= image_f[1]) {
+                cell.copy_from_slice(&[-2., -2., 0., 0.]);
+                continue;
+            }
+            let cx = q.x.clamp(0.5, image_f[0] - 0.5);
+            let cy = q.y.clamp(0.5, image_f[1] - 0.5);
+            if !cx.is_finite() || !cy.is_finite() {
+                return Err("Nonfinite sample coordinate".into());
+            }
+            let sx = cx - 0.5;
+            let sy = cy - 0.5;
+            let ix = sx.floor();
+            let iy = sy.floor();
+            let rx = ix - source_origin.0;
+            let ry = iy - source_origin.1;
+            if rx < -1. || ry < -1. || rx >= source_size.0 || ry >= source_size.1 {
+                cell.copy_from_slice(&[-2., -2., 0., 0.]);
+            } else {
+                cell.copy_from_slice(&[rx as f32, ry as f32, (sx - ix) as f32, (sy - iy) as f32]);
+            }
+        }
+    }
+    Ok(Some(values))
+}
+
 /// The analytic canvas samples image color at device pixel centres. Return
 /// just the two one-dimensional rows for a bounded, separable Gaussian.
 pub(crate) fn image_gaussian_axes(
@@ -2059,6 +2173,76 @@ fn premultiply_byte_color(color: Pixel, opacity: f32) -> Pixel {
 mod tests {
     use super::*;
 
+    fn fields_match_dense(
+        rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2], paint: &Paint,
+        sample: Option<usize>, origin: [i32; 2],
+    ) {
+        let dense = image_sampling_grid_placed(rect, matrix, size, image, paint, sample, 0, origin).unwrap();
+        let field = image_sampling_field_with_sketch_sampling(
+            rect, matrix, size, image, paint, sample, 0, origin, false, None,
+        ).unwrap();
+        assert_eq!(field.get(3), Some(&-1.), "separable bitmap drag must keep compact axes");
+        let span = rect.w.max(rect.h) as usize;
+        assert_eq!(field.len(), span * 8);
+        assert!(field.len() < dense.len());
+        for y in 0..rect.h as usize {
+            for x in 0..rect.w as usize {
+                let pixel = &dense[(y * rect.w as usize + x) * 4..][..4];
+                let ax = &field[x * 4..][..4];
+                let ay = &field[(span + y) * 4..][..4];
+                assert_eq!((ax[3], ay[3]), (-1., -1.));
+                if ax[2] == 0. || ay[2] == 0. {
+                    assert_eq!(pixel, [-2., -2., 0., 0.], "x={x} y={y}");
+                } else {
+                    assert_eq!(pixel[0].to_bits(), ax[0].to_bits(), "cell x {x},{y}");
+                    assert_eq!(pixel[1].to_bits(), ay[0].to_bits(), "cell y {x},{y}");
+                    assert_eq!(pixel[2].to_bits(), ax[1].to_bits(), "frac x {x},{y}");
+                    assert_eq!(pixel[3].to_bits(), ay[1].to_bits(), "frac y {x},{y}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn large_bitmap_drag_field_matches_dense_grid() {
+        let stretch: Paint = serde_json::from_value(serde_json::json!(
+            {"kind":"image","fit":"stretch","color":"#ffffff"}
+        )).unwrap();
+        let contain: Paint = serde_json::from_value(serde_json::json!(
+            {"kind":"image","fit":"contain","color":"#ffffff"}
+        )).unwrap();
+        let rect = Rect::new(17, 9, 960, 540);
+        let matrix = Transform([1., 0., 0., 1., 17.25, 9.5]);
+        let size = [960., 540.];
+        let image = [2048, 1536];
+        fields_match_dense(rect, matrix, size, image, &stretch, Some(0), [0, 0]);
+        fields_match_dense(rect, matrix, size, image, &stretch, Some(2), [4, 7]);
+        fields_match_dense(Rect::new(3, 5, 180, 140), Transform([1., 0., 0., 1., 3.125, 5.375]),
+            [180., 140.], [64, 96], &contain, Some(1), [0, 0]);
+        let base = image_sampling_field_with_sketch_sampling(
+            rect, matrix, size, image, &stretch, Some(0), 0, [0, 0], false, None,
+        ).unwrap();
+        let translated = image_sampling_field_with_sketch_sampling(
+            Rect::new(18, 11, 960, 540), Transform([1., 0., 0., 1., 18.25, 11.5]),
+            size, image, &stretch, Some(0), 0, [0, 0], false, None,
+        ).unwrap();
+        assert_eq!(translated, base, "integer device translation keeps local bitmap addresses");
+        let fractional = image_sampling_field_with_sketch_sampling(
+            rect, Transform([1., 0., 0., 1., 17.4, 9.5]), size, image, &stretch, Some(0), 0, [0, 0], false, None,
+        ).unwrap();
+        assert_ne!(fractional, base);
+        let rotated = Transform([0.6, 0.8, -0.8, 0.6, 4., 6.]);
+        let small = Rect::new(0, 0, 12, 10);
+        let dense = image_sampling_grid_with_sketch_sampling(
+            small, rotated, [12., 10.], [32, 24], &stretch, Some(1), 0, [0, 0], false, None,
+        ).unwrap();
+        let field = image_sampling_field_with_sketch_sampling(
+            small, rotated, [12., 10.], [32, 24], &stretch, Some(1), 0, [0, 0], false, None,
+        ).unwrap();
+        assert_eq!(field, dense);
+        assert_ne!(field.get(3), Some(&-1.));
+    }
+
     #[test]
     fn motion_bitmap_phase_keeps_native_replicated_stripe_taps_in_both_fields() {
         let paint: Paint = serde_json::from_value(serde_json::json!({
@@ -2082,6 +2266,76 @@ mod tests {
             let trail = scale as usize * 4;
             assert_eq!([grid[trail],grid[trail+2]], [32.,0.875]);
         }
+    }
+
+    #[test]
+    fn affine_image_grid_matches_the_coordinate_point_chain() {
+        let paints = [
+            serde_json::json!({"kind":"image","fit":"stretch","color":"#ffffff"}),
+            serde_json::json!({"kind":"image","fit":"stretch","color":"#ffffff","transform":[2.0,0.0,0.0,2.0,-0.45,-0.3]}),
+            serde_json::json!({"kind":"image","fit":"cover","color":"#ffffff"}),
+            serde_json::json!({"kind":"image","fit":"contain","color":"#ffffff"}),
+            serde_json::json!({"kind":"image","fit":"stretch","color":"#ffffff","transform":[1.2,-0.15,0.2,0.9,0.05,-0.1]}),
+        ];
+        let matrices = [
+            Transform([1., 0., 0., 1., 48.35, 36.125]),
+            Transform([0.9902680687415704, 0.13917310096006544, -0.13917310096006544, 0.9902680687415704, 151.2, 92.8]),
+            Transform([-0., 1., -1., 0., 20.5, -4.25]),
+            Transform([1.5, 0., 0., 0.75, -12.125, 7.875]),
+        ];
+        let rects = [Rect::new(2, -3, 48, 36), Rect::new(54, 26, 96, 70), Rect::new(0, 0, 1, 1), Rect::new(-8, 4, 17, 13)];
+        for paint in &paints {
+            let paint: Paint = serde_json::from_value(paint.clone()).unwrap();
+            for matrix in matrices {
+                for rect in rects {
+                    for sample in [None, Some(0usize), Some(3)] {
+                        for origin in [[0, 0], [4, -3]] {
+                            for image in [[64u32, 40], [7, 7], [1, 5]] {
+                                let actual = image_sampling_grid_with_sketch_sampling(
+                                    rect, matrix, [120., 80.], image, &paint, sample, 0, origin, false, None,
+                                );
+                                let expected = reference_image_grid(
+                                    rect, matrix, [120., 80.], image, &paint, sample, origin,
+                                );
+                                match (actual, expected) {
+                                    (Ok(actual), Ok(expected)) => {
+                                        assert_eq!(actual.len(), expected.len());
+                                        for (i, (left, right)) in actual.iter().zip(expected).enumerate() {
+                                            assert_eq!(left.to_bits(), right.to_bits(), "index {i} fit {} rect {rect:?} image {image:?}", paint.fit);
+                                        }
+                                    }
+                                    (Err(left), Err(right)) => assert_eq!(left, right, "fit {} rect {rect:?} image {image:?}", paint.fit),
+                                    (left, right) => panic!("grid status diverged fit {} rect {rect:?} image {image:?}: {left:?} vs {right:?}", paint.fit),
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn reference_image_grid(
+        rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2], paint: &Paint,
+        sample: Option<usize>, origin: [i32; 2],
+    ) -> Result<Vec<f32>, String> {
+        let offset = match sample {
+            Some(i) => *crate::fidelity::SAMPLE_OFFSETS.get(i).ok_or("Invalid image sample index")?,
+            None => (0.5, 0.5),
+        };
+        let coordinates = ImageCoordinates::new(paint, size, matrix, rect, image)?;
+        let mut values = crate::sampling::coordinate_grid(rect, Rect::new(0, 0, image[0], image[1]), |x, y| {
+            coordinates.at(Point::new(f64::from(x) + offset.0, f64::from(y) + offset.1))
+        })?;
+        if origin != [0, 0] {
+            for value in values.chunks_exact_mut(4) {
+                if value[0] != -2. {
+                    value[0] += origin[0] as f32;
+                    value[1] += origin[1] as f32;
+                }
+            }
+        }
+        Ok(values)
     }
 
     #[test]

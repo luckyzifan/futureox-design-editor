@@ -139,10 +139,18 @@ export class PageTranslation {
         this.rebase(latest.document, latest.patches)
     }, { ...board }) === true
   }
-  private reusableOffset(offset: { x: number; y: number }) {
-    return this.residents.length > 0 && (this.fractional || !!this.srgbBoard || this.residents.every(tile =>
+  private integerPhysicalOffset(offset: { x: number; y: number }) {
+    return this.residents.length > 0 && this.residents.every(tile =>
       [offset.x * tile.zoom, offset.y * tile.zoom].every(Number.isSafeInteger))
-    )
+  }
+  private reusableOffset(offset: { x: number; y: number }) {
+    // A clipped board's texels belong to one sample lattice. Both axes must
+    // land on whole physical pixels before those texels can move. A fractional
+    // axis keeps the last accepted frame and asks native to rasterize the real
+    // pose on that same camera lattice. Whole-page desktop reprojection is
+    // unchanged.
+    if (this.board) return this.integerPhysicalOffset(offset)
+    return this.residents.length > 0 && (this.fractional || this.integerPhysicalOffset(offset))
   }
   private rebase(document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1], guides=this.input.guides) {
     this.tracking = false
@@ -227,9 +235,9 @@ export class PageTranslation {
       // A visible overlap needs native painter order. Motion beyond the edge
       // of the viewport does not invalidate this composition.
       if (this.overlapsStationary(offset)) return this.rebase(document, patches, guides)
-      // Fractional desktop motion is a transient, full-density reprojection.
-      // Other policies still require the original integer-phase proof. Final
-      // readiness always belongs to the committed native page, not this pose.
+      // Whole-page desktop motion may reproject full-density texels. Clipped
+      // boards require an integer physical phase on both axes. Final readiness
+      // always belongs to the committed native page, not this pose.
       if (!this.reusableOffset(offset)) return this.rebase(document, patches, guides)
       const id = this.plan.ids[0],
         before = document.nodes[id].transform,

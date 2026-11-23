@@ -395,7 +395,12 @@ function applyText(fields: Record<string, unknown>, override: any, target: { tex
   const size = metricSize(fields, target)
   if(override.lineHeight !== undefined) {
     const multiplier = lineHeightMultiplier(override.lineHeight, size)
-    if(multiplier !== undefined && multiplier >= 0.1 && multiplier <= 10) { style.lineHeight = multiplier; changed = true }
+    if(multiplier !== undefined && multiplier >= 0.1 && multiplier <= 10) {
+      style.lineHeight = multiplier
+      style.lineHeightAuto = false
+      style.lineBoxBaseline = 'figma-pixel-leading'
+      changed = true
+    }
     else warnings?.add('FIG 实例覆盖 lineHeight 暂不能执行，其余覆盖已保留')
   }
   if(override.letterSpacing !== undefined) {

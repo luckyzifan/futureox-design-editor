@@ -88,7 +88,12 @@ pub struct Pixel(pub [f32; 4]);
 impl Pixel {
     pub fn straight_rgba8(self) -> [u8; 4] {
         let rgb = self.rgb();
-        [rgb[0], rgb[1], rgb[2], self.0[3]].map(|v| (v.clamp(0., 1.) * 255.).round() as u8)
+        [
+            quantize_unit(rgb[0]),
+            quantize_unit(rgb[1]),
+            quantize_unit(rgb[2]),
+            quantize_unit(self.0[3]),
+        ]
     }
     pub fn mask_alpha(self, luminance: bool) -> f32 {
         if luminance {
@@ -168,6 +173,25 @@ impl Pixel {
         ]
     }
 }
+
+/// `(v.clamp(0., 1.) * 255.).round() as u8`.
+///
+/// `f32::round` lowers to libm `roundf` on this target and dominated the
+/// hand-pan tile encode. Half-away-from-zero on the non-negative 0..=255
+/// domain is `trunc(x + 0.5)` with saturation, which matches that rounding
+/// for every finite input the quantizer produces. NaN follows the same
+/// float-to-int rule as `round` (zero).
+#[inline(always)]
+fn quantize_unit(v: f32) -> u8 {
+    let scaled = v.clamp(0., 1.) * 255.;
+    // `f32::min` turns NaN into 255, but `(NaN).round() as u8` is 0.
+    if !scaled.is_finite() {
+        return 0;
+    }
+    let x = scaled.min(255.);
+    (x + 0.5) as u8
+}
+
 fn lum(c: [f32; 3]) -> f32 {
     0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]
 }
@@ -586,15 +610,16 @@ impl Surface {
                 .checked_add(width)?;
             (end <= storage).then_some((start, stride, width, height))
         })();
-        if let Some((start, stride, width, height)) = rows {
+        if let Some((start, stride, width, height)) = rows
+            && let Some(bytes) = width.checked_mul(height).and_then(|n| n.checked_mul(4))
+        {
+            let base = out.len();
+            out.resize(base + bytes, 0);
             for row in 0..height {
                 // The checked last-row endpoint above bounds every row here.
                 let offset = start + row * stride;
-                out.extend(
-                    self.pixels[offset..offset + width]
-                        .iter()
-                        .flat_map(|p| p.straight_rgba8()),
-                );
+                let dest = base + row * width * 4;
+                encode_straight_row(&self.pixels[offset..offset + width], &mut out[dest..dest + width * 4]);
             }
             return out;
         }
@@ -605,6 +630,13 @@ impl Surface {
             }
         }
         out
+    }
+}
+
+#[inline(always)]
+fn encode_straight_row(pixels: &[Pixel], dest: &mut [u8]) {
+    for (pixel, slot) in pixels.iter().zip(dest.chunks_exact_mut(4)) {
+        slot.copy_from_slice(&pixel.straight_rgba8());
     }
 }
 

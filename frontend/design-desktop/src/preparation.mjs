@@ -111,6 +111,18 @@ export class NativePreparation {
   return this.done
  }
 }
+/** Move an owned packet buffer to the renderer. A pooled Node Buffer stays
+ * copied: transferring it would detach the pool. Exact Uint8Array replies,
+ * which the FPR1 decoder allocates, cross this thread boundary without a
+ * second byte copy. */
+export function poseReplyTransfers(reply) {
+  const value = reply?.value
+  if (!value || typeof value.byteLength !== 'number' || typeof value.byteOffset !== 'number') return []
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) return []
+  const buffer = value.buffer
+  if (!(buffer instanceof ArrayBuffer) || value.byteOffset !== 0 || value.byteLength !== buffer.byteLength) return []
+  return [buffer]
+}
 /** The renderer owns its existing preparation process. Only real pose mutations
  * and packets cross this port, in the same physical queue as ordinary calls. */
 export function bindPosePreparationPort(port,worker,current,retire){
@@ -135,7 +147,7 @@ export function bindPosePreparationPort(port,worker,current,retire){
    const reply=await worker.request({lane,method,args,
     ...(diagnostics?{diagnostics:{...diagnostics,preparationId:id}}:{}),
     ...(method==='compile_gpu_packet'&&cancellable?{cancellationId:id}:{})})
-   if(!closed&&current())port.postMessage({...reply,id})
+   if(!closed&&current())port.postMessage({...reply,id},poseReplyTransfers(reply))
   }catch(error){if(!closed&&current())fatal(error)}finally{active=0}
  })
  port.on('close',()=>{closed=true;if(active&&current())retire()})

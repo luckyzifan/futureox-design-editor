@@ -3051,6 +3051,7 @@ export function ProgressiveSurfaceImpl(
         {singleCanvas ? (() => {
           const CompositeSurface = residentDisplay && rasterClient ? ResidentCompositeSurface : TileCompositeSurface
           return <CompositeSurface key={residentDisplay && rasterClient ? 'resident' : 'bitmap'} client={rasterClient!}
+          navigationInputOwner={props.navigationInputOwner}
           {...(residentDisplay ? { reuseSequence: previewReuseSequence.current, overviewPresentation,
             progressiveBlurDragActive: props.progressiveBlurDragActive } : {})}
           items={compositeItems}
@@ -3065,7 +3066,7 @@ export function ProgressiveSurfaceImpl(
                 clip: item.clip ? { ...item.clip } : undefined }] : []
             }),
           }) : undefined}
-          view={requestedView} width={width} height={height} dpr={dpr}
+          view={requestedView} width={width} height={height} dpr={dpr} retainedZoom={displayed?.view.zoom}
           presentation={presentation}
           overview={props.overview}
           overviewTiles={[...new Set([...overviewKeys.current,...(!fitHistoryPending ? backing?.keys || [] : [])])].flatMap(key=>{

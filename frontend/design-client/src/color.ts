@@ -75,6 +75,17 @@ export function validColor(value: unknown, managed = false): boolean {
   )
 }
 
+/** Opaque page fill stored in an 8-bit sRGB canvas clear. `#rrggbb` and opaque
+ * `color(srgb …)` become unorm bytes. Anything else stays unset so the
+ * compositor does not invent a linear or wide-gamut clear. */
+export function opaquePageClear(background: string | undefined): [number, number, number, number] | undefined {
+  if (!background) return
+  const hex = displayColorHex(background)
+  if (!hex) return
+  const channel = (index: number) => parseInt(hex.slice(index, index + 2), 16) / 255
+  return [channel(1), channel(3), channel(5), 1]
+}
+
 /** Opaque sRGB and #rrggbb for the inspector swatch. Other spaces stay stored as-is. */
 export function displayColorHex(value: string): string | null {
   const hex = /^#([0-9a-f]{6})$/i.exec(value)

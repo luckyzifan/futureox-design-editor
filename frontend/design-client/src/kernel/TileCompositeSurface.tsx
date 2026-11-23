@@ -9,26 +9,29 @@ import type { KernelOptions } from './client'
 import type { BackendPreference } from './gpu/types'
 import type { PresentedFrame } from './Surface'
 import { presentationMatches } from './presentation'
-import { allowIncompletePanPreview, type PanPreviewBacking } from './pan-preview'
+import { allowIncompletePanPreview, suppressCameraPreviewForZoom, type PanPreviewBacking } from './pan-preview'
 
 export function TileCompositeSurface({ items, view, width, height, dpr, onReady, onGone, onError, onFailure,
-  interaction, pageId, rasterProfile, backend, settledDocument, presentation, onComposited, sourceDocument, contentRevision, allowPanPreview, panBacking }:
+  interaction, pageId, rasterProfile, backend, settledDocument, presentation, onComposited, sourceDocument, contentRevision, allowPanPreview, panBacking, retainedZoom }:
   { items: CompositeItem[]; view: CanvasCamera; width: number; height: number; dpr: number;
     interaction?: InteractionProps; pageId: string; rasterProfile: KernelOptions['rasterProfile']; backend: BackendPreference;
     settledDocument?: DesignDocument;
     sourceDocument?: DesignDocument; contentRevision?: number; allowPanPreview?: boolean; panBacking?: PanPreviewBacking;
+    /** Zoom of the picture already on screen. A different live zoom must not clear it. */
+    retainedZoom?: number;
     presentation?: PresentedFrame | null; onComposited?: (frame: PresentedFrame | null) => void;
     onReady: (key: string, serial: number, managed: boolean) => void;
     onGone: (key: string, serial: number) => void;
     onError: (key: string, serial: number, message: string) => void;
-    onFailure: (message: string) => void }) {
+    onFailure: (message: string) => void;
+    navigationInputOwner?: object }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const compositor = useRef<TileCompositor | null>(null)
   const published = useRef(new Map<number, string>())
   const interactionRenderer = useRef<InteractionRenderer | null>(null)
   const repaint = useRef<() => void>(() => {})
-  const latest = useRef({ items, view, width, height, dpr, presentation, onComposited, sourceDocument, contentRevision, allowPanPreview, panBacking })
-  latest.current = { items, view, width, height, dpr, presentation, onComposited, sourceDocument, contentRevision, allowPanPreview, panBacking }
+  const latest = useRef({ items, view, width, height, dpr, presentation, onComposited, sourceDocument, contentRevision, allowPanPreview, panBacking, retainedZoom })
+  latest.current = { items, view, width, height, dpr, presentation, onComposited, sourceDocument, contentRevision, allowPanPreview, panBacking, retainedZoom }
   const callbacks = useRef({ onReady, onGone, onError, onFailure })
   callbacks.current = { onReady, onGone, onError, onFailure }
   useLayoutEffect(() => {
@@ -54,7 +57,7 @@ export function TileCompositeSurface({ items, view, width, height, dpr, onReady,
   repaint.current = () => {
     const renderer = compositor.current
     if (!renderer) return
-    const { items, view, width, height, dpr, presentation, onComposited, sourceDocument, contentRevision, allowPanPreview, panBacking } = latest.current
+    const { items, view, width, height, dpr, presentation, onComposited, sourceDocument, contentRevision, allowPanPreview, panBacking, retainedZoom } = latest.current
     const moving = interactionRenderer.current
     const keep = new Set([...items.map(item => item.tile.serial), ...(moving?.tiles.map(tile => tile.serial) || [])])
     renderer.retain(keep)
@@ -80,12 +83,13 @@ export function TileCompositeSurface({ items, view, width, height, dpr, onReady,
       // Imports are a cohort: an incomplete retained layer set is not a new
       // transparent frame. Keep the last complete backing until it can draw.
       if (moved && composition.some(item => item.active && !renderer.has(item.tile))) return
-      const preview = !moved && !!sourceDocument && contentRevision !== undefined && allowIncompletePanPreview({
+      const preview = !moved && !suppressCameraPreviewForZoom(retainedZoom, view.zoom) && !!sourceDocument && contentRevision !== undefined && allowIncompletePanPreview({
         allowed: allowPanPreview, frame: presentation || null, document: sourceDocument, revision: contentRevision,
         pageId, width, height, dpr, items, backing: panBacking,
       })
+      const retainedMove = !!moved && moving?.mode !== 'live-kernel'
       const submitted = renderer.draw(composition,
-        view, width, height, dpr, !!moved && moving?.mode !== 'live-kernel', preview)
+        view, width, height, dpr, retainedMove, preview, retainedMove ? moving?.pageBackground : undefined)
       if (submitted) {
         // Publish the camera actually drawn, even between plan generations.
         // A live pose is a preview; it must not certify the source as exact.

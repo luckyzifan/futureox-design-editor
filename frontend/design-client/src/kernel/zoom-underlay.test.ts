@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { sharperCoverageFrame } from './coverage-stack'
 import type { RasterTile } from './tile-cache'
-import { focusTileDuringZoom, retainedPreviewUnderlay, zoomInPartialTiles, zoomUnderlayImproves } from './zoom-underlay'
+import { focusTileDuringZoom, retainedPreviewUnderlay, zoomInCanShowReadyTile, zoomInPartialTiles, zoomUnderlayImproves } from './zoom-underlay'
 
 const view = { x: 0, y: 0, zoom: 8 }
 const size = { width: 800, height: 600, dpr: 2 }
@@ -34,6 +34,14 @@ test('the underlay uv is the new viewport inside the retained device texture', (
   }, {
     view: { x: 0, y: 0, zoom: 1 }, width: 128, height: 128, dpr: 2,
   })).toBeUndefined()
+})
+
+test('a ready tile may replace the stretch before the preview ratio, and an equal zoom may not', () => {
+  expect(zoomInCanShowReadyTile(1, 1.5)).toBe(true)
+  expect(zoomInCanShowReadyTile(1, 2)).toBe(true)
+  expect(zoomInCanShowReadyTile(1, 1)).toBe(false)
+  expect(zoomInCanShowReadyTile(0, 2)).toBe(false)
+  expect(zoomInCanShowReadyTile(Number.NaN, 2)).toBe(false)
 })
 
 test('a ready finer tile is shown even when the retained texture is no longer in the cache', () => {

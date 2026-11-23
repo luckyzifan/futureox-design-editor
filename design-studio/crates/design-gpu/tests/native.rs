@@ -1422,3 +1422,33 @@ async fn outline_mask_geometry_matches_cpu_on_real_gpu() {
         assert_parity(&mut gpu,&container.to_string(),&options());
     }
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "hardware-tests"), ignore = "requires actual GPU host")]
+async fn isolating_gradient_group_opacity_matches_cpu_on_real_gpu() {
+    let mut gpu = NativeGpu::new(Backends::PRIMARY).await.unwrap();
+    let green = 119.0 / 255.0;
+    let stop = |red: f64| format!("color(srgb {red} {green} 0.5 / 1)");
+    let document = json!({
+        "schemaVersion": 4,
+        "id": "d",
+        "name": "phase isolated",
+        "pages": [{"id": "p", "name": "Page", "background": "#ffffff", "children": ["frame"]}],
+        "nodes": {
+            "frame": {"id": "frame", "kind": "frame", "width": 282, "height": 270, "clip": true,
+                "fills": [{"kind": "solid", "color": "#ffffff", "opacity": 1}], "children": ["g"]},
+            "g": {"id": "g", "kind": "frame", "transform": [1, 0, 0, 1, 13, 7], "width": 256, "height": 256,
+                "clip": true, "opacity": 0.625, "blend": "normal", "fills": [], "children": ["a"]},
+            "a": {"id": "a", "kind": "rectangle", "width": 256, "height": 256, "opacity": 1,
+                "fills": [{"kind": "linear", "color": "#000000", "angle": 0, "opacity": 1, "stops": [
+                    {"offset": 0, "color": stop(0.0)},
+                    {"offset": 1, "color": stop(1.0)}
+                ]}]}
+        }
+    }).to_string();
+    let options: RenderOptions = serde_json::from_value(json!({
+        "pageId": "p", "width": 282, "height": 270, "transparent": false,
+        "rasterProfile": "figma", "view": {"x": 0, "y": 0, "zoom": 1}
+    })).unwrap();
+    assert_parity(&mut gpu, &document, &options);
+}

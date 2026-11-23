@@ -582,6 +582,35 @@ test.each([
   } finally { preparation.free() }
 })
 
+test('pan fill cancellation keeps publishing tiles that still cover the uncovered viewport', async () => {
+  const f = fixture(4), w = await worker(true, false, true)
+  const preparation = holdFirstCompilation(w)
+  const exposed = { key: 'exposed', x: 0, y: 0, width: 48, height: 16, zoom: 1 }
+  const later = { key: 'later', x: 48, y: 0, width: 48, height: 16, zoom: 1 }
+  const trailing = { key: 'trailing', x: 200, y: 0, width: 48, height: 16, zoom: 1 }
+  const options = { ...f.options, tileOwner: { documentId: f.doc.id, sessionEpoch: 1 },
+    tileViewport: [exposed, later, trailing] }
+  w.send({ command: 'display-attach', canvas: {} })
+  w.send({ command: 'display-frame', sequence: 1, frame: {
+    view: { x: 0, y: 0, zoom: 1 }, width: 96, height: 16, dpr: 1, items: [],
+  } })
+  state.poseTiles = true
+  try {
+    w.send({ id: 721, document: JSON.stringify(f.doc), documentRevision: 1, options })
+    await vi.waitFor(() => expect(preparation.release).toBeTypeOf('function'))
+    // The fill key changed while the left half was still compiling. The right
+    // half is the same uncovered camera; the tile past the viewport is not.
+    w.send({ command: 'cancel-tile-fill' })
+    preparation.release()
+    const done = await w.finish(721)
+    expect(done.error).toContain('PREVIEW_CANCELLED')
+    expect(state.renders).toHaveLength(2)
+    const tiles = w.messages.filter(message => message.id === 721 && message.tile)
+    expect(tiles.map(message => message.tile.key)).toEqual(['exposed', 'later'])
+    expect(tiles.every(message => message.tile.cameraFallback === true)).toBe(true)
+  } finally { preparation.free() }
+})
+
 test('request-scoped cancellation applies its ordered patch but leaves independent preview and exact work alive', async () => {
   const f = fixture(4), w = await worker()
   w.send({ id: 800, document: JSON.stringify(f.doc), documentRevision: 1, options: f.options })

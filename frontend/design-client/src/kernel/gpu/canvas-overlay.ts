@@ -5,11 +5,15 @@ import { measurementTicks, SPACING_RED, type MeasurementAxis } from '../../canva
 import { SELECTION_BLUE, SELECTION_UNION_STROKE_PX, srgbUnit } from '../../selection-blue'
 import { CanvasLabels, type CanvasLabel } from './canvas-labels'
 
+/** Move alignment guide. The DOM path and the GPU overlay both use this hex. */
+export const ALIGNMENT_GUIDE = '#ed6996'
+
 export type CanvasGuide = { axis:'x'|'y'; position:number; start:number; end:number }
 export type CanvasOverlay = { selection?: { corners: Point[]; handles: boolean; owners?: string[] }; pixelGrid: boolean
   guides?: readonly CanvasGuide[]
   labels?: CanvasLabel[]; measurements?: {from:Point;to:Point;axis?:MeasurementAxis;tick?:boolean}[]; transforms?:Record<string,Matrix> }
-const blue = srgbUnit(SELECTION_BLUE), white = [1, 1, 1, 1], spacingRed = srgbUnit(SPACING_RED)
+const blue = srgbUnit(SELECTION_BLUE), white = [1, 1, 1, 1], spacingRed = srgbUnit(SPACING_RED),
+  alignmentGuide = srgbUnit(ALIGNMENT_GUIDE)
 
 export function translateOverlay(overlay: CanvasOverlay, offsets: Map<string, Point>): CanvasOverlay {
   const offset = (owners?: string[]) => owners?.map(id=>offsets.get(id)).find(Boolean) || {x:0,y:0}
@@ -77,6 +81,19 @@ export function crispOutlinePath(points: readonly Point[], view: { x: number; y:
   }).join('')
 }
 
+/** One open alignment segment, snapped onto the same CSS-pixel grid as the selection hairline. */
+export function crispSegmentPath(a: Point, b: Point, view: { x: number; y: number; zoom: number }, stroke: number): string {
+  if (!(view.zoom > 0) || !Number.isFinite(view.x) || !Number.isFinite(view.y)) return ''
+  const quad = crispStrokeQuad(
+    { x: a.x * view.zoom + view.x, y: a.y * view.zoom + view.y },
+    { x: b.x * view.zoom + view.x, y: b.y * view.zoom + view.y },
+    stroke,
+  )
+  if (!quad) return ''
+  const local = quad.map(point => ({ x: (point.x - view.x) / view.zoom, y: (point.y - view.y) / view.zoom }))
+  return `M${local[0].x} ${local[0].y} L${local[1].x} ${local[1].y} L${local[2].x} ${local[2].y} L${local[3].x} ${local[3].y} Z`
+}
+
 /** Chrome is projected with the exact camera used to composite document
  * pixels. It never enters the retained document backbuffer or export data. */
 export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, width: number, height: number) {
@@ -126,8 +143,10 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
   for (const guide of overlay.guides || []) {
     const a = guide.axis === 'x' ? { x:guide.position, y:guide.start } : { x:guide.start, y:guide.position }
     const b = guide.axis === 'x' ? { x:guide.position, y:guide.end } : { x:guide.end, y:guide.position }
-    line({x:a.x*view.zoom+view.x,y:a.y*view.zoom+view.y},
-      {x:b.x*view.zoom+view.x,y:b.y*view.zoom+view.y},1,[237/255,105/255,150/255,1])
+    // Same 1 CSS px solid row as the selection edge. A centered coverage stroke
+    // splits an integer coordinate across two half-alpha pixels.
+    solidLine({x:a.x*view.zoom+view.x,y:a.y*view.zoom+view.y},
+      {x:b.x*view.zoom+view.x,y:b.y*view.zoom+view.y},1,alignmentGuide)
   }
   return new Float32Array(values)
 }

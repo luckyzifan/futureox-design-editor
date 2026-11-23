@@ -21,8 +21,11 @@ impl ResidentStrokes {
         // Exhaustive destructuring requires revisiting this proof when Stroke
         // gains a field. Material/id/visibility do not enter stroke::expand.
         let Stroke {paint:_,id:_,visible:_,width,align,cap,join,dash,dash_offset,center_dashes,width_profile,start_marker,end_marker}=stroke;
-        let style=serde_json::to_vec(&(width.to_bits(),align,cap,join,dash,dash_offset.to_bits(),center_dashes,start_marker,end_marker,
-            width_profile.iter().map(|p|[p.position.to_bits(),p.left.to_bits(),p.right.to_bits()]).collect::<Vec<_>>())).map_err(|e|e.to_string())?;
+        let style={
+            let _span = crate::drag_profile::Span::stroke_style_key();
+            serde_json::to_vec(&(width.to_bits(),align,cap,join,dash,dash_offset.to_bits(),center_dashes,start_marker,end_marker,
+                width_profile.iter().map(|p|[p.position.to_bits(),p.left.to_bits(),p.right.to_bits()]).collect::<Vec<_>>())).map_err(|e|e.to_string())?
+        };
         let key=Key{owner:Arc::as_ptr(paths) as usize,flat:flat.to_bits(),expansion:expansion.to_bits(),style:style.into()};
         if self.stamp==u64::MAX {self.clear();self.stamp=0;} self.stamp+=1;
         if let Some(entry)=self.entries.get_mut(&key){
@@ -33,8 +36,11 @@ impl ResidentStrokes {
             self.compact_order();return Ok(value);
         }
         self.builds+=1;
-        let local=paths.pair().1.flatten(Transform::default(),flat)?;
-        let contours=Arc::new(crate::stroke::expand(&local,stroke,expansion,0.)?);
+        let contours={
+            let _span = crate::drag_profile::Span::stroke_expand();
+            let local=paths.pair().1.flatten(Transform::default(),flat)?;
+            Arc::new(crate::stroke::expand(&local,stroke,expansion,0.)?)
+        };
         let bytes=contours.capacity()*std::mem::size_of::<Contour>()+
             contours.iter().map(|c|c.points.capacity()*std::mem::size_of::<crate::math::Point>()).sum::<usize>()+
             (paths.pair().0.commands.capacity()+paths.pair().1.commands.capacity())*std::mem::size_of::<crate::path::Command>()+

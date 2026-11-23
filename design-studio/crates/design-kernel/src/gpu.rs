@@ -11,6 +11,7 @@ use crate::{
 use serde::Serialize;
 mod suffix;
 mod fragments;
+mod scratch;
 mod source_filter;
 mod dense_paint;
 mod dense_coverage;
@@ -101,6 +102,10 @@ pub(crate) struct CameraPrepare {
     incomplete: bool,
     retained_nodes: usize,
     incremental: bool,
+    /// One integer device-pixel translation of every page root since the
+    /// programs currently in `programs` were compiled. Consumed by the next
+    /// scene compile. `None` means those programs cannot be shifted.
+    device_shift: Option<(i32, i32)>,
 }
 impl CameraPrepare {
     fn retained_bytes(&self) -> usize {
@@ -124,14 +129,14 @@ impl CameraPrepare {
     /// device-space effect margins (radius × scale) and the guard padding, so
     /// the camera metadata summary must be rebuilt instead of retained.
     pub(crate) fn transformed(&mut self, doc: &Document, ids: impl Iterator<Item = String>, revision: u64, parents: &impl crate::render_index::ParentLookup) {
-        self.translated(doc, ids, revision, parents);
+        self.translated(doc, ids, revision, parents, None);
         self.metadata = None;
     }
     /// Only called after a validated pure-translation edit. The exact camera,
     /// guard, styles and resource lineage are unchanged. Descendants need new
     /// device geometry; ancestors need new aggregate bounds. Other entries and
     /// their exact-crop programs remain immutable.
-    pub(crate) fn translated(&mut self, doc: &Document, ids: impl Iterator<Item = String>, revision: u64, parents: &impl crate::render_index::ParentLookup) {
+    pub(crate) fn translated(&mut self, doc: &Document, ids: impl Iterator<Item = String>, revision: u64, parents: &impl crate::render_index::ParentLookup, device_shift: Option<(i32, i32)>) {
         let mut dirty = std::collections::HashSet::new();
         let mut stack: Vec<String> = ids.collect();
         for id in &stack {
@@ -146,7 +151,13 @@ impl CameraPrepare {
         // preserves any live snapshot reader before the targeted removals.
         let prepared = Arc::make_mut(&mut self.prepared);
         for id in &dirty { prepared.remove(id); }
-        self.programs.retain_nodes(&dirty);
+        if self.device_shift.is_some() { self.programs.discard_shift_sources(); }
+        self.device_shift = device_shift.filter(|(dx, dy)| *dx != 0 || *dy != 0);
+        // Previous programs can certify one exact shift. They cannot satisfy
+        // an ordinary crop-key hit, even if the viewport clips both poses to
+        // the same rectangle.
+        if self.device_shift.is_some() { self.programs.mark_shift_sources(&dirty); }
+        else { self.programs.retain_nodes(&dirty); }
         self.fragments.invalidate(&dirty); self.programs.reserve(self.fragments.bytes);
         self.key.0 = revision;
         self.zoom_bounds = None;
@@ -344,14 +355,28 @@ struct CameraMetadata {
 
 type ProgramShape = (usize, i32, i32, u32, u32, bool, bool);
 type ProgramKey = (String, ProgramShape);
-struct CachedProgram { program: crate::area_program::AreaProgram, fingerprint: u64 }
+struct CachedProgram {
+    program: crate::area_program::AreaProgram,
+    fingerprint: u64,
+    phase_contours: Option<Arc<Vec<crate::path::Contour>>>,
+}
 impl CachedProgram {
-    fn new(program: crate::area_program::AreaProgram) -> Self {
+    fn new(program: crate::area_program::AreaProgram, phase_contours: Option<Arc<Vec<crate::path::Contour>>>) -> Self {
         use std::hash::{Hash, Hasher};
         let mut hash = std::collections::hash_map::DefaultHasher::new();
         program.data.len().hash(&mut hash);
         for value in &program.data { value.to_bits().hash(&mut hash); }
-        Self { program, fingerprint: hash.finish() }
+        Self { program, fingerprint: hash.finish(), phase_contours }
+    }
+    fn same_phase(&self, contours: &[crate::path::Contour], crop: Rect) -> bool {
+        let Some(previous) = &self.phase_contours else { return false; };
+        let (px, py) = (f64::from(self.rect.x), f64::from(self.rect.y));
+        let (x, y) = (f64::from(crop.x), f64::from(crop.y));
+        previous.len() == contours.len() && previous.iter().zip(contours).all(|(a, b)| {
+            a.closed == b.closed && a.points.len() == b.points.len() && a.points.iter().zip(&b.points).all(|(p, q)| {
+                (p.x - px).to_bits() == (q.x - x).to_bits() && (p.y - py).to_bits() == (q.y - y).to_bits()
+            })
+        })
     }
 }
 impl std::ops::Deref for CachedProgram {
@@ -387,8 +412,9 @@ struct ProgramCache {
     reserved_bytes: usize,
     hits: u64,
     builds: u64,
+    shifts: u64,
 }
-struct ProgramEntry { order: u64, program: Arc<CachedProgram> }
+struct ProgramEntry { order: u64, program: Arc<CachedProgram>, shift_source: bool }
 impl ProgramCache {
     const LIMIT: usize = 32 * 1024 * 1024;
     fn reserve(&mut self, bytes:usize) {
@@ -402,7 +428,11 @@ impl ProgramCache {
         }
     }
     fn program_bytes(id: &str, program: &CachedProgram) -> usize {
-        program.data.len()*4 + id.len()*2 + 512
+        let phase_bytes = program.phase_contours.as_ref().map_or(0, |contours| {
+            contours.capacity() * std::mem::size_of::<crate::path::Contour>() +
+                contours.iter().map(|c| c.points.capacity() * std::mem::size_of::<Point>()).sum::<usize>()
+        });
+        program.data.len()*4 + id.len()*2 + 512 + phase_bytes
     }
     fn retain_nodes(&mut self, dirty: &std::collections::HashSet<String>) {
         for id in dirty {
@@ -416,8 +446,37 @@ impl ProgramCache {
         }
     }
     fn len(&self) -> usize { self.count }
+    fn contains(&self, id: &str, shape: &ProgramShape) -> bool {
+        self.entries.get(id).and_then(|entries| entries.get(shape)).is_some_and(|entry| !entry.shift_source)
+    }
     fn get(&mut self, id: &str, shape: &ProgramShape) -> Option<Arc<CachedProgram>> {
-        let value = self.entries.get(id)?.get(shape)?.program.clone(); self.hits += 1; Some(value)
+        let entry = self.entries.get(id)?.get(shape)?;
+        if entry.shift_source { return None; }
+        self.hits += 1;
+        Some(Arc::clone(&entry.program))
+    }
+    fn get_shift_source(&self, id: &str, shape: &ProgramShape) -> Option<Arc<CachedProgram>> {
+        let entry = self.entries.get(id)?.get(shape)?;
+        entry.shift_source.then(|| Arc::clone(&entry.program))
+    }
+    fn mark_shift_sources(&mut self, dirty: &std::collections::HashSet<String>) {
+        for id in dirty {
+            if let Some(entries) = self.entries.get_mut(id) {
+                for entry in entries.values_mut() { entry.shift_source = true; }
+            }
+        }
+    }
+    fn discard_shift_sources(&mut self) {
+        self.entries.retain(|id, entries| {
+            entries.retain(|_, entry| {
+                if !entry.shift_source { return true; }
+                self.order.remove(&entry.order);
+                self.bytes -= Self::program_bytes(id, &entry.program);
+                self.count -= 1;
+                false
+            });
+            !entries.is_empty()
+        });
     }
     fn allocate_order(&mut self) -> u64 {
         if self.next_order == u64::MAX {
@@ -435,7 +494,12 @@ impl ProgramCache {
         order
     }
     fn insert(&mut self, id: &str, shape: ProgramShape, program: Arc<CachedProgram>) {
-        self.builds += 1;
+        self.store(id, shape, program, true)
+    }
+    /// `count_build` is false when the words are an integer device shift of a
+    /// program this cache already compiled. That is not new scanline work.
+    fn store(&mut self, id: &str, shape: ProgramShape, program: Arc<CachedProgram>, count_build: bool) {
+        if count_build { self.builds += 1; } else { self.shifts += 1; }
         let size = Self::program_bytes(id, &program);
         if size > Self::LIMIT.saturating_sub(self.reserved_bytes) { return; }
         // Replacement is one live entry. Retire its old size/FIFO record
@@ -459,8 +523,124 @@ impl ProgramCache {
         self.bytes += size;
         self.count += 1;
         self.order.insert(order, (id.to_owned(), shape));
-        self.entries.entry(id.to_owned()).or_default().insert(shape, ProgramEntry { order, program });
+        self.entries.entry(id.to_owned()).or_default().insert(shape, ProgramEntry { order, program, shift_source: false });
     }
+}
+
+struct PoseAreaJob {
+    id: String,
+    shape: ProgramShape,
+    contours: Arc<Vec<crate::path::Contour>>,
+    crop: Rect,
+    even_odd: bool,
+    samples: bool,
+}
+
+/// The clipped-board drag spends most of one core inside `AreaProgram::compile_crop`.
+/// These programs are pure functions of contours that geometry preparation already
+/// owns. Build the missing ones on the otherwise idle cores, then let the
+/// existing single-threaded walk install them in painter order. A miss keeps
+/// the original compile; cancellation uses the same shared flag as tile batches.
+fn warm_pose_area_programs(
+    doc: &Document,
+    prepared: &HashMap<String, crate::geometry_snapshot::Prepared>,
+    programs: &mut ProgramCache,
+    extent: Rect,
+    samples: bool,
+    keep_phase: bool,
+) -> Result<(), String> {
+    let mut jobs = Vec::new();
+    for (id, entry) in prepared {
+        if entry.support_culled || entry.bounds.empty() { continue; }
+        let Some(node) = doc.nodes.get(id) else { continue; };
+        if !node.visible { continue; }
+        let limit = entry.bounds.intersect(extent);
+        if limit.empty() { continue; }
+        let mut push = |slot: usize, bounds: Rect, contours: Arc<Vec<crate::path::Contour>>, even_odd: bool| {
+            let Ok(crop) = crate::area_program::clip_bounds(bounds, limit) else { return; };
+            let shape = (slot, crop.x, crop.y, crop.w, crop.h, even_odd, samples);
+            if programs.contains(id, &shape) { return; }
+            jobs.push(PoseAreaJob { id: id.clone(), shape, contours, crop, even_odd, samples });
+        };
+        push(0, entry.fill_program_bounds, Arc::clone(&entry.fill), node.kind != "text" && node.fill_even_odd());
+        for (index, stroke) in node.strokes.iter().enumerate() {
+            if !stroke.visible || stroke.width <= 0. { continue; }
+            let Some(bounds) = entry.stroke_program_bounds.get(index).copied() else { continue; };
+            let Some(contours) = entry.strokes.get(index).cloned() else { continue; };
+            push(index + 1, bounds, contours, false);
+        }
+    }
+    jobs.sort_by(|a, b| a.id.cmp(&b.id).then(a.shape.0.cmp(&b.shape.0)));
+    let workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    // One core has nothing to overlap with. More than eight workers just
+    // contend on the same prepared contours.
+    if jobs.len() < 48 || workers < 2 { return Ok(()); }
+    let workers = workers.min(8);
+    let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let results = std::sync::Mutex::new(vec![None; jobs.len()]);
+    let arrived = Arc::new((std::sync::Mutex::new(0usize), std::sync::Condvar::new()));
+    struct Arrival<'a>(&'a (std::sync::Mutex<usize>, std::sync::Condvar));
+    impl Drop for Arrival<'_> {
+        fn drop(&mut self) {
+            let (lock, cvar) = self.0;
+            if let Ok(mut count) = lock.lock() {
+                *count += 1;
+                cvar.notify_one();
+            }
+        }
+    }
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            let jobs = &jobs;
+            let cancel = Arc::clone(&cancel);
+            let next = &next;
+            let results = &results;
+            let arrived = Arc::clone(&arrived);
+            scope.spawn(move || {
+                let _arrived = Arrival(&arrived);
+                let _guard = crate::render_cancellation::SharedCancelGuard::bind(Arc::clone(&cancel));
+                loop {
+                    if cancel.load(std::sync::atomic::Ordering::Acquire) { break; }
+                    let index = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if index >= jobs.len() { break; }
+                    let job = &jobs[index];
+                    let outcome = crate::area_program::AreaProgram::compile_crop(
+                        &job.contours, job.crop, job.even_odd, job.samples,
+                    ).map(|program| {
+                        Arc::new(CachedProgram::new(program, keep_phase.then(|| Arc::clone(&job.contours))))
+                    });
+                    if outcome.is_err() { cancel.store(true, std::sync::atomic::Ordering::Release); }
+                    if let Ok(mut slot) = results.lock() { slot[index] = Some(outcome); }
+                }
+            });
+        }
+        let (lock, cvar) = &*arrived;
+        loop {
+            if crate::render_cancellation::checkpoint().is_err() {
+                cancel.store(true, std::sync::atomic::Ordering::Release);
+            }
+            let guard = lock.lock().unwrap_or_else(|error| error.into_inner());
+            if *guard == workers { break; }
+            let (guard, _) = cvar.wait_timeout(guard, std::time::Duration::from_millis(2))
+                .unwrap_or_else(|error| error.into_inner());
+            drop(guard);
+        }
+    });
+    let results = results.into_inner().unwrap_or_else(|error| error.into_inner());
+    let mut failure = None;
+    for (job, outcome) in jobs.iter().zip(results) {
+        match outcome {
+            Some(Ok(program)) => programs.insert(&job.id, job.shape, program),
+            Some(Err(error)) => {
+                if failure.is_none() && error != "PREVIEW_CANCELLED" { failure = Some(error); }
+            }
+            None => {}
+        }
+    }
+    if let Some(error) = failure { return Err(error); }
+    if cancel.load(std::sync::atomic::Ordering::Acquire) { return Err("PREVIEW_CANCELLED".into()); }
+    Ok(())
 }
 
 #[derive(Clone, Serialize)]
@@ -1774,6 +1954,10 @@ struct Compiler<'a> {
     wide_image_gaussians: HashMap<String, crate::wide_image_gaussian::Plan>,
     curves: Vec<f32>,
     area_paths: HashMap<ProgramIdentity, AreaPath>,
+    /// Integer device translation that maps programs retained from the
+    /// previous pose onto this pose's crop. Cleared for every other compile.
+    device_shift: Option<(i32, i32)>,
+    keep_program_phase: bool,
     fragments: fragments::FragmentCache,
     fragment_targets: std::collections::HashSet<String>,
     compiled_order: Vec<String>,
@@ -1782,6 +1966,29 @@ struct Compiler<'a> {
     vertices: Vec<f32>,
 }
 impl Compiler<'_> {
+    /// Reuse scanline words when this pose is an integer device translation of
+    /// the cached crop. The interval payload is stored relative to that crop,
+    /// so only the rectangle origin moves. A viewport clip that changes the
+    /// crop size or relative coverage misses and compiles again.
+    fn shifted_program(&mut self, id: &str, input: ProgramShape, contours: &Arc<Vec<crate::path::Contour>>) -> Option<Arc<CachedProgram>> {
+        let (dx, dy) = self.device_shift?;
+        // Glyph outlines can snap to the absolute pixel lattice. Shifting a
+        // cached text program would keep the old snap. Vectors and strokes
+        // are reused only when their crop-relative coordinates are identical.
+        if self.doc.nodes.get(id).is_some_and(|node| node.kind == "text") { return None; }
+        let mut prior = input;
+        prior.1 = prior.1.checked_sub(dx)?;
+        prior.2 = prior.2.checked_sub(dy)?;
+        let old = self.programs.get_shift_source(id, &prior)?;
+        if old.rect.x != prior.1 || old.rect.y != prior.2 || old.rect.w != prior.3 || old.rect.h != prior.4 {
+            return None;
+        }
+        let rect = Rect::new(old.rect.x.checked_add(dx)?, old.rect.y.checked_add(dy)?, old.rect.w, old.rect.h);
+        if !old.same_phase(contours, rect) { return None; }
+        let shifted = Arc::new(CachedProgram::new(crate::area_program::AreaProgram { rect, data: old.data.clone() }, Some(Arc::clone(contours))));
+        self.programs.store(id, input, Arc::clone(&shifted), false);
+        Some(shifted)
+    }
     fn area_path(
         &mut self,
         contours: &[crate::path::Contour],
@@ -1789,14 +1996,19 @@ impl Compiler<'_> {
         limit: Rect,
         even_odd: bool,
         bounds:Option<Rect>,
+        phase_contours: Option<&Arc<Vec<crate::path::Contour>>>,
     ) -> Result<GpuPath, String> {
         // Two larger limits which expose the same path pixels generate the
         // identical interval program. Key the actual compiler crop, so moving
         // a neighbouring effect's extent does not invalidate this path.
         let crop=match bounds{Some(b)=>crate::area_program::clip_bounds(b,limit)?,None=>crate::area_program::clipped_rect(contours,limit)?};
         let input = (slot.1,crop.x,crop.y,crop.w,crop.h,even_odd,self.compatible);
-        let program = if let Some(program) = self.programs.get(slot.0, &input) { program } else {
-            let program = Arc::new(CachedProgram::new(crate::area_program::AreaProgram::compile_crop(contours,crop,even_odd,self.compatible)?));
+        let program = if let Some(program) = self.programs.get(slot.0, &input) { program }
+        else if let Some(program) = phase_contours.and_then(|phase| self.shifted_program(slot.0, input, phase)) { program }
+        else {
+            let compiled = crate::area_program::AreaProgram::compile_crop(contours,crop,even_odd,self.compatible)?;
+            let phase = phase_contours.filter(|_| self.keep_program_phase).cloned();
+            let program = Arc::new(CachedProgram::new(compiled, phase));
             self.programs.insert(slot.0,input,Arc::clone(&program)); program
         };
         let area = self.install_program(Arc::clone(&program))?;
@@ -2047,7 +2259,7 @@ impl Compiler<'_> {
             } else {
                 "evenodd"
             };
-        let fill = self.area_path(&fill_contours, (id,0), fill_rect, rule == "evenodd",if reduced.is_some(){None}else{prepared.as_ref().map(|p|p.fill_program_bounds)})?;
+        let fill = self.area_path(&fill_contours, (id,0), fill_rect, rule == "evenodd",if reduced.is_some(){None}else{prepared.as_ref().map(|p|p.fill_program_bounds)}, Some(&fill_contours))?;
         let mut strokes = Vec::new();
         let inverse = matrix.inverse_composed(rect)?;
         let rgba8 = self.compatible;
@@ -2075,7 +2287,7 @@ impl Compiler<'_> {
                 }
                 Arc::new(outline)
             };
-            let path = self.area_path(&outline, (id,index+1), rect, false,prepared.as_ref().map(|p|p.stroke_program_bounds[index]))?;
+            let path = self.area_path(&outline, (id,index+1), rect, false,prepared.as_ref().map(|p|p.stroke_program_bounds[index]), Some(&outline))?;
             strokes.push(GpuStroke {
                 path,
                 paint: GpuPaint::new(
@@ -2417,7 +2629,7 @@ impl Engine {
     }
     pub fn gpu_compile_cache_stats(&self) -> serde_json::Value {
         let mut stats=self.camera_prepare.as_ref().map(|cache|serde_json::json!({"hits":cache.programs.hits,
-            "builds":cache.programs.builds,"bytes":cache.programs.bytes+cache.fragments.bytes,"fragmentHits":cache.fragments.hits,"fragmentBuilds":cache.fragments.builds,"entries":cache.programs.len(),
+            "builds":cache.programs.builds,"programShifts":cache.programs.shifts,"bytes":cache.programs.bytes+cache.fragments.bytes,"fragmentHits":cache.fragments.hits,"fragmentBuilds":cache.fragments.builds,"entries":cache.programs.len(),
             "preparedNodes":cache.prepared.len(),"pathNodes":self.paths.len(),"prepareReuses":cache.reuses,"retainedNodes":cache.retained_nodes,"textPaths":self.fonts.text_path_cache_stats(),"residentStrokes":self.local_strokes.stats(),"cameraResidency":self.camera_residency.stats()}))
             .unwrap_or_else(||serde_json::json!({"hits":0,"builds":0,"bytes":0,"entries":0}));
         stats["frameScene"]=self.frame_scene.stats();
@@ -2677,7 +2889,7 @@ impl Engine {
                 } else {
                     self.camera_prepare = Some(CameraPrepare {
                         key: key.clone(), prepared: prepared.clone(), programs: ProgramCache::default(), program_guard: None, fragments: fragments::FragmentCache::default(),
-                        metadata: Some(metadata), zoom_bounds: None, reuses: 0, incomplete: false, retained_nodes: 0, incremental:false,
+                        metadata: Some(metadata), zoom_bounds: None, reuses: 0, incomplete: false, retained_nodes: 0, incremental:false, device_shift: None,
                     });
                 }
             }
@@ -2692,7 +2904,9 @@ impl Engine {
         if built_guard!=tile_guard {
             // Chord replacement outside the retained guard changes flattened
             // bounds. Publishing those bounds makes a real FIG node rect follow
-            // the union instead of the tile. Rebuild only the emitted map.
+            // the union instead of the tile. Rebuild the emitted map, but copy
+            // leaves whose support is inside this tile: their contours cannot
+            // differ between the wider guard and this one.
             let crop_key = (properties.has_zoom && project_images && self.source_compile_context.is_none())
                 .then(|| (self.geo_revision, options.page_id.clone(), (options.view.x, options.view.y, options.view.zoom),
                     (tile_guard.x, tile_guard.y, tile_guard.w, tile_guard.h), compatible, None));
@@ -2700,6 +2914,15 @@ impl Engine {
                 hit
             } else {
                 let mut local = HashMap::new();
+                let tile_inside = i64::from(built_guard.x) <= i64::from(tile_guard.x)
+                    && i64::from(built_guard.y) <= i64::from(tile_guard.y)
+                    && i64::from(built_guard.x) + i64::from(built_guard.w) >= i64::from(tile_guard.x) + i64::from(tile_guard.w)
+                    && i64::from(built_guard.y) + i64::from(built_guard.h) >= i64::from(tile_guard.y) + i64::from(tile_guard.h);
+                if tile_inside {
+                    if let Some(support) = world_support.as_deref() {
+                        crate::geometry_snapshot::reuse_enclosed_leaves(doc, &prepared, &mut local, support, camera, tile_guard);
+                    }
+                }
                 let mut tile_segments = 0;
                 for root in &page.children {
                     crate::geometry_snapshot::prepare_node_geometry_indexed(
@@ -2930,15 +3153,16 @@ impl Engine {
             return Err("GPU surface budget exceeded".into());
         }
         let emission_guard=(emitted_guard.x,emitted_guard.y,emitted_guard.w,emitted_guard.h);
-        let programs = if cache_key.is_some() {
+        let (mut programs, device_shift) = if cache_key.is_some() {
             self.camera_prepare.as_mut().map(|cache|{
                 if cache.program_guard!=Some(emission_guard) {
                     cache.programs=ProgramCache::default();
                     cache.program_guard=Some(emission_guard);
+                    cache.device_shift=None;
                 }
-                std::mem::take(&mut cache.programs)
+                (std::mem::take(&mut cache.programs), cache.device_shift.take())
             }).unwrap_or_default()
-        } else { ProgramCache::default() };
+        } else { (ProgramCache::default(), None) };
         let PainterSupport { backdrop_outputs, shadow_outputs, stages, .. } = painter_support.unwrap_or_else(||
             PainterSupport { extent, backdrop_outputs: HashMap::new(), shadow_outputs: HashMap::new(), stages: None });
         let root_input_box = stages.as_ref().map(|s| device_box(s.root_input));
@@ -2954,6 +3178,18 @@ impl Engine {
         let fragment_targets=if retain_fragments {page.children.iter().flat_map(|id|{
             let n=&doc.nodes[id];if n.render_children().is_empty(){vec![id.clone()]}else{n.render_children().to_vec()}
         }).collect()}else{Default::default()};
+        // A retained interaction pose already flattened these contours. The
+        // following single-threaded walk only installs the programs, in order.
+        let pose_samples = self.interaction_transform_revision.as_ref()
+            .is_some_and(|(_, next, _)| *next == self.geo_revision)
+            && options.animation.is_none() && analytic.is_none() && stages.is_none()
+            && backdrop_outputs.is_empty() && shadow_outputs.is_empty()
+            && !gaussian_regions && gaussian_reduction == 0 && !source_filter_fields;
+        let keep_program_phase = cache_key.is_some() && self.source_compile_context.is_none();
+        if pose_samples && device_shift.is_none() {
+            warm_pose_area_programs(doc, &prepared, &mut programs, extent,
+                options.raster_profile != crate::fidelity::RasterProfile::Analytic, keep_program_phase)?;
+        }
         let mut compiler = Compiler {
             analytic_regions: analytic.map(|plan| plan.nodes),
             wide_image_gaussians,
@@ -2973,18 +3209,21 @@ impl Engine {
             backdrop_outputs,
             shadow_outputs,
             stages,
-            curves: Vec::new(),
+            curves: scratch::take_curves(),
             area_paths: HashMap::new(),
+            device_shift,
+            keep_program_phase,
             fragments, fragment_targets, compiled_order:Vec::new(),
             programs,
             nodes: BTreeMap::new(),
-            vertices: Vec::new(),
+            vertices: scratch::take_vertices(),
         };
         for root in &page.children {
             compiler.node(root, camera, regional_foreground.then_some(viewport))?;
         }
         if cache_key.is_some() {
             if let Some(cache) = self.camera_prepare.as_mut() {
+                if device_shift.is_some() { compiler.programs.discard_shift_sources(); }
                 cache.programs = compiler.programs;
                 cache.program_guard=Some(emission_guard);
                 cache.fragments=compiler.fragments;
@@ -3259,6 +3498,66 @@ mod analytic_glass_support_tests {
         let fresh=engine.compile_gpu_region(&options,region,None).unwrap().into_packet().unwrap();
         assert_eq!(changed,fresh,"a geometry revision must discard old compiled programs");
         assert!(changed!=before,"visible geometry changed after the revision");
+    }
+
+    #[test]
+    fn enclosed_curve_leaves_match_a_tile_local_flatten_across_a_pose() {
+        let mut nodes = serde_json::Map::new();
+        let mut children = Vec::new();
+        for i in 0..36 {
+            let id = format!("v{i}");
+            children.push(serde_json::Value::String(id.clone()));
+            let x = (i % 12) as f64 * 48.;
+            let y = (i / 12) as f64 * 40.;
+            let mut node = json!({"id":id,"kind":"vector","width":30.,"height":22.,
+                "transform":[1.,0.,0.,1.,x,y],
+                "fills":[{"kind":"solid","color":"#3a6ea5"}],
+                "vectorGeometry":{"fillRule":"nonzero","fill":[{"move":[0.,0.]},{"cubic":[-4.,8.,28.,-6.,22.,18.]},{"line":[0.,18.]},"close"]}});
+            if i % 5 == 0 {
+                node["strokes"] = json!([{"paint":{"kind":"solid","color":"#111111"},"width":1.5,"align":"center"}]);
+            }
+            nodes.insert(id, node);
+        }
+        // This cubic crosses the x=512 tile boundary. It must be flattened for
+        // the tile guard, not copied from the wider preparation.
+        children.push(json!("edge"));
+        nodes.insert("edge".into(), json!({"id":"edge","kind":"vector","width":40.,"height":24.,
+            "transform":[1.,0.,0.,1.,498.5,40.],
+            "fills":[{"kind":"solid","color":"#c4554a"}],
+            "vectorGeometry":{"fillRule":"nonzero","fill":[{"move":[0.,0.]},{"cubic":[-12.,16.,36.,-8.,30.,20.]},{"line":[0.,20.]},"close"]}}));
+        nodes.insert("board".into(), json!({"id":"board","kind":"frame","width":1440.,"height":400.,"clip":true,
+            "fills":[{"kind":"solid","color":"#dbe8f0"}],"children":children}));
+        let document = json!({"schemaVersion":16,"id":"d","name":"enclosed",
+            "colorManagement":crate::color::ColorSettings::default(),
+            "pages":[{"id":"p","name":"p","background":"#ffffff","children":["board"]}],
+            "nodes":nodes}).to_string();
+        let options: RenderOptions = serde_json::from_value(json!({"pageId":"p","width":514,"height":514,
+            "view":{"x":-20.5,"y":8.25,"zoom":1.},"rasterProfile":"figmaSubpixel","transparent":true,"grid":false})).unwrap();
+        let union = Rect::new(0, 0, 1026, 514);
+        let regions = [Rect::new(0, 0, 514, 514), Rect::new(512, 0, 514, 514)];
+        let mut shared = Engine::new();
+        shared.load_document(&document).unwrap();
+        shared.compile_gpu_region(&options, regions[0], Some(union)).unwrap();
+        for region in regions {
+            let mut reference = Engine::new();
+            reference.load_document(&document).unwrap();
+            let legacy = reference.compile_gpu_region(&options, region, None).unwrap();
+            let reused = shared.compile_gpu_region(&options, region, Some(union)).unwrap();
+            assert_eq!(serde_json::to_string(&legacy).unwrap(), serde_json::to_string(&reused).unwrap(), "tile {region:?}");
+        }
+        let shift = Transform([1., 0., 0., 1., 7.25, 3.5]);
+        let mut transforms = std::collections::BTreeMap::new();
+        transforms.insert("board".into(), shift);
+        assert!(shared.apply_interaction_transforms(&transforms).unwrap(), "pose must stay on the retained path");
+        let mut reference = Engine::new();
+        reference.load_document(&document).unwrap();
+        reference.compile_gpu_region(&options, regions[0], None).unwrap();
+        assert!(reference.apply_interaction_transforms(&transforms).unwrap());
+        for region in regions {
+            let legacy = reference.compile_gpu_region(&options, region, None).unwrap();
+            let reused = shared.compile_gpu_region(&options, region, Some(union)).unwrap();
+            assert_eq!(serde_json::to_string(&legacy).unwrap(), serde_json::to_string(&reused).unwrap(), "posed tile {region:?}");
+        }
     }
 
     #[test]
@@ -3772,7 +4071,7 @@ mod program_identity_tests {
     use super::*;
     #[test]
     fn colliding_hashes_still_compare_all_float_bits() {
-        let make=|data|ProgramIdentity(Arc::new(CachedProgram{program:crate::area_program::AreaProgram{rect:Rect::default(),data},fingerprint:7}));
+        let make=|data|ProgramIdentity(Arc::new(CachedProgram{program:crate::area_program::AreaProgram{rect:Rect::default(),data},fingerprint:7,phase_contours:None}));
         let a=make(vec![0.,1.]);let equal=make(vec![0.,1.]);let signed=make(vec![-0.,1.]);let different=make(vec![0.,2.]);
         let mut map=HashMap::new();map.insert(a.clone(),1);
         assert_eq!(map.get(&a),Some(&1));assert_eq!(map.get(&equal),Some(&1));
@@ -3790,9 +4089,28 @@ mod program_cache_invalidation_tests {
     fn program(value: f32, words: usize) -> Arc<CachedProgram> {
         Arc::new(CachedProgram::new(crate::area_program::AreaProgram {
             rect: Rect::new(0, 0, 1, 1), data: vec![value; words],
-        }))
+        }, None))
     }
     fn dirty(id: &str) -> HashSet<String> { [id.to_owned()].into_iter().collect() }
+
+    #[test]
+    fn previous_pose_programs_cannot_be_reused_as_current_crop_hits() {
+        let mut cache = ProgramCache::default();
+        let previous = program(1., 4);
+        cache.insert("moving", shape(0), previous.clone());
+        cache.insert("moving", shape(1), previous.clone());
+        cache.mark_shift_sources(&dirty("moving"));
+        assert!(!cache.contains("moving", &shape(0)));
+        assert!(cache.get("moving", &shape(0)).is_none());
+        assert!(Arc::ptr_eq(&cache.get_shift_source("moving", &shape(0)).unwrap(), &previous));
+
+        let current = program(2., 8);
+        cache.insert("moving", shape(0), current.clone());
+        cache.discard_shift_sources();
+        assert!(!cache.contains("moving", &shape(1)));
+        assert!(Arc::ptr_eq(&cache.get("moving", &shape(0)).unwrap(), &current));
+        assert_eq!(cache.bytes, ProgramCache::program_bytes("moving", &current));
+    }
 
     #[test]
     fn replacement_accounts_only_one_live_program_and_fifo_record() {
@@ -4298,5 +4616,70 @@ mod page_predicate_cache_tests {
         assert_eq!(constant_contours(std::slice::from_ref(&poly),false,Rect::new(1200,100,16,16)),Some(true));
         assert_eq!(constant_contours(std::slice::from_ref(&poly),false,Rect::new(100,1200,16,16)),Some(false));
         assert_eq!(constant_contours(&[poly],false,Rect::new(400,399,16,16)),None);
+    }
+}
+
+#[cfg(test)]
+mod pose_area_warm_tests {
+    use crate::{math::Transform, Engine};
+    use serde_json::json;
+
+    #[test]
+    fn parallel_pose_programs_match_a_fresh_fractional_board_translation() {
+        let mut nodes = serde_json::Map::new();
+        let mut children = Vec::new();
+        for i in 0..60 {
+            let id = format!("v{i:02}");
+            children.push(id.clone());
+            nodes.insert(id.clone(), json!({
+                "id": id, "kind": "vector", "width": 24, "height": 18,
+                "transform": [1, 0, 0, 1, (i % 10) as f64 * 28.0, (i / 10) as f64 * 26.0],
+                "fills": [{"kind": "solid", "color": "#243044"}],
+                "network": {
+                    "vertices": [
+                        {"id": "a", "x": 2, "y": 9}, {"id": "b", "x": 12, "y": 2},
+                        {"id": "c", "x": 22, "y": 9}, {"id": "d", "x": 12, "y": 16}
+                    ],
+                    "edges": [
+                        {"id": "ab", "from": "a", "to": "b", "c1": {"x": 2, "y": 4}, "c2": {"x": 6, "y": 2}},
+                        {"id": "bc", "from": "b", "to": "c", "c1": {"x": 18, "y": 2}, "c2": {"x": 22, "y": 4}},
+                        {"id": "cd", "from": "c", "to": "d", "c1": {"x": 22, "y": 14}, "c2": {"x": 18, "y": 16}},
+                        {"id": "da", "from": "d", "to": "a", "c1": {"x": 6, "y": 16}, "c2": {"x": 2, "y": 14}}
+                    ]
+                }
+            }));
+        }
+        nodes.insert("board".into(), json!({
+            "id": "board", "kind": "frame", "width": 320, "height": 180, "clip": true,
+            "transform": [1, 0, 0, 1, 8, 6],
+            "fills": [{"kind": "solid", "color": "color(srgb 0.86 0.91 0.94 / 1)"}],
+            "children": children
+        }));
+        let doc = json!({
+            "schemaVersion": 20, "id": "warm", "name": "warm",
+            "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["board"]}],
+            "nodes": nodes
+        });
+        let options = json!({
+            "pageId": "p", "width": 400, "height": 240,
+            "view": {"x": 0.0, "y": 0.0, "zoom": 1.6},
+            "rasterProfile": "figmaSubpixel",
+            "captureViewport": {"x": 0, "y": 0, "w": 400, "h": 240}
+        }).to_string();
+        let mut engine = Engine::new();
+        engine.load_document(&doc.to_string()).unwrap();
+        engine.compile_gpu(&serde_json::from_str(&options).unwrap()).unwrap();
+        let pose = std::collections::BTreeMap::from([
+            ("board".into(), Transform([1.0, 0.0, 0.0, 1.0, 8.37, 6.0])),
+        ]);
+        assert!(engine.apply_interaction_transforms(&pose).unwrap());
+        let packet = engine.compile_gpu_packet_request(&options).unwrap();
+        let mut moved = doc;
+        moved["nodes"]["board"]["transform"] = json!([1, 0, 0, 1, 8.37, 6]);
+        let mut fresh = Engine::new();
+        fresh.load_document(&moved.to_string()).unwrap();
+        let reference = fresh.compile_gpu_packet_request(&options).unwrap();
+        assert_eq!(packet, reference, "parallel pose programs must match a fresh fractional compile");
+        assert!(engine.gpu_compile_cache_stats()["builds"].as_u64().unwrap() > 48);
     }
 }

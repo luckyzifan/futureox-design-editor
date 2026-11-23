@@ -13,6 +13,7 @@ import { CanvasOverlayRenderer, translateOverlay, transformOverlay, type CanvasO
 import { ResidentUniforms } from './resident-uniforms'
 import { physicalCoverage, physicalPixelCoverage, physicalCoverageGaps } from './physical-coverage'
 import { backgroundPaintRects, emptyBackgroundTile, pageBackgroundProof, type PageBackgroundProof, type PixelContentProof } from './page-background'
+import { opaqueByteClear } from './resident-frame'
 import { presentedFragmentQuality } from './presented-fragment-quality'
 import { PresenterAlphaTrace } from './presenter-alpha-trace'
 import { cameraPreviewCoverage, cameraPreviewShader, type CameraPreview } from './camera-preview'
@@ -58,6 +59,9 @@ export type ResidentFrame = {
   backgroundBoard?: { moving: import('../../model').Bounds; stationary: import('../../model').Bounds[] }
   linearBlend?: boolean
   backgroundLinear?: [number, number, number, number]
+  /** Straight sRGB unorm of an opaque page fill. Used only when an interaction
+   * composite is allowed to leave pixels uncovered. */
+  pageBackground?: [number, number, number, number]
   input?: import('../interaction-layers').InteractionInput & { owner?:string }
 }
 type DisplayRow = {
@@ -1125,6 +1129,10 @@ export class ResidentPresenter {
       uploadBytes = upload?.data.byteLength || 0
     }
     const background = frame.backgroundLinear || [1, 1, 1, 1]
+    // Retained interaction layers are transparent outside their objects. A
+    // transparent clear lets the workspace backdrop show through every gap.
+    // An opaque 8-bit page fill is the plate those layers composite over.
+    const byteClear = !linear && frame.allowEmpty ? opaqueByteClear(frame.pageBackground) ?? [0, 0, 0, 0] : [0, 0, 0, 0]
     const encoder = this.device.createCommandEncoder()
     if (freshZoomBasis && this.backbuffer) {
       encoder.copyTextureToTexture({ texture: this.backbuffer.texture }, { texture: freshZoomBasis.texture }, [freshZoomBasis.width, freshZoomBasis.height])
@@ -1149,7 +1157,7 @@ export class ResidentPresenter {
                   background[2] * background[3],
                   background[3],
                 ]
-              : [0, 0, 0, 0],
+              : byteClear,
           },
         ],
       })

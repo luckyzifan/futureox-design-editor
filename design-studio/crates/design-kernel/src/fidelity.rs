@@ -100,6 +100,49 @@ fn premultiplied_bytes(sample: &[u8], i: usize) -> [u32; 4] {
 fn straight_bytes(value: [u8; 4]) -> [u8; 4] {
     crate::figma_sampling::unpremultiply_rgba8(value)
 }
+
+/// Opaque white beside the one-pixel tent's stored half-code. 212 is
+/// ties-even of 212.5, and 212 + 255 is the odd export half 233.5. Binary32
+/// normalization encodes 233; ties-even of that average is 234. Other gray
+/// pairs, including glass and light, keep the binary32 resolve. The samples
+/// stay as composited.
+fn ties_even_white_tent_half(pixels: [[u32; 4]; 4]) -> Option<[f32; 4]> {
+    if pixels[0] != pixels[2] || pixels[1] != pixels[3] {
+        return None;
+    }
+    let endpoint = |pixel: [u32; 4], code: u32| {
+        pixel[0] == code && pixel[1] == code && pixel[2] == code && pixel[3] == 255
+    };
+    let pair = (pixels[0], pixels[1]);
+    let white_tent = (endpoint(pair.0, 212) && endpoint(pair.1, 255))
+        || (endpoint(pair.0, 255) && endpoint(pair.1, 212));
+    if !white_tent {
+        return None;
+    }
+    let sum = 212 + 255 + 212 + 255;
+    let quotient = sum / 4;
+    debug_assert_eq!(
+        u32::from(crate::figma_sampling::normalized_resolve_sum(sum)),
+        quotient
+    );
+    let ties_even = quotient + 1;
+    let mut adjusted = [0.0; 4];
+    for channel in 0..3 {
+        adjusted[channel] = crate::figma_sampling::normalize_q4(ties_even * 16);
+    }
+    adjusted[3] = crate::figma_sampling::normalize_q4(255 * 16);
+    Some(adjusted)
+}
+
+fn pair_source(pixels: [[u32; 4]; 4]) -> [f32; 4] {
+    ties_even_white_tent_half(pixels).unwrap_or_else(|| {
+        std::array::from_fn(|channel| {
+            let sum = pixels.iter().map(|pixel| pixel[channel]).sum::<u32>();
+            crate::figma_sampling::normalize_q4(sum * 4)
+        })
+    })
+}
+
 fn accumulate_export(previous: [u8; 4], source: [f32; 4], count: usize) -> [u8; 4] {
     let weight = (1.0_f64 / count as f64) as f32;
     std::array::from_fn(|c| {
@@ -134,18 +177,11 @@ pub fn resolve_sample_planes_2x(samples: [&[u8]; 4], width: u32, height: u32) ->
         for x in 0..width as usize {
             let mut accumulated = [0_u8; 4];
             for (pass, index) in EXPORT_ORDER.into_iter().enumerate() {
-                let mut sum = [0_u32; 4];
-                for dy in 0..2 {
-                    for dx in 0..2 {
-                        let i = ((y * 2 + dy) * width as usize * 2 + x * 2 + dx) * 4;
-                        let value = premultiplied_bytes(samples[index], i);
-                        for c in 0..4 {
-                            sum[c] += value[c];
-                        }
-                    }
-                }
-                let source = sum.map(|v| crate::figma_sampling::normalize_q4(v * 4));
-                accumulated = accumulate_export(accumulated, source, pass + 1);
+                let pixels = std::array::from_fn(|corner| {
+                    let i = ((y * 2 + corner / 2) * width as usize * 2 + x * 2 + corner % 2) * 4;
+                    premultiplied_bytes(samples[index], i)
+                });
+                accumulated = accumulate_export(accumulated, pair_source(pixels), pass + 1);
             }
             let i = (y * width as usize + x) * 4;
             out[i..i + 4].copy_from_slice(&straight_bytes(accumulated));
@@ -298,15 +334,23 @@ pub fn downsample(bytes: &[u8], width: u32, height: u32) -> Vec<u8> {
             ];
             // Reconstruct the exact premultiplied UNORM8 bytes produced by
             // render_scene, then reproduce the normalized 2x texture filter.
-            let mut sum = [0_u32; 4];
-            for i in indices {
+            let pixels = indices.map(|i| {
                 let alpha = u32::from(bytes[i + 3]);
-                for c in 0..3 {
-                    sum[c] += (u32::from(bytes[i + c]) * alpha + 127) / 255;
-                }
-                sum[3] += alpha;
-            }
-            let resolved = sum.map(|v| u32::from(crate::figma_sampling::normalized_resolve_sum(v)));
+                [
+                    (u32::from(bytes[i]) * alpha + 127) / 255,
+                    (u32::from(bytes[i + 1]) * alpha + 127) / 255,
+                    (u32::from(bytes[i + 2]) * alpha + 127) / 255,
+                    alpha,
+                ]
+            });
+            let resolved = if let Some(adjusted) = ties_even_white_tent_half(pixels) {
+                adjusted.map(|value| u32::from(crate::figma_sampling::encode_unorm8(value)))
+            } else {
+                let sum = std::array::from_fn(|channel| {
+                    pixels.iter().map(|pixel| pixel[channel]).sum::<u32>()
+                });
+                sum.map(|v| u32::from(crate::figma_sampling::normalized_resolve_sum(v)))
+            };
             let dst = (y * width as usize + x) * 4;
             let alpha = resolved[3];
             if alpha > 0 {
@@ -320,4 +364,97 @@ pub fn downsample(bytes: &[u8], width: u32, height: u32) -> Vec<u8> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod export_half_tests {
+    use super::*;
+
+    fn plane(
+        top_left: [u8; 4],
+        top_right: [u8; 4],
+        bottom_left: [u8; 4],
+        bottom_right: [u8; 4],
+    ) -> Vec<u8> {
+        let mut bytes = vec![0_u8; 16];
+        bytes[0..4].copy_from_slice(&top_left);
+        bytes[4..8].copy_from_slice(&top_right);
+        bytes[8..12].copy_from_slice(&bottom_left);
+        bytes[12..16].copy_from_slice(&bottom_right);
+        bytes
+    }
+
+    fn resolve(sample: &[u8]) -> Vec<u8> {
+        resolve_sample_planes_2x([&sample, &sample, &sample, &sample], 1, 1)
+    }
+
+    #[test]
+    fn odd_gray_export_half_uses_ties_even_at_the_output_only() {
+        // 212 + 255 is the odd half 233.5. Binary32 encodes 233; ties-even is 234.
+        let odd = plane(
+            [212, 212, 212, 255],
+            [255, 255, 255, 255],
+            [212, 212, 212, 255],
+            [255, 255, 255, 255],
+        );
+        assert_eq!(crate::figma_sampling::normalized_resolve_sum(934), 233);
+        assert_eq!(resolve(&odd), vec![234, 234, 234, 255]);
+        assert_eq!(downsample(&odd, 1, 1), vec![234, 234, 234, 255]);
+        // The source bytes are the composite inputs and stay distinct.
+        assert_eq!(&odd[0..4], &[212, 212, 212, 255]);
+        assert_eq!(&odd[4..8], &[255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn even_half_split_rows_and_color_keep_binary32() {
+        // 181 + 244 is the even half 212.5. Ties-even already matches binary32.
+        let even = plane(
+            [181, 181, 181, 255],
+            [244, 244, 244, 255],
+            [181, 181, 181, 255],
+            [244, 244, 244, 255],
+        );
+        let binary = crate::figma_sampling::normalized_resolve_sum(181 + 244 + 181 + 244);
+        assert_eq!(resolve(&even), vec![binary, binary, binary, 255]);
+        // Rows that are not equal still belong to later coverage and clips.
+        let split = plane(
+            [212, 212, 212, 255],
+            [255, 255, 255, 255],
+            [0, 0, 0, 255],
+            [255, 255, 255, 255],
+        );
+        let split_out = resolve(&split);
+        assert_ne!(split_out[0], 234);
+        // A red pair is composited color, not a gray export half.
+        let color = plane(
+            [212, 80, 80, 255],
+            [255, 40, 40, 255],
+            [212, 80, 80, 255],
+            [255, 40, 40, 255],
+        );
+        let color_out = resolve(&color);
+        assert_eq!(
+            color_out[0],
+            crate::figma_sampling::normalized_resolve_sum(212 + 255 + 212 + 255)
+        );
+        assert_eq!(color_out[0], 233);
+        // Glass and light odd halves are not the tent pair. They stay binary32.
+        for (left, right, sum) in [
+            (243u32, 232, 243 + 232 + 243 + 232),
+            (255, 216, 255 + 216 + 255 + 216),
+        ] {
+            let sample = plane(
+                [left as u8, left as u8, left as u8, 255],
+                [right as u8, right as u8, right as u8, 255],
+                [left as u8, left as u8, left as u8, 255],
+                [right as u8, right as u8, right as u8, 255],
+            );
+            let out = resolve(&sample);
+            assert_eq!(
+                u32::from(out[0]),
+                u32::from(crate::figma_sampling::normalized_resolve_sum(sum)),
+                "{left}+{right}"
+            );
+        }
+    }
 }

@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import {compositeDrawPlan} from './composite-draw-plan'
-import { residentFrameMessage, residentFrameSignature } from './resident-frame'
+import { opaquePageClear } from '../../color'
+import { opaqueByteClear, residentFrameMessage, residentFrameSignature } from './resident-frame'
 import type { ResidentFrame } from './resident-presenter'
 afterEach(()=>vi.unstubAllEnvs())
 test('absolute layer renaming preserves the actual painter and clipping plan, but changed order never reuses it',()=>{
@@ -58,4 +59,25 @@ test('translated background support survives the bounded wire and has its own pr
   frame.backgroundTranslation!.x=30
   expect(wire.backgroundTranslation!.x).toBe(20)
   expect(residentFrameSignature(frame)).not.toBe(signature)
+})
+
+test('an opaque page fill is the 8-bit sRGB plate under a dragged layer', () => {
+  expect(opaquePageClear('#ffffff')).toEqual([1, 1, 1, 1])
+  expect(opaquePageClear('#f5f5f5')).toEqual([245 / 255, 245 / 255, 245 / 255, 1])
+  expect(opaquePageClear('color(srgb 0.2 0.4 0.8)')).toEqual([51 / 255, 102 / 255, 204 / 255, 1])
+  expect(opaquePageClear('color(srgb 1 1 1 / 1)')).toEqual([1, 1, 1, 1])
+  for (const background of [undefined, '#fff', '#ffffff80', 'color(srgb 1 0 0 / 0.5)', 'color(display-p3 1 1 1)', 'color(srgb-linear 1 1 1)'])
+    expect(opaquePageClear(background)).toBeUndefined()
+})
+
+test('an opaque page plate survives the display wire and rejects a fractional or non-finite clear', () => {
+  const frame: ResidentFrame = { view: { x: 0, y: 0, zoom: 1 }, width: 16, height: 16, dpr: 1, items: [],
+    allowEmpty: true, pageBackground: [1, 1, 1, 1] }
+  const wire = residentFrameMessage(frame)
+  expect(wire.pageBackground).toEqual([1, 1, 1, 1])
+  expect(wire.pageBackground).not.toBe(frame.pageBackground)
+  expect(residentFrameSignature({ ...frame, pageBackground: [0, 0, 0, 1] })).not.toBe(residentFrameSignature(frame))
+  expect(residentFrameMessage({ ...frame, pageBackground: [1, 1, 1, 0.5] }).pageBackground).toBeUndefined()
+  expect(opaqueByteClear([1, Number.NaN, 1, 1])).toBeUndefined()
+  expect(residentFrameSignature(frame)).toBe(residentFrameSignature(residentFrameMessage(frame)))
 })
