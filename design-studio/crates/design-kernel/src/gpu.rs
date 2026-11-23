@@ -151,11 +151,13 @@ impl CameraPrepare {
         // preserves any live snapshot reader before the targeted removals.
         let prepared = Arc::make_mut(&mut self.prepared);
         for id in &dirty { prepared.remove(id); }
-        // An integer device shift keeps scanline words and only moves the
-        // crop origin. A fractional phase, or any non-uniform move, still
-        // drops the programs because the coverage intervals change.
-        if device_shift.is_none() { self.programs.retain_nodes(&dirty); }
+        if self.device_shift.is_some() { self.programs.discard_shift_sources(); }
         self.device_shift = device_shift.filter(|(dx, dy)| *dx != 0 || *dy != 0);
+        // Previous programs can certify one exact shift. They cannot satisfy
+        // an ordinary crop-key hit, even if the viewport clips both poses to
+        // the same rectangle.
+        if self.device_shift.is_some() { self.programs.mark_shift_sources(&dirty); }
+        else { self.programs.retain_nodes(&dirty); }
         self.fragments.invalidate(&dirty); self.programs.reserve(self.fragments.bytes);
         self.key.0 = revision;
         self.zoom_bounds = None;
@@ -353,37 +355,28 @@ struct CameraMetadata {
 
 type ProgramShape = (usize, i32, i32, u32, u32, bool, bool);
 type ProgramKey = (String, ProgramShape);
-struct CachedProgram { program: crate::area_program::AreaProgram, fingerprint: u64, contour_phase: u64 }
+struct CachedProgram {
+    program: crate::area_program::AreaProgram,
+    fingerprint: u64,
+    phase_contours: Option<Arc<Vec<crate::path::Contour>>>,
+}
 impl CachedProgram {
-    fn new(program: crate::area_program::AreaProgram, contour_phase: u64) -> Self {
+    fn new(program: crate::area_program::AreaProgram, phase_contours: Option<Arc<Vec<crate::path::Contour>>>) -> Self {
         use std::hash::{Hash, Hasher};
         let mut hash = std::collections::hash_map::DefaultHasher::new();
         program.data.len().hash(&mut hash);
         for value in &program.data { value.to_bits().hash(&mut hash); }
-        Self { program, fingerprint: hash.finish(), contour_phase }
+        Self { program, fingerprint: hash.finish(), phase_contours }
     }
-    /// Geometry relative to the crop origin. Equal bits mean the scanline
-    /// function sees the same contours, so a shifted rectangle is exact.
-    fn phase(contours: &[crate::path::Contour], origin_x: i32, origin_y: i32) -> u64 {
-        // FNV-1a over crop-relative coordinates. This only accepts a shift when
-        // the contours are bit-identical relative to the crop; it does not use
-        // the default hasher, which showed up on the fractional compile path.
-        let mut hash = 0xcbf29ce484222325u64;
-        let (ox, oy) = (f64::from(origin_x), f64::from(origin_y));
-        let mix = |hash: &mut u64, bits: u64| {
-            *hash ^= bits;
-            *hash = hash.wrapping_mul(0x100000001b3);
-        };
-        mix(&mut hash, contours.len() as u64);
-        for contour in contours {
-            mix(&mut hash, u64::from(contour.closed));
-            mix(&mut hash, contour.points.len() as u64);
-            for point in &contour.points {
-                mix(&mut hash, (point.x - ox).to_bits());
-                mix(&mut hash, (point.y - oy).to_bits());
-            }
-        }
-        hash
+    fn same_phase(&self, contours: &[crate::path::Contour], crop: Rect) -> bool {
+        let Some(previous) = &self.phase_contours else { return false; };
+        let (px, py) = (f64::from(self.rect.x), f64::from(self.rect.y));
+        let (x, y) = (f64::from(crop.x), f64::from(crop.y));
+        previous.len() == contours.len() && previous.iter().zip(contours).all(|(a, b)| {
+            a.closed == b.closed && a.points.len() == b.points.len() && a.points.iter().zip(&b.points).all(|(p, q)| {
+                (p.x - px).to_bits() == (q.x - x).to_bits() && (p.y - py).to_bits() == (q.y - y).to_bits()
+            })
+        })
     }
 }
 impl std::ops::Deref for CachedProgram {
@@ -421,7 +414,7 @@ struct ProgramCache {
     builds: u64,
     shifts: u64,
 }
-struct ProgramEntry { order: u64, program: Arc<CachedProgram> }
+struct ProgramEntry { order: u64, program: Arc<CachedProgram>, shift_source: bool }
 impl ProgramCache {
     const LIMIT: usize = 32 * 1024 * 1024;
     fn reserve(&mut self, bytes:usize) {
@@ -435,7 +428,11 @@ impl ProgramCache {
         }
     }
     fn program_bytes(id: &str, program: &CachedProgram) -> usize {
-        program.data.len()*4 + id.len()*2 + 512
+        let phase_bytes = program.phase_contours.as_ref().map_or(0, |contours| {
+            contours.capacity() * std::mem::size_of::<crate::path::Contour>() +
+                contours.iter().map(|c| c.points.capacity() * std::mem::size_of::<Point>()).sum::<usize>()
+        });
+        program.data.len()*4 + id.len()*2 + 512 + phase_bytes
     }
     fn retain_nodes(&mut self, dirty: &std::collections::HashSet<String>) {
         for id in dirty {
@@ -450,10 +447,36 @@ impl ProgramCache {
     }
     fn len(&self) -> usize { self.count }
     fn contains(&self, id: &str, shape: &ProgramShape) -> bool {
-        self.entries.get(id).is_some_and(|entries| entries.contains_key(shape))
+        self.entries.get(id).and_then(|entries| entries.get(shape)).is_some_and(|entry| !entry.shift_source)
     }
     fn get(&mut self, id: &str, shape: &ProgramShape) -> Option<Arc<CachedProgram>> {
-        let value = self.entries.get(id)?.get(shape)?.program.clone(); self.hits += 1; Some(value)
+        let entry = self.entries.get(id)?.get(shape)?;
+        if entry.shift_source { return None; }
+        self.hits += 1;
+        Some(Arc::clone(&entry.program))
+    }
+    fn get_shift_source(&self, id: &str, shape: &ProgramShape) -> Option<Arc<CachedProgram>> {
+        let entry = self.entries.get(id)?.get(shape)?;
+        entry.shift_source.then(|| Arc::clone(&entry.program))
+    }
+    fn mark_shift_sources(&mut self, dirty: &std::collections::HashSet<String>) {
+        for id in dirty {
+            if let Some(entries) = self.entries.get_mut(id) {
+                for entry in entries.values_mut() { entry.shift_source = true; }
+            }
+        }
+    }
+    fn discard_shift_sources(&mut self) {
+        self.entries.retain(|id, entries| {
+            entries.retain(|_, entry| {
+                if !entry.shift_source { return true; }
+                self.order.remove(&entry.order);
+                self.bytes -= Self::program_bytes(id, &entry.program);
+                self.count -= 1;
+                false
+            });
+            !entries.is_empty()
+        });
     }
     fn allocate_order(&mut self) -> u64 {
         if self.next_order == u64::MAX {
@@ -500,7 +523,7 @@ impl ProgramCache {
         self.bytes += size;
         self.count += 1;
         self.order.insert(order, (id.to_owned(), shape));
-        self.entries.entry(id.to_owned()).or_default().insert(shape, ProgramEntry { order, program });
+        self.entries.entry(id.to_owned()).or_default().insert(shape, ProgramEntry { order, program, shift_source: false });
     }
 }
 
@@ -524,6 +547,7 @@ fn warm_pose_area_programs(
     programs: &mut ProgramCache,
     extent: Rect,
     samples: bool,
+    keep_phase: bool,
 ) -> Result<(), String> {
     let mut jobs = Vec::new();
     for (id, entry) in prepared {
@@ -584,8 +608,7 @@ fn warm_pose_area_programs(
                     let outcome = crate::area_program::AreaProgram::compile_crop(
                         &job.contours, job.crop, job.even_odd, job.samples,
                     ).map(|program| {
-                        let phase = CachedProgram::phase(&job.contours, job.crop.x, job.crop.y);
-                        Arc::new(CachedProgram::new(program, phase))
+                        Arc::new(CachedProgram::new(program, keep_phase.then(|| Arc::clone(&job.contours))))
                     });
                     if outcome.is_err() { cancel.store(true, std::sync::atomic::Ordering::Release); }
                     if let Ok(mut slot) = results.lock() { slot[index] = Some(outcome); }
@@ -1934,6 +1957,7 @@ struct Compiler<'a> {
     /// Integer device translation that maps programs retained from the
     /// previous pose onto this pose's crop. Cleared for every other compile.
     device_shift: Option<(i32, i32)>,
+    keep_program_phase: bool,
     fragments: fragments::FragmentCache,
     fragment_targets: std::collections::HashSet<String>,
     compiled_order: Vec<String>,
@@ -1946,7 +1970,7 @@ impl Compiler<'_> {
     /// the cached crop. The interval payload is stored relative to that crop,
     /// so only the rectangle origin moves. A viewport clip that changes the
     /// crop size or relative coverage misses and compiles again.
-    fn shifted_program(&mut self, id: &str, input: ProgramShape, contours: &[crate::path::Contour]) -> Option<Arc<CachedProgram>> {
+    fn shifted_program(&mut self, id: &str, input: ProgramShape, contours: &Arc<Vec<crate::path::Contour>>) -> Option<Arc<CachedProgram>> {
         let (dx, dy) = self.device_shift?;
         // Glyph outlines can snap to the absolute pixel lattice. Shifting a
         // cached text program would keep the old snap. Vectors and strokes
@@ -1955,19 +1979,19 @@ impl Compiler<'_> {
         let mut prior = input;
         prior.1 = prior.1.checked_sub(dx)?;
         prior.2 = prior.2.checked_sub(dy)?;
-        let old = self.programs.get(id, &prior)?;
-        let phase = CachedProgram::phase(contours, input.1, input.2);
-        if old.contour_phase != phase || old.rect.x != prior.1 || old.rect.y != prior.2 || old.rect.w != prior.3 || old.rect.h != prior.4 {
+        let old = self.programs.get_shift_source(id, &prior)?;
+        if old.rect.x != prior.1 || old.rect.y != prior.2 || old.rect.w != prior.3 || old.rect.h != prior.4 {
             return None;
         }
         let rect = Rect::new(old.rect.x.checked_add(dx)?, old.rect.y.checked_add(dy)?, old.rect.w, old.rect.h);
-        let shifted = Arc::new(CachedProgram::new(crate::area_program::AreaProgram { rect, data: old.data.clone() }, phase));
+        if !old.same_phase(contours, rect) { return None; }
+        let shifted = Arc::new(CachedProgram::new(crate::area_program::AreaProgram { rect, data: old.data.clone() }, Some(Arc::clone(contours))));
         self.programs.store(id, input, Arc::clone(&shifted), false);
         Some(shifted)
     }
     fn area_path(
         &mut self,
-        contours: &[crate::path::Contour],
+        contours: &Arc<Vec<crate::path::Contour>>,
         slot: (&str, usize),
         limit: Rect,
         even_odd: bool,
@@ -1982,7 +2006,7 @@ impl Compiler<'_> {
         else if let Some(program) = self.shifted_program(slot.0, input, contours) { program }
         else {
             let compiled = crate::area_program::AreaProgram::compile_crop(contours,crop,even_odd,self.compatible)?;
-            let phase = CachedProgram::phase(contours, compiled.rect.x, compiled.rect.y);
+            let phase = self.keep_program_phase.then(|| Arc::clone(contours));
             let program = Arc::new(CachedProgram::new(compiled, phase));
             self.programs.insert(slot.0,input,Arc::clone(&program)); program
         };
@@ -3160,9 +3184,10 @@ impl Engine {
             && options.animation.is_none() && analytic.is_none() && stages.is_none()
             && backdrop_outputs.is_empty() && shadow_outputs.is_empty()
             && !gaussian_regions && gaussian_reduction == 0 && !source_filter_fields;
-        if pose_samples {
+        let keep_program_phase = cache_key.is_some() && self.source_compile_context.is_none();
+        if pose_samples && device_shift.is_none() {
             warm_pose_area_programs(doc, &prepared, &mut programs, extent,
-                options.raster_profile != crate::fidelity::RasterProfile::Analytic)?;
+                options.raster_profile != crate::fidelity::RasterProfile::Analytic, keep_program_phase)?;
         }
         let mut compiler = Compiler {
             analytic_regions: analytic.map(|plan| plan.nodes),
@@ -3186,6 +3211,7 @@ impl Engine {
             curves: scratch::take_curves(),
             area_paths: HashMap::new(),
             device_shift,
+            keep_program_phase,
             fragments, fragment_targets, compiled_order:Vec::new(),
             programs,
             nodes: BTreeMap::new(),
@@ -3196,6 +3222,7 @@ impl Engine {
         }
         if cache_key.is_some() {
             if let Some(cache) = self.camera_prepare.as_mut() {
+                if device_shift.is_some() { compiler.programs.discard_shift_sources(); }
                 cache.programs = compiler.programs;
                 cache.program_guard=Some(emission_guard);
                 cache.fragments=compiler.fragments;
@@ -4043,7 +4070,7 @@ mod program_identity_tests {
     use super::*;
     #[test]
     fn colliding_hashes_still_compare_all_float_bits() {
-        let make=|data|ProgramIdentity(Arc::new(CachedProgram{program:crate::area_program::AreaProgram{rect:Rect::default(),data},fingerprint:7,contour_phase:0}));
+        let make=|data|ProgramIdentity(Arc::new(CachedProgram{program:crate::area_program::AreaProgram{rect:Rect::default(),data},fingerprint:7,phase_contours:None}));
         let a=make(vec![0.,1.]);let equal=make(vec![0.,1.]);let signed=make(vec![-0.,1.]);let different=make(vec![0.,2.]);
         let mut map=HashMap::new();map.insert(a.clone(),1);
         assert_eq!(map.get(&a),Some(&1));assert_eq!(map.get(&equal),Some(&1));
@@ -4061,9 +4088,28 @@ mod program_cache_invalidation_tests {
     fn program(value: f32, words: usize) -> Arc<CachedProgram> {
         Arc::new(CachedProgram::new(crate::area_program::AreaProgram {
             rect: Rect::new(0, 0, 1, 1), data: vec![value; words],
-        }, 0))
+        }, None))
     }
     fn dirty(id: &str) -> HashSet<String> { [id.to_owned()].into_iter().collect() }
+
+    #[test]
+    fn previous_pose_programs_cannot_be_reused_as_current_crop_hits() {
+        let mut cache = ProgramCache::default();
+        let previous = program(1., 4);
+        cache.insert("moving", shape(0), previous.clone());
+        cache.insert("moving", shape(1), previous.clone());
+        cache.mark_shift_sources(&dirty("moving"));
+        assert!(!cache.contains("moving", &shape(0)));
+        assert!(cache.get("moving", &shape(0)).is_none());
+        assert!(Arc::ptr_eq(&cache.get_shift_source("moving", &shape(0)).unwrap(), &previous));
+
+        let current = program(2., 8);
+        cache.insert("moving", shape(0), current.clone());
+        cache.discard_shift_sources();
+        assert!(!cache.contains("moving", &shape(1)));
+        assert!(Arc::ptr_eq(&cache.get("moving", &shape(0)).unwrap(), &current));
+        assert_eq!(cache.bytes, ProgramCache::program_bytes("moving", &current));
+    }
 
     #[test]
     fn replacement_accounts_only_one_live_program_and_fifo_record() {
