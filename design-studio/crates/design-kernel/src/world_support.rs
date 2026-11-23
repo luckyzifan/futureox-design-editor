@@ -232,6 +232,15 @@ impl WorldSupport {
         match self.device_bounds(id,camera){Bounds::Empty=>true,Bounds::Unknown=>false,Bounds::Box(b)=>
             b[0]>=f64::from(guard.x)&&b[1]>=f64::from(guard.y)&&b[2]<=f64::from(guard.x)+f64::from(guard.w)&&b[3]<=f64::from(guard.y)+f64::from(guard.h)}
     }
+    /// Finite support strictly inside `guard`. Empty and unknown stay false:
+    /// only a proved box may reuse device contours flattened for a wider guard.
+    pub(crate) fn enclosed(&self,id:&str,camera:Transform,guard:Rect)->bool {
+        match self.device_bounds(id,camera) {
+            Bounds::Box(b) if b.iter().all(|v| v.is_finite()) =>
+                b[0]>=f64::from(guard.x)&&b[1]>=f64::from(guard.y)&&b[2]<=f64::from(guard.x)+f64::from(guard.w)&&b[3]<=f64::from(guard.y)+f64::from(guard.h),
+            _ => false,
+        }
+    }
 
 }
 #[cfg(all(not(target_arch="wasm32"),feature="mapped-source-snapshot"))]

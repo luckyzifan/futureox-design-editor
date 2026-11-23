@@ -68,6 +68,27 @@ fn prepare_node_geometry_impl(
 ) -> Result<Rect, String> {
     prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,early,None,None)
 }
+/// Leaves whose conservative device box lies inside `guard` already have the
+/// contours a tighter flatten would produce: chord replacement runs only
+/// outside the guard. Parents stay out of this copy so their aggregate bounds
+/// are rebuilt from the tile walk. Unknown or empty support is not proof.
+pub(crate) fn reuse_enclosed_leaves(
+    doc: &Document,
+    wide: &HashMap<String, Prepared>,
+    local: &mut HashMap<String, Prepared>,
+    support: &crate::world_support::WorldSupport,
+    camera: Transform,
+    guard: Rect,
+) {
+    for (id, entry) in wide {
+        if entry.support_culled { continue; }
+        let Some(node) = doc.nodes.get(id) else { continue; };
+        if !node.visible || !node.render_children().is_empty() { continue; }
+        if support.enclosed(id, camera, guard) {
+            local.insert(id.clone(), entry.clone());
+        }
+    }
+}
 pub(crate) fn prepare_node_geometry_indexed(
     id:&str,parent:Transform,context:(&Document,&Fonts,Rect,bool),
     paths:&mut HashMap<String,crate::path::SharedPaths>,local_strokes:&mut crate::resident_strokes::ResidentStrokes,

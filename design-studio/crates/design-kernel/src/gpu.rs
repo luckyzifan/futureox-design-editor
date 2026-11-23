@@ -2692,7 +2692,9 @@ impl Engine {
         if built_guard!=tile_guard {
             // Chord replacement outside the retained guard changes flattened
             // bounds. Publishing those bounds makes a real FIG node rect follow
-            // the union instead of the tile. Rebuild only the emitted map.
+            // the union instead of the tile. Rebuild the emitted map, but copy
+            // leaves whose support is inside this tile: their contours cannot
+            // differ between the wider guard and this one.
             let crop_key = (properties.has_zoom && project_images && self.source_compile_context.is_none())
                 .then(|| (self.geo_revision, options.page_id.clone(), (options.view.x, options.view.y, options.view.zoom),
                     (tile_guard.x, tile_guard.y, tile_guard.w, tile_guard.h), compatible, None));
@@ -2700,6 +2702,15 @@ impl Engine {
                 hit
             } else {
                 let mut local = HashMap::new();
+                let tile_inside = i64::from(built_guard.x) <= i64::from(tile_guard.x)
+                    && i64::from(built_guard.y) <= i64::from(tile_guard.y)
+                    && i64::from(built_guard.x) + i64::from(built_guard.w) >= i64::from(tile_guard.x) + i64::from(tile_guard.w)
+                    && i64::from(built_guard.y) + i64::from(built_guard.h) >= i64::from(tile_guard.y) + i64::from(tile_guard.h);
+                if tile_inside {
+                    if let Some(support) = world_support.as_deref() {
+                        crate::geometry_snapshot::reuse_enclosed_leaves(doc, &prepared, &mut local, support, camera, tile_guard);
+                    }
+                }
                 let mut tile_segments = 0;
                 for root in &page.children {
                     crate::geometry_snapshot::prepare_node_geometry_indexed(
@@ -3259,6 +3270,66 @@ mod analytic_glass_support_tests {
         let fresh=engine.compile_gpu_region(&options,region,None).unwrap().into_packet().unwrap();
         assert_eq!(changed,fresh,"a geometry revision must discard old compiled programs");
         assert!(changed!=before,"visible geometry changed after the revision");
+    }
+
+    #[test]
+    fn enclosed_curve_leaves_match_a_tile_local_flatten_across_a_pose() {
+        let mut nodes = serde_json::Map::new();
+        let mut children = Vec::new();
+        for i in 0..36 {
+            let id = format!("v{i}");
+            children.push(serde_json::Value::String(id.clone()));
+            let x = (i % 12) as f64 * 48.;
+            let y = (i / 12) as f64 * 40.;
+            let mut node = json!({"id":id,"kind":"vector","width":30.,"height":22.,
+                "transform":[1.,0.,0.,1.,x,y],
+                "fills":[{"kind":"solid","color":"#3a6ea5"}],
+                "vectorGeometry":{"fillRule":"nonzero","fill":[{"move":[0.,0.]},{"cubic":[-4.,8.,28.,-6.,22.,18.]},{"line":[0.,18.]},"close"]}});
+            if i % 5 == 0 {
+                node["strokes"] = json!([{"paint":{"kind":"solid","color":"#111111"},"width":1.5,"align":"center"}]);
+            }
+            nodes.insert(id, node);
+        }
+        // This cubic crosses the x=512 tile boundary. It must be flattened for
+        // the tile guard, not copied from the wider preparation.
+        children.push(json!("edge"));
+        nodes.insert("edge".into(), json!({"id":"edge","kind":"vector","width":40.,"height":24.,
+            "transform":[1.,0.,0.,1.,498.5,40.],
+            "fills":[{"kind":"solid","color":"#c4554a"}],
+            "vectorGeometry":{"fillRule":"nonzero","fill":[{"move":[0.,0.]},{"cubic":[-12.,16.,36.,-8.,30.,20.]},{"line":[0.,20.]},"close"]}}));
+        nodes.insert("board".into(), json!({"id":"board","kind":"frame","width":1440.,"height":400.,"clip":true,
+            "fills":[{"kind":"solid","color":"#dbe8f0"}],"children":children}));
+        let document = json!({"schemaVersion":16,"id":"d","name":"enclosed",
+            "colorManagement":crate::color::ColorSettings::default(),
+            "pages":[{"id":"p","name":"p","background":"#ffffff","children":["board"]}],
+            "nodes":nodes}).to_string();
+        let options: RenderOptions = serde_json::from_value(json!({"pageId":"p","width":514,"height":514,
+            "view":{"x":-20.5,"y":8.25,"zoom":1.},"rasterProfile":"figmaSubpixel","transparent":true,"grid":false})).unwrap();
+        let union = Rect::new(0, 0, 1026, 514);
+        let regions = [Rect::new(0, 0, 514, 514), Rect::new(512, 0, 514, 514)];
+        let mut shared = Engine::new();
+        shared.load_document(&document).unwrap();
+        shared.compile_gpu_region(&options, regions[0], Some(union)).unwrap();
+        for region in regions {
+            let mut reference = Engine::new();
+            reference.load_document(&document).unwrap();
+            let legacy = reference.compile_gpu_region(&options, region, None).unwrap();
+            let reused = shared.compile_gpu_region(&options, region, Some(union)).unwrap();
+            assert_eq!(serde_json::to_string(&legacy).unwrap(), serde_json::to_string(&reused).unwrap(), "tile {region:?}");
+        }
+        let shift = Transform([1., 0., 0., 1., 7.25, 3.5]);
+        let mut transforms = std::collections::BTreeMap::new();
+        transforms.insert("board".into(), shift);
+        assert!(shared.apply_interaction_transforms(&transforms).unwrap(), "pose must stay on the retained path");
+        let mut reference = Engine::new();
+        reference.load_document(&document).unwrap();
+        reference.compile_gpu_region(&options, regions[0], None).unwrap();
+        assert!(reference.apply_interaction_transforms(&transforms).unwrap());
+        for region in regions {
+            let legacy = reference.compile_gpu_region(&options, region, None).unwrap();
+            let reused = shared.compile_gpu_region(&options, region, Some(union)).unwrap();
+            assert_eq!(serde_json::to_string(&legacy).unwrap(), serde_json::to_string(&reused).unwrap(), "posed tile {region:?}");
+        }
     }
 
     #[test]
