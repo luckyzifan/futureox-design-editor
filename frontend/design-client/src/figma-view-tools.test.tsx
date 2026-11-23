@@ -85,6 +85,15 @@ test('Figma zoom follows the inspector and Sketch insert opens the top tool menu
   const title = document.querySelector('.document-title')!, tools = document.querySelector('.sketch-window-tools')!
   expect(title.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   const insert = tools.querySelector<HTMLButtonElement>('button[aria-label="置入"]')!
+  const preview = tools.querySelector<HTMLButtonElement>('button[aria-label="预览"]')
+  expect(preview).not.toBeNull()
+  expect(preview?.classList.contains('prototype-preview-button')).toBe(false)
+  expect(preview?.classList.contains('sketch-preview-tool')).toBe(true)
+  expect(document.querySelector('.prototype-preview-button')).toBeNull()
+  expect(document.querySelector('.properties-tabs')).toBeNull()
+  expect(tools.querySelector('button[aria-label="编辑"]')?.classList.contains('sketch-edit-tool')).toBe(true)
+  expect(insert.classList.contains('sketch-insert-tool')).toBe(true)
+  expect(tools.querySelector('button[aria-label="画框"]')?.classList.contains('sketch-main-tool')).toBe(true)
   await act(async () => insert.click())
   const menu = document.querySelector('[role="menu"][aria-label="置入"]')!
   const rect = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent === '矩形')!
@@ -94,4 +103,7 @@ test('Figma zoom follows the inspector and Sketch insert opens the top tool menu
   await act(async () => button('Figma').click())
   expect(readout()?.closest('.properties-tabs')).not.toBeNull()
   expect(document.querySelector('.sketch-window-tools')).toBeNull()
+  expect(document.querySelector('button[aria-label="预览"]')).toBeNull()
+  expect(document.querySelector('.prototype-preview-button')).not.toBeNull()
+  expect(document.querySelector('#design-properties-tab, .properties-tabs button')).not.toBeNull()
 })

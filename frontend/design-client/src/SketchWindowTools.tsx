@@ -1,5 +1,5 @@
 import { type ReactNode, useRef, useState, useSyncExternalStore } from 'react'
-import { ArrowDownToLine, ArrowUpToLine, Component, Crop, Frame, Group, PenTool, Plus, Search, Shapes, SlidersHorizontal, SquareDashed, TextCursor, Type } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpToLine, Component, Crop, Frame, Group, PenTool, Play, Plus, Search, Shapes, SlidersHorizontal, SquareDashed, TextCursor, Type } from 'lucide-react'
 import { DesignToolbar, ToolPopover, type WorkspaceSection } from './EditorChrome'
 import type { Editor, Tool } from './engine'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
@@ -19,7 +19,7 @@ import { sketchInsertTools, sketchToolMenu } from './interface-layout'
 
 type Menu = 'insert' | 'shapes' | 'group' | 'tools' | 'combine'
 
-export function SketchWindowTools({ editor, disabled, onPresets, onInsertTextStyle, onInsertSymbol, onReplaceTemplate, onImages, onSystems, onShapeBuilder, onSection, onEditText }: {
+export function SketchWindowTools({ editor, disabled, onPresets, onInsertTextStyle, onInsertSymbol, onReplaceTemplate, onImages, onSystems, onShapeBuilder, onSection, onEditText, onPreview, previewDisabled = false }: {
   editor: Editor
   disabled: boolean
   onPresets: () => void
@@ -31,6 +31,8 @@ export function SketchWindowTools({ editor, disabled, onPresets, onInsertTextSty
   onShapeBuilder: () => void
   onSection: (section: WorkspaceSection) => void
   onEditText: (id: string) => void
+  onPreview?: () => void
+  previewDisabled?: boolean
 }) {
   const { locale } = useInterfacePreferences(), text = canvasText[locale]
   const [open, setOpen] = useState<Menu | null>(null)
@@ -70,9 +72,9 @@ export function SketchWindowTools({ editor, disabled, onPresets, onInsertTextSty
     <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-checked={s.tool === id}
       onClick={() => tool(id)}>{id === 'frame' ? label('画框','Frame') : localizedToolLabel(id, locale)}</button>
   const insertTool = (id: Tool, name: string, icon: ReactNode) =>
-    <button type="button" aria-label={name} data-tooltip={name} aria-pressed={s.tool === id} onClick={() => tool(id)}>{icon}</button>
-  const menu = (id: Menu, name: string, icon: ReactNode, children: ReactNode, enabled = true) =>
-    <ToolPopover label={name} icon={icon} disabled={!enabled} open={enabled && open === id}
+    <button type="button" className="sketch-main-tool" aria-label={name} data-tooltip={name} aria-pressed={s.tool === id} onClick={() => tool(id)}>{icon}</button>
+  const menu = (id: Menu, name: string, icon: ReactNode, children: ReactNode, enabled = true, className?: string) =>
+    <ToolPopover label={name} icon={icon} className={className} disabled={!enabled} open={enabled && open === id}
       onOpenChange={next => setOpen(next ? id : null)}>{children}</ToolPopover>
   return <DesignToolbar className="sketch-window-tools" disabled={disabled}>
     <div className="tool-group">
@@ -86,7 +88,7 @@ export function SketchWindowTools({ editor, disabled, onPresets, onInsertTextSty
           onClick={() => { setOpen(null); onInsertSymbol() }}>{label('控件…', 'Symbol…')}</button>}
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); imageInput.current?.click() }}>{label('图片…', 'Image…')}</button>
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); onPresets() }}>{text.devicePresets}</button>
-      </>)}
+      </>, true, 'sketch-insert-tool')}
       <input ref={imageInput} type="file" accept={RASTER_FILE_ACCEPT} multiple hidden onChange={event => {
         const files = [...(event.target.files || [])]; event.target.value = ''
         if (files.length) onImages(files)
@@ -97,7 +99,7 @@ export function SketchWindowTools({ editor, disabled, onPresets, onInsertTextSty
       {insertTool('graphic', label('图形','Graphic'), <SquareDashed size={17}/>)}
       {insertTool('text', label('字符','Text'), <Type size={17}/>)}
       {menu('shapes', label('形状','Shapes'), <Shapes size={17}/>,
-        (['rectangle','ellipse','line','arrow','polygon','star'] as const).map(menuTool))}
+        (['rectangle','ellipse','line','arrow','polygon','star'] as const).map(menuTool), true, 'sketch-main-tool')}
       {insertTool('pen', label('矢量','Vector'), <PenTool size={17}/>)}
     </div>}
     <div className="tool-group">
@@ -115,10 +117,13 @@ export function SketchWindowTools({ editor, disabled, onPresets, onInsertTextSty
         {menuAction('auto-layout', label('层叠', 'Stack'))}
         {menuAction('ungroup', label('取消编组', 'Ungroup'))}
       </>, canGroup || canUngroup)}
-      <button type="button" className="sketch-secondary-tool" aria-pressed={!!s.frameCrop || s.tool === 'vector' && node?.kind !== 'text'}
+      <button type="button" className="sketch-secondary-tool sketch-edit-tool" aria-pressed={!!s.frameCrop || s.tool === 'vector' && node?.kind !== 'text'}
         aria-label={editLabel} data-tooltip={editLabel} disabled={!canEdit} onClick={edit}>
         {cropFrame ? <Crop size={17} /> : node?.kind === 'text' ? <TextCursor size={17} /> : <PenTool size={17} />}
       </button>
+      <button type="button" className="sketch-preview-tool" aria-label={label('预览', 'Preview')}
+        data-tooltip={label('预览', 'Preview')} disabled={previewDisabled || !onPreview}
+        onClick={() => { setOpen(null); onPreview?.() }}><Play size={17} /></button>
       {menu('tools', label('工具', 'Tools'), <SlidersHorizontal size={17} />, <>
         {sketchToolMenu.map(menuTool)}
         <button type="button" role="menuitem" tabIndex={-1} disabled={!canEdit} onClick={edit}>{editLabel}</button>

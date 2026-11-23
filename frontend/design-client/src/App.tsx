@@ -257,7 +257,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   useEffect(() => subscribePrototypeTab(() => setPropertiesTabState(getPrototypeTab())), [])
   const activeProperties = uiMode === 'figma' ? propertiesTab : 'design'
   const [showPrototype, setShowPrototype] = useState(false)
+  const [showSketchPreview, setShowSketchPreview] = useState(false)
   useEffect(() => { if (uiMode !== 'figma') setShowPrototype(false) }, [uiMode])
+  useEffect(() => { if (uiMode !== 'sketch') setShowSketchPreview(false) }, [uiMode])
   const [showCommands, setShowCommands] = useState(false)
   const [showShapeBuilder, setShowShapeBuilder] = useState(false)
   const [showMove, setShowMove] = useState(false)
@@ -1625,6 +1627,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           onInsertTextStyle={() => openSketchInsertion('text')}
           onInsertSymbol={() => openSketchInsertion('symbol')}
           onReplaceTemplate={replaceSketchTemplate}
+          onPreview={() => setShowSketchPreview(true)}
+          previewDisabled={!s.doc.pages.some((page) => page.children.length)}
           onSystems={() => setShowTools(true)} onShapeBuilder={() => setShowShapeBuilder(true)} />}
         <div className="header-right">
           <details ref={workspaceActions} className="workspace-actions" onKeyDown={event => {
@@ -1891,6 +1895,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       {showExport && <ExportPanel editor={editor} exportSelectedSketch={source?.exportSelectedSketch} initialTarget={exportEntry === 'merged' ? undefined : exportEntry} onClose={() => { setShowExport(false); setExportEntry('merged') }} />}
       {showTools&&<DesignTools editor={editor} allowPrototype={uiMode === 'figma'} onClose={()=>setShowTools(false)}/>}
       {uiMode === 'figma' && showPrototype && <PrototypePlayer document={s.doc} onClose={() => setShowPrototype(false)} />}
+      {uiMode === 'sketch' && showSketchPreview && <PrototypePlayer document={s.doc} onClose={() => setShowSketchPreview(false)} />}
       {showWorkspaceLibrary && desktopSession && <WorkspaceLibrary session={desktopSession} onClose={() => setShowWorkspaceLibrary(false)} />}
       {showCloudWorkspace && cloudWorkspace && desktopSession && <CloudWorkspacePanel workspace={cloudWorkspace} status={cloudStatusInWorkspace} documentId={s.doc.id}
         canSync={ready && !showHome && !switching} locale={locale}
