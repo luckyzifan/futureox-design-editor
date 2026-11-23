@@ -117,10 +117,48 @@ describe('CSS linear gradient geometry', () => {
   })
 })
 
+/** Independent of css-gradient.ts. Matches design-kernel paint.rs gradient_t for radial. */
+function kernelRadialT(transform: Matrix | undefined, u: number, v: number): number {
+  let x = u, y = v
+  if (transform) {
+    const inverted = inverse(transform)
+    x = inverted[0] * u + inverted[2] * v + inverted[4]
+    y = inverted[1] * u + inverted[3] * v + inverted[5]
+  }
+  return Math.hypot((x - 0.5) * 2, (y - 0.5) * 2)
+}
+
+function cssRadialT(css: string, u: number, v: number): number {
+  const match = /^radial-gradient\(ellipse ([-+\d.]+)% ([-+\d.]+)% at ([-+\d.]+)% ([-+\d.]+)%,/.exec(css)
+  if (!match) throw new Error(`Not an explicit radial ellipse: ${css}`)
+  const rx = Number(match[1]) / 100, ry = Number(match[2]) / 100
+  const cx = Number(match[3]) / 100, cy = Number(match[4]) / 100
+  return Math.hypot((u - cx) / rx, (v - cy) / ry)
+}
+
 describe('CSS radial gradient shape', () => {
-  it('uses the side-touching ellipse unless a paint transform moves it', () => {
+  const samples = [0, 0.25, 0.5, 0.75, 1]
+  it('keeps the side-touching ellipse when the paint has no transform', () => {
     const reversed = [{ offset: 1, color: '#0000ff' }, { offset: 0, color: '#00ff00' }]
-    expect(cssRadialGradient(reversed, false)).toBe('radial-gradient(ellipse closest-side at center,#00ff00 0%,#0000ff 100%)')
-    expect(cssRadialGradient(stops, true)).toBe('radial-gradient(ellipse at center,#ff0000 0%,#0000ff 100%)')
+    expect(cssRadialGradient(reversed)).toBe('radial-gradient(ellipse closest-side at center,#00ff00 0%,#0000ff 100%)')
+  })
+  it.each([
+    [1, 0, 0, 1, -0.25, 0.1],
+    [2, 0, 0, 0.5, 0, 0],
+    [0, 2, -0.5, 0, 0, 0],
+    [0.5, 0, 0, 0.5, 0.1, -0.2],
+  ] as const)('matches the kernel disk for transform %s', (a, b, c, d, e, f) => {
+    const transform: Matrix = [a, b, c, d, e, f]
+    const css = cssRadialGradient(stops, transform)
+    expect(css).toBeTruthy()
+    expect(css).not.toContain('at center')
+    for (const u of samples) for (const v of samples) {
+      const expected = Math.min(1, Math.max(0, kernelRadialT(transform, u, v)))
+      expect(Math.min(1, Math.max(0, cssRadialT(css!, u, v)))).toBeCloseTo(expected, 4)
+    }
+  })
+  it('omits a rotated non-circular ellipse instead of emitting a centered gradient', () => {
+    expect(cssRadialGradient(stops, [1, 0.3, 0.2, 1, 0, 0])).toBeUndefined()
+    expect(cssRadialGradient(stops, [0, 0, 0, 0, 0.5, 0.5])).toBeUndefined()
   })
 })

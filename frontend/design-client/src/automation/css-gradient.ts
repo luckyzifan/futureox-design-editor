@@ -80,14 +80,34 @@ export function cssLinearGradient(
 }
 
 /**
- * Untransformed radial paints are the ellipse that touches the box sides
- * (`hypot(2(u-0.5), 2(v-0.5))`). CSS `ellipse at center` is farthest-corner
- * and reaches 100% at the corner instead. A paint transform moves that ellipse;
- * closest-side would not reproduce it, so those keep the previous centered
- * approximation.
+ * Radial parameter after the paint transform: `hypot(2(u'-0.5), 2(v'-0.5))`
+ * where `(u', v')` is node UV mapped by the inverse transform. The t=1 set is
+ * the image of the gradient-space disk centered at (0.5, 0.5) with radius 0.5.
+ * CSS can express that disk only when the image is an axis-aligned ellipse.
+ * A rotated non-circular ellipse returns undefined instead of a centered fake.
  */
-export function cssRadialGradient(stops: readonly GradientStopCss[], transformed: boolean): string | undefined {
+function radialEllipse(transform: Matrix | undefined): string | undefined {
+  if (!transform) return 'ellipse closest-side at center'
+  const [a, b, c, d, e, f] = transform
+  if (![a, b, c, d, e, f].every(value => Number.isFinite(value))) return undefined
+  const horizontal = Math.hypot(a, c)
+  const vertical = Math.hypot(b, d)
+  if (!(horizontal > 0) || !(vertical > 0)) return undefined
+  // Rows of the linear map are orthogonal exactly when the disk stays axis-aligned.
+  if (Math.abs(a * b + c * d) > 1e-6 * horizontal * vertical) return undefined
+  const rx = formatCssNumber(horizontal * 50)
+  const ry = formatCssNumber(vertical * 50)
+  const cx = formatCssNumber((a * 0.5 + c * 0.5 + e) * 100)
+  const cy = formatCssNumber((b * 0.5 + d * 0.5 + f) * 100)
+  if (rx === undefined || ry === undefined || cx === undefined || cy === undefined) return undefined
+  if (Number(rx) === 0 || Number(ry) === 0) return undefined
+  return `ellipse ${rx}% ${ry}% at ${cx}% ${cy}%`
+}
+
+export function cssRadialGradient(stops: readonly GradientStopCss[], transform?: Matrix): string | undefined {
   if (!stops.length) return undefined
+  const shape = radialEllipse(transform)
+  if (!shape) return undefined
   const ordered = [...stops].sort((left, right) => left.offset - right.offset)
   const parts: string[] = []
   for (const stop of ordered) {
@@ -96,6 +116,5 @@ export function cssRadialGradient(stops: readonly GradientStopCss[], transformed
     if (position === undefined) return undefined
     parts.push(`${stop.color} ${position}%`)
   }
-  const shape = transformed ? 'ellipse at center' : 'ellipse closest-side at center'
   return `radial-gradient(${shape},${parts.join(',')})`
 }

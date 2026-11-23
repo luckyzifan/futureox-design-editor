@@ -9,6 +9,7 @@ import { svgSource } from '../export'
 import { appendDocument } from '../append-document'
 import { validateDocument } from '../model'
 import { kernelLayout, kernelExportPlan, prepareDocumentForEditing } from '../kernel/picking'
+import { stackOrder } from '../layer-order'
 import type { DesignDocument, DesignNode, Paint, TextCase, TextRun } from '../model'
 import { AutomationError, type AutomationExtension, type AutomationContext } from './types'
 import {
@@ -28,6 +29,8 @@ const number = (value: number) => {
   return String(Math.round(value * 1e6) / 1e6)
 }
 const px = (value: number) => `${number(value)}px`
+/** 1×1 transparent PNG. The cross-fade partner that carries image-fill opacity. */
+const TRANSPARENT_PIXEL_URL = `url(${cssString('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=')})`
 function cssColor(value: string): string | undefined {
   if (/^#[\da-f]{3,4}$/i.test(value) || /^#(?:[\da-f]{6}|[\da-f]{8})$/i.test(value)) return value.toLowerCase()
   if (/^(?:transparent|black|white|red|green|blue|gray|grey|currentcolor)$/i.test(value)) return value.toLowerCase()
@@ -178,9 +181,9 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     return alpha === 1 ? color : `color-mix(in srgb, ${color} ${number(alpha * 100)}%, transparent)`
   }
   const scssSession = options.syntax === 'scss' ? createScssColorSession(resolved, cssColor, () => warn('SCSS_COLOR_MISMATCH', 'A bound fill color did not match its resolved variable, so that declaration stayed a CSS literal.')) : undefined
-  const paintCss = (paint: Paint, nodeId: string, width: number, height: number, colorPath?: string): { css?: string; scss?: string } => {
+  const paintCss = (paint: Paint, nodeId: string, width: number, height: number, colorPath?: string): { css?: string; scss?: string; prefixed?: string } => {
     if (paint.blend !== 'normal' || paint.opacity !== 1) warn('PAINT_COMPOSITING', 'Per-paint blend and opacity may differ from the native compositor.', nodeId)
-    const pair = (css?: string, scss = css) => ({ css, scss })
+    const pair = (css?: string, scss = css, prefixed?: string) => ({ css, scss, prefixed })
     if (paint.kind === 'solid') {
       const color = safeColor(paint.color, nodeId)
       if (!color) return {}
@@ -191,7 +194,16 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
       const asset = paint.image && assetsById.get(assetReference(paint.image, nodeId, paint.id, assetIdentities).id)
       if (paint.transform || paint.tile || paint.adjust) warn('IMAGE_TRANSFORM', 'Image transforms, pattern tiling and color adjustments are not reproduced by CSS background sizing.', nodeId)
       const uri = asset && (asset.dataUrl ?? asset.uri)
-      return pair(uri ? `url(${cssString(uri)})` : undefined)
+      if (!uri) return {}
+      const url = `url(${cssString(uri)})`
+      const alpha = Math.max(0, Math.min(1, paint.opacity))
+      if (alpha === 1) return pair(url)
+      // One background layer, so the opacity does not multiply strokes, children,
+      // or the other fills. Chrome's prefixed percentage weights the second image.
+      const clear = TRANSPARENT_PIXEL_URL
+      const keep = number(alpha * 100)
+      const toward = number((1 - alpha) * 100)
+      return pair(`cross-fade(${url},${clear},${keep}%)`, undefined, `-webkit-cross-fade(${url},${clear},${toward}%)`)
     }
     if (paint.kind === 'linear' || paint.kind === 'radial') {
       if (paint.stops.length > 64) { warn('GRADIENT_LIMIT', 'Gradient with more than 64 stops was omitted.', nodeId); return {} }
@@ -201,9 +213,14 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
         return color ? [{ offset: stop.offset, color: paintOpacityColor(color, paint.opacity) }] : []
       })
       if (!stops.length) return {}
-      return pair(paint.kind === 'linear'
+      const gradient = paint.kind === 'linear'
         ? cssLinearGradient(width, height, paint.angle, paint.transform, stops)
-        : cssRadialGradient(stops, paint.transform !== undefined))
+        : cssRadialGradient(stops, paint.transform)
+      if (!gradient) {
+        if (paint.kind === 'radial' && paint.transform) warn('RADIAL_TRANSFORM', 'This radial transform cannot be written as an axis-aligned CSS ellipse, so the fill was omitted instead of a centered gradient.', nodeId)
+        return {}
+      }
+      return pair(gradient)
     }
     warn('UNSUPPORTED_GRADIENT', `${paint.kind} gradients are not supported in semantic HTML export.`, nodeId)
     return {}
@@ -246,9 +263,12 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     else decl(`border-radius:${n.radii.map(px).join(' ')}`)
     if (n.repeat) warn('REPEAT_TRANSFORMS_NOT_EXPORTED', 'Semantic HTML includes only the editable source, not its derived repeat appearances. Use native FD/JSON to preserve the repeat, or PNG/SVG/PDF for visual output.', n.id)
     if (n.arc || n.textPath || n.pathOffset || n.vectorBrush) warn('SPECIAL_GEOMETRY', 'Arc, text-on-path, path-offset and vector-brush geometry is not reproduced in HTML.', n.id)
+    const strokes = n.strokes.filter(s => s.visible && s.paint.visible)
+    const stroke = strokes[0]
+    const strokeOutline = stroke?.paint.kind === 'solid' && (stroke.align === 'center' || stroke.align === 'outside')
     if (['vector', 'polygon', 'star', 'line'].includes(n.kind)) {
       warn('UNSUPPORTED_SHAPE', `${n.kind} geometry uses a bounding-box placeholder; use native SVG/image export for its exact shape.`, n.id)
-      decl('outline:1px dashed #999')
+      if (!strokeOutline) decl('outline:1px dashed #999')
     }
     const fills = n.fills.map((paint, index) => ({ paint, index })).filter(item => item.paint.visible).slice(0, 16)
     if (n.fills.length > 16) warn('PAINT_LIMIT', 'Only the first 16 visible fills are exported.', n.id)
@@ -264,20 +284,29 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
         const value = paintCss(item.paint, n.id, n.width, n.height, `fills.${item.index}.color`)
         if (!value.css) return []
         const wrap = (color: string) => item.paint.kind === 'solid' ? `linear-gradient(${color},${color})` : color
-        return [{ css: wrap(value.css), scss: wrap(value.scss ?? value.css) }]
+        return [{ css: wrap(value.css), scss: wrap(value.scss ?? value.css), ...(value.prefixed ? { prefixed: value.prefixed } : {}) }]
       })
       if (layers.length) {
         layers.reverse()
+        if (layers.some(item => item.prefixed)) declPair(`background-image:${layers.map(item => item.prefixed ?? item.css).join(',')}`, `background-image:${layers.map(item => item.prefixed ?? item.scss).join(',')}`)
         declPair(`background-image:${layers.map(item => item.css).join(',')}`, `background-image:${layers.map(item => item.scss).join(',')}`)
       }
       const image = fills.find(item => item.paint.kind === 'image')
       if (image) decl(`background-size:${image.paint.fit === 'stretch' ? '100% 100%' : image.paint.fit}`, 'background-position:center', 'background-repeat:no-repeat')
     }
-    const strokes = n.strokes.filter(s => s.visible && s.paint.visible)
-    const stroke = strokes[0]
     if (stroke?.paint.kind === 'solid') {
       const color = paintCss(stroke.paint, n.id, n.width, n.height)
-      if (color.css) declPair(`border:${px(stroke.width)} solid ${color.css}`, `border:${px(stroke.width)} solid ${color.scss ?? color.css}`)
+      if (color.css) {
+        const borderOf = (width: number, value: string) => `border:${px(width)} solid ${value}`
+        const outlineOf = (width: number, value: string) => `outline:${px(width)} solid ${value}`
+        const token = color.scss ?? color.css
+        if (stroke.align === 'outside') declPair(outlineOf(stroke.width, color.css), outlineOf(stroke.width, token))
+        else if (stroke.align === 'center') {
+          const half = stroke.width / 2
+          declPair(borderOf(half, color.css), borderOf(half, token))
+          declPair(outlineOf(half, color.css), outlineOf(half, token))
+        } else declPair(borderOf(stroke.width, color.css), borderOf(stroke.width, token))
+      }
     }
     if (strokes.length) warn('STROKE_APPROXIMATION', 'CSS border approximates strokes; alignment, multiple strokes, dashes, joins, markers and width profiles may differ.', n.id)
     const shadows: string[] = [], filters: string[] = [], backdrop: string[] = []
@@ -286,8 +315,8 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
         const color = safeColor(effect.color, n.id)
         if (color) shadows.push(`${effect.kind === 'inner-shadow' ? 'inset ' : ''}${px(effect.x)} ${px(effect.y)} ${px(effect.radius)} ${px(effect.spread)} color-mix(in srgb, ${color} ${number(effect.opacity * 100)}%, transparent)`)
         warn('EFFECT_APPROXIMATION', 'Browser CSS shadow and blur kernels differ from the native compositor.', n.id)
-      } else if ((effect.kind === 'blur' || effect.kind === 'background-blur') && !effect.gradientBlur) {
-        ;(effect.kind === 'blur' ? filters : backdrop).push(`blur(${px(effect.radius)})`)
+      } else if ((effect.kind === 'blur' || effect.kind === 'gaussian-blur' || effect.kind === 'background-blur') && !effect.gradientBlur) {
+        ;(effect.kind === 'background-blur' ? backdrop : filters).push(`blur(${px(effect.radius)})`)
         warn('EFFECT_APPROXIMATION', 'Browser CSS shadow and blur kernels differ from the native compositor.', n.id)
       } else warn('UNSUPPORTED_EFFECT', `${effect.kind}${effect.gradientBlur ? ' with gradient blur' : ''} is omitted; native material parameters remain in semantic context and canonical export.`, n.id)
     }
@@ -298,8 +327,14 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
       const l = n.layout
       if (l.wrap && (l.align === 'unsafe-center' || l.align === 'unsafe-end')) decl('align-content:' + align[l.align])
       decl(`display:${n.visible ? l.mode === 'grid' ? 'grid' : 'flex' : 'none'}`, `padding:${l.padding.map(px).join(' ')}`, `gap:${px(l.mode === 'vertical' ? l.gap : l.lineGap)} ${px(l.mode === 'vertical' ? l.lineGap : l.gap)}`, `justify-content:${align[l.justify]}`, `align-items:${align[l.align]}`)
+      // Grid children stay in source order. Flex follows reverses_flow():
+      // an explicit stackingOrder overrides the reverseFlow boolean.
       if (l.mode === 'grid') decl(`grid-template-columns:repeat(${number(l.columns)},minmax(0,1fr))`)
-      else decl(`flex-direction:${l.mode === 'horizontal' ? 'row' : 'column'}`, `flex-wrap:${l.wrap ? 'wrap' : 'nowrap'}`)
+      else {
+        const reverse = stackOrder(l) === 'first-on-top'
+        const axis = l.mode === 'horizontal' ? 'row' : 'column'
+        decl(`flex-direction:${reverse ? `${axis}-reverse` : axis}`, `flex-wrap:${l.wrap ? 'wrap' : 'nowrap'}`)
+      }
       warn('LAYOUT_APPROXIMATION', 'CSS flex/grid uses resolved dimensions but may size and wrap differently from the design layout engine.', n.id)
     }
     if (n.kind === 'text') {
@@ -324,7 +359,10 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
       const declarations: string[] = [], className = `${nodeIdMap[n.id].elementId}-run-${index}`
       if (run.color) { const c = safeColor(run.color, n.id); if (c) declarations.push(`color:${c}`) }
       if (run.fontSize !== undefined) declarations.push(`font-size:${px(run.fontSize)}`)
+      if (run.italic !== undefined) declarations.push(`font-style:${run.italic ? 'italic' : 'normal'}`)
       if (run.weight !== undefined) declarations.push(`font-weight:${number(run.weight)}`)
+      if (run.letterSpacing !== undefined) declarations.push(`letter-spacing:${px(run.letterSpacing)}`)
+      if (run.lineHeight !== undefined) declarations.push(`line-height:${number(run.lineHeight)}`)
       if (run.fontId && document.fonts?.[run.fontId]) declarations.push(`font-family:${cssString(document.fonts[run.fontId].family)},sans-serif`)
       if (run.underline || run.strikethrough) declarations.push(`text-decoration:${[run.underline && 'underline', run.strikethrough && 'line-through'].filter(Boolean).join(' ')}`)
       if (run.textCase) declarations.push(textTransform(run.textCase, n.id))
