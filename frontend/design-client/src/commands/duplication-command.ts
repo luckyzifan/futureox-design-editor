@@ -13,11 +13,12 @@ export interface DuplicationRepeat {
   reference: ReadonlyMap<string, Matrix>
 }
 export type DuplicationIntent = { kind: 'default' } | { kind: 'world-offset'; x: number; y: number }
-/** Desktop Figma puts a duplicated top-level frame to the right of the source.
+/** Official Figma Duplicate puts a top-level frame or section to the right.
  * Help text states that direction and not the gap. Desktop reports from 2021
- * through 2024 measure 40px between the frames. This environment did not run
- * Figma 126.10.13. Ordinary objects, nested frames, sections, groups, mixed
- * selections, and Sketch layout keep the +10,+10 step. */
+ * through 2024 measure 40px between those objects. This environment did not
+ * run Figma 126.10.13. Shapes, groups, nested frames, and mixed selections
+ * stay on top of the source. Sketch layout keeps the +10,+10 step. Paste is
+ * a separate path and is not this command. */
 export const FIGMA_TOP_LEVEL_FRAME_DUPLICATE_GAP = 40
 export function duplicationCanvas(uiMode: string | undefined): 'figma' | 'ordinary' {
   return uiMode === 'sketch' ? 'ordinary' : 'figma'
@@ -26,6 +27,8 @@ export interface DuplicationPlan {
   content: GraphCopy
   transforms: Map<string, Matrix>
   pageId: string
+  /** Figma sections grow around a duplicated frame or section. Sketch does not. */
+  growSections: boolean
 }
 const reject = (code: string, message: string): never => { throw new SelectionCommandError(code, message) }
 /** Explicit MCP axes retain their established world-space meaning, including
@@ -86,26 +89,96 @@ export function prepareDuplication(doc: DesignDocument, selected: readonly strin
   }
   const repeat = intent.kind === 'default' && repeatMatches(state.repeat, index.ids) ? state.repeat : null
   if (repeat && !state.singleStep) reject('unsupported_duplicate_repeat_batch', 'Implicit duplicate repeat requires one normalized operation, not a multi-operation batch')
-  // Bounds run only when every root is a page-level frame. A group, shape, or
-  // mixed selection stops at the first non-frame and keeps translate(10, 10).
-  const topLevelFrames = state.canvas === 'figma' && intent.kind === 'default' && !repeat && index.ids.every(id =>
-    doc.nodes[id].kind === 'frame' && index.parents.get(id) === index.pageId)
-  const frameShift = topLevelFrames ? unionBounds(index.ids.map(id => {
-    const n = doc.nodes[id], matrix = worldMatrix(doc, id, index.parents)
-    return bounds(boxPoints({ x: 0, y: 0, width: n.width, height: n.height }).map(point => apply(matrix, point)))
-  })).width + FIGMA_TOP_LEVEL_FRAME_DUPLICATE_GAP : null
+  // Bounds run only when every root is a free top-level frame or section.
+  // A group, shape, nested frame, flow child, or mixed selection does not.
+  const rightward = state.canvas === 'figma' && intent.kind === 'default' && !repeat
+    && index.ids.every(id => rightwardDuplicateRoot(doc, id, index.parents, index.pageId))
+  const frameShift = rightward ? unionBounds(index.ids.map(id => authoredWorldBounds(doc, id, index.parents))).width + FIGMA_TOP_LEVEL_FRAME_DUPLICATE_GAP : null
+  const ordinary = state.canvas === 'figma' ? translate(0, 0) : translate(10, 10)
   const transforms = new Map<string, Matrix>()
   for (const id of index.ids) {
     const delta = intent.kind === 'world-offset' ? translate(intent.x, intent.y) : repeat
       ? supportedRepeatDelta(worldMatrix(doc, id, index.parents), repeat.reference.get(id)!)
-      : frameShift !== null ? translate(frameShift, 0) : translate(10, 10)
+      : frameShift !== null ? translate(frameShift, 0) : ordinary
     if (!delta || !finite(delta)) throw new SelectionCommandError('unsupported_duplicate_transform', 'Duplicate repeat supports finite translation and rotation only')
     transforms.set(id, delta)
   }
-  return { content: copyForDuplication(doc, index.ids, state.mutable, index.parents), transforms, pageId: index.pageId }
+  return {
+    content: copyForDuplication(doc, index.ids, state.mutable, index.parents), transforms, pageId: index.pageId,
+    growSections: state.canvas === 'figma' && intent.kind === 'default',
+  }
+}
+/** Page children, and frames or sections inside a free section, duplicate right.
+ * Auto-layout flow stays with the layout solver. Nested frames stay on top. */
+function rightwardDuplicateRoot(doc: DesignDocument, id: string, parents: ParentMap, pageId: string): boolean {
+  const node = doc.nodes[id]
+  if (!node || node.instanceOrigin || (node.kind !== 'frame' && node.kind !== 'section')) return false
+  const parentId = parents.get(id)
+  if (parentId === pageId) return true
+  const parent = parentId ? doc.nodes[parentId] : undefined
+  return !!parent && parent.kind === 'section' && (!parent.layout || parent.layout.mode === 'none')
+}
+function authoredWorldBounds(doc: DesignDocument, id: string, parents: ParentMap) {
+  const n = doc.nodes[id], matrix = worldMatrix(doc, id, parents)
+  return bounds(boxPoints({ x: 0, y: 0, width: n.width, height: n.height }).map(point => apply(matrix, point)))
+}
+function localBounds(node: DesignNode) {
+  return bounds(boxPoints({ x: 0, y: 0, width: node.width, height: node.height }).map(point => apply(node.transform, point)))
+}
+/** Include only the new frame or section. Pre-existing overflow does not pull the section. */
+function expandSectionToChildren(doc: DesignDocument, sectionId: string, childIds: readonly string[]): boolean {
+  const section = doc.nodes[sectionId]
+  if (!section || section.kind !== 'section' || (section.layout && section.layout.mode !== 'none')) return false
+  const oldWidth = section.width, oldHeight = section.height
+  let left = 0, top = 0, right = oldWidth, bottom = oldHeight, saw = false
+  for (const id of childIds) {
+    const child = doc.nodes[id]
+    if (!child) continue
+    saw = true
+    const box = localBounds(child)
+    left = Math.min(left, box.x); top = Math.min(top, box.y)
+    right = Math.max(right, box.x + box.width); bottom = Math.max(bottom, box.y + box.height)
+  }
+  if (!saw || (left === 0 && top === 0 && right === oldWidth && bottom === oldHeight)) return false
+  if (left !== 0 || top !== 0) {
+    section.transform = multiply(section.transform, translate(left, top))
+    for (const id of section.children) {
+      const child = doc.nodes[id], [a, b, c, d, tx, ty] = child.transform
+      child.transform = [a, b, c, d, tx - left, ty - top]
+    }
+  }
+  section.width = right - left
+  section.height = bottom - top
+  if (section.width !== oldWidth || section.height !== oldHeight) {
+    for (const id of section.children) {
+      const child = doc.nodes[id]
+      if (!child.constraints) continue
+      const referenceWidth = child.constraints.referenceWidth, referenceHeight = child.constraints.referenceHeight
+      if (referenceWidth == null && referenceHeight == null) continue
+      child.constraints = {
+        ...child.constraints,
+        ...(section.width !== oldWidth && referenceWidth != null ? { referenceWidth: section.width } : {}),
+        ...(section.height !== oldHeight && referenceHeight != null ? { referenceHeight: section.height } : {}),
+      }
+    }
+  }
+  return true
+}
+function accommodateDuplicatedSections(doc: DesignDocument, roots: readonly string[]) {
+  const parents = allParents(doc)
+  const visit = (id: string) => {
+    const node = doc.nodes[id]
+    if (!node || (node.kind !== 'frame' && node.kind !== 'section')) return
+    const parentId = parents.get(id)
+    if (!parentId || doc.nodes[parentId]?.kind !== 'section') return
+    if (expandSectionToChildren(doc, parentId, [id])) visit(parentId)
+  }
+  for (const id of roots) visit(id)
 }
 export function applyDuplication(doc: DesignDocument, plan: DuplicationPlan, behindSource = false): Duplication {
-  return duplicateGraph(doc, plan.content, { transforms: plan.transforms, behindSource })
+  const created = duplicateGraph(doc, plan.content, { transforms: plan.transforms, behindSource })
+  if (plan.growSections) accommodateDuplicatedSections(doc, created.roots)
+  return created
 }
 /** Retain repeat only across a provable authored root transform-only chain.
  * Any other property/topology/behavior edit clears it. No hidden recomputation. */

@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'vitest'
 import { Editor } from '../engine'
 import { blank, node, uid, defaultLayout, type DesignDocument, type Matrix } from '../model'
+import { interfacePreference } from '../interface-preference'
 import { around, multiply, rotate, translate, worldMatrix } from '../geometry'
 import { createDesignAutomation } from '../automation/core'
 import { registerPendingEdit } from '../pending-edits'
@@ -8,7 +9,7 @@ import { componentFixture } from '../component-fixtures'
 import { createClip } from '../animation'
 
 const editors: Editor[] = []
-afterEach(() => editors.splice(0).forEach(e => e.dispose()))
+afterEach(() => { editors.splice(0).forEach(e => e.dispose()); interfacePreference.reset() })
 function editor(doc: DesignDocument) { const e = new Editor(doc); editors.push(e); return e }
 function fixture() {
   const doc = blank(), frame = node('frame', 100, 50, 300, 200), a = node('rectangle', 10, 20, 30, 40), b = node('ellipse', 80, 20, 20, 20)
@@ -40,9 +41,10 @@ test.each(['ui-to-mcp', 'mcp-to-ui'] as const)('%s shares one Editor-owned trans
   const copy = e.state.selection[0], first = worldMatrix(e.state.doc, copy), delta = around({ x: 30, y: 40 }, rotate(20))
   e.transformSelection(delta)
   if (route === 'ui-to-mcp') api.duplicate([copy]); else e.duplicate()
-  close(worldMatrix(e.state.doc, e.state.selection[0]), multiply(delta, multiply(translate(10, 10), multiply(delta, first))))
+  close(worldMatrix(e.state.doc, e.state.selection[0]), multiply(delta, multiply(delta, first)))
 })
 test('ten-pixel repetition remains exact under reflected affine parents', () => {
+  interfacePreference.set({ uiMode: 'sketch' })
   const { doc, a } = fixture(), e = editor(doc), api = apiFor(e)
   let id = a.id, previous = worldMatrix(e.state.doc, a.id)
   for (let i = 0; i < 12; i++) {
@@ -63,8 +65,9 @@ test('non-transform edit, Undo/Redo and same-ID load invalidate repeat', () => {
     expect(e.duplicationRepeat()).toBeNull()
     const before = worldMatrix(e.state.doc, id); e.duplicate()
     const stepped = worldMatrix(e.state.doc, e.state.selection[0])
-    expect(stepped[4] - before[4]).toBeCloseTo(10, 8)
-    expect(stepped[5] - before[5]).toBeCloseTo(10, 8)
+    expect(e.state.selection[0]).not.toBe(id)
+    expect(stepped[4] - before[4]).toBeCloseTo(0, 8)
+    expect(stepped[5] - before[5]).toBeCloseTo(0, 8)
   }
 })
 test('pending input commits before duplicate captures its source; invalid input blocks atomically', () => {
@@ -137,14 +140,15 @@ test.each(['source-page', 'destination-page'] as const)('legitimate non-active %
   const e = editor(doc), api = apiFor(e), [copy] = api.duplicate([a.id], route === 'destination-page' ? { parentId: second.id } : {})
   expect(e.state.page).toBe(second.id); expect(e.duplicationRepeat()?.roots).toEqual([copy])
   e.transformSelection(translate(30, 5)); const current = worldMatrix(e.state.doc, copy), [next] = api.duplicate([copy])
-  close(worldMatrix(e.state.doc, next), multiply(translate(40, 15), current))
+  close(worldMatrix(e.state.doc, next), multiply(translate(30, 5), current))
 })
 
 test.each([{ transform: [2, 0, 0, 2, 0, 0] as Matrix }, { transform: [1, 0, .2, 1, 0, 0] as Matrix }])('scale/skew invalidates unsupported repeat rather than inferring another affine command: %j', ({ transform }) => {
   const { doc, a } = fixture(), e = editor(doc); e.select([a.id]); e.duplicate(); e.transformSelection(transform)
   expect(e.duplicationRepeat()).toBeNull()
-  const current = worldMatrix(e.state.doc, e.state.selection[0]); e.duplicate()
-  close(worldMatrix(e.state.doc, e.state.selection[0]), multiply(translate(10, 10), current))
+  const current = worldMatrix(e.state.doc, e.state.selection[0]), previous = e.state.selection[0]; e.duplicate()
+  expect(e.state.selection[0]).not.toBe(previous)
+  close(worldMatrix(e.state.doc, e.state.selection[0]), current)
 })
 test('selection-publication exceptions report the accepted mutation and do not publish a repeat seed', () => {
   const { doc, a } = fixture(), e = editor(doc), before = e.state.doc, api = apiFor(e); let fired = false

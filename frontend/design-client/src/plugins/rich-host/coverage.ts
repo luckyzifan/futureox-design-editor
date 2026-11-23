@@ -128,7 +128,7 @@ export const PLUGIN_API_COVERAGE: readonly PluginApiEntry[] = [
   { api: 'SceneNode.appendChild', status: 'supported', notes: 'Preserves world position.' },
   { api: 'SceneNode.insertChild', status: 'supported', notes: 'Index is the final sibling index.' },
   { api: 'SceneNode.remove', status: 'supported', notes: 'Deletes the subtree.' },
-  { api: 'SceneNode.clone', status: 'partial', notes: 'Uses editor duplicate. Shapes and containers, including top-level frames, step +10,+10.' },
+  { api: 'SceneNode.clone', status: 'partial', notes: 'Uses editor duplicate. Figma places a page-level or free-section frame or section to the right by the world-bounds width plus 40, and leaves other objects on top. Sketch steps +10,+10.' },
   { api: 'SceneNode.findAll', status: 'partial', notes: 'At most 2000 visited nodes.' },
   { api: 'SceneNode.findOne', status: 'partial', notes: 'At most 2000 visited nodes.' },
   { api: 'ComponentNode.createInstance', status: 'supported', notes: 'Local component only. No team library.' },

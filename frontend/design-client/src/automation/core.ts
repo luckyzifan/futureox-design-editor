@@ -1,5 +1,6 @@
 import { prepareBooleanCreate, applyBooleanCreate, type BooleanCreateOptions } from '../commands/boolean-command'
-import { applyDuplication, prepareDuplication, duplicationIntent } from '../commands/duplication-command'
+import { applyDuplication, prepareDuplication, duplicationCanvas, duplicationIntent } from '../commands/duplication-command'
+import { interfacePreference } from '../interface-preference'
 import { prepareLayoutAdd, applyLayoutAdd, prepareLayoutRemove, applyLayoutRemove, type LayoutAddOptions } from '../commands/layout-command'
 import { displayProperties } from './display-properties'
 import { prepareSelectionScale, SelectionScaleError } from '../selection-scale'
@@ -325,12 +326,13 @@ const coreExtensions: AutomationExtension[] = [
     (doc, p) => ({ removedIds: removeNodes(doc, ids(p.ids)) })),
   operation('node.move', 'Reparent nodes in one atomic operation. index is the final insertion position after removal; world transforms are preserved by default.', schema({ ids: idsSchema, parentId: stringSchema, index: indexSchema, preserveWorld: { type: 'boolean' } }, ['ids', 'parentId']), true,
     (doc, p) => ({ ids: moveNodes(doc, ids(p.ids), text(p.parentId, 'parentId'), p.index, p.preserveWorld !== false) })),
-  operation('node.duplicate', 'Duplicate with shared editor placement: default +10,+10 document units for shapes and containers, and trusted single-step translation/rotation repeat. Explicit offsetX or offsetY selects world-offset placement; an omitted other axis remains 24. Selects the new roots. Main components retain native linked-instance behavior.', schema({ ids: idsSchema, parentId: stringSchema, index: indexSchema, offsetX: numberSchema, offsetY: numberSchema }, ['ids']), true, (doc, p, ctx) => {
+  operation('node.duplicate', 'Duplicate with the active layout default. Figma places a page-level or free-section frame or section to the right by the selection world-bounds width plus 40, and leaves other objects on top. Sketch steps +10,+10. Trusted single-step translation or rotation repeats that placement. Explicit offsetX or offsetY selects world-offset placement; an omitted other axis remains 24. Selects the new roots. Main components retain native linked-instance behavior.', schema({ ids: idsSchema, parentId: stringSchema, index: indexSchema, offsetX: numberSchema, offsetY: numberSchema }, ['ids']), true, (doc, p, ctx) => {
     if (p.index !== undefined && p.parentId === undefined) fail('invalid_params', 'index requires parentId')
     if (p.parentId !== undefined) childList(doc, text(p.parentId, 'parentId'))
     const intent = duplicationIntent(p.offsetX as number | undefined, p.offsetY as number | undefined)
     const plan = prepareDuplication(doc, ids(p.ids), intent, { fresh: ctx.selectionGeometryFresh === true,
-      singleStep: ctx.duplicationSingleStep === true, mutable: true, repeat: ctx.duplicationRepeat, destination: p.parentId as string | undefined })
+      singleStep: ctx.duplicationSingleStep === true, mutable: true, repeat: ctx.duplicationRepeat, destination: p.parentId as string | undefined,
+      canvas: duplicationCanvas(interfacePreference.getSnapshot().uiMode) })
     const before = new Set(Object.keys(doc.nodes)), result = applyDuplication(doc, plan)
     if (p.parentId !== undefined) {
       moveNodes(doc, result.roots, text(p.parentId, 'parentId'), p.index)

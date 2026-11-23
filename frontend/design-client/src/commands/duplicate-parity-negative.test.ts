@@ -24,13 +24,13 @@ for (const kind of ['rectangle', 'frame'] as const) test(`Figma ${kind} placemen
   interfacePreference.set({ uiMode: 'figma' })
   const { doc, n } = fixture(kind), ui = editor(doc), mcp = editor(doc), explicit = editor(doc)
   const bases = new Map([[ui, ui.state.doc], [mcp, mcp.state.doc], [explicit, explicit.state.doc]])
-  const offsetX = kind === 'frame' ? n.width + 40 : 10
-  const offsetY = kind === 'frame' ? 0 : 10
+  const offsetX = kind === 'frame' ? n.width + 40 : 0
+  const offsetY = 0
   ui.select([n.id])
   ui.duplicate()
   const [copy] = duplicate(mcp, [n.id])
   const [equivalent] = duplicate(explicit, [n.id], { offsetX, offsetY })
-  expect(worldMatrix(mcp.state.doc, copy)).toEqual([1, 0, 0, 1, 20, 30])
+  expect(worldMatrix(mcp.state.doc, copy)).toEqual([1, 0, 0, 1, 10 + offsetX, 20 + offsetY])
   expect(worldMatrix(ui.state.doc, ui.state.selection[0])).toEqual([1, 0, 0, 1, 10 + offsetX, 20 + offsetY])
   expect(worldMatrix(explicit.state.doc, equivalent)).toEqual(worldMatrix(ui.state.doc, ui.state.selection[0]))
   expect(mcp.state.selection).toEqual([copy])
@@ -46,8 +46,9 @@ test('same-ID reopen invalidates duplicate repeat rather than reusing old displa
   const id = e.state.selection[0], reopened = structuredClone(e.state.doc), position = worldMatrix(reopened, id)
   expect(e.load(reopened)).toBe(true); e.select([id]); e.duplicate()
   const stepped = worldMatrix(e.state.doc, e.state.selection[0])
-  expect(stepped[4] - position[4]).toBeCloseTo(10, 8)
-  expect(stepped[5] - position[5]).toBeCloseTo(10, 8)
+  expect(e.state.selection[0]).not.toBe(id)
+  expect(stepped[4] - position[4]).toBeCloseTo(0, 8)
+  expect(stepped[5] - position[5]).toBeCloseTo(0, 8)
 })
 test('a same-ID load subscriber cannot receive the old duplicate selection or repeat seed', () => {
   const { doc, n } = fixture(), e = editor(doc); e.select([n.id])

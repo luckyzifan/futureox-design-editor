@@ -108,13 +108,13 @@ test('Paste here preserves nested animation world frames with independent x/y of
   editor.dispose()
 })
 
-test('ordinary Duplicate steps 10px down-right; top-level frames move right at unchanged y', () => {
+test('ordinary Duplicate stays on top; top-level frames move right at unchanged y', () => {
   interfacePreference.set({ uiMode: 'figma' })
   const { editor, a, parent } = rotatedFixture()
   editor.select([a.id]); const before = worldMatrix(editor.state.doc, a.id)
   editor.duplicate(); const copied = worldMatrix(editor.state.doc, editor.state.selection[0])
-  expect(copied[4] - before[4]).toBeCloseTo(10, 8)
-  expect(copied[5] - before[5]).toBeCloseTo(10, 8)
+  expect(editor.state.selection[0]).not.toBe(a.id)
+  expect(copied).toEqual(before)
   editor.undo(); editor.select([parent.id]); const box = editor.selectionBounds()!
   editor.duplicate(); const duplicated = editor.selectionBounds()!
   expect(duplicated.x).toBeCloseTo(box.x + box.width + 40, 8)
@@ -123,7 +123,7 @@ test('ordinary Duplicate steps 10px down-right; top-level frames move right at u
   interfacePreference.set({ uiMode: 'figma' })
 })
 
-test('Figma Duplicate places a top-level frame to the right; sections, groups, nested frames, and paste stay at +10,+10', () => {
+test('Figma Duplicate places a top-level frame and section to the right; groups, nested frames, and paste stay put or step 10', () => {
   interfacePreference.set({ uiMode: 'figma' })
   const document = blank('container duplicate'), frame = node('frame', 140, 486, 500, 300), nested = node('frame', 16, 18, 40, 30)
   const section = node('section', 20, 30, 80, 40), group = node('group', 8, 12, 40, 20), child = node('rectangle', 4, 6, 10, 10)
@@ -136,6 +136,7 @@ test('Figma Duplicate places a top-level frame to the right; sections, groups, n
     const before = worldMatrix(editor.state.doc, id)
     editor.duplicate()
     const copy = editor.state.selection[0]
+    expect(copy).not.toBe(id)
     const after = worldMatrix(editor.state.doc, copy)
     after.slice(0, 4).forEach((value, index) => expect(value).toBeCloseTo(before[index], 8))
     expect(after[4] - before[4]).toBeCloseTo(dx, 8)
@@ -148,7 +149,8 @@ test('Figma Duplicate places a top-level frame to the right; sections, groups, n
     expect(worldMatrix(editor.state.doc, id)).toEqual(before)
   }
   step(frame.id, frame.width + 40, 0)
-  for (const id of [section.id, group.id, nested.id]) step(id, 10, 10)
+  step(section.id, section.width + 40, 0)
+  for (const id of [group.id, nested.id]) step(id, 0, 0)
   editor.select([frame.id]); const origin = worldMatrix(editor.state.doc, frame.id)
   editor.copy(); editor.paste()
   const pasted = worldMatrix(editor.state.doc, editor.state.selection[0])
