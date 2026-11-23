@@ -1007,6 +1007,7 @@ fn fig_percent_opacity_is_normalized_only_during_import() {
     let text_fields = &doc.nodes["fig-1-5"].instance.as_ref().unwrap().overrides["fig-1-12"];
     let text_style = &text_fields["textStyle"];
     assert!((text_style["lineHeight"].as_f64().unwrap() - 1.5).abs() < 1e-9);
+    assert_eq!(text_style["lineBoxBaseline"], "figma-pixel-leading");
     assert!((text_style["letterSpacing"].as_f64().unwrap() - 1.6).abs() < 1e-9);
     assert!((text_style["weight"].as_f64().unwrap() - 700.).abs() < 1e-9);
     assert_eq!(text_fields["effects"][0]["kind"], "shadow");
