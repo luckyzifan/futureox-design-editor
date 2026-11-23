@@ -5,7 +5,7 @@ import { blank, node, type DesignNode } from './model'
 import { canvasOverlayCommands } from './canvas-overlay-commands'
 import { selectionLocalBounds } from './canvas-view'
 import { HOVER_BLUE, SELECTION_BLUE } from './selection-blue'
-import { measureBounds, spacingDiagram, SPACING_RED } from './canvas-measurements'
+import { anchorPlacementBox, diagramFromLines, measureBounds, measureToGuide, SPACING_RED } from './canvas-measurements'
 import { selectionSizeLabel } from './selection-size-label'
 
 function documentOf(nodes: DesignNode[], roots = nodes.map(item => item.id)) {
@@ -84,4 +84,33 @@ test('Alt spacing is red, meets a sibling gap, and reports four paddings inside 
   expect(gap.commands.labels?.find(label => label.kind === 'selection-size')).toMatchObject({ color: '#ffffff', frame: 'accent' })
   const padding = measureBounds(bounds(corners), frameEntry.bounds).map(item => item.distance)
   expect(padding).toEqual([40, 210, 50, 110])
+})
+
+test('partial overlap, a ruler guide, and an anchor preview reach the overlay commands', () => {
+  const left = node('rectangle', 0, 0, 80, 40)
+  const right = node('rectangle', 40, 10, 80, 40)
+  const doc = documentOf([left, right])
+  const entries = scene(doc, doc.pages[0].id)
+  const selected = entries.find(entry => entry.id === left.id)!
+  const target = entries.find(entry => entry.id === right.id)!
+  const corners = boxPoints(selected.bounds)
+  const input = {
+    document: doc, pageId: doc.pages[0].id, epoch: 1, tool: 'select', pixelGrid: false, canTransform: true,
+    selected: [selected], owners: [left.id], frameTitles: [],
+    localSelection: null, selectionCorners: corners, selectionBox: selected.bounds,
+  }
+  const overlap = canvasOverlayCommands({ ...input, measurementTarget: { id: right.id, bounds: target.bounds } })
+  expect(overlap.commands.labels?.filter(label => label.kind === 'measurement').map(label => label.text).sort()).toEqual(['10', '10', '40', '40'])
+  expect(overlap.commands.measurements?.some(line => line.role === 'gap' && line.distance === 40)).toBe(true)
+  const guide = canvasOverlayCommands({
+    ...input,
+    measurementTarget: null,
+    directMeasurement: diagramFromLines(measureToGuide(selected.bounds, { axis: 'x', position: 100 }), 1),
+  })
+  expect(guide.commands.labels?.filter(label => label.kind === 'measurement').map(label => label.text)).toEqual(['20'])
+  expect(guide.uiIdentity).not.toBe(overlap.uiIdentity)
+  const placed = anchorPlacementBox({ x: 0, y: 0 }, { x: 12, y: 5 })
+  const anchor = canvasOverlayCommands({ ...input, tool: 'vector', measurementTarget: null, directMeasurement: placed })
+  expect(anchor.commands.measurements?.every(line => line.dash)).toBe(true)
+  expect(anchor.commands.labels?.filter(label => label.kind === 'measurement').map(label => label.text)).toEqual(['12', '5'])
 })

@@ -11,7 +11,7 @@ export const ALIGNMENT_GUIDE = '#ed6996'
 export type CanvasGuide = { axis:'x'|'y'; position:number; start:number; end:number }
 export type CanvasOverlay = { selection?: { corners: Point[]; handles: boolean; owners?: string[] }; pixelGrid: boolean
   guides?: readonly CanvasGuide[]
-  labels?: CanvasLabel[]; measurements?: {from:Point;to:Point;axis?:MeasurementAxis;tick?:boolean}[]; transforms?:Record<string,Matrix> }
+  labels?: CanvasLabel[]; measurements?: {from:Point;to:Point;axis?:MeasurementAxis;tick?:boolean;dash?:boolean}[]; transforms?:Record<string,Matrix> }
 const blue = srgbUnit(SELECTION_BLUE), white = [1, 1, 1, 1], spacingRed = srgbUnit(SPACING_RED),
   alignmentGuide = srgbUnit(ALIGNMENT_GUIDE)
 
@@ -136,9 +136,21 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
   }
   const project = (point: Point) => ({ x: point.x * view.zoom + view.x, y: point.y * view.zoom + view.y })
   for (const measurement of overlay.measurements || []) {
-    line(project(measurement.from), project(measurement.to), 1, spacingRed)
-    if (measurement.axis && measurement.tick !== false) for (const [start, end] of measurementTicks({ from: measurement.from, to: measurement.to, axis: measurement.axis }, view.zoom))
-      line(project(start), project(end), 1, spacingRed)
+    const a = project(measurement.from), b = project(measurement.to)
+    if (measurement.dash) {
+      const length = Math.hypot(b.x - a.x, b.y - a.y)
+      if (length) {
+        const ux = (b.x - a.x) / length, uy = (b.y - a.y) / length
+        for (let t = 0; t < length; t += 7) {
+          const end = Math.min(length, t + 4)
+          line({ x: a.x + ux * t, y: a.y + uy * t }, { x: a.x + ux * end, y: a.y + uy * end }, 1, spacingRed)
+        }
+      }
+    } else {
+      line(a, b, 1, spacingRed)
+      if (measurement.axis && measurement.tick !== false) for (const [start, end] of measurementTicks({ from: measurement.from, to: measurement.to, axis: measurement.axis }, view.zoom))
+        line(project(start), project(end), 1, spacingRed)
+    }
   }
   for (const guide of overlay.guides || []) {
     const a = guide.axis === 'x' ? { x:guide.position, y:guide.start } : { x:guide.start, y:guide.position }

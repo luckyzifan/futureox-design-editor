@@ -5,18 +5,27 @@ import type {Editor} from './engine'
 import type {CanvasCamera,CanvasSize} from './canvas-camera'
 import {screenToWorld} from './canvas-camera'
 import {uid,type RulerGuide} from './model'
-import {guideOwner,guidePosition,worldGuides} from './ruler-guides'
+import {guideOwner,guidePosition,worldGuides,type WorldGuide} from './ruler-guides'
 import {NumberField} from './fields'
 import {useProfessionalDialogText} from './professional-dialog-messages'
 import { ActionContextMenu } from './ActionContextMenu'
 import { useInterfacePreferences } from './interface-preference'
 import { commitPendingEdits } from './pending-edits'
 
-export function CanvasGuides({editor,view,size,entries,intercept,guidesHidden=false}:{editor:Editor;view:CanvasCamera;size:CanvasSize;entries?:readonly SceneEntry[];intercept:(e:React.PointerEvent)=>boolean;guidesHidden?:boolean}){
+export type GuideMeasureHit = { owner: string; id: string; axis: 'x' | 'y' | null; position: number; label: number; at: { x: number; y: number } }
+export type GuideMeasureState = { selected: GuideMeasureHit | null; hover: GuideMeasureHit | null }
+function guideAxis(guide: WorldGuide): { axis: 'x' | 'y'; position: number } | null {
+  const dx = guide.to.x - guide.from.x, dy = guide.to.y - guide.from.y
+  if (Math.abs(dx) <= 1e-6 && Math.abs(dy) > 1e-6) return { axis: 'x', position: guide.from.x }
+  if (Math.abs(dy) <= 1e-6 && Math.abs(dx) > 1e-6) return { axis: 'y', position: guide.from.y }
+  return null
+}
+export function CanvasGuides({editor,view,size,entries,intercept,guidesHidden=false,onGuideMeasure}:{editor:Editor;view:CanvasCamera;size:CanvasSize;entries?:readonly SceneEntry[];intercept:(e:React.PointerEvent)=>boolean;guidesHidden?:boolean;onGuideMeasure?:(state:GuideMeasureState)=>void}){
   const {tr}=useProfessionalDialogText()
   const {uiMode}=useInterfacePreferences()
   const host=useRef<HTMLDivElement>(null),[selected,setSelected]=useState<{owner:string;id:string}|null>(null)
   const [rulerMenu,setRulerMenu]=useState<{axis:'x'|'y';x:number;y:number;page:string;session:number}|null>(null)
+  const [hoverGuide,setHoverGuide]=useState<GuideMeasureHit|null>(null)
   const active=useRef<{action:UtilityAction;pointer:number;session:number;page:string;owner:string;id:string;axis:'x'|'y';view:CanvasCamera;created:boolean;start:{x:number;y:number};moved:boolean}|null>(null)
   const doc=editor.state.doc,page=editor.state.page,shown=!!editor.state.rulers
   const guides = useMemo(() => shown && !guidesHidden ? worldGuides(doc,page,entries) : [], [shown,guidesHidden,doc,page,entries])
@@ -24,6 +33,12 @@ export function CanvasGuides({editor,view,size,entries,intercept,guidesHidden=fa
   const cancel=()=>{const d=active.current;active.current=null;if(d?.session===editor.sessionGeneration&&d.page===editor.state.page)editor.cancel();d?.action.cancel()}
   useEffect(()=>{cancel();setSelected(null)},[editor.sessionGeneration,page,shown])
   useEffect(()=>setRulerMenu(null),[editor.sessionGeneration,page,shown,guidesHidden,uiMode])
+  useEffect(()=>{if(!shown||guidesHidden)setHoverGuide(null)},[shown,guidesHidden])
+  useEffect(()=>{
+    if(!onGuideMeasure)return
+    const selectedHit=selected&&selectedGuide?(()=>{const world=guides.find(g=>g.owner===selected.owner&&g.guide.id===selected.id);const axis=world&&guideAxis(world);return {owner:selected.owner,id:selected.id,axis:axis?.axis??null,position:axis?.position??selectedGuide.position,label:selectedGuide.position,at:{x:0,y:0}}})():null
+    onGuideMeasure({selected:shown&&!guidesHidden?selectedHit:null,hover:shown&&!guidesHidden?hoverGuide:null})
+  },[onGuideMeasure,selected,selectedGuide,hoverGuide,guides,shown,guidesHidden])
   useEffect(()=>{
     const down=(e:PointerEvent)=>{if(!host.current?.contains(e.target as Node))setSelected(null)}
     const key=(e:KeyboardEvent)=>{
@@ -93,7 +108,7 @@ export function CanvasGuides({editor,view,size,entries,intercept,guidesHidden=fa
         const key=g.owner+'/'+g.guide.id,isSelected=selected?.owner===g.owner&&selected.id===g.guide.id
         return <g key={key} data-testid="ruler-guide" data-owner-id={g.owner} data-guide-id={g.guide.id} onContextMenu={e=>{e.preventDefault();e.stopPropagation();if(g.editable){setSelected({owner:g.owner,id:g.guide.id});host.current?.focus()}}}>
           <line x1={a.x*view.zoom+view.x} y1={a.y*view.zoom+view.y} x2={b.x*view.zoom+view.x} y2={b.y*view.zoom+view.y} stroke={isSelected?'#0d99ff':'#f24822'} strokeWidth={1}/>
-          <line x1={a.x*view.zoom+view.x} y1={a.y*view.zoom+view.y} x2={b.x*view.zoom+view.x} y2={b.y*view.zoom+view.y} stroke="transparent" strokeWidth={8} pointerEvents={g.editable&&editor.state.tool==='select'?'stroke':'none'} style={{cursor:g.guide.axis==='x'?'ew-resize':'ns-resize'}} onPointerDown={e=>start(e,g.guide.axis,g.owner,g.guide)} onDoubleClick={e=>e.stopPropagation()}/>
+          <line x1={a.x*view.zoom+view.x} y1={a.y*view.zoom+view.y} x2={b.x*view.zoom+view.x} y2={b.y*view.zoom+view.y} stroke="transparent" strokeWidth={8} pointerEvents={g.editable&&editor.state.tool==='select'?'stroke':'none'} style={{cursor:g.guide.axis==='x'?'ew-resize':'ns-resize'}} onPointerDown={e=>start(e,g.guide.axis,g.owner,g.guide)} onDoubleClick={e=>e.stopPropagation()} onPointerEnter={e=>{const axis=guideAxis(g);setHoverGuide({owner:g.owner,id:g.guide.id,axis:axis?.axis??null,position:axis?.position??g.guide.position,label:g.guide.position,at:location(e)})}} onPointerLeave={()=>setHoverGuide(current=>current?.owner===g.owner&&current.id===g.guide.id?null:current)} onPointerMove={e=>{if(active.current)return;const at=location(e);setHoverGuide(current=>{if(!current||current.owner!==g.owner||current.id!==g.guide.id)return current;if(Math.abs(current.at.x-at.x)<0.5&&Math.abs(current.at.y-at.y)<0.5)return current;return{...current,at}})}}/>
         </g>})}
     </svg>
     <div className="canvas-ruler horizontal" data-testid="horizontal-ruler" onPointerDown={e=>start(e,'y',owner)} onContextMenu={e=>openRulerMenu(e,'y')}>{ticks('x').map(t=><span key={t.value} style={{left:t.at}}>{Number(t.value.toFixed(4))}</span>)}</div>

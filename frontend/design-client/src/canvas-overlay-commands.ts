@@ -1,6 +1,6 @@
 import type { Bounds, DesignDocument, Point } from './model'
 import { apply, type SceneEntry } from './geometry'
-import { DISTANCE_PILL_FONT_SIZE, DISTANCE_PILL_TEXT, spacingDiagram, type Measurement } from './canvas-measurements'
+import { DISTANCE_PILL_FONT_SIZE, DISTANCE_PILL_TEXT, spacingDiagram, type Measurement, type SpacingPill } from './canvas-measurements'
 import { selectionSizeLabel } from './selection-size-label'
 import { SELECTION_BLUE, SIZE_PILL_TEXT } from './selection-blue'
 import type { CanvasLabel } from './kernel/gpu/canvas-labels'
@@ -23,6 +23,8 @@ export type CanvasOverlayInputs = {
   selected: readonly SceneEntry[]; owners: string[]; frameTitles: readonly SceneEntry[]
   localSelection: Bounds | null; selectionCorners: Point[]; selectionBox: Bounds
   measurementTarget: { id: string; bounds: Bounds } | null
+  /** Guide, anchor, or other diagrams that are not a second layer box. */
+  directMeasurement?: { lines: Measurement[]; pills: SpacingPill[] } | null
   zoom?: number
   uiMode?: UiMode
 }
@@ -60,8 +62,13 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   // pre-rotation box while the glyphs turned. Prefix 4 also retires labels
   // from before the warm pill frame.
   const spin = selected[0]?.matrix ? Math.round(Math.atan2(selected[0].matrix[1], selected[0].matrix[0]) * 1800) / 10 : 0
-  const uiIdentity = JSON.stringify([5, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity, targetIdentity, Math.round(zoom * 100) / 100])
-  const diagram = measurementTarget ? spacingDiagram(selectionBox, measurementTarget.bounds, zoom) : { lines: [] as Measurement[], pills: [] }
+  const direct = input.directMeasurement
+  const directIdentity = direct ? [
+    direct.lines.map(line => [line.from.x, line.from.y, line.to.x, line.to.y, line.dash ? 1 : 0, line.role ?? '']),
+    direct.pills.map(pill => [pill.text, pill.anchor.x, pill.anchor.y, pill.offset.x, pill.offset.y]),
+  ] : null
+  const uiIdentity = JSON.stringify([5, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity, targetIdentity, Math.round(zoom * 100) / 100, ...(directIdentity ? [directIdentity] : [])])
+  const diagram = direct ?? (measurementTarget ? spacingDiagram(selectionBox, measurementTarget.bounds, zoom) : { lines: [] as Measurement[], pills: [] })
   const measurements = diagram.lines
   const titled = new Set(frameTitles.map(entry => entry.id))
   // Sit above the top edge, clear of the corner rotate marks.
