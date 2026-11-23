@@ -9,10 +9,13 @@
 //! fractional capture. The combined aggregate's glass-full
 //! document now carries the same frozen readback, so its figma profile matches
 //! that PNG. figmaSoftware glass pixel counts fell; the max channel did not.
+//! The software backdrop profile now uses that same trailing tap. Capture
+//! sampling stays at `origin + i + 0.5`.
 //!
-//! | case | profile | main pixels / max | candidate |
+//! | case | profile | previous pixels / max | measured |
 //! | --- | --- | ---: | ---: |
 //! | backdrop-blur | figma | 3887 / 7 | 3795 / 4 |
+//! | backdrop-blur | figmaSoftware | 3974 / 7 | 3746 / 3 |
 //! | glass-frost-only | figmaSoftware | 2536 / 2 | 1690 / 2 |
 //! | glass-full | figmaSoftware | 2077 / 3 | 1579 / 3 |
 use futureox_design_kernel::{Engine, RenderOptions};
@@ -22,7 +25,7 @@ use sha2::{Digest, Sha256};
 /// (case, profile, max different pixels, max channel). Inclusive ceilings.
 const CEILINGS: &[(&str, &str, usize, u8)] = &[
     ("backdrop-blur", "figma", 3795, 4),
-    ("backdrop-blur", "figmaSoftware", 3974, 7),
+    ("backdrop-blur", "figmaSoftware", 3746, 3),
     ("glass-frost-only", "figma", 0, 0),
     ("glass-frost-only", "figmaSoftware", 1690, 2),
     ("glass-full", "figma", 0, 0),
@@ -280,6 +283,52 @@ fn fractional_backdrop_keeps_the_trailing_sample_in_a_shifted_viewport() {
     }
 }
 
+fn mirror_horizontally(case: &Value) -> Value {
+    let mut case = case.clone();
+    let frame = case["options"]["width"].as_f64().unwrap();
+    let nodes = case["document"]["nodes"].as_object_mut().unwrap();
+    for node in nodes.values_mut() {
+        let Some(node_width) = node.get("width").and_then(|value| value.as_f64()) else { continue };
+        let Some(transform) = node.get_mut("transform").and_then(|value| value.as_array_mut()) else { continue };
+        if transform.len() != 6 { continue }
+        let x = transform[4].as_f64().unwrap();
+        transform[4] = json!(frame - x - node_width);
+    }
+    case
+}
+
+fn mirror_rgba(src: &[u8], width: usize) -> Vec<u8> {
+    let mut out = vec![0; src.len()];
+    let height = src.len() / (width * 4);
+    for y in 0..height {
+        for x in 0..width {
+            let from = (y * width + x) * 4;
+            let to = (y * width + (width - 1 - x)) * 4;
+            out[to..to + 4].copy_from_slice(&src[from..from + 4]);
+        }
+    }
+    out
+}
+
+/// The trailing tap belongs to the shape's right edge, not a fixed output column.
+/// Mirroring this fixture moves the fractional black/white boundary to the left,
+/// so the tap does not apply. Mirrored errors must not exceed the counts
+/// measured before the software profile shared the tap.
+#[test]
+fn mirrored_backdrop_does_not_exceed_the_previous_gap() {
+    let cases = cases();
+    let case = case(&cases, "backdrop-blur");
+    let mirrored_reference = mirror_rgba(&reference(case), 128);
+    let mirrored = mirror_horizontally(case);
+    for (profile, pixels, max) in [("figma", 3887, 7u8), ("figmaSoftware", 3651, 7u8)] {
+        let (got_pixels, got_max) = gap(&render(&mirrored, profile), &mirrored_reference);
+        assert!(
+            got_pixels <= pixels && got_max <= max,
+            "{profile} mirror: pixels {got_pixels} ceiling {pixels}, max {got_max} ceiling {max}"
+        );
+    }
+}
+
 #[test]
 fn issue_179_appearance_stays_within_the_measured_ceilings() {
     let cases = cases();
@@ -296,6 +345,12 @@ fn issue_179_appearance_stays_within_the_measured_ceilings() {
             assert!(
                 got_pixels < previous,
                 "{id} did not improve on main's {previous} software pixels: {got_pixels}"
+            );
+        }
+        if profile == "figmaSoftware" && id == "backdrop-blur" {
+            assert!(
+                got_pixels < 3974 && got_max < 7,
+                "software backdrop did not improve on 3974/7: {got_pixels}/{got_max}"
             );
         }
     }

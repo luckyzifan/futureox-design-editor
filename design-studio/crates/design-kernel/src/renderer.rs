@@ -3807,10 +3807,12 @@ impl Painter<'_> {
                         });
                         // The trailing half of a fractional capture texel can
                         // cross a device pixel edge. Retain that edge sample
-                        // for the first tap beyond the cropped Figma surface.
+                        // for the first tap beyond the cropped export surface.
+                        // figma and figmaSoftware share the tap. The read stays
+                        // at origin + i + 0.5. Exact-frame dither stays on figma.
                         let edge = right.floor();
                         let input = backdrop_inputs[0].rect;
-                        let trailing = (self.profile == crate::fidelity::RasterProfile::Figma
+                        let trailing = (self.profile.is_export()
                             && radius > 0. && edge > right - 0.5 && edge < right
                             && n.kind == "rectangle"
                             && edge > f64::from(input.x) && edge < f64::from(input.right())
