@@ -26,7 +26,7 @@
 | 自动固定选区 | — | Sketch 布局 Shift+A；再按一次恢复原约束 |
 | 自动固定容器的直接子图层 | — | Sketch 布局 Alt+Shift+A；一步撤销 |
 | 去掉描边 | Shift+/ | 不绑定 |
-| 去掉填充 | Alt+/。Mac US Option 输出 ÷，对应物理键 Slash | 此方案不含该键 |
+| 去掉填充 | Mac ⌥ /（US Option 产生 ÷，物理键 Slash）；Windows 与 Linux 为 Alt+, | 此方案不含该键 |
 | 交换填充和描边 | — | Sketch 布局 Shift+X |
 | 隐藏或恢复选区描边 | — | Sketch 布局 Shift+B |
 | 隐藏或恢复选区填充 | — | Sketch 布局 Shift+F |
@@ -42,7 +42,7 @@
 | 吸附到像素网格 | Mod+Shift+' | Mod+Shift+' |
 | 显示或隐藏全部布局参考线 | Shift+G，只改视图状态，不写入文档历史 | 既有 ⌃L（mac），不改 |
 
-Figma-like 的 Shift+/ 对应官方键盘布局表中的 Remove stroke。US 键盘按住 Shift 时该键产生 `?`，物理键仍是 Slash。它清掉当前选区里每一个带描边图层的整组描边，包括隐藏描边、锁定图层、隐藏图层、与父图层一起选中的子图层、描边样式引用和描边宽度绑定。选区不变，一步撤销恢复同一图层。空选区、没有描边，以及没有被选中的子图层不写入历史；编组本身没有描边时不改组内图层。填充样式本身保持链接；若该样式还携带描边，解析会把描边写回，这条快捷键不解除填充样式。绑定不含 Control，因此不占用 ⌃⇧?。⌥/ 去掉填充，以及 Sketch 的 ⇧B 切换描边可见性，都不在这条绑定里。其它键盘布局把 Remove stroke 改到逗号或冒号等键上，本机预设仍按 US/Generic 的 Shift+/。
+Figma-like 的 Shift+/ 对应官方键盘布局表中的 Remove stroke。US 键盘按住 Shift 时该键产生 `?`，物理键仍是 Slash。它清掉当前选区里每一个带描边图层的整组描边，包括隐藏描边、锁定图层、隐藏图层、与父图层一起选中的子图层、描边样式引用和描边宽度绑定。选区不变，一步撤销恢复同一图层。空选区、没有描边，以及没有被选中的子图层不写入历史；编组本身没有描边时不改组内图层。填充样式本身保持链接；若该样式还携带描边，解析会把描边写回，这条快捷键不解除填充样式。绑定不含 Control，因此不占用 ⌃⇧?。Mac 的 ⌥ / 去掉填充，Windows 与 Linux 的 US QWERTY 去掉填充是 Alt+,。Sketch 的 ⇧B 切换描边可见性不在这条绑定里。其它键盘布局把 Remove stroke 改到逗号或冒号等键上，本机预设仍按 US/Generic 的 Shift+/。
 
 Sketch 布局的命令搜索复用现有编辑命令、对齐和几何入口，按名称、别名和完整快捷键过滤，并显示禁用原因。查询、高亮和焦点只留在界面会话里，不进入文档历史。Figma 布局的 S 仍是切片。Sketch 文档已改为 F=Frame；不是旧版 Artboard 的 A。Windows/Linux 用 Ctrl 替代 Cmd。Sketch 的 stack layout 在此只对应已有自动布局命令，不代表布局语义完全一致。双方原有的本地编组、复制属性、导出 PNG、反选等命令继续保留；抓手 H、区域缩放 Z 等共用工具仍可使用。Mod+Shift+C 复制 PNG、Mod+Shift+O 切换轮廓和 B 启动画笔只在 Figma 布局拦截；Sketch 的画笔和 PNG 仍可从菜单访问。Sketch-like 的 E 归切片使用，橡皮不再显示错误的 E 提示。
 

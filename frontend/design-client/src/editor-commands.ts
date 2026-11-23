@@ -425,6 +425,10 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         break
       case 'remove-fill':
       case 'remove-stroke': {
+        // Figma clears the whole stack on the unlocked top selection. A locked
+        // layer, a child of a locked ancestor, and a descendant of another
+        // selected layer are not targets. One undo restores those same layers.
+        // An empty stack does not write history.
         const fills = command === 'remove-fill'
         const stack = fills ? 'fills' : 'strokes'
         // Official Figma edits every selected layer that owns the paint,
