@@ -904,3 +904,241 @@ fn parallel_cancel_keeps_one_finished_tile() {
     assert!(renderer.resident_tile_count() > 1);
     assert!(finished.load(Ordering::Acquire) > 1);
 }
+
+/// The center tile becomes resident while the other workers are still
+/// drawing. Three workers stay in the pool. Final bytes follow the address,
+/// and the batch wall stays near the slow tile rather than the sum.
+#[test]
+fn parallel_center_tile_is_resident_before_the_slow_edges() {
+    use futureox_design_kernel::tiled_renderer::TileRequest;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::{Duration, Instant};
+
+    struct Pool {
+        busy: Arc<AtomicUsize>,
+        revision: u64,
+    }
+    struct Worker {
+        busy: Arc<AtomicUsize>,
+    }
+    fn paint(address: [i32; 2]) -> Vec<u8> {
+        let mut pixels = vec![0u8; TILE_SIZE as usize * TILE_SIZE as usize * 4];
+        pixels[0] = address[0] as u8;
+        pixels[1] = address[1] as u8;
+        pixels
+    }
+    impl TileRasterizer for Worker {
+        fn rasterize_tile(&mut self, request: &TileRequest) -> Result<Vec<u8>, String> {
+            self.busy.fetch_add(1, Ordering::AcqRel);
+            let wait = if request.address == [1, 0] { 40 } else { 220 };
+            std::thread::sleep(Duration::from_millis(wait));
+            self.busy.fetch_sub(1, Ordering::AcqRel);
+            Ok(paint(request.address))
+        }
+    }
+    impl TileRasterizer for Pool {
+        fn rasterize_tile(&mut self, request: &TileRequest) -> Result<Vec<u8>, String> {
+            Worker {
+                busy: Arc::clone(&self.busy),
+            }
+            .rasterize_tile(request)
+        }
+    }
+    impl TileRasterSource for Pool {
+        fn content_revision(&self) -> u64 {
+            self.revision
+        }
+        fn prepare(&mut self, _options: &RenderOptions) -> Result<(), String> {
+            Ok(())
+        }
+        fn spawn_worker(&self) -> Option<Box<dyn TileRasterizer + Send>> {
+            Some(Box::new(Worker {
+                busy: Arc::clone(&self.busy),
+            }))
+        }
+    }
+
+    let mut engine = Engine::new();
+    engine.load_document(&doc()).expect("document");
+    let busy = Arc::new(AtomicUsize::new(0));
+    let center_at = Arc::new(std::sync::Mutex::new(None));
+    let others_busy = Arc::new(AtomicUsize::new(0));
+    let started = Instant::now();
+    let mut renderer = TiledRenderer::new(RenderFeatureFlags {
+        rasterize_concurrently: true,
+        single_threaded_content_rendering: false,
+        worker_limit: Some(3),
+    });
+    let probe_busy = Arc::clone(&busy);
+    let probe_at = Arc::clone(&center_at);
+    let probe_others = Arc::clone(&others_busy);
+    renderer.set_commit_probe(Some(Box::new(move |address| {
+        if address == [1, 0] {
+            *probe_at.lock().expect("center time") = Some(started.elapsed());
+            // The center worker has already left. The two edge workers are
+            // still inside their sleep when this region is published.
+            if probe_busy.load(Ordering::Acquire) >= 2 {
+                probe_others.fetch_add(1, Ordering::Release);
+            }
+        }
+    })));
+    let mut source = Pool {
+        busy,
+        revision: engine.content_revision(),
+    };
+    let options = frame(
+        View {
+            x: 0.,
+            y: 0.,
+            zoom: 1.,
+        },
+        1536,
+        512,
+    );
+    let planned = instruction(&engine, [0., 0., 1536., 512.], 1.);
+    let status = renderer
+        .update_with_instruction(&mut source, &options, &planned, None)
+        .expect("parallel batch");
+    let wall = started.elapsed();
+    assert_eq!(status, UpdateStatus::Completed);
+    assert_eq!(renderer.resident_tile_count(), 3);
+    let center_elapsed = center_at
+        .lock()
+        .expect("center time")
+        .expect("center tile committed");
+    eprintln!(
+        "parallel zoom batch: center resident {:.1} ms, batch wall {:.1} ms, workers 3, edges still inside rasterise {}",
+        center_elapsed.as_secs_f64() * 1_000.0,
+        wall.as_secs_f64() * 1_000.0,
+        others_busy.load(Ordering::Acquire) > 0
+    );
+    assert!(
+        center_elapsed + Duration::from_millis(80) < wall,
+        "center {:.1} ms, batch {:.1} ms",
+        center_elapsed.as_secs_f64() * 1_000.0,
+        wall.as_secs_f64() * 1_000.0
+    );
+    assert!(
+        others_busy.load(Ordering::Acquire) > 0,
+        "the other workers were still rasterising"
+    );
+    assert!(
+        wall < Duration::from_millis(400),
+        "three workers must overlap the 220 ms edges"
+    );
+    let level =
+        futureox_design_kernel::tiled_renderer::level_index_for_scale(exact_bucket_scale(1.));
+    for address in [[0, 0], [1, 0], [2, 0]] {
+        let actual = renderer
+            .level(level)
+            .and_then(|level| level.tile(&address))
+            .expect("tile")
+            .surface
+            .bytes();
+        assert_eq!(&actual[..2], &[address[0] as u8, address[1] as u8]);
+    }
+}
+
+/// Stage split for one multi-tile zoom on this machine. The numbers are the
+/// run's own clock, not a frame-time promise. Parallel and sequential pixels
+/// stay equal, and the worker snapshot is reported beside one tile.
+#[test]
+fn continuous_zoom_stage_costs_keep_parallel_pixels() {
+    use futureox_design_kernel::tiled_renderer::{TileRasterSource, TileRequest};
+    use std::time::Instant;
+
+    let mut nodes = serde_json::Map::new();
+    let mut children = Vec::new();
+    for index in 0..48 {
+        let id = format!("r{index}");
+        children.push(id.clone());
+        nodes.insert(id.clone(), json!({
+            "id": id, "kind": "rectangle",
+            "transform": [1.0, 0.0, 0.0, 1.0, (index % 8) as f64 * 40.0, (index / 8) as f64 * 30.0],
+            "width": 28.0, "height": 18.0,
+            "fills": [{"kind": "solid", "color": "#224466"}],
+            "strokes": [{"align": "center", "width": 1.0, "paint": {"kind": "solid", "color": "#000000"}}],
+        }));
+    }
+    let document = json!({
+        "schemaVersion": 1, "id": "zoom-stages", "name": "zoom-stages",
+        "pages": [{"id": "p", "name": "p", "children": children, "background": "#ffffff"}],
+        "nodes": nodes,
+    })
+    .to_string();
+    let options = frame(
+        View {
+            x: -80.,
+            y: -40.,
+            zoom: 4.,
+        },
+        1024,
+        512,
+    );
+    let mut parallel_engine = Engine::new();
+    parallel_engine.load_document(&document).expect("document");
+    let handoff_started = Instant::now();
+    let mut worker = TileRasterSource::spawn_worker(&parallel_engine).expect("snapshot");
+    let handoff_ms = handoff_started.elapsed().as_secs_f64() * 1_000.0;
+    let tile_request = TileRequest {
+        level: 0,
+        address: [0, 0],
+        world: [20.0, 10.0, 128.0, 128.0],
+        options: frame(
+            View {
+                x: -80.,
+                y: -40.,
+                zoom: 4.,
+            },
+            TILE_SIZE as u32,
+            TILE_SIZE as u32,
+        ),
+        pixel_count: TILE_SIZE as u64 * TILE_SIZE as u64,
+    };
+    let tile_started = Instant::now();
+    let tile_bytes = worker.rasterize_tile(&tile_request).expect("one tile");
+    let tile_ms = tile_started.elapsed().as_secs_f64() * 1_000.0;
+    drop(worker);
+    parallel_engine
+        .tiled_renderer_mut()
+        .set_flags(RenderFeatureFlags {
+            rasterize_concurrently: true,
+            single_threaded_content_rendering: false,
+            worker_limit: Some(3),
+        });
+    let parallel_started = Instant::now();
+    let parallel_frame = parallel_engine
+        .render_tiled_frame(&options, None)
+        .expect("parallel frame");
+    let parallel_ms = parallel_started.elapsed().as_secs_f64() * 1_000.0;
+
+    let mut sequential_engine = Engine::new();
+    sequential_engine
+        .load_document(&document)
+        .expect("document");
+    sequential_engine
+        .tiled_renderer_mut()
+        .set_flags(RenderFeatureFlags {
+            rasterize_concurrently: false,
+            single_threaded_content_rendering: true,
+            worker_limit: Some(1),
+        });
+    let sequential_started = Instant::now();
+    let sequential_frame = sequential_engine
+        .render_tiled_frame(&options, None)
+        .expect("sequential frame");
+    let sequential_ms = sequential_started.elapsed().as_secs_f64() * 1_000.0;
+    eprintln!(
+        "continuous zoom stages, 48 stroked rects, 1024x512 at zoom 4, analytic CPU: snapshot {handoff_ms:.3} ms, one 512 tile {tile_ms:.3} ms ({} bytes), parallel 3 workers {parallel_ms:.3} ms, single thread {sequential_ms:.3} ms, tiles {}",
+        tile_bytes.len(),
+        parallel_frame.visible_tiles
+    );
+    assert_eq!(parallel_frame.rgba, sequential_frame.rgba);
+    assert!(parallel_frame.visible_tiles >= 2);
+    if sequential_ms > 30.0 {
+        assert!(
+            parallel_ms < sequential_ms,
+            "parallel {parallel_ms:.3} ms should stay under the single-thread {sequential_ms:.3} ms"
+        );
+    }
+}

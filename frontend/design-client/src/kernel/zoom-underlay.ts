@@ -100,6 +100,15 @@ export function zoomUnderlayImproves(
   })
 }
 
+/** A finished tile may paint over the retained picture as soon as this camera
+ * is closer than the picture. The preview-ratio limit still refuses to call
+ * that picture screen-ready; it is not a reason to keep the finished tile
+ * hidden until the stretch passes that limit. */
+export function zoomInCanShowReadyTile(backingZoom: number, viewZoom: number) {
+  return Number.isFinite(backingZoom) && Number.isFinite(viewZoom) && backingZoom > 0 &&
+    viewZoom > backingZoom * (1 + 1e-9)
+}
+
 /** Finer residents that can paint over a stretched picture before they cover
  * the viewport. The retained picture supplies every pixel they do not.
  * Undefined when nothing finer is ready. */

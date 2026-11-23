@@ -11,7 +11,7 @@ import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
 import {canvasSamplingProfile} from './render-policy'
 import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,retainedZoomOut,retainedSourceReturn,improvesSourceZoom,visibleSourceDensity} from './source-viewport-plan'
-import {zoomInPartialTiles} from './zoom-underlay'
+import {zoomInCanShowReadyTile,zoomInPartialTiles} from './zoom-underlay'
 import {acceptTranslatedCoverage,coverageBeyondBacking,releaseInFlightForDemand,retainInFlightTile,selectCoverageStack,sharperCoverageFrame,zoomInFramePastPlan} from './coverage-stack'
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
@@ -19,7 +19,7 @@ import {nativeSourceBadgeText} from './native-source-status'
 import {densityCertifiesDemand,settledCoverageChoice} from './frame-handoff'
 import {acceptFrameClarity,type ViewportCoverage} from './frame-acceptance'
 import {scheduleZoomRefine,type RefineFacts} from './zoom-refine-schedule'
-import {MAX_PREVIEW_SCALE_RATIO, previewCameraScaleWithinLimit, tileIntersectsView, tilePlacementAtView} from './tile-preview'
+import {previewCameraScaleWithinLimit,tileIntersectsView,tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin,pasteboardCoverageColor} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
 import {sourceTileRetirement,rememberSourceTier,zoomOutRetentionCohort} from './source-tile-retirement'
@@ -477,10 +477,13 @@ export function NativeSourceSurface(props:Props){
         const promoted=wantSharper?(refining?sharperCoverageFrame(cache.values(),backingTiles,p.view,p):zoomInFramePastPlan(cache.values(),backingTiles,p.view,p,raster.scale)):undefined
         // The retained bitmap can outlive the tiles that produced it. A finer
         // tile then has nothing cached to union with, and the old picture
-        // stays stretched across the whole view. Publish that tile anyway;
-        // the presenter resamples the retained picture underneath it.
-        const stretchedZoom=!!backing && moving && continuousZoom && zoomingIn && p.view.zoom>backing.view.zoom*MAX_PREVIEW_SCALE_RATIO
-        const partialZoom=!promoted && stretchedZoom ? zoomInPartialTiles([...cache.values()].filter(tile=>tile.gpuTile!=null),backingTiles,p.view,{width:p.width,height:p.height,dpr:ratio}) : undefined
+        // stays stretched across the whole view. Publish that tile as soon as
+        // the camera is closer. Waiting for the preview-ratio stretch left a
+        // finished high-density region off screen. The presenter resamples
+        // the original picture once underneath it. This does not start a
+        // smaller raster, and a partial stack is still not screen-ready.
+        const inwardHold=!!backing && moving && continuousZoom && zoomingIn && zoomInCanShowReadyTile(backing.view.zoom,p.view.zoom)
+        const partialZoom=!promoted && inwardHold ? zoomInPartialTiles([...cache.values()].filter(tile=>tile.gpuTile!=null),backingTiles,p.view,{width:p.width,height:p.height,dpr:ratio}) : undefined
         let visible:Tile[],partialTiles:Tile[]|undefined,regions:OverviewMaterial[]|undefined
         if(!promoted&&!stored&&(refining||focal)&&done&&exact&&p.overviewBoxes?.length&&bitmapContext&&(!backing||partialMaterials||focal)){
           const ready=tiles.flatMap(tile=>{const entry=cache.get(tile.key);return entry?[entry]:[]})
@@ -528,7 +531,7 @@ export function NativeSourceSurface(props:Props){
             previous.ids.size===ids.size && [...ids].every(tile=>previous.ids.has(tile)))return
         const sequence=++submission,id=`${prefix}:${sequence}`
         for(const tile of visible){tile.lastSubmission=sequence;tile.used=++tick}
-        const zoomUnderlay=stretchedZoom && visible.some(tile=>tile.zoom>backing!.view.zoom*ratio*(1+1e-9))
+        const zoomUnderlay=inwardHold && visible.some(tile=>tile.zoom>backing!.view.zoom*ratio*(1+1e-9))
         submittedPlacements.set(sequence,{tiles:visible.map(t=>t.placement!),wheel:wheel||!!promoted,outward:continuity,
           progressive:!!promoted&&settledDetail,zoomUnderlay,mixed,regions,view:{...p.view},width:p.width,height:p.height,dpr:ratio})
         if(submittedPlacements.size>32)submittedPlacements.delete(submittedPlacements.keys().next().value!)
