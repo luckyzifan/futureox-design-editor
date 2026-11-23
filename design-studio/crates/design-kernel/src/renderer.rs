@@ -1149,6 +1149,23 @@ impl Engine {
                 if !node.bindings.is_empty() || !node.variable_modes.is_empty() || node.component.is_some()
                     || node.component_set || node.instance.is_some() || node.instance_origin.is_some()
                     || node.component_key.is_some() || (!checked_boolean && ancestor_boolean) { return false; }
+
+#[cfg(test)]
+                // A top-level instance is a placement. Its generated children
+                // stay in the resolved scene and move with this transform.
+                // Full component resolution rebuilds those children
+                // identically, so the drag does not re-instantiate them.
+                // Generated layers, slots, definitions, and component keys
+                // still take the resolver.
+                let top_level_instance = id == old.id
+                    && node.instance.as_ref().is_some_and(|spec| spec.slot_contents.is_empty())
+                    && node.instance_origin.is_none() && node.component.is_none() && !node.component_set
+                    && node.component_key.is_none() && node.style_refs.is_empty()
+                    && node.boolean_operation.is_none() && node.repeat.is_none() && node.connector.is_none();
+                if !node.bindings.is_empty() || !node.variable_modes.is_empty() || node.component.is_some()
+                    || node.component_set || node.instance_origin.is_some() || node.component_key.is_some()
+                    || (node.instance.is_some() && !top_level_instance)
+                    || (!checked_boolean && node.boolean_operation.is_some()) { return false; }
                 // Descendant local layout survives rigid movement. An ancestor
                 // flow/hug layout can reposition siblings and must resolve normally.
                 if id != old.id && (node.layout.as_ref().is_some_and(|l| l.mode != crate::layout::Flow::None)
@@ -6002,6 +6019,10 @@ mod translation_retention_tests;
 #[cfg(test)]
 #[path = "renderer_tests/nested_instance_drag.rs"]
 mod nested_instance_drag_tests;
+
+#[cfg(test)]
+#[path = "renderer_tests/instance_drag.rs"]
+mod instance_drag_tests;
 
 #[cfg(test)]
 #[path = "renderer_tests/linear_tile_residency.rs"]
