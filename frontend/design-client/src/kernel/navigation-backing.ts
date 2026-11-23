@@ -115,12 +115,12 @@ export function keepCompleteCameraBacking(backing: ResidentAcknowledgement | und
   if (next.preview) {
     const holes = missing(next, target)
     if (!holes) return true
-    // Keep good pixels until every lost part can be supplied by the wider
-    // backing. Newly rendered strips outside the old frame may publish now.
-    return holes.some(hole => {
-      const loss = intersect(old, hole)
-      return !!loss && !(fallback && contains(fallback, loss))
-    })
+    // The preview bitmap paints these holes opaquely. Publishing it while its
+    // camera matches the live view hides the history layer, so a wider atlas
+    // cannot show through. Keep the previous picture when any hole still
+    // covers pixels it owns. A hole only in the newly exposed strip does not,
+    // and that strip may publish.
+    return holes.some(hole => intersect(old, hole) !== undefined)
   }
   const live = screen(target)
   const nextCovers = contains(project(next, target), live)
