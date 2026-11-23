@@ -895,6 +895,23 @@ impl Engine {
             }
         }
         if let Some(damage) = self.apply_clipped_root_translation(patch, translation)? { return Ok(damage); }
+        let nested_translation = if self.layout_dirty { None } else {
+            let fonts = &self.fonts;
+            self.source_doc.as_ref().zip(self.doc.as_ref()).zip(self.render_index.as_ref()).and_then(|((source, resolved), index)| {
+                let moves = crate::component_updates::nested_drag::translation(source, patch)?;
+                // Authored and derived copies of every patched node must still
+                // be the same materialized instance. A layout rewrite on the
+                // owner cannot be patched as a pure translation.
+                if !patch.nodes.keys().all(|id| source.nodes.get(id) == resolved.nodes.get(id)) {
+                    return None;
+                }
+                let damage = crate::dirty_region::resolved_leaf_pose_damage(resolved, &index.parents, &moves, fonts)?;
+                Some((moves, damage))
+            })
+        };
+        if let Some((moves, damage)) = nested_translation {
+            if self.apply_nested_instance_translation(patch, &moves)? { return Ok(damage); }
+        }
         let source = self
             .source_doc
             .as_ref()
@@ -1336,6 +1353,70 @@ impl Engine {
             return None;
         }
         Some((parent, edited.clone(), child_index))
+    }
+    /// Keep a nested instance's materialized subtree when a drag only translates
+    /// it. The owner records the same transform override; variant id, property
+    /// values and every other override stay on the authoritative resolver.
+    fn apply_nested_instance_translation(
+        &mut self,
+        patch: &crate::editing::DocumentPatch,
+        moves: &std::collections::BTreeMap<String, Transform>,
+    ) -> Result<bool, String> {
+        let source = self.source_doc.as_ref().ok_or("Load document before interaction")?;
+        source.validate_nodes(patch.nodes.iter().map(|(id, node)| (id, node.as_ref().unwrap())))?;
+        let mut bytes = match self.source_doc_bytes.or_else(|| {
+            self.retained_source_size.as_ref().and_then(|receipt| receipt.bytes_for(source))
+        }) {
+            Some(bytes) => bytes,
+            None => crate::editing::serialized_document_size(source).map_err(|e| e.to_string())?,
+        };
+        for (id, next) in &patch.nodes {
+            let old = &source.nodes[id];
+            let next = next.as_ref().unwrap();
+            if old.transform != next.transform {
+                bytes = bytes - crate::editing::serialized_size(&old.transform).map_err(|e| e.to_string())?
+                    + crate::editing::serialized_size(&next.transform).map_err(|e| e.to_string())?;
+            }
+            if old.instance != next.instance {
+                bytes = bytes - crate::editing::serialized_size(&old.instance).map_err(|e| e.to_string())?
+                    + crate::editing::serialized_size(&next.instance).map_err(|e| e.to_string())?;
+            }
+        }
+        crate::capacity::check_document_bytes(bytes)?;
+        #[cfg(test)]
+        crate::component_updates::nested_drag::FAST_REDRAW.with(|count| count.set(count.get().saturating_add(1)));
+        self.retained_source_size = None;
+        self.pose_prefix = None;
+        self.clear_settled_cuts();
+        {
+            let source = self.source_doc.as_mut().unwrap();
+            source.nodes.share();
+            for (id, next) in &patch.nodes {
+                let next = next.as_ref().unwrap();
+                let node = source.nodes.get_mut(id).unwrap();
+                node.transform = next.transform;
+                node.instance.clone_from(&next.instance);
+            }
+        }
+        for (id, next) in &patch.nodes {
+            let next = next.as_ref().unwrap();
+            let node = self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap();
+            node.transform = next.transform;
+            node.instance.clone_from(&next.instance);
+            if let Some(node) = self.text_base.as_mut().and_then(|doc| doc.nodes.get_mut(id)) {
+                node.transform = next.transform;
+                node.instance.clone_from(&next.instance);
+            }
+        }
+        self.source_doc_bytes = Some(bytes);
+        let previous_revision = self.geo_revision;
+        self.geo_revision += 1;
+        self.interaction_transform_revision = Some((previous_revision, self.geo_revision, moves.keys().cloned().collect()));
+        let parents = &self.render_index.as_ref().unwrap().parents;
+        if let Some(cache) = &mut self.camera_prepare {
+            cache.translated(self.doc.as_ref().unwrap(), moves.keys().cloned(), self.geo_revision, parents);
+        }
+        Ok(true)
     }
     fn apply_clipped_root_translation(&mut self, patch: &crate::editing::DocumentPatch, translation: bool)
         -> Result<Option<crate::dirty_region::PatchDamage>, String> {
@@ -5755,6 +5836,10 @@ mod export_metadata_tests;
 #[cfg(test)]
 #[path = "renderer_tests/translation_retention.rs"]
 mod translation_retention_tests;
+
+#[cfg(test)]
+#[path = "renderer_tests/nested_instance_drag.rs"]
+mod nested_instance_drag_tests;
 
 #[cfg(test)]
 #[path = "renderer_tests/linear_tile_residency.rs"]
