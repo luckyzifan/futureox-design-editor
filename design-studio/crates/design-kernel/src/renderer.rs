@@ -1146,11 +1146,6 @@ impl Engine {
                 // boolean still has to be solved again, and checked_boolean is
                 // the separate operand-outline proof.
                 let ancestor_boolean = id != old.id.as_str() && node.boolean_operation.is_some();
-                if !node.bindings.is_empty() || !node.variable_modes.is_empty() || node.component.is_some()
-                    || node.component_set || node.instance.is_some() || node.instance_origin.is_some()
-                    || node.component_key.is_some() || (!checked_boolean && ancestor_boolean) { return false; }
-
-#[cfg(test)]
                 // A top-level instance is a placement. Its generated children
                 // stay in the resolved scene and move with this transform.
                 // Full component resolution rebuilds those children
@@ -1165,7 +1160,7 @@ impl Engine {
                 if !node.bindings.is_empty() || !node.variable_modes.is_empty() || node.component.is_some()
                     || node.component_set || node.instance_origin.is_some() || node.component_key.is_some()
                     || (node.instance.is_some() && !top_level_instance)
-                    || (!checked_boolean && node.boolean_operation.is_some()) { return false; }
+                    || (!checked_boolean && ancestor_boolean) { return false; }
                 // Descendant local layout survives rigid movement. An ancestor
                 // flow/hug layout can reposition siblings and must resolve normally.
                 if id != old.id && (node.layout.as_ref().is_some_and(|l| l.mode != crate::layout::Flow::None)
@@ -1448,7 +1443,7 @@ impl Engine {
         self.interaction_transform_revision = Some((previous_revision, self.geo_revision, moves.keys().cloned().collect()));
         let parents = &self.render_index.as_ref().unwrap().parents;
         if let Some(cache) = &mut self.camera_prepare {
-            cache.translated(self.doc.as_ref().unwrap(), moves.keys().cloned(), self.geo_revision, parents);
+            cache.translated(self.doc.as_ref().unwrap(), moves.keys().cloned(), self.geo_revision, parents, None);
         }
         Ok(true)
     }

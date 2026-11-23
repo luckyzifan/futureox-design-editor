@@ -583,7 +583,10 @@ fn warm_pose_area_programs(
                     let job = &jobs[index];
                     let outcome = crate::area_program::AreaProgram::compile_crop(
                         &job.contours, job.crop, job.even_odd, job.samples,
-                    ).map(|program| Arc::new(CachedProgram::new(program)));
+                    ).map(|program| {
+                        let phase = CachedProgram::phase(&job.contours, job.crop.x, job.crop.y);
+                        Arc::new(CachedProgram::new(program, phase))
+                    });
                     if outcome.is_err() { cancel.store(true, std::sync::atomic::Ordering::Release); }
                     if let Ok(mut slot) = results.lock() { slot[index] = Some(outcome); }
                 }
