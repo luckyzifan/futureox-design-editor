@@ -173,3 +173,88 @@ fn a_ready_center_tile_replaces_the_stretched_zoom_in_preview() {
         "outside the ready tile the original hold stays"
     );
 }
+
+/// 1.5× is inside the old preview ratio of 2. The stretched hold is already
+/// not the direct raster. A ready tile replaces only its own rectangle.
+/// Linux CPU, analytic, not a Metal frame time and not a 117 file.
+#[test]
+fn a_ready_tile_below_the_preview_ratio_is_sharper_than_the_stretch() {
+    let mut engine = Engine::new();
+    engine.load_document(&bars()).expect("bars");
+    let base = engine
+        .render(&frame(
+            View {
+                x: 0.0,
+                y: 0.0,
+                zoom: 1.0,
+            },
+            64,
+            64,
+        ))
+        .expect("zoom-1");
+    let target_view = View {
+        x: -24.0,
+        y: -24.0,
+        zoom: 1.5,
+    };
+    let direct = engine
+        .render(&frame(target_view, 48, 48))
+        .expect("zoom-1.5");
+    let tile = engine
+        .render(&frame(
+            View {
+                x: -30.0,
+                y: -30.0,
+                zoom: 1.5,
+            },
+            24,
+            24,
+        ))
+        .expect("center tile");
+    let base_picture = picture(0.0, 0.0, 64.0, 64.0);
+    let target = picture(16.0, 16.0, 32.0, 32.0);
+    let tile_picture = picture(20.0, 20.0, 16.0, 16.0);
+    let stretch = compose_zoom_in_preview(&base_picture, &base, 64, 64, &[], &target, 48, 48)
+        .expect("stretch");
+    let sharp = compose_zoom_in_preview(
+        &base_picture,
+        &base,
+        64,
+        64,
+        &[(&tile_picture, tile.as_slice(), 24, 24)],
+        &target,
+        48,
+        48,
+    )
+    .expect("tile");
+    let mut stretch_far = 0usize;
+    let mut sharp_far = 0usize;
+    let mut center = 0usize;
+    for index in (0..direct.len()).step_by(4) {
+        let x = (index / 4) % 48;
+        let y = (index / 4) / 48;
+        let world_x = 16.0 + (x as f64 + 0.5) * 32.0 / 48.0;
+        let world_y = 16.0 + (y as f64 + 0.5) * 32.0 / 48.0;
+        // Pixel centers that sit inside the ready tile, away from its edge.
+        let inside = (21.0..35.0).contains(&world_x) && (21.0..35.0).contains(&world_y);
+        if !inside {
+            continue;
+        }
+        center += 1;
+        if channel_delta(&stretch[index..index + 4], &direct[index..index + 4]) >= 20 {
+            stretch_far += 1;
+        }
+        if channel_delta(&sharp[index..index + 4], &direct[index..index + 4]) > 1 {
+            sharp_far += 1;
+        }
+    }
+    eprintln!(
+        "zoom-in 1.5x (below preview ratio 2): stretched center pixels delta>=20 {stretch_far}/{center}, composited center pixels delta>1 {sharp_far}/{center}"
+    );
+    assert!(target_view.zoom / 1.0 < 2.0);
+    assert!(
+        stretch_far >= 16,
+        "1.5x stretch is already not the direct raster ({stretch_far})"
+    );
+    assert_eq!(sharp_far, 0, "the ready tile matches the 1.5x raster");
+}
