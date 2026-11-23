@@ -8,6 +8,7 @@ struct Entry { value:Value, bytes:usize, used:u64 }
 pub(crate) struct Cache { entries: HashMap<Vec<u64>, Entry>, bytes: usize, clock:u64, pub hits: usize }
 impl Cache {
     pub fn key(inputs: &[(Path, Transform, bool)], op: Operation) -> Vec<u64> {
+        let _span = crate::drag_profile::Span::boolean_key();
         let mut words=vec![match op { Operation::Union=>0,Operation::Subtract=>1,Operation::Intersect=>2,Operation::Exclude=>3,Operation::CompoundNonzero=>4,Operation::CompoundEvenodd=>5 },inputs.len() as u64];
         for (path,m,rule) in inputs {
             words.extend(m.0.map(f64::to_bits)); words.push(*rule as u64);words.push(path.commands.len() as u64);
@@ -27,11 +28,15 @@ impl Cache {
     }
     pub fn get(&mut self,key:&[u64])->Option<Network>{
         let entry=self.entries.get_mut(key)?;let Value::Network(value)=&entry.value else{return None};
-        self.clock=self.clock.saturating_add(1);entry.used=self.clock;self.hits=self.hits.saturating_add(1);Some(value.clone())
+        self.clock=self.clock.saturating_add(1);entry.used=self.clock;self.hits=self.hits.saturating_add(1);
+        let _span = crate::drag_profile::Span::boolean_hit();
+        Some(value.clone())
     }
     pub fn get_geometry(&mut self,key:&[u64])->Option<crate::vector_geometry::VectorGeometry>{
         let entry=self.entries.get_mut(key)?;let Value::Geometry(value)=&entry.value else{return None};
-        self.clock=self.clock.saturating_add(1);entry.used=self.clock;self.hits=self.hits.saturating_add(1);Some(value.clone())
+        self.clock=self.clock.saturating_add(1);entry.used=self.clock;self.hits=self.hits.saturating_add(1);
+        let _span = crate::drag_profile::Span::boolean_hit();
+        Some(value.clone())
     }
     pub fn insert_geometry(&mut self,key:Vec<u64>,value:&crate::vector_geometry::VectorGeometry){
         let bytes=key.capacity()*8+(value.fill.capacity()+value.stroke.as_ref().map_or(0,Vec::capacity))*std::mem::size_of::<crate::vector_geometry::Curve>()+value.fill_rule.capacity()+256;

@@ -228,16 +228,20 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
         );
         return Ok(Rect::default());
     }
-    let mut fill = fill_path.flatten_for_fill(
-        matrix,
-        if compatible {
-            0.0001220703125
-        } else {
-            0.015625
-        },
-        guard,
-        compatible,
-    )?;
+    let mut fill = {
+        let _span = crate::drag_profile::Span::fill_flatten();
+        fill_path.flatten_for_fill(
+            matrix,
+            if compatible {
+                0.0001220703125
+            } else {
+                0.015625
+            },
+            guard,
+            compatible,
+        )?
+    };
+    crate::drag_profile::add_fill_points(fill.iter().map(|contour| contour.points.len()).sum());
     // Analytic Sketch text uses a FreeType mask. Figma profiles keep the
     // outlines; WASM has no FreeType and also keeps them.
     if !compatible {
@@ -256,12 +260,17 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
             continue;
         }
         let local=local_strokes.get(&paths[id],s,(0.125/scale).min(1.),0.125/scale)?;
-        let mut outline = (*local).clone();
-        for c in &mut outline {
-            for p in &mut c.points {
-                *p = matrix.point(*p);
+        let mut outline = {
+            let _span = crate::drag_profile::Span::stroke_transform();
+            let mut outline = (*local).clone();
+            for c in &mut outline {
+                for p in &mut c.points {
+                    *p = matrix.point(*p);
+                }
             }
-        }
+            outline
+        };
+        crate::drag_profile::add_stroke_points(outline.iter().map(|contour| contour.points.len()).sum());
         let stroke_bounds=Rect::from_points(
             outline.iter().flat_map(|c| c.points.iter().copied()),
         );
