@@ -937,7 +937,7 @@ impl Engine {
             self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), next_bytes));
             self.geo_revision += 1;
             if let Some(cache) = &mut self.camera_prepare {
-                cache.translated(self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
+                cache.translated(self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents, None);
             }
             damage.translation_only = Some(true);
         } else if let Some((bounds_dirty, focus_only)) = retained_paint {
@@ -966,7 +966,7 @@ impl Engine {
             }
             if let Some(cache) = &mut self.camera_prepare {
                 if !bounds_dirty.is_empty() {
-                    cache.translated(self.doc.as_ref().unwrap(), bounds_dirty.into_iter(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
+                    cache.translated(self.doc.as_ref().unwrap(), bounds_dirty.into_iter(), self.geo_revision, &self.render_index.as_ref().unwrap().parents, None);
                 }
                 cache.paint_changed(self.geo_revision,self.doc.as_ref().unwrap(),patch.nodes.keys().cloned(),&self.render_index.as_ref().unwrap().parents,focus_only);
             }
@@ -1200,6 +1200,10 @@ impl Engine {
         let resolved_parents = transforms.keys().any(|id| index.in_sketch_mask_chain(id))
             .then(|| crate::render_index::Parents::new(self.doc.as_ref().unwrap()));
         let parents = resolved_parents.as_ref().unwrap_or(&index.parents);
+        let device_shift = if affine { None } else {
+            integer_page_root_device_shift(self.source_doc.as_ref().unwrap(), &transforms, &index.page_roots,
+                self.camera_prepare.as_ref().map(|cache| cache.key.2.2))
+        };
         // All fallible checks have completed. Release the Weak receipt before
         // mutating so a sole owner need not detach only because of this cache.
         self.retained_source_size = None;
@@ -1244,7 +1248,7 @@ impl Engine {
             if affine {
                 cache.transformed(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, parents);
             } else {
-                cache.translated(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, parents);
+                cache.translated(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, parents, device_shift);
             }
         }
         self.note_pose_prefix(patch);
@@ -1369,7 +1373,7 @@ impl Engine {
         self.source_doc_bytes = Some(bytes);
         self.geo_revision += 1;
         if let Some(cache) = &mut self.camera_prepare {
-            cache.translated(self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
+            cache.translated(self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents, None);
         }
         Ok(Some(crate::dirty_region::clipped_translation_damage(
             self.doc.as_ref().unwrap(), rects, patch.nodes.keys().cloned().collect(), &self.fonts)))
@@ -5714,6 +5718,39 @@ mod image_payload_owner_tests {
         assert_eq!(stored.nodes["a"].fills[0].image.as_ref().unwrap().as_ptr(),stored.nodes["b"].fills[0].image.as_ref().unwrap().as_ptr());
         assert_eq!(serde_json::to_vec(&**stored).unwrap(),before);
     }
+}
+
+/// Page-root translations share one world delta. Device coverage can reuse
+/// the previous scanline program only when that delta lands on whole pixels
+/// of the camera that compiled those programs.
+fn integer_page_root_device_shift(
+    source: &Document,
+    transforms: &std::collections::BTreeMap<String, Transform>,
+    page_roots: &HashSet<String>,
+    zoom: Option<f64>,
+) -> Option<(i32, i32)> {
+    let zoom = zoom.filter(|zoom| zoom.is_finite() && *zoom > 0.)?;
+    let mut delta: Option<(f64, f64)> = None;
+    for (id, next) in transforms {
+        if !page_roots.contains(id) { return None; }
+        let old = &source.nodes.get(id)?.transform;
+        let (dx, dy) = (next.0[4] - old.0[4], next.0[5] - old.0[5]);
+        if let Some((px, py)) = delta {
+            if (dx - px).abs() > 1e-9 || (dy - py).abs() > 1e-9 { return None; }
+        } else {
+            delta = Some((dx, dy));
+        }
+    }
+    let (dx, dy) = delta?;
+    let (sx, sy) = (dx * zoom, dy * zoom);
+    let (rx, ry) = (sx.round(), sy.round());
+    if !sx.is_finite() || !sy.is_finite() || (sx - rx).abs() > 1e-6 || (sy - ry).abs() > 1e-6
+        || rx.abs() > i32::MAX as f64 || ry.abs() > i32::MAX as f64
+    {
+        return None;
+    }
+    let shift = (rx as i32, ry as i32);
+    (shift != (0, 0)).then_some(shift)
 }
 
 #[cfg(all(test,not(target_arch="wasm32")))]

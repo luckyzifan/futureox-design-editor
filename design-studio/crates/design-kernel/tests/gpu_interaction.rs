@@ -21,6 +21,68 @@ fn options(zoom: f64) -> Value {
         "rasterProfile":"figma","gpuViewport":{"x":0,"y":0,"w":64,"h":64}})
 }
 
+fn clipped_board(dx: f64, dy: f64) -> Value {
+    let mut nodes = serde_json::Map::new();
+    let mut children = Vec::new();
+    nodes.insert("board".into(), json!({"id":"board","kind":"frame","width":1440,"height":1030,"clip":true,
+        "transform":[1,0,0,1,dx,dy],"fills":[{"kind":"solid","color":"#f4f1ea"}],"children":[]}));
+    for i in 0..24 {
+        let id = format!("shape-{i:02}");
+        children.push(id.clone());
+        let x = (i % 6) as f64 * 220.0 + 8.0;
+        let y = (i / 6) as f64 * 240.0 + 12.0;
+        // Ellipses cross the clipped viewport and sit fully inside it. Rectangles
+        // cover the analytic fast path. One shape is deliberately past the edge.
+        if i % 2 == 0 {
+            nodes.insert(id.clone(), json!({"id":id,"kind":"ellipse","width":86,"height":54,
+                "transform":[1,0,0,1,x,y],"fills":[{"kind":"solid","color":"#315c8a"}],
+                "strokes":[{"width":1.25,"paint":{"kind":"solid","color":"#102033"}}]}));
+        } else {
+            nodes.insert(id.clone(), json!({"id":id,"kind":"rectangle","width":70,"height":40,
+                "transform":[1,0,0,1,x,y],"fills":[{"kind":"solid","color":"#c4552a"}]}));
+        }
+    }
+    nodes.get_mut("board").unwrap()["children"] = json!(children);
+    json!({"schemaVersion":1,"id":"clipped-board","name":"Clipped board","pages":[{"id":"p","name":"Page","children":["board"],"background":"#ffffff"}],"nodes":nodes})
+}
+
+fn clipped_request() -> String {
+    // 80% zoom at device pixel ratio 2. 514 device pixels show about 321
+    // world units of the 1440×1030 board, so the board stays clipped.
+    json!({"pageId":"p","width":514,"height":514,"view":{"x":18.0,"y":-12.0,"zoom":1.6},
+        "rasterProfile":"figmaSubpixel"}).to_string()
+}
+
+#[test]
+fn integer_device_translation_reuses_scanline_programs_and_matches_a_fresh_scene() {
+    let request = clipped_request();
+    let mut warm = Engine::new();
+    warm.load_document(&clipped_board(0.0, 0.0).to_string()).unwrap();
+    let first = warm.compile_gpu_packet_request(&request).unwrap();
+    assert!(first.len() > 1000, "clipped board must produce a real scene packet");
+    // 1.25 world units * 1.6 = exactly 2 device pixels. -0.625 * 1.6 = -1.
+    let moved = futureox_design_kernel::math::Transform([1.0, 0.0, 0.0, 1.0, 1.25, -0.625]);
+    assert!(warm.apply_interaction_transforms(&[("board".into(), moved)].into_iter().collect()).unwrap());
+    let shifted = warm.compile_gpu_packet_request(&request).unwrap();
+    let stats = warm.gpu_compile_cache_stats();
+    assert!(stats["programShifts"].as_u64().unwrap_or(0) > 0, "interior shapes must shift, stats={stats}");
+    let mut fresh = Engine::new();
+    fresh.load_document(&clipped_board(1.25, -0.625).to_string()).unwrap();
+    let expected = fresh.compile_gpu_packet_request(&request).unwrap();
+    assert_eq!(shifted, expected, "integer device shift must match an independent compile");
+
+    let mut fractional = Engine::new();
+    fractional.load_document(&clipped_board(0.0, 0.0).to_string()).unwrap();
+    fractional.compile_gpu_packet_request(&request).unwrap();
+    let partial = futureox_design_kernel::math::Transform([1.0, 0.0, 0.0, 1.0, 0.2, 0.0]);
+    assert!(fractional.apply_interaction_transforms(&[("board".into(), partial)].into_iter().collect()).unwrap());
+    let actual = fractional.compile_gpu_packet_request(&request).unwrap();
+    assert_eq!(fractional.gpu_compile_cache_stats()["programShifts"].as_u64().unwrap_or(0), 0);
+    let mut oracle = Engine::new();
+    oracle.load_document(&clipped_board(0.2, 0.0).to_string()).unwrap();
+    assert_eq!(actual, oracle.compile_gpu_packet_request(&request).unwrap(), "a fractional phase still matches a fresh compile");
+}
+
 #[test]
 fn offscreen_large_effect_does_not_block_high_zoom_tiles() {
     let scene = engine().compile_gpu_request(&options(16.).to_string()).unwrap();
