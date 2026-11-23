@@ -10,6 +10,7 @@ import { recoverInteractionPreview } from './kernel/interaction-preview-recovery
 import { selectionSizeLabel } from './selection-size-label'
 import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_MEMBER_STROKE_PX, SELECTION_UNION_STROKE_PX, SIZE_PILL_TEXT } from './selection-blue'
 import { rotationChromeHeldToTexture, rotationDocumentChromeSuppressed, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
+import { selectionMemberCorners, sharedRotationFrame } from './selection-outline'
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
 import { ALIGNMENT_GUIDE, crispOutlinePath, crispSegmentPath } from './kernel/gpu/canvas-overlay'
@@ -815,14 +816,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const [,refreshOrigin] = useState(0)
   const setOrigin=(point:Point,visible=origin.current.visible)=>{origin.current={point,visible};refreshOrigin(v=>v+1)}
   useLayoutEffect(()=>{setOrigin({x:.5,y:.5},false)},[editor.sessionGeneration,state.page,state.selection.join(',')])
-  const originWorld=()=>{
-    const frame=selectionScaleFrame(editor.state.doc,editor.state.page,editor.topSelection(),editor.parentMap())
-    return apply(frame.basis,{x:frame.box.x+frame.box.width*origin.current.point.x,y:frame.box.y+frame.box.height*origin.current.point.y})
-  }
-  const originFromWorld=(p:Point)=>{
-    const frame=selectionScaleFrame(editor.state.doc,editor.state.page,editor.topSelection(),editor.parentMap()),local=apply(inverse(frame.basis),p)
-    return {x:(local.x-frame.box.x)/Math.max(frame.box.width,1e-10),y:(local.y-frame.box.y)/Math.max(frame.box.height,1e-10)}
-  }
   const pencil = useRef<{
     actionToken?: number
     actionRevision?: number
@@ -1192,12 +1185,34 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const canOrient = !!resizeNode && !hasSpatialSelection
   const localSelection = useMemo(() => canOrient ? selectionLocalBounds(state.doc, resizeNode!.id) : null,
     [state.doc, resizeNode?.id, canOrient, geometryReady])
+  const sharedOutline = useMemo(() => {
+    if (hasSpatialSelection || selected.length < 2) return null
+    const members: { matrix: Matrix; corners: Point[] }[] = []
+    for (const entry of selected) {
+      const corners = selectionMemberCorners(state.doc, entry.id, entry.matrix)
+      if (!corners) return null
+      members.push({ matrix: entry.matrix, corners })
+    }
+    return sharedRotationFrame(members)
+  }, [state.doc, selected, hasSpatialSelection])
   const selectionCorners = useMemo(() => localSelection
     ? boxPoints(localSelection).map((p) => apply(selected[0].matrix, p))
-    : boxPoints(looseSelectionBox), [localSelection, selected, looseSelectionBox])
-  // Editing positions follow the oriented selection rectangle. The curve's
-  // tighter world-space outline remains available to picking and culling.
+    : sharedOutline?.corners ?? boxPoints(looseSelectionBox), [localSelection, selected, looseSelectionBox, sharedOutline])
+  // One object keeps its local geometry. Several objects that share a rotation
+  // use that orientation; mixed rotations keep the scene's page-aligned union.
   const selectionBox = useMemo(() => bounds(selectionCorners), [selectionCorners])
+  const selectionPivotFrame = () => sharedOutline
+    ? { basis: sharedOutline.basis, box: sharedOutline.box }
+    : selectionScaleFrame(editor.state.doc, editor.state.page, editor.topSelection(), editor.parentMap())
+  const originWorld = () => {
+    const frame = selectionPivotFrame()
+    return apply(frame.basis, { x: frame.box.x + frame.box.width * origin.current.point.x, y: frame.box.y + frame.box.height * origin.current.point.y })
+  }
+  const originFromWorld = (p: Point) => {
+    const frame = selectionPivotFrame()
+    const local = apply(inverse(frame.basis), p)
+    return { x: (local.x - frame.box.x) / Math.max(frame.box.width, 1e-10), y: (local.y - frame.box.y) / Math.max(frame.box.height, 1e-10) }
+  }
   const blurWarmNode = progressiveBlurCanvas ? state.selection[0] : undefined
   const progressiveBlurWarm = useMemo(() => blurWarmNode && selectionBox.width > 0 && selectionBox.height > 0 ? {
     node: blurWarmNode, bounds: [selectionBox.x, selectionBox.y, selectionBox.width, selectionBox.height] as [number, number, number, number],
@@ -1232,11 +1247,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   })
   const heldRotationMembers = holdRotationChrome && ownedDrag
     ? rotationStartMemberCorners(selected.map(entry => {
-      const node = (ownedDrag.sourceDocument || state.doc).nodes[entry.id]
-      return { id: entry.id, width: node?.width || 0, height: node?.height || 0 }
+      const source = ownedDrag.sourceDocument || state.doc
+      const node = source.nodes[entry.id]
+      return { id: entry.id, bounds: node ? selectionLocalBounds(source, entry.id) : { x: Number.NaN, y: Number.NaN, width: Number.NaN, height: Number.NaN } }
     }), ownedDrag.matrices)
     : null
-  const drawnCorners = heldRotationMembers ? rotationStartOutline(heldRotationMembers) : selectionCorners
+  const drawnCorners = heldRotationMembers
+    ? rotationStartOutline(heldRotationMembers, selected.map(entry => ownedDrag?.matrices[entry.id]))
+    : selectionCorners
   const drawnHandles = heldRotationMembers ? selectionHandles(drawnCorners, zoom) : transformHandles
   const capturedTransform = !!ownedDrag && ['move', 'resize', 'scale', 'rotate', 'pivot', 'parameter'].includes(ownedDrag.kind)
   // New controls must describe the displayed document. Keep the existing
@@ -1265,10 +1283,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const overlay = useMemo(() => canvasOverlayCommands({
     document:state.doc,pageId:state.page,epoch:editor.sessionGeneration,tool:state.tool,pixelGrid:showPixelGrid,
     canTransform:showTransformHandles,selected:showSelectionChrome ? selected : [],owners:selectionFeedback.ids,frameTitles,localSelection,selectionCorners,selectionBox,
-    measurementTarget:measurementTarget&&measurementBounds?{id:measurementTarget,bounds:measurementBounds}:null,
+    orientedFrame:sharedOutline,measurementTarget:measurementTarget&&measurementBounds?{id:measurementTarget,bounds:measurementBounds}:null,
     zoom, uiMode,
   }), [state.doc,state.page,state.tool,showPixelGrid,editor.sessionGeneration,frameTitles,showSelectionChrome,showTransformHandles,selected,
-    measurementTarget,measurementBounds,selectionCorners,selectionBox,localSelection,selectionFeedback,zoom,uiMode])
+    measurementTarget,measurementBounds,selectionCorners,selectionBox,localSelection,selectionFeedback,zoom,uiMode,sharedOutline])
   const frameTitleLabels = useMemo(() => new Map(overlay.commands.labels.filter(label =>
     label.kind === 'frame-title' || label.kind === 'section-title').map(label => [label.owners?.at(-1), label])), [overlay])
   const measurements = overlay.commands.measurements || []
@@ -1278,9 +1296,20 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const chosen = entries.filter(entry => ids.has(entry.id))
     if (!chosen.length) return null
     const box = unionBounds(chosen.map(entry => entry.bounds))
-    const corners = boxPoints(box)
-    return { chosen, box, corners, handles: selectionHandles(corners, zoom), size: selectionSizeLabel(null, box) }
-  }, [marqueePreview, entries, zoom])
+    const memberPoints = chosen.length > 1
+      ? chosen.map(entry => selectionMemberCorners(state.doc, entry.id, entry.matrix))
+      : []
+    const members = memberPoints.every((points): points is Point[] => !!points)
+      ? chosen.map((entry, index) => ({ matrix: entry.matrix, corners: memberPoints[index]! }))
+      : []
+    const shared = members.length > 1 ? sharedRotationFrame(members) : null
+    const corners = shared?.corners ?? boxPoints(box)
+    const frameBox = shared ? bounds(corners) : box
+    return {
+      chosen, memberPoints, box: frameBox, corners, handles: selectionHandles(corners, zoom),
+      size: selectionSizeLabel(shared?.box ?? null, box, shared?.basis),
+    }
+  }, [marqueePreview, entries, zoom, state.doc])
   const creationGhost = creationGhostNode(shapePreview, heldCreation && state.doc.nodes[heldCreation.id] ? heldCreation : null,
     id => !!state.doc.nodes[id] && presented?.document === state.doc)
   const gpuOverlay = canvasGpuOverlayOwnsUi(presented,overlay,presentationScopeMatches)
@@ -2355,7 +2384,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         selectedGroupDragIntent(selectedNode, hit, intentOptions) ||
         selectedChildDragIntent(selectedNode, hit, selected.find(entry => entry.id === selectedNode?.id)?.ancestors || [], intentOptions)
       const containerHit=hit&&selected.length>1&&selected.every(entry=>entry.ancestors.includes(hit))
-      const gap = (!hit||containerHit) && ids.length>1 && !e.metaKey && !e.ctrlKey && ['select','scale'].includes(s.tool) && contains(selectionBox,p)
+      const insideUnion = sharedOutline ? pointInContours(p, [selectionCorners]) : contains(selectionBox, p)
+      const gap = (!hit||containerHit) && ids.length>1 && !e.metaKey && !e.ctrlKey && ['select','scale'].includes(s.tool) && insideUnion
       let clickHit = hit
       if (!title && hit && e.shiftKey && !deepChord && uiMode === 'figma' &&
           (s.tool === 'select' || s.tool === 'multiselect' || s.tool === 'scale')) {
@@ -2404,6 +2434,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const commandCrop = dragKind === 'resize' && uiMode === 'sketch' && shortcutPlatform() === 'mac' &&
       ids.length === 1 && sourceDocument.nodes[ids[0]]?.kind === 'frame'
     const croppable = explicitCrop || commandCrop ? editableFrameCrop(editor) : undefined
+    const orientDrag = ['resize', 'scale', 'rotate'].includes(dragKind)
+    const sameSelection = ids.length === selected.length && selected.every(entry => ids.includes(entry.id))
+    const dragBasis = orientDrag && sameSelection && ids.length === 1 && canOrient ? matrices[ids[0]]
+      : orientDrag && sameSelection && ids.length > 1 && sharedOutline ? sharedOutline.basis : undefined
+    const dragLocal = orientDrag && sameSelection && ids.length === 1 && canOrient ? localSelection || undefined
+      : orientDrag && sameSelection && ids.length > 1 && sharedOutline ? sharedOutline.box : undefined
     drag.current = {
       pointerId: e.pointerId,
       session: editor.sessionGeneration, page: s.page,
@@ -2435,14 +2471,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         }),
       ),
       box: currentBox,
-      basis:
-        ['resize', 'scale', 'rotate'].includes(dragKind) && ids.length === 1 && canOrient
-          ? matrices[ids[0]]
-          : undefined,
-      localBox:
-        ['resize', 'scale', 'rotate'].includes(dragKind) && ids.length === 1 && canOrient
-          ? localSelection || undefined
-          : undefined,
+      basis: dragBasis,
+      localBox: dragLocal,
       handle,
       ...(['rotate','pivot'].includes(dragKind)?{rotationCenter:originWorld(),originalPivot:{...origin.current.point}}:{}),
       node: nodeId ? { ...structuredClone(s.doc.nodes[nodeId]), ...(['vertex', 'handle'].includes(dragKind) ? { network: editableNetwork(s.doc.nodes[nodeId]) } : {}) } : undefined,
@@ -2504,12 +2534,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const n = editor.state.doc.nodes[d.ids[0]]
       if (!n) return null
       return [d.basis, d.localBox, d.start, p, d.handle || 0,
-        d.kind === 'scale' || (!e.ctrlKey && (!!n.constrainProportions || e.shiftKey)),
+        d.kind === 'scale' || (!e.ctrlKey && ((d.ids.length === 1 && !!n.constrainProportions) || e.shiftKey)),
         e.altKey,
         // Control suspends object snap and the aspect lock. Pixel-grid snap
         // stays on for a layer resize. Figma suspends it only in vector edit
-        // once the pixel grid is visible.
-        d.kind !== 'scale' && (forcedPixelSnap(n) || editor.state.snapPixels)]
+        // once the pixel grid is visible. A shared-rotation multi-selection
+        // uses the oriented basis without taking the first layer's lock.
+        d.kind !== 'scale' && ((d.ids.length === 1 && forcedPixelSnap(n)) || editor.state.snapPixels)]
     }
     return [[1, 0, 0, 1, d.box.x, d.box.y], { x: 0, y: 0, width: d.box.width, height: d.box.height },
       d.start, p, d.handle || 0,
@@ -3074,7 +3105,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (d.kind === 'resize') {
         const original = d.sourceDocument?.nodes[id]
         if (original) {
-          const proportional = !e.ctrlKey && (e.shiftKey || !!d.basis && !!original.constrainProportions)
+          const proportional = !e.ctrlKey && (e.shiftKey || (d.ids.length === 1 && !!d.basis && !!original.constrainProportions))
           const axes = resizeGestureAxes(d.handle ?? 0, proportional, d.basis ? undefined : d.matrices[id])
           basePatches[id] = resizedNode(original, basePatches[id].transform!, axes)
         }
@@ -4088,9 +4119,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             !drag.current &&
             (() => {
               const e = entries.find((v) => v.id === hover)
-              const n = e && state.doc.nodes[hover]
-              if (!e || !n) return null
-              const points = boxPoints({ x: 0, y: 0, width: n.width, height: n.height }).map(p => apply(e.matrix, p))
+              if (!e || !state.doc.nodes[hover]) return null
+              const points = selectionMemberCorners(state.doc, hover, e.matrix)
+              if (!points) return null
               const d = crispOutlinePath(points, displayView, HOVER_STROKE_PX)
               if (!d) return null
               return <path data-testid="canvas-hover-outline" data-chrome="hover" data-node-id={hover} d={d}
@@ -4104,13 +4135,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           {!hidePanChrome && marqueePreview === null && !!selected.length && !['vector', 'width', 'pencil', 'brush', 'marker', 'washi-tape'].includes(state.tool) && (
             <g className="selection" data-selection-readonly={selectionFeedback.readOnly} data-selection-count={selected.length}>
               {selected.length > 1 && selected.map((entry, index) => {
-                const node = state.doc.nodes[entry.id]
-                if (!node || !(node.width > 0) || !(node.height > 0)) return null
-                const member = heldRotationMembers?.[index]
+                const geometric = heldRotationMembers?.[index] ?? selectionMemberCorners(state.doc, entry.id, entry.matrix)
+                if (!geometric?.length) return null
                 const reference = uiMode === 'sketch' && state.alignmentReference === entry.id
-                const points = (member || boxPoints({ x: 0, y: 0, width: node.width, height: node.height })
-                  .map(point => apply(entry.matrix, point)))
-                  .map(point => `${point.x},${point.y}`).join(' ')
+                const points = geometric.map(point => `${point.x},${point.y}`).join(' ')
                 return <polygon key={entry.id} data-testid="canvas-selection-member" data-node-id={entry.id} points={points}
                   data-alignment-reference={reference || undefined} fill="none" stroke={SELECTION_BLUE}
                   strokeWidth={reference ? 2 * SELECTION_MEMBER_STROKE_PX : SELECTION_MEMBER_STROKE_PX}
@@ -4337,7 +4365,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               {showSelectionChrome && <SelectionChromeChip testId="canvas-selection-size" opacity={gpuOverlay ? 0 : 1} centered tone="accent"
                 x={selectionBox.x + selectionBox.width / 2}
                 y={selectionBox.y + selectionBox.height + 21 / zoom}
-                text={selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix)}
+                text={selectionSizeLabel(sharedOutline?.box ?? localSelection, selectionBox, sharedOutline?.basis ?? selected[0]?.matrix)}
                 size={10} zoom={zoom} fill={SIZE_PILL_TEXT} />}
               {(overlay.commands.labels ?? []).filter(label => label.kind === 'selection-name').map(label => (
                 <SelectionChromeChip key="selection-name" testId="canvas-selection-name" opacity={gpuOverlay ? 0 : 1}
@@ -4496,11 +4524,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             </g>
           )}
           {marqueeChrome && <g data-testid="canvas-marquee-selection" pointerEvents="none">
-            {marqueeChrome.chosen.length > 1 && marqueeChrome.chosen.map(entry => {
-              const node = state.doc.nodes[entry.id]
-              if (!node || !(node.width > 0) || !(node.height > 0)) return null
-              const points = boxPoints({ x: 0, y: 0, width: node.width, height: node.height })
-                .map(point => apply(entry.matrix, point)).map(point => `${point.x},${point.y}`).join(' ')
+            {marqueeChrome.chosen.length > 1 && marqueeChrome.chosen.map((entry, index) => {
+              const corners = marqueeChrome.memberPoints[index]
+              if (!corners?.length) return null
+              const points = corners.map(point => `${point.x},${point.y}`).join(' ')
               return <polygon key={entry.id} data-testid="canvas-selection-member" data-node-id={entry.id} points={points}
                 fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_MEMBER_STROKE_PX} vectorEffect="non-scaling-stroke" />
             })}

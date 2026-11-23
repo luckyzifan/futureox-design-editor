@@ -13,6 +13,8 @@ import { blank, defaultTextStyle, node, type DesignDocument, type DesignNode } f
 import { shortcutPreference } from './shortcut-preference'
 import { interfacePreference } from './interface-preference'
 import { crispOutlinePath } from './kernel/gpu/canvas-overlay'
+import { boxPoints, multiply, rotate, scene, translate, unionBounds } from './geometry'
+import { selectionMemberCorners, sharedRotationFrame } from './selection-outline'
 import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_UNION_STROKE_PX } from './selection-blue'
 import { SPACING_RED } from './canvas-measurements'
 import { kernelTextLayout } from './kernel/picking'
@@ -446,6 +448,102 @@ test('a one-pixel gap shows both widths and a 1 at each end of the seam', async 
   expect(guide?.querySelector('[data-measure="box"]')?.getAttribute('stroke')).toBe(SPACING_RED)
   expect(guide?.querySelector('[data-measure="gap"]')?.getAttribute('stroke')).toBe(SPACING_RED)
   expect(mount.querySelector('[data-testid="canvas-selection-size"]')?.textContent).toBe('20 × 20')
+})
+
+function polygonPoints(selector: string) {
+  const node = mount.querySelector(selector)
+  expect(node).not.toBeNull()
+  return node!.getAttribute('points')!.trim().split(/\s+/).map(pair => {
+    const [x, y] = pair.split(',').map(Number)
+    return { x, y }
+  })
+}
+
+test('an ordinary shape has no name label, and a stale group hover uses child bounds', async () => {
+  const frame = node('frame', 0, 0, 400, 300)
+  frame.name = '画板'
+  const rect = node('rectangle', 40, 50, 120, 80)
+  rect.name = '按钮'
+  frame.children = [rect.id]
+  await render([frame, rect], [frame.id])
+  await act(async () => editor.select([rect.id]))
+  expect(mount.querySelector('[data-testid="canvas-selection-name"]')).toBeNull()
+  expect(mount.querySelector('[data-testid="canvas-selection-size"]')?.textContent).toBe('120 × 80')
+  const title = mount.querySelector('[data-frame-title]')
+  expect(title?.textContent).toBe('画板')
+  expect(title?.getAttribute('fill')).not.toBe(SELECTION_BLUE)
+  await act(async () => editor.select([frame.id]))
+  expect(mount.querySelector('[data-testid="canvas-selection-name"]')).toBeNull()
+  expect(mount.querySelector('[data-frame-title]')?.getAttribute('fill')).toBe(SELECTION_BLUE)
+
+  const child = node('rectangle', 30, 40, 80, 50)
+  const group = node('group', 10, 20, 4, 4)
+  group.children = [child.id]
+  await render([group, child], [group.id])
+  await act(async () => editor.hoverLayer(group.id, 'layers'))
+  const hover = mount.querySelector('[data-testid="canvas-hover-outline"]')
+  expect(hover?.getAttribute('data-node-id')).toBe(group.id)
+  expect(hover?.getAttribute('fill')).toBe(SELECTION_BLUE)
+  expect(hover?.getAttribute('stroke')).toBe('none')
+  expect(mount.querySelector('[data-testid="resize-0"]')).toBeNull()
+  expect(mount.querySelector('[data-testid="canvas-selection-size"]')).toBeNull()
+  expect(hover?.getAttribute('d')).toBe(crispOutlinePath(
+    [{ x: 40, y: 60 }, { x: 120, y: 60 }, { x: 120, y: 110 }, { x: 40, y: 110 }], view, HOVER_STROKE_PX))
+})
+
+test('same-rotation multi-select draws that oriented box, and mixed rotations stay page aligned', async () => {
+  const first = node('rectangle', 0, 0, 100, 40)
+  const second = node('rectangle', 160, 0, 100, 40)
+  first.transform = multiply(translate(0, 0), rotate(30))
+  second.transform = multiply(translate(160, 0), rotate(30))
+  await render([first, second])
+  await act(async () => editor.select([first.id, second.id]))
+  const outline = polygonPoints('[data-testid="canvas-selection-outline"]')
+  const entries = scene(editor.state.doc, editor.state.page).filter(entry => entry.id === first.id || entry.id === second.id)
+  const shared = sharedRotationFrame(entries.map(entry => ({
+    matrix: entry.matrix,
+    corners: selectionMemberCorners(editor.state.doc, entry.id, entry.matrix)!,
+  })))
+  expect(shared).not.toBeNull()
+  shared!.corners.forEach((corner, index) => {
+    expect(outline[index].x).toBeCloseTo(corner.x, 5)
+    expect(outline[index].y).toBeCloseTo(corner.y, 5)
+  })
+  expect(outline[0].y).not.toBeCloseTo(0, 1)
+  expect(mount.querySelector('[data-testid="canvas-selection-outline"]')?.getAttribute('data-selection-role')).toBe('union')
+  expect(mount.querySelectorAll('[data-testid="canvas-selection-member"]')).toHaveLength(2)
+  expect(mount.querySelector('[data-testid="resize-0"]')).not.toBeNull()
+  const turned = Math.atan2(outline[1].y - outline[0].y, outline[1].x - outline[0].x) * 180 / Math.PI
+  expect(turned).toBeCloseTo(30, 4)
+  expect(mount.querySelector('[data-testid="canvas-selection-size"]')?.textContent).toBe('238.56 × 120')
+  const member = polygonPoints('[data-testid="canvas-selection-member"]')
+  const memberCorners = selectionMemberCorners(editor.state.doc, first.id, entries.find(entry => entry.id === first.id)!.matrix)!
+  memberCorners.forEach((corner, index) => {
+    expect(member[index].x).toBeCloseTo(corner.x, 5)
+    expect(member[index].y).toBeCloseTo(corner.y, 5)
+  })
+
+  const axisA = node('rectangle', 10, 20, 30, 40)
+  const axisB = node('rectangle', 80, 50, 20, 10)
+  await render([axisA, axisB])
+  await act(async () => editor.select([axisA.id, axisB.id]))
+  const straight = polygonPoints('[data-testid="canvas-selection-outline"]')
+  const union = unionBounds(scene(editor.state.doc, editor.state.page).map(entry => entry.bounds))
+  boxPoints(union).forEach((corner, index) => {
+    expect(straight[index].x).toBeCloseTo(corner.x, 5)
+    expect(straight[index].y).toBeCloseTo(corner.y, 5)
+  })
+
+  second.transform = multiply(translate(160, 0), rotate(12))
+  await render([first, second])
+  await act(async () => editor.select([first.id, second.id]))
+  const mixed = polygonPoints('[data-testid="canvas-selection-outline"]')
+  const mixedBox = unionBounds(scene(editor.state.doc, editor.state.page)
+    .filter(entry => entry.id === first.id || entry.id === second.id).map(entry => entry.bounds))
+  boxPoints(mixedBox).forEach((corner, index) => {
+    expect(mixed[index].x).toBeCloseTo(corner.x, 5)
+    expect(mixed[index].y).toBeCloseTo(corner.y, 5)
+  })
 })
 
 test('group click, empty arrows, and Space-pan stay as they were', async () => {

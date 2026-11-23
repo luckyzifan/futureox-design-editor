@@ -19,7 +19,7 @@ test('chrome keeps the blue accent and warms the neutral surfaces', () => {
   expect(css).not.toContain('panel-enter-left { from { opacity: 0')
 })
 
-test('selection name and size use a pill frame and keep the existing blue', () => {
+test('an ordinary shape has no name chip, and the size pill keeps the blue frame', () => {
   const doc = blank('chrome')
   const frame = node('frame', 0, 0, 400, 300)
   frame.name = '画板'
@@ -39,7 +39,7 @@ test('selection name and size use a pill frame and keep the existing blue', () =
     frameTitles: entries.filter(entry => entry.id === frame.id),
     localSelection: local, selectionCorners: corners, selectionBox: bounds(corners), measurementTarget: null,
   }).commands.labels ?? []
-  expect(labels.find(label => label.kind === 'selection-name')).toMatchObject({ text: '按钮', color: '#4597f7', frame: 'pill' })
+  expect(labels.find(label => label.kind === 'selection-name')).toBeUndefined()
   expect(labels.find(label => label.kind === 'selection-size')).toMatchObject({ text: '120 × 80', color: '#ffffff', frame: 'accent' })
   expect(labels.find(label => label.kind === 'frame-title')).toMatchObject({ text: '画板', color: '#73778b' })
   expect(labels.find(label => label.kind === 'frame-title')).not.toHaveProperty('frame')

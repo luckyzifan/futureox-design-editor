@@ -1,5 +1,6 @@
-import type { Matrix, Point } from './model'
+import type { Bounds, Matrix, Point } from './model'
 import { apply, bounds, boxPoints } from './geometry'
+import { sharedRotationFrame } from './selection-outline'
 
 /** Own-paint rotation draws the moving outline. The document outline is still
  * the pre-gesture quad while preview is deferred, so it must not also paint. */
@@ -27,21 +28,28 @@ export function rotationChromeHeldToTexture(input: {
 }
 
 /** Oriented corners of the pose the current texture was built from.
- * One object keeps its quad. Several objects use the union rectangle. */
+ * One object keeps its quad. Several objects use the same union as the
+ * resting selection, including a shared rotation. */
 export function rotationStartMemberCorners(
-  nodes: readonly { id: string; width: number; height: number }[],
+  nodes: readonly { id: string; bounds: Bounds }[],
   matrices: Readonly<Record<string, Matrix>>,
 ): Point[][] | null {
   if (!nodes.length) return null
   const members: Point[][] = []
   for (const node of nodes) {
     const matrix = matrices[node.id]
-    if (!matrix || !(node.width > 0) || !(node.height > 0) || !matrix.every(Number.isFinite)) return null
-    members.push(boxPoints({ x: 0, y: 0, width: node.width, height: node.height }).map(point => apply(matrix, point)))
+    const box = node.bounds
+    if (!matrix || !box || ![box.x, box.y, box.width, box.height].every(Number.isFinite) || !matrix.every(Number.isFinite)) return null
+    members.push(boxPoints(box).map(point => apply(matrix, point)))
   }
   return members
 }
 
-export function rotationStartOutline(members: readonly (readonly Point[])[]): Point[] {
-  return members.length === 1 ? [...members[0]] : boxPoints(bounds(members.flat()))
+export function rotationStartOutline(members: readonly (readonly Point[])[], matrices?: readonly (Matrix | undefined)[]): Point[] {
+  if (members.length <= 1) return [...(members[0] ?? [])]
+  if (matrices && matrices.length === members.length && matrices.every((matrix): matrix is Matrix => !!matrix && matrix.every(Number.isFinite))) {
+    const shared = sharedRotationFrame(members.map((corners, index) => ({ matrix: matrices[index], corners })))
+    if (shared) return shared.corners
+  }
+  return boxPoints(bounds(members.flat()))
 }
