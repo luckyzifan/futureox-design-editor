@@ -111,6 +111,15 @@ export class NativePreparation {
   return this.done
  }
 }
+/** Binary pose payloads already own a dedicated buffer. Move that buffer across
+ * the terminal port. A structured clone copies the whole scene packet before
+ * the renderer can encode it, while the GPU queue is still idle. */
+export function poseReplyTransferList(reply) {
+  const value = reply?.value
+  if (ArrayBuffer.isView(value) && value.byteOffset === 0 && value.byteLength === value.buffer.byteLength) return [value.buffer]
+  if (value instanceof ArrayBuffer) return [value]
+  return []
+}
 /** The renderer owns its existing preparation process. Only real pose mutations
  * and packets cross this port, in the same physical queue as ordinary calls. */
 export function bindPosePreparationPort(port,worker,current,retire){
@@ -135,7 +144,10 @@ export function bindPosePreparationPort(port,worker,current,retire){
    const reply=await worker.request({lane,method,args,
     ...(diagnostics?{diagnostics:{...diagnostics,preparationId:id}}:{}),
     ...(method==='compile_gpu_packet'&&cancellable?{cancellationId:id}:{})})
-   if(!closed&&current())port.postMessage({...reply,id})
+   if(!closed&&current()){
+    const message={...reply,id}
+    port.postMessage(message, poseReplyTransferList(message))
+   }
   }catch(error){if(!closed&&current())fatal(error)}finally{active=0}
  })
  port.on('close',()=>{closed=true;if(active&&current())retire()})
