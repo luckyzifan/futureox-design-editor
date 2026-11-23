@@ -904,3 +904,105 @@ fn parallel_cancel_keeps_one_finished_tile() {
     assert!(renderer.resident_tile_count() > 1);
     assert!(finished.load(Ordering::Acquire) > 1);
 }
+
+fn populated(board_x: f64, mark_x: f64) -> futureox_design_kernel::scene::Document {
+    let mut nodes = serde_json::Map::new();
+    let mut roots = vec!["board".to_string(), "mark".to_string()];
+    for i in 0..48 {
+        let id = format!("n{i}");
+        roots.push(id.clone());
+        nodes.insert(id.clone(), json!({
+            "id": id, "kind": "rectangle",
+            "transform": [1, 0, 0, 1, (i % 12) * 70, (i / 12) * 80],
+            "width": 36, "height": 24,
+            "fills": [{"kind": "solid", "color": "#7865cb"}]
+        }));
+    }
+    nodes.insert("board".into(), json!({
+        "id": "board", "kind": "frame", "clip": true,
+        "transform": [1, 0, 0, 1, board_x, 420.],
+        "width": 160, "height": 80,
+        "fills": [{"kind": "solid", "color": "#dce7ee"}],
+        "children": ["label"]
+    }));
+    nodes.insert("label".into(), json!({
+        "id": "label", "kind": "rectangle",
+        "transform": [1, 0, 0, 1, 12, 18],
+        "width": 90, "height": 16,
+        "fills": [{"kind": "solid", "color": "#203040"}]
+    }));
+    nodes.insert("mark".into(), json!({
+        "id": "mark", "kind": "rectangle",
+        "transform": [1, 0, 0, 1, mark_x, 36.],
+        "width": 48, "height": 32,
+        "fills": [{"kind": "solid", "color": "#c4554a"}],
+        "effects": [{"kind": "shadow", "x": 6., "y": 4., "radius": 8., "color": "#000000", "opacity": 0.45}]
+    }));
+    serde_json::from_value(json!({
+        "schemaVersion": 1, "id": "partial", "name": "partial",
+        "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": roots}],
+        "nodes": nodes
+    })).unwrap()
+}
+
+fn fresh_rgba(doc: &futureox_design_kernel::scene::Document, options: &RenderOptions) -> Vec<u8> {
+    let mut engine = Engine::new();
+    engine.load_document(&serde_json::to_string(doc).unwrap()).unwrap();
+    engine.render(options).unwrap()
+}
+
+/// A resident tile keeps the pixels outside a bounded edit and matches a
+/// renderer that never reused those pixels. The repainted device area stays
+/// inside one tile.
+#[test]
+fn partial_shadow_edit_matches_fresh_pixels_inside_one_tile() {
+    use futureox_design_kernel::editing::DocumentPatch;
+    let before = populated(480., 40.);
+    let mut engine = Engine::new();
+    engine.load_document(&serde_json::to_string(&before).unwrap()).unwrap();
+    let options = frame(View { x: 0., y: 0., zoom: 1. }, 1024, 768);
+    let cold = engine.render_tiled_frame(&options, None).unwrap();
+    assert_eq!(cold.rgba, fresh_rgba(&before, &options));
+    let before_px = cold.telemetry.rasterisation_pixel_count;
+    let mut after = before.clone();
+    after.nodes.get_mut("mark").unwrap().transform.0[4] += 9.;
+    let patch = DocumentPatch::between(&before, &after).unwrap();
+    let damage = engine.apply_document_patch_with_damage(&patch).unwrap();
+    assert!(!damage.full, "shadow move should stay bounded: {:?}", damage.reason);
+    let rects = damage.rects.clone().unwrap();
+    let updated = engine.render_tiled_frame(&options, Some(&rects)).unwrap();
+    assert_eq!(updated.rgba, fresh_rgba(&after, &options));
+    let delta = updated.telemetry.rasterisation_pixel_count.saturating_sub(before_px);
+    assert!(delta > 0 && delta < (TILE_SIZE as u64) * (TILE_SIZE as u64), "repaint pixels {delta}");
+}
+
+/// Moving a clipped frame that straddles a tile boundary must keep the same
+/// pixels as a fresh render. Bounded damage repaints the intersection only.
+#[test]
+fn clipped_frame_translation_matches_fresh_pixels() {
+    use futureox_design_kernel::editing::DocumentPatch;
+    let before = populated(480., 40.);
+    let mut engine = Engine::new();
+    engine.load_document(&serde_json::to_string(&before).unwrap()).unwrap();
+    let options = frame(View { x: 0., y: 0., zoom: 1. }, 1024, 768);
+    let cold = engine.render_tiled_frame(&options, None).unwrap();
+    assert_eq!(cold.rgba, fresh_rgba(&before, &options));
+    let before_px = cold.telemetry.rasterisation_pixel_count;
+    let mut after = before.clone();
+    after.nodes.get_mut("board").unwrap().transform.0[4] += 18.5;
+    after.nodes.get_mut("board").unwrap().transform.0[5] += 7.25;
+    let patch = DocumentPatch::between(&before, &after).unwrap();
+    let damage = engine.apply_document_patch_with_damage(&patch).unwrap();
+    let rects = damage.rects.clone().unwrap_or_default();
+    let updated = engine
+        .render_tiled_frame(&options, if damage.full { None } else { Some(&rects) })
+        .unwrap();
+    assert_eq!(updated.rgba, fresh_rgba(&after, &options), "full={}", damage.full);
+    if !damage.full {
+        let delta = updated.telemetry.rasterisation_pixel_count.saturating_sub(before_px);
+        assert!(
+            delta > 0 && delta < 2 * (TILE_SIZE as u64) * (TILE_SIZE as u64),
+            "repaint pixels {delta}"
+        );
+    }
+}
