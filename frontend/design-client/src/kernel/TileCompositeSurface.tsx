@@ -84,8 +84,9 @@ export function TileCompositeSurface({ items, view, width, height, dpr, onReady,
         allowed: allowPanPreview, frame: presentation || null, document: sourceDocument, revision: contentRevision,
         pageId, width, height, dpr, items, backing: panBacking,
       })
+      const retainedMove = !!moved && moving?.mode !== 'live-kernel'
       const submitted = renderer.draw(composition,
-        view, width, height, dpr, !!moved && moving?.mode !== 'live-kernel', preview)
+        view, width, height, dpr, retainedMove, preview, retainedMove ? moving?.pageBackground : undefined)
       if (submitted) {
         // Publish the camera actually drawn, even between plan generations.
         // A live pose is a preview; it must not certify the source as exact.

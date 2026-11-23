@@ -33,6 +33,14 @@ test('bitmap navigation marks its uncovered strip opaque and separately publishe
   expect(f.calls.clearColor).toHaveBeenLastCalledWith(0, 0, 0, 0)
 })
 
+test('retained object layers clear to an opaque page plate and ignore a fractional one', () => {
+  const f = fixture()
+  expect(f.compositor.draw([{ ...f.item, blend: true }], { x: 4, y: 0, zoom: 1 }, 16, 16, 1, true, false, [1, 1, 1, 1])).toBe(true)
+  expect(f.calls.clearColor).toHaveBeenLastCalledWith(1, 1, 1, 1)
+  expect(f.compositor.draw([f.item], { x: 0, y: 0, zoom: 1 }, 16, 16, 1, true, false, [1, 0, 0, 0.5])).toBe(true)
+  expect(f.calls.clearColor).toHaveBeenLastCalledWith(0, 0, 0, 0)
+})
+
 test('a camera without remaining cached pixels can still present a marked pending background', () => {
   const f = fixture(); f.compositor.retain(new Set())
   expect(f.compositor.draw([], { x: 100, y: 0, zoom: 1 }, 16, 16, 1, false, true)).toBe(true)

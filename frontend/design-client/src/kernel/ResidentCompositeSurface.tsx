@@ -286,6 +286,7 @@ export function ResidentCompositeSurface(props: {
         linearBlend:
           !!moved && moving?.mode === 'retained-layers' && !!p.interaction?.document.colorManagement,
         backgroundLinear: moving?.backgroundLinear,
+        pageBackground: moving && moving === interaction.current && moving.mode !== 'live-kernel' ? moving.pageBackground : undefined,
         input: moved&&moving ? {...moving.presentedInput,owner} : undefined,
         items: items
           .filter((item) => item.tile.gpuTile)

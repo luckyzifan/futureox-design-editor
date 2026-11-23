@@ -3,6 +3,7 @@ import { presentationQuality } from './presentation-quality'
 import { compositeDrawPlan, compositeRasterQuad } from './composite-draw-plan'
 import type { RasterTile } from '../tile-cache'
 import { physicalPixelCoverage, physicalCoverageGaps } from './physical-coverage'
+import { opaqueByteClear } from './resident-frame'
 
 export type CompositeTile = RasterTile & { serial: number; bytes: Uint8Array; bitmap?: ImageBitmap; gpuTile?: number }
 export type TilePlacement = { left: number; top: number; width: number; height: number }
@@ -102,7 +103,7 @@ export class TileCompositor {
     }
   }
 
-  draw(items: readonly CompositeItem[], view: CanvasCamera, width: number, height: number, dpr: number, allowEmpty = false, cameraPreview = false) {
+  draw(items: readonly CompositeItem[], view: CanvasCamera, width: number, height: number, dpr: number, allowEmpty = false, cameraPreview = false, pageBackground?: readonly number[]) {
     const gl = this.gl
     if (this.disposed || gl.isContextLost()) throw new Error('画布合成设备已丢失')
     const w = Math.max(1, Math.ceil(width * dpr)), h = Math.max(1, Math.ceil(height * dpr))
@@ -132,7 +133,9 @@ export class TileCompositor {
     gl.viewport(0, 0, w, h); gl.useProgram(this.program); gl.bindVertexArray(this.vao)
     gl.uniform2f(this.viewport, width, height)
     gl.disable(gl.SCISSOR_TEST)
+    const pageClear = allowEmpty && !preview ? opaqueByteClear(pageBackground) : undefined
     if (preview) gl.clearColor(1, 1, 1, 1)
+    else if (pageClear) gl.clearColor(...pageClear)
     else gl.clearColor(0, 0, 0, 0)
     gl.clear(gl.COLOR_BUFFER_BIT)
     if (preview && this.textures.size) {
