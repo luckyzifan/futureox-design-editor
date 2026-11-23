@@ -282,11 +282,15 @@ fn linear_progressive_background_blur_imports_two_strengths_and_keeps_saturation
     let report = interop::import_sketch_report(&archive(&source)).unwrap();
     let effect = &report.document.nodes["frosted"].effects[0];
     assert_eq!(effect.kind, "background-blur");
-    assert_eq!(effect.radius, 1.);
+    // Native two-stop ramps keep the authored radius. These stop strengths
+    // are fractions of it, so 0 and 1 are radii 0 and 8.
+    assert_eq!(effect.radius, 8.);
     let gradient = effect.gradient_blur.as_ref().expect("linear two-end ramp");
     assert_eq!(gradient.start, [0., 16.]);
     assert_eq!(gradient.end, [32., 16.]);
-    assert_eq!((gradient.start_count, gradient.end_count, gradient.smooth), (0., 8., true));
+    let stops = gradient.sketch.as_ref().expect("native two-stop ramp").stops.iter()
+        .map(|stop| (stop.offset, stop.strength)).collect::<Vec<_>>();
+    assert_eq!(stops, [(0., 0.), (1., 1.)]);
     assert_eq!(effect.color_controls.unwrap().saturation, 0.25);
     assert!(report.document.schema_version >= 17);
     assert!(report.document.validate().is_ok());
