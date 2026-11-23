@@ -137,10 +137,11 @@ fn partial_opacity_linear_gradient_matches_frozen_chrome_png() {
                 .all(|(_, pixels, max)| *pixels == 0 && *max == 0),
         "linear-gradient {linear:?}"
     );
-    // The trailing capture sample improves both entries for the same frozen
-    // fractional backdrop, from 3887 pixels at max 7 to 3795 at max 4.
+    // Ties-even of the white tent half moves BlurThreshold-0p251-2x from 704
+    // differing pixels to 430 in both manifests. Every other frozen row stays
+    // put, and both linear gradients stay exact.
     assert_eq!(
-        others_sha, "f4822f92a82270ceb4eb23a56cdfbe89176d064c4841b58eb12ff8c9a4a7f337",
+        others_sha, "0c19ce4b5ebf5ab528a1266b0411e862da48a9ecdd710c0d054c0b30ffd48ac5",
         "other frozen figma references moved"
     );
 }
