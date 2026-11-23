@@ -8,7 +8,7 @@ import { automationText } from './automation-interface-messages'
 import { fileMenuText } from './file-menu-messages'
 import { Editor } from './engine'
 
-function fixture(select: 'rect' | 'frame' | 'both', tool = 'select', rectName = '按钮') {
+function fixture(select: 'rect' | 'frame' | 'both', tool = 'select', rectName = '按钮', uiMode?: 'figma' | 'sketch') {
   const doc = blank('chrome')
   const frame = node('frame', 0, 0, 400, 300)
   frame.name = '画板'
@@ -28,21 +28,19 @@ function fixture(select: 'rect' | 'frame' | 'both', tool = 'select', rectName = 
     selected, owners: ids,
     frameTitles: entries.filter(entry => ['frame', 'section'].includes(doc.nodes[entry.id].kind) && (entry.depth === 0 || ids.includes(entry.id))),
     localSelection: local, selectionCorners: corners, selectionBox: bounds(corners), measurementTarget: null,
+    uiMode,
   })
 }
 
 const labelsOf = (overlay: ReturnType<typeof fixture>) => overlay.commands.labels ?? []
 
-test('a single shape shows its name above the box and leaves the parent frame title neutral', () => {
-  const overlay = fixture('rect')
-  const labels = labelsOf(overlay)
-  const name = labels.find(label => label.kind === 'selection-name')
-  const title = labels.find(label => label.kind === 'frame-title')
-  expect(name).toMatchObject({ text: '按钮', color: '#4597f7', offset: { x: 0, y: -24 }, frame: 'pill' })
-  const corners = overlay.commands.selection!.corners
-  expect(name!.anchor).toEqual({ x: Math.min(...corners.map(point => point.x)), y: Math.min(...corners.map(point => point.y)) })
-  expect(title).toMatchObject({ text: '画板', color: '#73778b' })
-  expect(labels.find(label => label.kind === 'selection-size')).toMatchObject({ text: '120 × 80', color: '#ffffff', frame: 'accent' })
+test('a single shape does not draw a name above the box and leaves the parent frame title neutral', () => {
+  for (const uiMode of ['figma', 'sketch'] as const) {
+    const labels = labelsOf(fixture('rect', 'select', '按钮', uiMode))
+    expect(labels.some(label => label.kind === 'selection-name')).toBe(false)
+    expect(labels.find(label => label.kind === 'frame-title')).toMatchObject({ text: '画板', color: '#73778b' })
+    expect(labels.find(label => label.kind === 'selection-size')).toMatchObject({ text: '120 × 80', color: '#ffffff', frame: 'accent' })
+  }
 })
 
 test('selecting a frame turns its title blue instead of drawing a second name', () => {

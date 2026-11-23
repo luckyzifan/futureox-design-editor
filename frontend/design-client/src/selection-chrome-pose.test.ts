@@ -18,7 +18,7 @@ test('rotation chrome stays on the presented texture until that texture is the l
 
 test('the held outline is the start quad, not the live rotation', () => {
   const start = [0, 1, -1, 0, 10, 20] as [number, number, number, number, number, number]
-  const members = rotationStartMemberCorners([{ id: 'a', width: 4, height: 2 }], { a: start })
+  const members = rotationStartMemberCorners([{ id: 'a', bounds: { x: 0, y: 0, width: 4, height: 2 } }], { a: start })
   expect(members).toHaveLength(1)
   expect(rotationStartOutline(members!)).toEqual([
     { x: 10, y: 20 },
@@ -26,5 +26,7 @@ test('the held outline is the start quad, not the live rotation', () => {
     { x: 8, y: 24 },
     { x: 8, y: 20 },
   ])
-  expect(rotationStartMemberCorners([{ id: 'a', width: 4, height: 2 }], {})).toBeNull()
+  expect(rotationStartMemberCorners([{ id: 'a', bounds: { x: 0, y: 0, width: 4, height: 2 } }], {})).toBeNull()
+  const flat = rotationStartMemberCorners([{ id: 'line', bounds: { x: 1, y: 2, width: 8, height: 0 } }], { line: [1, 0, 0, 1, 0, 0] })
+  expect(flat?.[0]).toEqual([{ x: 1, y: 2 }, { x: 9, y: 2 }, { x: 9, y: 2 }, { x: 1, y: 2 }])
 })

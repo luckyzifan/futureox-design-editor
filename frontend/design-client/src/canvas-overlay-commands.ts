@@ -1,8 +1,8 @@
-import type { Bounds, DesignDocument, Point } from './model'
+import type { Bounds, DesignDocument, Matrix, Point } from './model'
 import { apply, type SceneEntry } from './geometry'
 import { DISTANCE_PILL_FONT_SIZE, DISTANCE_PILL_TEXT, spacingDiagram, type Measurement } from './canvas-measurements'
 import { selectionSizeLabel } from './selection-size-label'
-import { SELECTION_BLUE, SIZE_PILL_TEXT } from './selection-blue'
+import { SIZE_PILL_TEXT } from './selection-blue'
 import type { CanvasLabel } from './kernel/gpu/canvas-labels'
 import type { CanvasOverlay } from './kernel/gpu/canvas-overlay'
 import { fitFrameTitle, frameChromeLabel, FRAME_TITLE_SIZE } from './page-frame-chrome'
@@ -22,6 +22,8 @@ export type CanvasOverlayInputs = {
   tool: string; pixelGrid: boolean; canTransform: boolean
   selected: readonly SceneEntry[]; owners: string[]; frameTitles: readonly SceneEntry[]
   localSelection: Bounds | null; selectionCorners: Point[]; selectionBox: Bounds
+  /** Multi-selection whose layers share one rotation. Size uses this box. */
+  orientedFrame?: { box: Bounds; basis: Matrix } | null
   measurementTarget: { id: string; bounds: Bounds } | null
   zoom?: number
   uiMode?: UiMode
@@ -55,7 +57,9 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   const selectionName = showSelection && selected.length === 1 ? document.nodes[selected[0].id]?.name ?? '' : ''
   const targetIdentity = measurementTarget ? [measurementTarget.id, measurementTarget.bounds.x, measurementTarget.bounds.y,
     measurementTarget.bounds.width, measurementTarget.bounds.height] : null
-  const sizeText = showSelection ? selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix) : ''
+  const sizeLocal = input.orientedFrame?.box ?? localSelection
+  const sizeBasis = input.orientedFrame?.basis ?? selected[0]?.matrix
+  const sizeText = showSelection ? selectionSizeLabel(sizeLocal, selectionBox, sizeBasis) : ''
   // Tenths of a degree. A frozen overlay identity kept the W×H chip on the
   // pre-rotation box while the glyphs turned. Prefix 4 also retires labels
   // from before the warm pill frame.
@@ -63,11 +67,8 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   const uiIdentity = JSON.stringify([5, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity, targetIdentity, Math.round(zoom * 100) / 100])
   const diagram = measurementTarget ? spacingDiagram(selectionBox, measurementTarget.bounds, zoom) : { lines: [] as Measurement[], pills: [] }
   const measurements = diagram.lines
-  const titled = new Set(frameTitles.map(entry => entry.id))
-  // Sit above the top edge, clear of the corner rotate marks.
-  if (showSelection && selected.length === 1 && selectionName && !titled.has(selected[0].id))
-    labels.push({ anchor: { x: selectionBox.x, y: selectionBox.y }, offset: { x: 0, y: -24 },
-      text: selectionName, size: 11, color: SELECTION_BLUE, kind: 'selection-name', frame: 'pill', owners })
+  // Mac Figma does not draw a layer name above an ordinary shape. Frame and
+  // section titles are the names on the canvas. The chip under the box is the size.
   if(showSelection) labels.push({anchor:{x:selectionBox.x+selectionBox.width/2,y:selectionBox.y+selectionBox.height},offset:{x:0,y:21},
     text:sizeText,size:10,color:SIZE_PILL_TEXT,centered:true,kind:'selection-size',frame:'accent',owners})
   for (const pill of diagram.pills) {

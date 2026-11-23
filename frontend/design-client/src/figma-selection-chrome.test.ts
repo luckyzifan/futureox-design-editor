@@ -4,7 +4,7 @@ import { blank, node } from './model'
 import { selectionLocalBounds } from './canvas-view'
 import { canvasOverlayCommands } from './canvas-overlay-commands'
 
-test('selection chrome names a shape in blue and turns only the selected frame title blue', () => {
+test('selection chrome leaves an ordinary shape unnamed and turns only the selected frame title blue', () => {
   const doc = blank(), frame = node('frame', 0, 0, 200, 120), rect = node('rectangle', 10, 20, 40, 30)
   frame.name = 'Card'
   rect.name = 'Thumb'
@@ -22,7 +22,8 @@ test('selection chrome names a shape in blue and turns only the selected frame t
     localSelection: local, selectionCorners: corners, selectionBox: bounds(corners), measurementTarget: null,
   })
   const shapeLabels = shape.commands.labels ?? []
-  expect(shapeLabels.find(label => label.text === 'Thumb')?.color).toBe('#4597f7')
+  expect(shapeLabels.find(label => label.text === 'Thumb')).toBeUndefined()
+  expect(shapeLabels.some(label => label.kind === 'selection-name')).toBe(false)
   expect(shapeLabels.find(label => label.text === 'Card')?.color).toBe('#73778b')
   const frameLocal = selectionLocalBounds(doc, frame.id)
   const frameCorners = boxPoints(frameLocal).map(point => apply(frameEntry.matrix, point))
