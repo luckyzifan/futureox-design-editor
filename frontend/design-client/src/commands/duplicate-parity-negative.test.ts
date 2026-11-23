@@ -30,7 +30,7 @@ for (const kind of ['rectangle', 'frame'] as const) test(`Figma ${kind} placemen
   ui.duplicate()
   const [copy] = duplicate(mcp, [n.id])
   const [equivalent] = duplicate(explicit, [n.id], { offsetX, offsetY })
-  expect(worldMatrix(mcp.state.doc, copy)).toEqual([1, 0, 0, 1, 20, 30])
+  expect(worldMatrix(mcp.state.doc, copy)).toEqual([1, 0, 0, 1, 10 + offsetX, 20 + offsetY])
   expect(worldMatrix(ui.state.doc, ui.state.selection[0])).toEqual([1, 0, 0, 1, 10 + offsetX, 20 + offsetY])
   expect(worldMatrix(explicit.state.doc, equivalent)).toEqual(worldMatrix(ui.state.doc, ui.state.selection[0]))
   expect(mcp.state.selection).toEqual([copy])

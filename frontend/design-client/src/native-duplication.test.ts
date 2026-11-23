@@ -446,3 +446,20 @@ test('Option-copy in auto layout leaves source flow stationary, restores sizing 
   expect(editor.state.doc.nodes[copy].sizing).toEqual(before.nodes[a.id].sizing)
   editor.undo();expect(editor.state.doc).toEqual(before)
 })
+
+test('Figma ⌘D shifts a section that starts above its parent and keeps world positions', () => {
+  interfacePreference.set({ uiMode: 'figma' })
+  const doc = blank('section origin'), section = node('section', 100, 200, 180, 90), frame = node('frame', 10, -20, 50, 40)
+  section.children = [frame.id]
+  doc.nodes = { [section.id]: section, [frame.id]: frame }; doc.pages[0].children = [section.id]
+  const editor = new Editor(doc); editors.push(editor)
+  const source = worldMatrix(editor.state.doc, frame.id)
+  editor.select([frame.id]); editor.duplicate()
+  const copy = worldMatrix(editor.state.doc, editor.state.selection[0])
+  expect(copy[4] - source[4]).toBeCloseTo(90, 8)
+  expect(copy[5]).toBeCloseTo(source[5], 8)
+  expect(worldMatrix(editor.state.doc, frame.id)).toEqual(source)
+  expect(editor.state.doc.nodes[section.id].transform.slice(4)).toEqual([100, 180])
+  expect(editor.state.doc.nodes[section.id].width).toBe(180)
+  expect(editor.state.doc.nodes[section.id].height).toBe(110)
+})

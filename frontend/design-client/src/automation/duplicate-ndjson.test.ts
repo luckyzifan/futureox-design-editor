@@ -9,8 +9,8 @@ import { OperationBackend } from '../../../design-mcp/src/operation-backend.mjs'
 import { DesignMcpServer } from '../../../design-mcp/src/server.mjs'
 type Json = Record<string, any>
 const cleanup: (() => Promise<void> | void)[] = []
-afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); vi.unstubAllGlobals() })
-async function fixture(kind: 'rectangle' | 'frame' = 'rectangle') {
+afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); interfacePreference.reset(); vi.unstubAllGlobals() })
+async function fixture(kind: 'rectangle' | 'frame' | 'section' = 'rectangle') {
   const doc = blank('Committed MCP owner'), item = node(kind, 10, 20, 100, 80); doc.nodes[item.id] = item; doc.pages[0].children = [item.id]
   const editor = new Editor(doc), api = createEditorDesignAutomation(editor), backend = new OperationBackend({ capabilities: api.capabilities(), execute: request => api.execute(request), scope: 'write' })
   const input = new PassThrough(), output = new PassThrough(), diagnostics = new PassThrough(), pending = new Map<number, (value: Json) => void>()
@@ -40,10 +40,11 @@ async function fixture(kind: 'rectangle' | 'frame' = 'rectangle') {
   return { doc, item, editor, api, call, owner, duplicate }
 }
 
-for (const kind of ['rectangle', 'frame'] as const) for (const uiMode of ['figma', 'sketch'] as const) test(`real NDJSON duplicate places a ${kind} consistently in ${uiMode} layout`, async () => {
+for (const kind of ['rectangle', 'frame', 'section'] as const) for (const uiMode of ['figma', 'sketch'] as const) test(`real NDJSON duplicate places a ${kind} consistently in ${uiMode} layout`, async () => {
   interfacePreference.set({ uiMode })
   const f = await fixture(kind), before = f.editor.state.doc, [copy] = await f.duplicate([f.item.id])
-  expect(worldMatrix(f.editor.state.doc, copy)).toEqual([1, 0, 0, 1, 20, 30])
+  const placed = kind !== 'rectangle' && uiMode === 'figma' ? [1, 0, 0, 1, 150, 20] : [1, 0, 0, 1, 20, 30]
+  expect(worldMatrix(f.editor.state.doc, copy)).toEqual(placed)
   expect(f.editor.state.selection).toEqual([copy]); expect(f.editor.state.version).toBe(1)
   const after = f.editor.state.doc
   expect((await f.call('history.undo', {}, f.owner())).isError).toBe(false); expect(f.editor.state.doc).toEqual(before)
@@ -54,12 +55,14 @@ test('real NDJSON partial explicit offset retains the other axis default 24', as
   expect(worldMatrix(f.editor.state.doc, copy)).toEqual([1, 0, 0, 1, 10, 44])
 })
 test('real NDJSON and UI share the same trusted repeat chain', async () => {
+  interfacePreference.set({ uiMode: 'figma' })
   const f = await fixture(); f.editor.select([f.item.id]); f.editor.duplicate(); f.editor.transformSelection(translate(30, 5))
   const current = f.editor.state.selection[0], [copy] = await f.duplicate([current])
   expect(worldMatrix(f.editor.state.doc, copy)).toEqual([1, 0, 0, 1, 90, 50])
   f.editor.duplicate(); expect(worldMatrix(f.editor.state.doc, f.editor.state.selection[0])).toEqual([1, 0, 0, 1, 130, 65])
 })
 test('real NDJSON exact retry neither duplicates twice nor resets newer repeat facts', async () => {
+  interfacePreference.set({ uiMode: 'figma' })
   const f = await fixture(), owner = f.owner(), params = { mutationId: 'duplicate-exact-retry', operations: [{ method: 'node.duplicate', params: { ids: [f.item.id] } }] }
   expect((await f.call('batch.apply', params, owner)).isError).toBe(false)
   f.editor.transformSelection(translate(30, 0)); const before = f.editor.state, repeat = f.editor.duplicationRepeat()
