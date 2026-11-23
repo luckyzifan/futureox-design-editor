@@ -4322,7 +4322,14 @@ export class GpuRenderer {
     const retiredImageAssetBytes = this.retiredImageAssets.bytes
     const imageAssetPressure = pressure && retiredImageAssetBytes > 0
     if ((!imageTablePressure && !imageAssetPressure && this.bytes < this.frameBudget * .25) || !this.driver.checkpoint) return
-    for (const [key, surface] of this.constantTargets) if ((this.ledger.aliasesFor(surface.texture) || 1) === 1) {
+    // Routine maintenance runs between isolated leaves. Keep the single
+    // transparent texel charged so the next leaf can sample it without
+    // recycling and clearing it again. Admission and watermark trim can
+    // still release it, as can the frame's existing cleanup.
+    const keepTransparentZero = required === 0 && !pressure && !poolTrim && this.workingBytes <= this.frameBudget
+    for (const [key, surface] of this.constantTargets) {
+      if (keepTransparentZero && key === 'transparent-zero') continue
+      if ((this.ledger.aliasesFor(surface.texture) || 1) !== 1) continue
       this.constantTargets.delete(key)
       this.release(surface)
     }
