@@ -31,8 +31,8 @@ const helpers = boundary(view, 'export const forcedPixelSnap =', 'export functio
   .replaceAll('export ', '')
 // Snapping lives in the production gesture helper. The move branch reaches it
 // only after the layout-reorder gate, so both slices stay the code under test.
-const gesture = boundary(canvas, 'function gestureVisualMatrix(', 'function placeGestureFollow(')
-const moveGate = boundary(canvas, 'const layoutPointer = d.layoutPointerOrigin', 'transform = visual.matrix')
+const gesture = boundary(canvas, 'function ensureGuideIndex(', 'function placeGestureFollow(')
+const moveGate = boundary(canvas, 'const remoteVisual = d.moveFromAnywhere', 'transform = visual.matrix')
 const script = stripTypeScriptTypes(`${helpers}
 ${gesture}
 function movePointer() {
@@ -101,7 +101,7 @@ function drag({ delta = { x: 10, y: 2 }, shift = true, alt = false, snap = true,
     d: { kind: 'move', start: { x: 30, y: 40 }, ids: ['selected'], box,
       moved: true, duplicating: alt, view: { zoom }, screen: { x: 0, y: 0 } },
     p: { x: 30 + delta.x, y: 40 + delta.y },
-    e: { shiftKey: shift, altKey: alt }, entries, zoom, guideIndex,
+    e: { shiftKey: shift, altKey: alt }, entries, zoom, guideIndex, uiMode: 'sketch',
     editor: { state: { snap, snapPixels: pixels, doc: { nodes: { selected: { kind } } } },
       previewLayoutOrder: () => reorder, previewFreeMove: () => {} },
     dragThresholdPassed, screenPoint: () => ({ x: 30 + delta.x, y: 40 + delta.y }),

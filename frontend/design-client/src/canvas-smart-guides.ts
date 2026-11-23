@@ -10,11 +10,14 @@ export type SmartGuideSegment = {
   start: number
   end: number
 }
+export type SnapGapLine = { start: number; end: number; cross: number }
+type SnapGapPair = [SnapGapLine, SnapGapLine]
 export type SmartSnapResult = {
   dx: number
   dy: number
   guides: [SmartGuideSegment | null, SmartGuideSegment | null]
   targetSpans?: [readonly [number, number] | null, readonly [number, number] | null]
+  gaps?: [SnapGapPair | null, SnapGapPair | null]
 }
 
 /** Preserve fractional world coordinates through the kernel snap query. */
@@ -27,7 +30,7 @@ export function flatRects(rects: Bounds[]): Float64Array {
 /** Parse the kernel JSON back into finite numbers, failing closed so a
  * malformed payload can never displace a drag. */
 export function parseSmartSnap(json: string): SmartSnapResult {
-  const parsed = JSON.parse(json) as { dx?: unknown; dy?: unknown; guides?: unknown; targetSpans?: unknown }
+  const parsed = JSON.parse(json) as { dx?: unknown; dy?: unknown; guides?: unknown; targetSpans?: unknown; gaps?: unknown }
   const guide = (value: unknown): SmartGuideSegment | null => {
     if (!value || typeof value !== 'object') return null
     const g = value as Record<string, unknown>
@@ -44,10 +47,24 @@ export function parseSmartSnap(json: string): SmartSnapResult {
     list = Array.isArray(parsed.guides) ? parsed.guides : []
   const span = (value: unknown): readonly [number, number] | null => Array.isArray(value) && value.length === 2 &&
     value.every(v => typeof v === 'number' && Number.isFinite(v)) && value[0] <= value[1] ? [value[0],value[1]] : null
+  const gapLine = (value: unknown): SnapGapLine | null => {
+    if (!value || typeof value !== 'object') return null
+    const { start, end, cross } = value as Record<string, unknown>
+    if (typeof start !== 'number' || typeof end !== 'number' || typeof cross !== 'number' ||
+        !Number.isFinite(end - start) || !(end > start) || !Number.isFinite(cross)) return null
+    return { start, end, cross }
+  }
+  const gapPair = (value: unknown): SnapGapPair | null => {
+    if (!Array.isArray(value) || value.length !== 2) return null
+    const first = gapLine(value[0]), second = gapLine(value[1])
+    return first && second ? [first, second] : null
+  }
+  const gaps = Array.isArray(parsed.gaps) ? [gapPair(parsed.gaps[0]), gapPair(parsed.gaps[1])] as const : null
   return {
     dx: Number.isFinite(dx) ? dx : 0,
     dy: Number.isFinite(dy) ? dy : 0,
     guides: [guide(list[0]), guide(list[1])],
+    ...(gaps && (gaps[0] || gaps[1]) ? { gaps: [gaps[0], gaps[1]] as SmartSnapResult['gaps'] } : {}),
     ...(Array.isArray(parsed.targetSpans) ? { targetSpans:[span(parsed.targetSpans[0]),span(parsed.targetSpans[1])] as SmartSnapResult['targetSpans'] } : {}),
   }
 }
@@ -62,7 +79,12 @@ export function placedSmartGuides(result: SmartSnapResult | undefined, moving: B
     const start = slot === 0 ? moving.y : moving.x, end = start + (slot === 0 ? moving.height : moving.width)
     return { ...guide, start:Math.min(span?.[0] ?? guide.start,start), end:Math.max(span?.[1] ?? guide.end,end) }
   }
-  return { x:project(0), y:project(1) }
+  const xGap = axes.x ? result?.gaps?.[0] ?? null : null
+  const yGap = axes.y ? result?.gaps?.[1] ?? null : null
+  return {
+    x: project(0), y: project(1),
+    ...(xGap || yGap ? { gaps: [xGap, yGap] as SmartSnapResult['gaps'] } : {}),
+  }
 }
 
 const NO_SNAP: SmartSnapResult = { dx: 0, dy: 0, guides: [null, null] }
@@ -99,9 +121,9 @@ export function smartGuidesSnapWorld(
 }
 
 /** One owned native index per immutable gesture target set. */
-export function createSmartGuidesIndex(parent: Bounds | undefined, siblings: Bounds[]) {
+export function createSmartGuidesIndex(parent: Bounds | undefined, siblings: Bounds[], spacingTargets?: Bounds[]) {
   if (!kernelModuleReady()) return
-  const index = new SmartGuidesIndex(parent ? flatRects([parent]) : null, flatRects(siblings))
+  const index = new SmartGuidesIndex(parent ? flatRects([parent]) : null, flatRects(siblings), spacingTargets ? flatRects(spacingTargets) : null)
   return {
     free: () => index.free(),
     snap: (moving: Bounds, threshold: number): SmartSnapResult => {

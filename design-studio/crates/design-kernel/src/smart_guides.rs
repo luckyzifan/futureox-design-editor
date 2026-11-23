@@ -7,6 +7,9 @@
 
 use crate::math::Rect;
 
+mod spacing;
+pub use spacing::{GapPair, SpacingIndex};
+
 /// Snapping uses authored world coordinates, independently of the integer
 /// pixel rectangles used by rasterization. Rounding before the query made
 /// fractional edges and guides jump by whole world units at high zoom.

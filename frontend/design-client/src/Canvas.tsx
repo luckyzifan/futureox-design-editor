@@ -44,7 +44,7 @@ import { figmaRotationDegrees, formatFigmaAngle } from './rotation-field'
 import {selectionScaleFrame} from './selection-scale'
 import {CanvasLayoutHandles} from './CanvasLayoutHandles'
 import {CanvasSmartSelection} from './CanvasSmartSelection'
-import {pixelGridPathData} from './pixel-grid'
+import {pixelGridPathData, pixelGridVisible} from './pixel-grid'
 import {CanvasGuides, type GuideMeasureState} from './CanvasGuides'
 import { cancelComponentPlacement, takeComponentPlacement } from './component-placement'
 import {worldGuides} from './ruler-guides'
@@ -336,24 +336,45 @@ function SelectionChromeChip({ testId, x, y, text, size, zoom, fill, opacity, ce
   </g>
 }
 
-function MeasurementGuides({ measurements, labels, zoom, hidden }: {
+function MeasurementGuides({ measurements, labels, zoom, hidden, testId = 'canvas-measurement', pillPrefix = 'canvas-distance-pill' }: {
   measurements: readonly Measurement[]
   labels: readonly { anchor: Point; offset: Point; text: string; size: number }[]
   zoom: number
   hidden: boolean
+  testId?: string
+  pillPrefix?: string
 }) {
   if (!measurements.length && !labels.length) return null
-  return <g data-testid="canvas-measurement" pointerEvents="none" opacity={hidden ? 0 : 1}>
+  return <g data-testid={testId} pointerEvents="none" opacity={hidden ? 0 : 1}>
     {measurements.map((m, i) => <g key={`line-${i}`}>
-      <line data-measure={m.role || 'gap'} data-dashed={m.dash || undefined} x1={m.from.x} y1={m.from.y} x2={m.to.x} y2={m.to.y}
+      <line data-measure={m.role || 'gap'} data-distance={m.distance} data-dashed={m.dash || undefined} x1={m.from.x} y1={m.from.y} x2={m.to.x} y2={m.to.y}
         stroke={SPACING_RED} strokeWidth={1 / zoom} strokeDasharray={m.dash ? `${4 / zoom} ${3 / zoom}` : undefined} />
       {m.tick !== false && measurementTicks(m, zoom).map(([from, to], tick) => <line data-measure="edge" key={tick} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={SPACING_RED} strokeWidth={1 / zoom} />)}
     </g>)}
     {labels.map((label, i) =>
-      <SelectionChromeChip key={`pill-${i}`} testId={`canvas-distance-pill-${i}`} tone="measure" centered opacity={1}
+      <SelectionChromeChip key={`pill-${i}`} testId={`${pillPrefix}-${i}`} tone="measure" centered opacity={1}
         x={label.anchor.x + label.offset.x / zoom} y={label.anchor.y + label.offset.y / zoom}
         text={label.text} size={label.size} zoom={zoom} fill="#ffffff" />)}
   </g>
+}
+
+function MoveGapGuides({ gaps, zoom }: { gaps: NonNullable<SmartSnapResult['gaps']>; zoom: number }) {
+  const measurements: Measurement[] = []
+  const labels: (SpacingPill & { size: number })[] = []
+  gaps.forEach((pair, slot) => {
+    if (!pair) return
+    const lines: Measurement[] = pair.map(({ start, end, cross }) => ({
+      from: slot === 0 ? { x: start, y: cross } : { x: cross, y: start },
+      to: slot === 0 ? { x: end, y: cross } : { x: cross, y: end },
+      distance: end - start,
+      axis: slot === 0 ? 'horizontal' : 'vertical',
+      role: 'gap',
+    }))
+    measurements.push(...lines)
+    labels.push(...diagramFromLines([lines[1]], zoom).pills.map(label => ({ ...label, size: 11 })))
+  })
+  return <MeasurementGuides measurements={measurements} labels={labels} zoom={zoom} hidden={false}
+    testId="canvas-gap-snap" pillPrefix="canvas-gap-pill" />
 }
 
 export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, prepareSourceDisplay, nativeSource, openingSource, openingPage, focusedMaterial, onSourceDetail, onSourceViewport, hideNative, parkNative, sourcePageBoxes, onSourcePresented, onNativeSourceStatus, onOpenSourcePoint, pickSourceMaterial, onSelectSourcePoint, selectedMaterialBox, blurEffectIndex, blurStopIndex, onSelectBlurStop, onExitBlurEdit, editTextRef, onToggleUi }: {
@@ -712,7 +733,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const drag = useRef<Drag | null>(null)
   const [gradientKeyboardTarget, setGradientKeyboardTarget] = useState<GradientStopKeyboardTarget | null>(null)
   const handleTap = useRef<CanvasHandleTap | null>(null)
-  const guideIndex = useRef<{ drag: Drag; rulers: boolean | undefined; ids: string;
+  const guideIndex = useRef<{ drag: Drag; rulers: boolean | undefined; ids: string; spacing: boolean;
     index: ReturnType<typeof createSmartGuidesIndex> } | null>(null)
   const releaseGuideIndex = () => { guideIndex.current?.index?.free(); guideIndex.current = null }
   useEffect(() => releaseGuideIndex, [])
@@ -902,14 +923,21 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     setRubberBox(next)
     if (!next) setMarqueePreview(null)
   }
-  type MoveGuides = { x?: SmartGuideSegment; y?: SmartGuideSegment; surface?:boolean }
+  type MoveGuides = { x?: SmartGuideSegment; y?: SmartGuideSegment; surface?: boolean; gaps?: SmartSnapResult['gaps'] }
   const [guides, setGuides] = useState<MoveGuides>({})
   const guidePoses = useRef(new Map<number, { drag: Drag; document: import('./model').DesignDocument; control:GpuMoveControl; guides: MoveGuides }>())
   const guideDocuments = useRef(new WeakMap<import('./model').DesignDocument, { drag: Drag; guides: MoveGuides }>())
   function showMoveGuides(next: MoveGuides) {
     const same = (a?: SmartGuideSegment, b?: SmartGuideSegment) => a === b || !!a && !!b &&
       a.axis === b.axis && a.position === b.position && a.start === b.start && a.end === b.end
-    setGuides(old => old.surface === next.surface && same(old.x, next.x) && same(old.y, next.y) ? old : next)
+    const sameGaps = (a: MoveGuides['gaps'], b: MoveGuides['gaps']) => a === b || !!a && !!b &&
+      a.every((pair, axis) => {
+        const other = b[axis]
+        return pair === other || !!pair && !!other && pair.every((line, index) =>
+          line.start === other[index].start && line.end === other[index].end && line.cross === other[index].cross)
+      })
+    setGuides(old => old.surface === next.surface && same(old.x, next.x) && same(old.y, next.y) &&
+      sameGaps(old.gaps, next.gaps) ? old : next)
   }
   function clearMoveGuides() {
     guidePoses.current.clear(); guideDocuments.current = new WeakMap(); showMoveGuides({})
@@ -2722,8 +2750,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }
   function ensureGuideIndex(d: Drag) {
     const targetKey = d.ids.join(',')
+    const spacing = uiMode === 'figma' && d.kind === 'move'
     if (!guideIndex.current || guideIndex.current.drag !== d ||
-        guideIndex.current.rulers !== editor.state.rulers || guideIndex.current.ids !== targetKey) {
+        guideIndex.current.rulers !== editor.state.rulers || guideIndex.current.ids !== targetKey ||
+        guideIndex.current.spacing !== spacing) {
       releaseGuideIndex()
       const targetEntries = d.sourceEntries || entries, targetDocument = d.sourceDocument || editor.state.doc
       const movingIds = new Set(d.ids)
@@ -2732,6 +2762,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const parentId = d.ids.length === 1 ? movingEntry?.ancestors.at(-1) : undefined
       const parent = parentId ? targetEntries.find(v => v.id === parentId)?.bounds : undefined
       const siblings = others.map(v => v.bounds)
+      let spacingTargets: Bounds[] | undefined
+      if (spacing && movingEntry) {
+        const movingParent = movingEntry.ancestors.at(-1)
+        const sources = new Set(d.originalIds?.length ? d.originalIds : d.ids)
+        if (targetEntries.filter(entry => sources.has(entry.id) && entry.ancestors.at(-1) === movingParent).length === sources.size) {
+          spacingTargets = others.filter(entry => entry.ancestors.at(-1) === movingParent).map(entry => entry.bounds)
+        }
+      }
       if (editor.state.rulers) {
         const moving = new Set(targetEntries.filter(v => movingIds.has(v.id) || v.ancestors.some(id => movingIds.has(id))).map(v => v.id))
         for (const guide of worldGuides(targetDocument, editor.state.page, targetEntries)) {
@@ -2740,7 +2778,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           if (Math.abs(guide.to.y - guide.from.y) < 1e-9) siblings.push({ x: Math.min(guide.from.x, guide.to.x), y: guide.from.y, width: Math.abs(guide.to.x - guide.from.x), height: 0 })
         }
       }
-      guideIndex.current = { drag: d, rulers: editor.state.rulers, ids: targetKey, index: createSmartGuidesIndex(parent, siblings) }
+      guideIndex.current = {
+        drag: d, rulers: editor.state.rulers, ids: targetKey, spacing,
+        index: createSmartGuidesIndex(parent, siblings, spacingTargets),
+      }
     }
     return guideIndex.current?.index
   }
@@ -2819,11 +2860,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         { x: d.box.x + dx, y: d.box.y + dy, width: d.box.width, height: d.box.height }, 6 / d.view.zoom,
       ) ?? { dx: 0, dy: 0, guides: [null, null] }
       snapResult = snap
-      const gx = moveAxes.x ? snap.guides[0] : null, gy = moveAxes.y ? snap.guides[1] : null
-      if (gx) dx += snap.dx
-      if (gy) dy += snap.dy
-      guidedX = !!gx
-      guidedY = !!gy
+      guidedX = moveAxes.x && !!(snap.guides[0] || snap.gaps?.[0])
+      guidedY = moveAxes.y && !!(snap.guides[1] || snap.gaps?.[1])
+      if (guidedX) dx += snap.dx
+      if (guidedY) dy += snap.dy
     }
     // Control already skipped object snap above. Pixel-grid snap follows the
     // preference for every layer, frames included.
@@ -4771,6 +4811,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             return <path key={axis} data-testid="canvas-alignment-guide" data-axis={axis} data-position={guide.position}
               d={d} fill={ALIGNMENT_GUIDE} stroke="none" shapeRendering="crispEdges" pointerEvents="none" />
           })}
+          {guides.gaps && <MoveGapGuides gaps={guides.gaps} zoom={zoom} />}
           {pen && (
             <g
               transform={pen.id ? matrixString(worldMatrix(state.doc, pen.id)) : undefined}

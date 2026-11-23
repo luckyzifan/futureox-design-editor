@@ -109,7 +109,7 @@ async function begin(kind: EditKind, withPages = false, zoom = 1) {
     kind === 'width' ? mount.querySelector('[data-testid^="width-"]')! :
     [...mount.querySelectorAll('circle')].find(e => e.getAttribute('r') === '3.5')!
   expect(target).toBeDefined()
-  const start = kind === 'vertex' ? { x: 100, y: 100 } :
+  const start = kind === 'vertex' ? { x: 100 * zoom, y: 100 * zoom } :
     { x: 100 + Number(target.getAttribute('cx')), y: 100 + Number(target.getAttribute('cy')) }
   // Width handles already have world coordinates, unlike local path controls.
   if (kind === 'width') { start.x -= 100; start.y -= 100 }
