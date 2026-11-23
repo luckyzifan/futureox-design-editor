@@ -1102,6 +1102,8 @@ impl Network {
             if mov {
                 path.commands.push(Command::Move(a));
             }
+            // Figma's flatten repeats the closing anchor as a zero-length edge.
+            if (b - a).length() <= 1e-9 && c1.is_none() && c2.is_none() { return; }
             path.commands.push(if c1.is_some() || c2.is_some() {
                 Command::Cubic(c1.unwrap_or(a), c2.unwrap_or(b), b)
             } else {

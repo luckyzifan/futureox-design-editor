@@ -716,9 +716,17 @@ impl Path {
         let mut smooth_budget = 524288;
         let mut current = Contour::default();
         let mut pen = Point::default();
+        let mut local_pen = Point::default();
         let mut first = pen;
+        let mut local_first = local_pen;
         let center = coverage_bias
-            .then_some(self.coverage_center)
+            .then(|| self.coverage_center.or_else(|| {
+                let bounds = self.control_bounds(Transform::default());
+                (!bounds.empty()).then(|| Point::new(
+                    f64::from(bounds.x) + f64::from(bounds.w) * 0.5,
+                    f64::from(bounds.y) + f64::from(bounds.h) * 0.5,
+                ))
+            }))
             .flatten()
             .map(|center| m.point(center));
         for (index, c) in self.commands.iter().enumerate() {
@@ -728,15 +736,19 @@ impl Path {
                         contours.push(current);
                         current = Contour::default();
                     }
+                    local_pen = p;
+                    local_first = p;
                     pen = m.point(p);
                     first = pen;
                     current.points.push(pen);
                 }
                 Command::Line(p) => {
+                    local_pen = p;
                     pen = m.point(p);
                     current.points.push(pen);
                 }
                 Command::Quad(c, p) => {
+                    local_pen = p;
                     let c = m.point(c);
                     let p = m.point(p);
                     flatten_cubic_guarded(
@@ -752,10 +764,15 @@ impl Path {
                     pen = p;
                 }
                 Command::Cubic(b, c, d) => {
+                    let local_start = local_pen;
+                    local_pen = d;
                     let d = m.point(d);
                     let bias = coverage_bias
                         .then(|| self.coverage_bias.get(index).copied().flatten())
-                        .flatten();
+                        .flatten()
+                        .or_else(|| coverage_bias.then(|| {
+                            crate::rounded::infer_smooth_coverage_bias(local_start, b, c, local_pen)
+                        }).flatten());
                     let start = current.points.len();
                     let mut parameters = Vec::new();
                     // The residual is smaller than the ordinary chord budget, so a
@@ -793,6 +810,7 @@ impl Path {
                 Command::SmoothCorner(corner) => {
                     corner.flatten(m, tolerance, &mut current.points, &mut smooth_budget, clip)?;
                     pen = *current.points.last().unwrap();
+                    if let Ok(inverse) = m.inverse() { local_pen = inverse.point(pen); }
                 }
                 Command::Close => {
                     current.closed = true;
@@ -804,6 +822,7 @@ impl Path {
                         current.points.pop();
                     }
                     pen = first;
+                    local_pen = local_first;
                 }
                 Command::Arc {
                     center,
@@ -824,7 +843,8 @@ impl Path {
                     for i in 1..=segments {
                         let angle = start + sweep * i as f64 / segments as f64;
                         let (s, c) = angle.sin_cos();
-                        pen = m.point(center + Point::new(radius.x * c, radius.y * s));
+                        local_pen = center + Point::new(radius.x * c, radius.y * s);
+                        pen = m.point(local_pen);
                         current.points.push(pen);
                     }
                 }
@@ -947,6 +967,52 @@ pub fn winding(p: Point, cs: &[Contour]) -> i32 {
 mod smooth_fill_tests {
     use super::*;
     use crate::{math::Rect, raster::rasterize};
+
+    #[test]
+    fn smooth_corner_cubics_recover_the_coverage_residual_and_circular_cubics_do_not() {
+        for smoothing in [0.1, 0.25, 0.6, 0.9, 1.] {
+            for radii in [[16., 16., 16., 16.], [70., 30., 5., 0.], [0.001; 4]] {
+                let path = Path::rectangle(120., 80., radii, smoothing);
+                let mut pen = Point::default();
+                for (index, command) in path.commands.iter().enumerate() {
+                    let Command::Cubic(b, c, d) = *command else {
+                        if let Command::Move(p) | Command::Line(p) = *command { pen = p; }
+                        continue;
+                    };
+                    let inferred = crate::rounded::infer_smooth_coverage_bias(pen, b, c, d);
+                    let stored = path.coverage_bias.get(index).copied().flatten();
+                    if radii[0] < 1. {
+                        assert!(inferred.is_none(), "tiny corner must stay unbiased");
+                    } else if let Some(stored) = stored {
+                        let inferred = inferred.expect("smooth cubic lost its residual");
+                        let bucket = |bias: SmoothCoverageBias| match bias {
+                            SmoothCoverageBias::Shoulder(s) | SmoothCoverageBias::Arc(s) => (s > 0.85, s > 0.95),
+                        };
+                        assert_eq!(std::mem::discriminant(&inferred), std::mem::discriminant(&stored));
+                        assert_eq!(bucket(inferred), bucket(stored));
+                    }
+                    pen = d;
+                }
+            }
+        }
+        let radius = 16.;
+        let k = 0.5522847498307936 * radius;
+        let circular = crate::rounded::infer_smooth_coverage_bias(
+            Point::new(0., radius), Point::new(0., radius - k), Point::new(radius - k, 0.), Point::new(radius, 0.),
+        );
+        assert!(matches!(circular, Some(SmoothCoverageBias::Arc(s)) if s == 0.));
+        let authored = Path::rectangle(96., 72., [40., 0., 0., 0.], 0.6);
+        let mut plain = authored.clone();
+        plain.coverage_bias.clear();
+        plain.coverage_center = None;
+        let matrix = Transform([1., 0., 0., 1., 16., 28.]);
+        let guard = Rect::new(0, 0, 128, 128);
+        let with_bias = authored.flatten_for_fill(matrix, 0.0001220703125, guard, true).unwrap();
+        let inferred = plain.flatten_for_fill(matrix, 0.0001220703125, guard, true).unwrap();
+        assert_eq!(with_bias[0].points.len(), inferred[0].points.len());
+        let worst = with_bias[0].points.iter().zip(&inferred[0].points).map(|(a, b)| (*a - *b).length()).fold(0., f64::max);
+        assert!(worst < 1e-6, "curve-9 residual {worst}");
+    }
 
     #[test]
     fn cubic_flatness_matches_original_at_rounding_boundaries_and_degenerate_chords() {
