@@ -18,6 +18,37 @@ function viewportBounds({ view, width, height }: { view: CanvasCamera; width: nu
   return { x: -view.x / view.zoom, y: -view.y / view.zoom, width: width / view.zoom, height: height / view.zoom }
 }
 
+/** Positive-area intersection. Touching edges are not coverage. */
+export function intersectBounds(a: Bounds, b: Bounds): Bounds | undefined {
+  const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y)
+  const right = Math.min(a.x + a.width, b.x + b.width)
+  const bottom = Math.min(a.y + a.height, b.y + b.height)
+  if (!(right > x) || !(bottom > y)) return
+  return { x, y, width: right - x, height: bottom - y }
+}
+
+export function boundsContain(outer: Bounds, inner: Bounds, epsilon = 1e-6) {
+  return inner.x >= outer.x - epsilon && inner.y >= outer.y - epsilon &&
+    inner.x + inner.width <= outer.x + outer.width + epsilon &&
+    inner.y + inner.height <= outer.y + outer.height + epsilon
+}
+
+let boardFillTokens = 0
+
+/** Viewport tiles are enough to start a retained board drag. The off-screen
+ * remainder of the board is filled through the existing tile budget; it is
+ * not a reason to redraw the whole scene on every pointer sample. */
+function boardTilesCover(
+  tiles: Parameters<typeof tilesCoverBounds>[0],
+  board: Bounds,
+  camera?: { view: CanvasCamera; width: number; height: number },
+) {
+  if (tilesCoverBounds(tiles, board)) return true
+  if (!camera) return false
+  const visible = intersectBounds(board, viewportBounds(camera))
+  return !!visible && tilesCoverBounds(tiles, visible)
+}
+
 /** Moving every visible page root by the same vector leaves all inter-root
  * backdrop/blend dependencies unchanged. Reuse the already displayed page
  * tiles directly; a uniform page background is translation invariant. */
@@ -34,6 +65,10 @@ export class PageTranslation {
   private input: InteractionInput = { sequence: 0, at: 0 }
   private pendingPose?: { document: DesignDocument; patches: Parameters<GpuMoveControl['apply']>[1] }
   private board?: Bounds
+  private tracking = false
+  private readonly fillToken = ++boardFillTokens
+  private boardFillSequence = 0
+  private coveredMisses = 0
   private srgbBoard?: { others: Bounds[]; viewport: Bounds; shown: { x: number; y: number } }
   private checkedDocument?: DesignDocument
   private checkedOffset: { x: number; y: number } | null = null
@@ -53,7 +88,7 @@ export class PageTranslation {
   constructor(private changed: () => void, private fractionalPose?: (
     document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1], displayed: DesignDocument, guides?:InteractionInput['guides'],
   ) => ReturnType<GpuMoveControl['apply']>, private reportPhase?: (fields:Record<string,number>)=>void,
-    private fillCoverage?: (source:DesignDocument,offset:{x:number;y:number},sequence:number,failed:()=>void)=>boolean) {}
+    private fillCoverage?: (source:DesignDocument,offset:{x:number;y:number},sequence:number,failed:()=>void,region?:Bounds)=>boolean) {}
   get handingOff() { return this.phaseRevoked }
   get backgroundTranslation() { return this.board ? undefined : { ...this.offset } }
   get backgroundBoard() {
@@ -63,23 +98,46 @@ export class PageTranslation {
       b.y < view.y + view.height && b.y + b.height > view.y)
     return { moving: { ...this.board, x: this.board.x + this.offset.x, y: this.board.y + this.offset.y }, stationary: visible }
   }
-  /** A viewport crop is not a complete page. If translating it exposes paint
-   * absent from the retained textures, keep the accepted backing and ask the
-   * existing native interaction lane for that pose. Late owner/pose replies
-   * cannot restart a retired or superseded owner. */
+  /** A viewport crop is not a complete page. Missing original pixels are
+   * filled through the existing tile budget. A clipped board asks for its own
+   * uncovered pixels there. A rejected fill, or a covered pose the presenter
+   * still refuses, returns to the live scene. Late replies cannot restart a
+   * retired owner, and a pointer-up does not. */
   repairMissingCoverage(sequence: number) {
     const pending = this.pendingPose
     if (!this.active || this.phaseRevoked || sequence !== this.input.sequence || !pending) return false
     // An uncommitted whole-page translation can fill the missing original
     // world tiles through the canvas's existing owner/budget/queue. No document
-    // patch or enlarged capture is needed. Other edits retain the native lane.
+    // patch or enlarged capture is needed. A clipped board uses that same
+    // budget for the board's own missing pixels instead of a full redraw.
     const owner=this.plan
-    if (!this.board && this.fillCoverage?.(owner!.document, {...this.offset}, sequence,()=>{
+    const failPage=()=>{
       const latest=this.pendingPose
       if(this.plan===owner&&this.active&&!this.phaseRevoked&&latest)this.rebase(latest.document,latest.patches)
-    })) return true
+    }
+    if (!this.board && this.fillCoverage?.(owner!.document, {...this.offset}, sequence, failPage)) return true
+    if (this.board) {
+      if (!tilesCoverBounds(this.residents, this.board)) {
+        if (this.requestBoardFill()) return true
+      } else if (this.boardFillSequence !== 0 && this.coveredMisses++ < 2) {
+        // The incomplete frame was recorded before these board pixels arrived.
+        // One stale rejection must not start a whole-scene redraw.
+        return false
+      }
+      if (this.boardFillSequence !== 0 && !this.tracking) return false
+    }
     this.rebase(pending.document, pending.patches)
     return true
+  }
+  private requestBoardFill() {
+    const owner = this.plan, board = this.board
+    if (!owner || !board || !this.tracking || this.phaseRevoked || tilesCoverBounds(this.residents, board)) return false
+    if (!this.boardFillSequence) this.boardFillSequence = this.fillToken
+    return this.fillCoverage?.(owner.document, { ...this.offset }, this.boardFillSequence, () => {
+      const latest = this.pendingPose
+      if (this.tracking && this.plan === owner && this.active && !this.phaseRevoked && latest)
+        this.rebase(latest.document, latest.patches)
+    }, { ...board }) === true
   }
   private reusableOffset(offset: { x: number; y: number }) {
     return this.residents.length > 0 && (this.fractional || !!this.srgbBoard || this.residents.every(tile =>
@@ -87,6 +145,7 @@ export class PageTranslation {
     )
   }
   private rebase(document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1], guides=this.input.guides) {
+    this.tracking = false
     this.phaseRevoked = true
     if(this.reportPhase){
       // Uniform translation was checked by the caller. Inspect one transform
@@ -178,6 +237,7 @@ export class PageTranslation {
       const wasActive = this.active
       this.offset = offset
       this.active = true
+      this.tracking = true
       this.moves++
       this.input = { sequence: this.moves, at: performance.now(), guides:guides?.slice(0,2).map(g=>({...g})) }
       this.pendingPose = { document, patches: Object.fromEntries(this.plan.ids.map(id =>
@@ -186,9 +246,11 @@ export class PageTranslation {
       this.feedback.submit(this.input.sequence,feedback,document)
       this.changed()
       if (!wasActive) this.props?.onReady()
+      if (this.board) this.requestBoardFill()
       return feedback
     },
     end: (document) => {
+      this.tracking = false
       this.input = { ...this.input, guides:undefined }
       this.feedback.clear()
       if (!this.active || this.phaseRevoked) return
@@ -226,7 +288,7 @@ export class PageTranslation {
     const proof = document && props?.selection.length === 1
       ? opaqueBoardProof(document, roots, props.selection[0], allowSrgb) : undefined
     const board = proof?.box
-    const coveredBoard = !!board && (this.active && !!this.board || tilesCoverBounds(items.map(i => i.tile), board))
+    const coveredBoard = !!board && (this.active && !!this.board || boardTilesCover(items.map(i => i.tile), board, camera))
     const eligible =
       !!props &&
       allowed &&
@@ -354,6 +416,9 @@ export class PageTranslation {
     this.residents = []
     this.board = undefined
     this.srgbBoard = undefined
+    this.tracking = false
+    this.boardFillSequence = 0
+    this.coveredMisses = 0
     this.active = false
     this.phaseRevoked = false
     this.pendingPose = undefined

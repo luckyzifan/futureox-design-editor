@@ -274,3 +274,76 @@ test('authored fractional translations cannot bypass page phase admission throug
   expect(callback).toHaveBeenCalledTimes(2)
   expect(warm.items({ x: 0, y: 0, zoom: 32 })![0].placement).toEqual(before)
 })
+
+test('a clipped opaque board follows retained tiles and fills the board instead of redrawing the scene', () => {
+  const doc = blank(), board = node('frame', 0, 0, 1000, 400), other = node('frame', 2000, 0, 80, 80)
+  for (const root of [board, other]) { root.blend = 'normal'; root.clip = true; doc.nodes[root.id] = root }
+  doc.pages[0].children = [board.id, other.id]
+  const pageId = doc.pages[0].id
+  const props: InteractionProps = { document: doc, selection: [board.id], active: true, epoch: 1,
+    control: { current: null }, onReady() {} }
+  const tile = { key: 'visible', serial: 1, gpuTile: 7, bytes: new Uint8Array(), x: -1, y: -1, width: 514, height: 514, zoom: 1 }
+  const items = [{ tile, active: true, layer: 0 }]
+  const camera = { view: { x: 0, y: 0, zoom: 1 }, width: 400, height: 300 }
+  const native = vi.fn(() => null)
+  const fill = vi.fn(() => true)
+  const movement = new PageTranslation(vi.fn(), native, undefined, fill)
+  expect(movement.prepare(props, pageId, doc, items, doc, true)).toBe(false)
+  expect(movement.prepare(props, pageId, doc, items, doc, true, false, camera)).toBe(true)
+  expect(movement.mode).toBe('retained-board')
+  const view = camera.view
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 40, 0] } })).toEqual({ x: 40, y: 0 })
+  expect(native).not.toHaveBeenCalled()
+  expect(fill).toHaveBeenCalledTimes(1)
+  expect(fill.mock.calls[0][4]).toEqual({ x: 0, y: 0, width: 1000, height: 400 })
+  const moved = movement.items(view)!
+  expect(moved.every(item => item.tile === tile)).toBe(true)
+  expect(moved.some(item => item.layer === 4)).toBe(true)
+  const overlay = movement.overlay({ pixelGrid: false, transforms: { [board.id]: [1, 0, 0, 1, 0, 0] },
+    selection: { corners: [{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 400 }, { x: 0, y: 400 }], handles: false, owners: [board.id] } })
+  expect(overlay?.selection?.corners[0]).toEqual({ x: 40, y: 0 })
+  expect(overlay?.selection?.corners[1]).toEqual({ x: 1040, y: 0 })
+  expect(movement.repairMissingCoverage(1)).toBe(true)
+  expect(native).not.toHaveBeenCalled()
+  const wide = { ...tile, key: 'board', width: 1200 }
+  expect(movement.prepare(props, pageId, doc, [{ tile: wide, active: true, layer: 0 }], doc, true, false, camera)).toBe(true)
+  // Pointer is still down. Two stale rejections of the now-covered pose stay
+  // on the retained path; a third uses the live scene.
+  expect(movement.repairMissingCoverage(1)).toBe(false)
+  expect(movement.repairMissingCoverage(1)).toBe(false)
+  expect(movement.repairMissingCoverage(1)).toBe(true)
+  expect(native).toHaveBeenCalledTimes(1)
+  const held = new PageTranslation(vi.fn(), native, undefined, fill)
+  expect(held.prepare(props, pageId, doc, items, doc, true, false, camera)).toBe(true)
+  held.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 40, 0] } })
+  const fail = fill.mock.calls.at(-1)![3] as () => void
+  const committed = { ...doc, nodes: { ...doc.nodes, [board.id]: { ...board, transform: [1, 0, 0, 1, 40, 0] as typeof board.transform } } }
+  held.control.end(committed)
+  expect(held.handingOff).toBe(false)
+  expect(held.items(view)).not.toBeNull()
+  fail()
+  expect(native).toHaveBeenCalledTimes(1)
+  held.clear()
+  fail()
+  expect(native).toHaveBeenCalledTimes(1)
+})
+
+test('a clipped board returns to the live scene when the existing tile budget rejects the fill', () => {
+  const doc = blank(), board = node('frame', 0, 0, 1000, 400), other = node('frame', 2000, 0, 80, 80)
+  for (const root of [board, other]) { root.blend = 'normal'; root.clip = true; doc.nodes[root.id] = root }
+  doc.pages[0].children = [board.id, other.id]
+  const props: InteractionProps = { document: doc, selection: [board.id], active: true, epoch: 1,
+    control: { current: null }, onReady() {} }
+  const tile = { key: 'visible', serial: 1, gpuTile: 7, bytes: new Uint8Array(), x: -1, y: -1, width: 514, height: 514, zoom: 1 }
+  const camera = { view: { x: 0, y: 0, zoom: 1 }, width: 400, height: 300 }
+  const native = vi.fn(() => ({ x: -20, y: 0 }))
+  const movement = new PageTranslation(vi.fn(), native, undefined, () => false)
+  expect(movement.prepare(props, doc.pages[0].id, doc, [{ tile, active: true, layer: 0 }], doc, true, false, camera)).toBe(true)
+  movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, -20, 0] } })
+  expect(native).not.toHaveBeenCalled()
+  expect(movement.repairMissingCoverage(1)).toBe(true)
+  expect(native).toHaveBeenCalledTimes(1)
+  expect(movement.handingOff).toBe(true)
+  movement.clear()
+  expect(movement.repairMissingCoverage(1)).toBe(false)
+})
