@@ -51,7 +51,7 @@ import { bindEditorSettings } from './settings-preference'
 import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootControls'
 import { useShortcutProfile } from './shortcut-preference'
 import { getPrototypeTab, setPrototypeTab, subscribePrototypeTab } from './prototype-chrome'
-import { shortcutPlatform, toolShortcutLabel, shortcutLabel, formatShortcutCombo } from './shortcut-profiles'
+import { shortcutPlatform, toolShortcutLabel, shortcutLabel, shortcutLabels, formatShortcutCombo } from './shortcut-profiles'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { NativeAutomationDialog } from './AutomationPanelLauncher'
 import { DesignAgentLauncher } from './design-ai/DesignAgentLauncher'
@@ -1467,7 +1467,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setShowTools(true); setShowCommands(false) }}>{toolbarText.designSystems}</button>
               </ToolPopover>
               <button type="button" className="command-search-trigger" aria-label={commandSearchLabels.label} aria-haspopup="dialog" aria-expanded={commandSearchOpen}
-                title={`${commandSearchLabels.label} (${shortcutLabel('open-command-search', shortcutContext)})`}
+                title={`${commandSearchLabels.label} (${shortcutLabels('open-command-search', shortcutContext)})`}
                 onClick={() => requestCommandSearch()}>
                 <Search size={18} />
               </button>
@@ -1711,7 +1711,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             <button type="button" disabled={!!largeDocument || !!source} onClick={() => { setMenu(false); setShowPlugins(true) }}><Puzzle size={15} />{locale === 'en' ? 'Plugins' : '插件'}</button>
             <button type="button" onClick={() => { const opener = fileMenuTrigger.current; setMenu(false); requestCommandSearch(opener) }}>
               <Search size={15} />{commandSearchLabels.title}
-              <kbd>{shortcutLabel('open-command-search', shortcutContext)}{uiMode === 'sketch' ? ' / S' : ''}</kbd>
+              <kbd>{shortcutLabels('open-command-search', shortcutContext)}</kbd>
             </button>
             <button
               onClick={() => {
