@@ -153,7 +153,7 @@ test('clipped boards reuse resident textures only when both physical axes are wh
   const camera = { view, width: 1143, height: 800 }
   const props: InteractionProps = { document: doc, selection: [board.id], active: true, epoch: 2,
     figmaBoardPreview: true, control: { current: null }, onReady() {} }
-  const native = vi.fn(() => ({ x: 28, y: 7 }))
+  const native = vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[1]>>(() => ({ x: 28, y: 7 }))
   const movement = new PageTranslation(vi.fn(), native)
   expect(movement.prepare(props, pageId, doc, items, doc, true, true, camera)).toBe(true)
   expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 100, 50] } })).toEqual({ x: 80, y: 20 })
@@ -204,14 +204,14 @@ test('desktop fractional reprojection leaves a clipped hex board on its last int
   const tile = { key: 'page', serial: 1, gpuTile: 9, bytes: new Uint8Array(), x: -1, y: -1, width: 514, height: 514, zoom: 1.6 }
   const props: InteractionProps = { document: doc, selection: [board.id], active: true, epoch: 1,
     control: { current: null }, onReady() {} }
-  const native = vi.fn(() => ({ x: 28, y: 7 }))
+  const native = vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[1]>>(() => ({ x: 28, y: 7 }))
   const movement = new PageTranslation(vi.fn(), native)
   expect(movement.prepare(props, pageId, doc, [{ tile, active: true, layer: 0 }], doc, true, true)).toBe(true)
   movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 100, 50] } })
   const held = movement.items(view)!.map(item => item.placement)
   movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 48, 37] } })
   expect(native).toHaveBeenCalledTimes(1)
-  const displayed = native.mock.calls[0][2] as typeof doc
+  const displayed = native.mock.calls[0][2]
   expect(displayed).not.toBe(doc)
   expect(displayed.nodes[board.id].transform).toEqual([1, 0, 0, 1, 100, 50])
   expect(movement.items(view)!.map(item => item.placement)).toEqual(held)
@@ -383,7 +383,7 @@ test('a clipped opaque board follows retained tiles and fills the board instead 
   const items = [{ tile, active: true, layer: 0 }]
   const camera = { view: { x: 0, y: 0, zoom: 1 }, width: 400, height: 300 }
   const native = vi.fn(() => null)
-  const fill = vi.fn(() => true)
+  const fill = vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[3]>>(() => true)
   const movement = new PageTranslation(vi.fn(), native, undefined, fill)
   expect(movement.prepare(props, pageId, doc, items, doc, true)).toBe(false)
   expect(movement.prepare(props, pageId, doc, items, doc, true, false, camera)).toBe(true)
@@ -413,7 +413,7 @@ test('a clipped opaque board follows retained tiles and fills the board instead 
   const held = new PageTranslation(vi.fn(), native, undefined, fill)
   expect(held.prepare(props, pageId, doc, items, doc, true, false, camera)).toBe(true)
   held.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 40, 0] } })
-  const fail = fill.mock.calls.at(-1)![3] as () => void
+  const fail = fill.mock.calls.at(-1)![3]
   const committed = { ...doc, nodes: { ...doc.nodes, [board.id]: { ...board, transform: [1, 0, 0, 1, 40, 0] as typeof board.transform } } }
   held.control.end(committed)
   expect(held.handingOff).toBe(false)

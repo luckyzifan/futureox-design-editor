@@ -1,9 +1,9 @@
 import { expect, test } from 'vitest'
-import type { DesignDocument, DesignNode } from './model'
+import { node, type DesignDocument, type DesignNode } from './model'
 import { applyIslandLayout, layoutFlowIsland, sameChildOrder } from './layout-reorder-island'
 
 function rect(id: string, width = 40): DesignNode {
-  return { id, kind: 'rectangle', name: id, width, height: 20, transform: [1, 0, 0, 1, 0, 0], children: [], fills: [], strokes: [], effects: [] } as DesignNode
+  return { ...node('rectangle', 0, 0, width, 20), id, name: id, fills: [] }
 }
 function frame(id: string, children: string[], layout: DesignNode['layout'], sizing?: DesignNode['sizing']): DesignNode {
   return { ...rect(id, 200), kind: 'frame', children, layout, sizing, fills: [] } as DesignNode

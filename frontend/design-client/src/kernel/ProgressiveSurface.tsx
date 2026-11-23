@@ -407,7 +407,7 @@ export function ProgressiveSurfaceImpl(
   const [translationRefinement] = useState(() => new NavigationRefinementScheduler(mailbox))
   type TranslationFill = {source:SurfaceProps['document'];offset:{x:number;y:number};sequence:number;failed:()=>void;region?:{x:number;y:number;width:number;height:number}}
   const translationCoverage = useRef<((request:TranslationFill)=>boolean) | undefined>(undefined)
-  const boardTileFill = useRef<{token:number;state:'running'|'resident'|'rejected';keys:string[];coversBoard:boolean;target?:{x:number;y:number;width:number;height:number}}>()
+  const boardTileFill = useRef<{token:number;state:'running'|'resident'|'rejected';keys:string[];coversBoard:boolean;target?:{x:number;y:number;width:number;height:number}} | undefined>(undefined)
   const translationRequest = useRef<TranslationFill | undefined>(undefined)
   const rasterOwner = useRef<object | null>(null)
   const fillOwner = useRef<{ contract: object; key: string } | null>(null)
