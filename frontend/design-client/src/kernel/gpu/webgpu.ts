@@ -67,7 +67,7 @@ import { rational_tent_kernel_rgba,certified_tent_prefix_plan } from '../../gene
 import type { Driver, Texture, PathMesh, Rect, GpuScene, GpuAdmissionDiagnostic, OpaqueSolidBatch } from './types'
 import { parameters, intersect, previewUniforms, type PreviewPresentation } from './types'
 import { MAX_SOLID_INSTANCES, SOLID_INSTANCE_FLOATS } from './solid-batch'
-import { ANALYTIC_GRADIENT_FLOATS, ANALYTIC_SOLID_FLOATS, ANALYTIC_SOLID_LIMIT, acceptAnalyticGradientBatch } from './analytic-solid-batch'
+import { ANALYTIC_GRADIENT_FLOATS, ANALYTIC_SOLID_FLOATS, ANALYTIC_SOLID_LIMIT, acceptAnalyticGradientBatch, acceptAnalyticSolidBatch } from './analytic-solid-batch'
 import { GpuBindingCache } from './binding-cache'
 import { ResidentGeometry } from './resident-geometry'
 import { ResidentPrograms, type ProgramPlan } from './resident-programs'
@@ -986,6 +986,11 @@ fn analyticCovered(colour:vec4<f32>,opacity:f32,coverage:f32)->vec4<f32>{
  let bits=bitcast<vec4<u32>>(covered);
  return bitcast<vec4<f32>>(select(bits,vec4<u32>(0u),(bits&vec4<u32>(0x7fffffffu))==vec4<u32>(0u)));
 }
+fn analyticNodeFactor(opacity:f32)->f32{
+ var factor=opacity;
+ if(u(4).w>0.5){factor=mulRN(factor,at(sourceC,p,u(3)).a);}
+ return factor;
+}
 fn analyticBatchStop(record:u32,index:u32)->vec4<f32>{
  let row=solidData[record+8u+index*2u];
  let alpha=solidData[record+9u+index*2u].x;
@@ -1020,7 +1025,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
   let covered=mulRN4(painted,vec4<f32>(coverage));
   let bits=bitcast<vec4<u32>>(covered);
   let sampled=bitcast<vec4<f32>>(select(bits,vec4<u32>(0u),(bits&vec4<u32>(0x7fffffffu))==vec4<u32>(0u)));
-  var factor=1.;if(u(4).w>0.5){factor=mulRN(factor,at(sourceC,p,u(3)).a);}
+  let factor=analyticNodeFactor(baseColor.w);
   if(!hit){acc=integerSample(sourceA,p,u(1));hit=true;}
   acc=over(acc,mulRN4(sampled,vec4<f32>(factor)),0);
  }
@@ -1032,7 +1037,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
  let base=u32(u(9).x);let count=min(48u,u32(u(9).y));
  if(u(9).w>0.5){return analyticGradientBatch(p,base,count);}
  var hit=false;var acc=vec4<f32>(0.);
- var local=vec4<f32>(0.);var group=0.;var open=false;var touched=false;var shape=0.;
+ var local=vec4<f32>(0.);var group=0.;var groupOpacity=1.;var open=false;var touched=false;var shape=0.;
  for(var i=0u;i<48u;i=i+1u){
   if(i>=count){break;}
   let item=base+i*6u;let path=solidData[item];let info=solidData[item+1u];let extra=solidData[item+2u];
@@ -1041,24 +1046,24 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
   if(tail.y==0.){
    if(open&&touched){
     if(!hit){acc=integerSample(sourceA,p,u(1));hit=true;}
-    var carried=1.;if(u(4).w>0.5){carried=mulRN(carried,at(sourceC,p,u(3)).a);}
+    let carried=analyticNodeFactor(groupOpacity);
     acc=over(acc,mulRN4(local,vec4<f32>(carried)),0);
    }
    open=false;touched=false;local=vec4<f32>(0.);shape=0.;
    if(any(p<write.xy)||any(p>=write.xy+write.zw)){continue;}
    let coverage=analyticCoverageAt(p,path,info,extra);
    let sampled=analyticCovered(colour,place.x,coverage);
-   var factor=1.;if(u(4).w>0.5){factor=mulRN(factor,at(sourceC,p,u(3)).a);}
+   let factor=analyticNodeFactor(tail.w);
    if(!hit){acc=integerSample(sourceA,p,u(1));hit=true;}
    acc=over(acc,mulRN4(sampled,vec4<f32>(factor)),0);
   }else{
    if(!open||tail.y!=group){
     if(open&&touched){
      if(!hit){acc=integerSample(sourceA,p,u(1));hit=true;}
-     var previous=1.;if(u(4).w>0.5){previous=mulRN(previous,at(sourceC,p,u(3)).a);}
+     let previous=analyticNodeFactor(groupOpacity);
      acc=over(acc,mulRN4(local,vec4<f32>(previous)),0);
     }
-    open=true;group=tail.y;touched=false;local=vec4<f32>(0.);shape=0.;
+    open=true;group=tail.y;groupOpacity=tail.w;touched=false;local=vec4<f32>(0.);shape=0.;
    }
    if(any(p<write.xy)||any(p>=write.xy+write.zw)){continue;}
    touched=true;
@@ -1073,7 +1078,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
  }
  if(open&&touched){
   if(!hit){acc=integerSample(sourceA,p,u(1));hit=true;}
-  var flushFactor=1.;if(u(4).w>0.5){flushFactor=mulRN(flushFactor,at(sourceC,p,u(3)).a);}
+  let flushFactor=analyticNodeFactor(groupOpacity);
   acc=over(acc,mulRN4(local,vec4<f32>(flushFactor)),0);
  }
  if(!hit){return select(at(sourceA,p,u(1)),integerSample(sourceA,p,u(1)),u(9).z>0.5);}
@@ -3386,7 +3391,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     if(!this.analyticSolidPipeline||!this.curves||!this.encoder||this.lost||this.disposed||!Number.isInteger(count)||count<1||count>ANALYTIC_SOLID_LIMIT)return false
     const stride=gradient?ANALYTIC_GRADIENT_FLOATS:ANALYTIC_SOLID_FLOATS
     if(!(data instanceof Float32Array)||output===source||output.resource===source.resource)return false
-    if(gradient?!acceptAnalyticGradientBatch(data,count):data.length!==count*stride)return false
+    if(gradient?!acceptAnalyticGradientBatch(data,count):!acceptAnalyticSolidBatch(data,count))return false
     if(output.width!==sourceRect.w||output.height!==sourceRect.h||source.width!==sourceRect.w||source.height!==sourceRect.h)return false
     if(output.binaryCoverage||output.scalarCoverage||source.binaryCoverage||source.scalarCoverage)return false
     if(!this.textures.has(output)||!this.textures.has(source))return false

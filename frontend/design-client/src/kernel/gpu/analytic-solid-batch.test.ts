@@ -1,6 +1,6 @@
 import {afterEach,expect,test,vi} from 'vitest'
 import {GpuRenderer} from './renderer'
-import {analyticGradientFieldFromSamples,analyticGradientLeaf,analyticSolidBrushes,analyticSolidLeaf,acceptAnalyticGradientBatch,planAnalyticSolidBatches,packAnalyticGradients,packAnalyticSolids,ANALYTIC_GRADIENT_FLOATS,ANALYTIC_SOLID_FLOATS} from './analytic-solid-batch'
+import {analyticGradientFieldFromSamples,analyticGradientLeaf,analyticSolidBrushes,analyticSolidLeaf,acceptAnalyticGradientBatch,acceptAnalyticSolidBatch,planAnalyticSolidBatches,packAnalyticGradients,packAnalyticSolids,ANALYTIC_GRADIENT_FLOATS,ANALYTIC_SOLID_FLOATS} from './analytic-solid-batch'
 import {gradient_sampling_axes,gradient_sampling_grid} from '../../generated/design-kernel/design_kernel'
 import {sourcePainterOrder} from './opaque-painter-prefix'
 import type {GpuNode,GpuScene,Rect,Texture} from './types'
@@ -41,7 +41,12 @@ test('area solids pack the original program index and split when footprints touc
   const apart=analyticSolidLeaf(leaf('c',8),bounds,8,()=>[0.2,0.4,0.6],()=>1)!
   expect(a.program).toEqual({kind:'area',first:0,count:4})
   expect(analyticSolidLeaf(leaf('g',0,'gradient'),bounds,8,()=>[0,0,0],()=>1)).toBeUndefined()
-  expect(analyticSolidLeaf({...leaf('h',0),opacity:.5} as GpuNode,bounds,8,()=>[0,0,0],()=>1)).toBeUndefined()
+  const faint=analyticSolidLeaf({...leaf('h',0),opacity:.5} as GpuNode,bounds,8,()=>[0,0,0],()=>1)!
+  expect(faint.nodeOpacity).toBe(.5)
+  expect(analyticSolidLeaf({...leaf('z',0),opacity:0} as GpuNode,bounds,8,()=>[0,0,0],()=>1)).toBeUndefined()
+  expect(analyticSolidLeaf({...leaf('e',0),opacity:.5,effects:[{visible:true,kind:'blur'}]} as GpuNode,bounds,8,()=>[0,0,0],()=>1)).toBeUndefined()
+  expect(analyticSolidLeaf({...leaf('m',0),opacity:.5,mask:true} as GpuNode,bounds,8,()=>[0,0,0],()=>1)).toBeUndefined()
+  expect(analyticSolidLeaf({...leaf('b',0),opacity:.5,blend:'multiply'} as GpuNode,bounds,8,()=>[0,0,0],()=>1)).toBeUndefined()
   const packed=packAnalyticSolids([a])
   expect(packed).toHaveLength(ANALYTIC_SOLID_FLOATS)
   expect(packed[4]).toBe(0)
@@ -49,6 +54,13 @@ test('area solids pack the original program index and split when footprints touc
   expect(packed[7]).toBe(0)
   expect(packed[21]).toBe(0)
   expect(packed[22]).toBe(0)
+  expect(packed[23]).toBe(1)
+  expect(acceptAnalyticSolidBatch(packed,1)).toBe(true)
+  packed[23]=0
+  expect(acceptAnalyticSolidBatch(packed,1)).toBe(false)
+  const faintPacked=packAnalyticSolids([faint])
+  expect(faintPacked[16]).toBe(1)
+  expect(faintPacked[23]).toBe(.5)
   const touching=planAnalyticSolidBatches([a,b,apart],bounds.w*bounds.h)
   expect(touching.map(batch=>batch.items.map(item=>item.write.x))).toEqual([[0],[2,8]])
 })
@@ -131,15 +143,89 @@ test('a solid fill and its stroke stay in one batch, including inside and outsid
   expect(words[22]).toBe(1)
   expect(words[24+6]).toBe(2)
   expect(words[24+22]).toBe(0)
+  expect(words[23]).toBe(1)
+  expect(words[24+23]).toBe(1)
+  const faint=analyticSolidBrushes({...stroked('o',40),opacity:.5} as GpuNode,bounds,8,color,channel)!
+  expect(faint.every(item=>item.nodeOpacity===.5)).toBe(true)
+  expect(packAnalyticSolids(faint)[23]).toBe(.5)
 })
 
-test('partial opacity stays outside the fused solid draw',async()=>{
-  const on=harness()
-  on.renderer.scene.nodes.faint={...leaf('faint',0),opacity:.5}
-  on.renderer.scene.nodes.stage.children=[...on.renderer.scene.nodes.stage.children,'faint']
-  await on.renderer.drawList(['stage'],on.target)
-  expect(on.draws.filter(draw=>draw.startsWith('batch:')).length).toBe(1)
-  expect(on.draws.filter(draw=>draw==='mask'||draw.startsWith('pass:')).length).toBeGreaterThan(0)
+function translucentLeaves(run:{renderer:{scene:{nodes:Record<string,GpuNode>}}}){
+  for(const node of Object.values(run.renderer.scene.nodes))if(!node.children.length)node.opacity=.5
+}
+const tally=(draws:string[])=>draws.reduce<Record<string,number>>((counts,draw)=>{const key=draw.startsWith('pass:')?draw:draw.startsWith('batch:')?'batch':draw;counts[key]=(counts[key]||0)+1;return counts},{})
+const batchFloats=(draws:string[])=>draws.filter(draw=>draw.startsWith('batch:')).reduce((sum,draw)=>sum+Number(draw.split(':')[2]),0)
+async function profileDraws(label:string,run:()=>Promise<void>){
+  if(process.env.DESIGN_ANALYTIC_CPU_PROFILE!==label)return
+  const {Session}=await import('node:inspector')
+  const session=new Session()
+  session.connect()
+  await new Promise<void>(resolve=>session.post('Profiler.enable',()=>resolve()))
+  await new Promise<void>(resolve=>session.post('Profiler.setSamplingInterval',{interval:100},()=>resolve()))
+  await new Promise<void>(resolve=>session.post('Profiler.start',()=>resolve()))
+  await run()
+  const profile=await new Promise<unknown>(resolve=>session.post('Profiler.stop',(_error,result)=>resolve(result)))
+  const fs=await import('node:fs')
+  fs.writeFileSync(`/tmp/analytic-${label}.cpuprofile`,JSON.stringify(profile))
+  session.disconnect()
+}
+test('translucent analytic solids fuse into the same draw, and the flag restores the mask path',async()=>{
+  const rounds=Number(process.env.DESIGN_ANALYTIC_PROFILE_ROUNDS||6)
+  const time=async(flag:'0'|'1')=>{
+    vi.stubEnv('VITE_DESIGN_ANALYTIC_NODE_OPACITY',flag)
+    const prepared=[]
+    for(let i=0;i<rounds;i++){
+      const run=harness(16,8)
+      translucentLeaves(run)
+      prepared.push(run)
+    }
+    const samples:number[]=[]
+    let draws:string[]=[]
+    const body=async()=>{
+      for(const run of prepared){
+        const started=performance.now()
+        await run.renderer.drawList(['stage'],run.target)
+        samples.push(performance.now()-started)
+        draws=run.draws
+      }
+    }
+    const label=flag==='1'?'on':'off'
+    if(process.env.DESIGN_ANALYTIC_CPU_PROFILE===label)await profileDraws(label,body)
+    else await body()
+    return {samples,draws}
+  }
+  const on=await time('1')
+  const off=await time('0')
+  vi.stubEnv('VITE_DESIGN_ANALYTIC_NODE_OPACITY','1')
+  expect(on.draws.filter(draw=>draw.startsWith('batch:')).length).toBe(Math.ceil(128/48))
+  expect(on.draws.some(draw=>draw==='mask'||draw.startsWith('pass:'))).toBe(false)
+  expect(batchFloats(on.draws)).toBe(128*ANALYTIC_SOLID_FLOATS)
+  expect(off.draws.some(draw=>draw.startsWith('batch:'))).toBe(false)
+  expect(off.draws.filter(draw=>draw==='mask').length).toBeGreaterThan(0)
+  expect(off.draws.length).toBeGreaterThan(on.draws.length)
+  const readback=harness(4,1)
+  translucentLeaves(readback)
+  readback.renderer.outputFrame={present:true,readback:true}
+  await readback.renderer.drawList(['stage'],readback.target)
+  expect(readback.draws.some(draw=>draw.startsWith('batch:'))).toBe(false)
+  const coherent=harness(4,1)
+  translucentLeaves(coherent)
+  coherent.renderer.scene.coherentSamples=true
+  await coherent.renderer.drawList(['stage'],coherent.target)
+  expect(coherent.draws.some(draw=>draw.startsWith('batch:'))).toBe(false)
+  const exported=harness(4,1)
+  translucentLeaves(exported)
+  exported.renderer.outputFrame={present:false,readback:false}
+  await exported.renderer.drawList(['stage'],exported.target)
+  expect(exported.draws.some(draw=>draw.startsWith('batch:'))).toBe(false)
+  console.log(JSON.stringify({
+    scope:'same analytic renderer, 128 non-overlapping translucent solids, mock WebGPU driver, no device timestamps',
+    beforeDraws:off.draws.length,afterDraws:on.draws.length,
+    beforeKinds:tally(off.draws),afterKinds:tally(on.draws),
+    instanceFloats:batchFloats(on.draws),instanceBytes:batchFloats(on.draws)*4,
+    mode78Draws:on.draws.filter(draw=>draw.startsWith('batch:')).length,
+    cpuEncodeMs:{on:on.samples,off:off.samples},
+  }))
 })
 test('analytic topology leaves fuse coverage and paint, and the flag restores the mask path',async()=>{
   const on=harness(16,8)
@@ -228,6 +314,14 @@ test('an exhausted analytic arena falls back for the remaining leaves',async()=>
   expect(remaining).toBe(0)
 })
 
+function gradientStrokeNode(id:string,x:number,align:'center'|'inside'|'outside'='center',opacity=1){
+  const node=gradientNode(id,x)
+  const paint=node.fills[0]
+  node.fills=[]
+  node.strokes=[{align,path:node.fill,paint}]
+  node.opacity=opacity
+  return node
+}
 function gradientNode(id:string,x:number,kind:'linear'|'radial'='linear',w=4){
   const rect={x,y:0,w,h:w}
   return {id,rect,size:[w,w],matrix:[1,0,0,1,x,0],inverse:[1,0,0,1,-x,0],
@@ -265,15 +359,30 @@ test('opaque gradient leaves pack the kernel field and reject the old exclusions
   expect(acceptAnalyticGradientBatch(packed,1)).toBe(false)
   const calls:string[]=[]
   const ask=(node:GpuNode)=>analyticGradientLeaf(node,target,8,()=>[0.2,0.4,0.6],()=>1,()=>{calls.push(node.id);return {width:4,height:4,values:gradientValues()}})
-  const faint=gradientNode('faint',0);faint.opacity=.5
   const stroked=gradientNode('stroke',0);stroked.strokes=[{align:'center',path:stroked.fill,paint:stroked.fills[0]}]
   const many=gradientNode('many',0);many.fills[0].stops=Array.from({length:9},(_,index)=>({offset:index/8,color:'#112233'}))
   const huge=gradientNode('huge',0,'radial',80)
-  expect(ask(faint)).toBeUndefined()
+  const inside=gradientStrokeNode('inside',0,'inside')
+  const zero=gradientNode('zero',0);zero.opacity=0
   expect(ask(stroked)).toBeUndefined()
   expect(ask(many)).toBeUndefined()
+  expect(ask(inside)).toBeUndefined()
+  expect(ask(zero)).toBeUndefined()
   expect(calls).toEqual([])
   expect(gradientField(huge)).toBeUndefined()
+  const faint=gradientNode('faint',0);faint.opacity=.5
+  const admittedFaint=ask(faint)!
+  expect(admittedFaint.nodeOpacity).toBe(.5)
+  const center=ask(gradientStrokeNode('center',0))!
+  expect(center.gradient?.stops).toHaveLength(2)
+  expect(center.nodeOpacity).toBe(1)
+  expect(calls).toEqual(['faint','center'])
+  const faintPacked=packAnalyticGradients([admittedFaint])
+  expect(faintPacked[16]).toBe(1)
+  expect(faintPacked[31]).toBe(.5)
+  expect(acceptAnalyticGradientBatch(faintPacked,1)).toBe(true)
+  faintPacked[31]=0
+  expect(acceptAnalyticGradientBatch(faintPacked,1)).toBe(false)
   const near=analyticGradientLeaf(gradientNode('near',1),target,8,()=>[0.2,0.4,0.6],()=>1,()=>({width:4,height:4,values:gradientValues()}))!
   const far=analyticGradientLeaf(gradientNode('far',24),target,8,()=>[0.2,0.4,0.6],()=>1,()=>({width:4,height:4,values:gradientValues()}))!
   const area=target.w*target.h
@@ -281,7 +390,7 @@ test('opaque gradient leaves pack the kernel field and reject the old exclusions
   expect(planAnalyticSolidBatches([admitted,far],area).map(batch=>batch.items.length)).toEqual([2])
 })
 
-function gradientHarness(count=32,kind:'linear'|'radial'='linear'){
+function gradientHarness(count=32,kind:'linear'|'radial'='linear',shape:'fill'|'stroke'='fill',opacity=1){
   const draws:string[]=[]
   const batches:Float32Array[]=[]
   const create=(width:number,height:number)=>({width,height,bytes:width*height*16,resource:{}}) as Texture
@@ -304,7 +413,8 @@ function gradientHarness(count=32,kind:'linear'|'radial'='linear'){
   for(let i=0;i<count;i++){
     const id=`g${i}`
     children.push(id)
-    nodes[id]=gradientNode(id,i*8,kind)
+    nodes[id]=shape==='stroke'?gradientStrokeNode(id,i*8,'center',opacity):gradientNode(id,i*8,kind)
+    if(shape==='fill')nodes[id].opacity=opacity
   }
   nodes.stage=group('stage',children)
   nodes.stage.rect=frame
@@ -372,4 +482,76 @@ test('small opaque radial gradients use the same fused draw',async()=>{
   expect(off.draws.some(draw=>draw.startsWith('batch:'))).toBe(false)
   expect(off.draws.length).toBeGreaterThan(on.draws.length)
   console.log(JSON.stringify({scope:'same analytic renderer, 8 non-overlapping opaque radial gradients, mock WebGPU driver',beforeDraws:off.draws.length,afterDraws:on.draws.length,fieldFloats:expected.values.length}))
+})
+test('translucent solid strokes stay in one analytic group draw',async()=>{
+  const on=strokeHarness(32)
+  translucentLeaves(on)
+  await on.renderer.drawList(['stage'],on.target)
+  expect(on.draws.filter(draw=>draw.startsWith('batch:')).length).toBe(2)
+  expect(on.draws.some(draw=>draw==='mask'||draw.startsWith('pass:'))).toBe(false)
+  expect(batchFloats(on.draws)).toBe(64*ANALYTIC_SOLID_FLOATS)
+  vi.stubEnv('VITE_DESIGN_ANALYTIC_NODE_OPACITY','0')
+  const off=strokeHarness(32)
+  translucentLeaves(off)
+  await off.renderer.drawList(['stage'],off.target)
+  expect(off.draws.some(draw=>draw.startsWith('batch:'))).toBe(false)
+  expect(off.draws.length).toBeGreaterThan(on.draws.length)
+  console.log(JSON.stringify({scope:'same analytic renderer, 32 non-overlapping translucent solid strokes, mock WebGPU driver',beforeDraws:off.draws.length,afterDraws:on.draws.length,beforeKinds:tally(off.draws),afterKinds:tally(on.draws),instanceBytes:batchFloats(on.draws)*4}))
+})
+test('translucent gradients and center gradient strokes fuse, and excluded strokes stay on the mask path',async()=>{
+  const time=async(shape:'fill'|'stroke',flag:'0'|'1')=>{
+    vi.stubEnv('VITE_DESIGN_ANALYTIC_NODE_OPACITY',flag)
+    vi.stubEnv('VITE_DESIGN_ANALYTIC_GRADIENT_BATCH','1')
+    vi.stubEnv('VITE_DESIGN_ANALYTIC_SOLID_BATCH','1')
+    const prepared=[]
+    for(let i=0;i<4;i++)prepared.push(gradientHarness(shape==='stroke'?8:32,'linear',shape,.5))
+    const samples:number[]=[]
+    let draws:string[]=[]
+    let bytes=0
+    for(const run of prepared){
+      const started=performance.now()
+      await run.renderer.drawList(['stage'],run.target)
+      samples.push(performance.now()-started)
+      draws=run.draws
+      bytes=run.batches.reduce((sum,batch)=>sum+batch.byteLength,0)
+    }
+    return {samples,draws,bytes}
+  }
+  const fills=await time('fill','1')
+  const fillOff=await time('fill','0')
+  const strokes=await time('stroke','1')
+  const strokeOff=await time('stroke','0')
+  expect(fills.draws.filter(draw=>draw.startsWith('batch:'))).toHaveLength(1)
+  expect(fills.draws.some(draw=>draw==='mask'||draw.startsWith('pass:'))).toBe(false)
+  expect(fillOff.draws.some(draw=>draw.startsWith('batch:'))).toBe(false)
+  expect(fillOff.draws.length).toBeGreaterThan(fills.draws.length)
+  expect(strokes.draws.filter(draw=>draw.startsWith('batch:'))).toHaveLength(1)
+  expect(strokes.draws.some(draw=>draw==='mask'||draw.startsWith('pass:'))).toBe(false)
+  expect(strokeOff.draws.some(draw=>draw.startsWith('batch:'))).toBe(false)
+  expect(strokeOff.draws.length).toBeGreaterThan(strokes.draws.length)
+  vi.stubEnv('VITE_DESIGN_ANALYTIC_NODE_OPACITY','1')
+  vi.stubEnv('VITE_DESIGN_ANALYTIC_GRADIENT_BATCH','1')
+  const opaqueStrokes=gradientHarness(8,'linear','stroke',1)
+  await opaqueStrokes.renderer.drawList(['stage'],opaqueStrokes.target)
+  expect(opaqueStrokes.draws.filter(draw=>draw.startsWith('batch:'))).toHaveLength(1)
+  expect(acceptAnalyticGradientBatch(opaqueStrokes.batches[0],8)).toBe(true)
+  vi.stubEnv('VITE_DESIGN_ANALYTIC_GRADIENT_BATCH','0')
+  const gradientOff=gradientHarness(8,'linear','stroke',1)
+  await gradientOff.renderer.drawList(['stage'],gradientOff.target)
+  expect(gradientOff.draws.some(draw=>draw.startsWith('batch:'))).toBe(false)
+  expect(gradientOff.draws.length).toBeGreaterThan(opaqueStrokes.draws.length)
+  vi.stubEnv('VITE_DESIGN_ANALYTIC_GRADIENT_BATCH','1')
+  const inside=gradientHarness(1)
+  inside.renderer.scene.nodes.g0=gradientStrokeNode('g0',0,'inside')
+  await inside.renderer.drawList(['stage'],inside.target)
+  expect(inside.draws.some(draw=>draw.startsWith('batch:'))).toBe(false)
+  expect(inside.draws.some(draw=>draw==='mask')).toBe(true)
+  console.log(JSON.stringify({
+    scope:'same analytic renderer, translucent linear fills and center gradient strokes, mock WebGPU driver, no device timestamps',
+    fillBeforeDraws:fillOff.draws.length,fillAfterDraws:fills.draws.length,
+    fillBeforeKinds:tally(fillOff.draws),fillAfterKinds:tally(fills.draws),fillInstanceBytes:fills.bytes,
+    strokeBeforeDraws:strokeOff.draws.length,strokeAfterDraws:strokes.draws.length,
+    strokeBeforeKinds:tally(strokeOff.draws),strokeAfterKinds:tally(strokes.draws),strokeInstanceBytes:strokes.bytes,
+    cpuEncodeMs:{fills:fills.samples,fillOff:fillOff.samples,strokes:strokes.samples,strokeOff:strokeOff.samples},
+  }))
 })

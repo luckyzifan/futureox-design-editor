@@ -28,7 +28,9 @@ export type AnalyticSolid = {
   role?: 0 | 1 | 2
   /** 0 none, 2 inside, 3 outside. Mode 1's plain product, not a rounded multiply. */
   clip?: 0 | 2 | 3
-  /** Present only for an opaque gradient leaf. Solids and strokes leave this unset. */
+  /** Layer opacity applied once to the isolated leaf, after paint opacity. */
+  nodeOpacity?: number
+  /** Present for one gradient fill, or one center-aligned gradient stroke. */
   gradient?: AnalyticGradient
 }
 
@@ -41,6 +43,19 @@ export type AnalyticGradient = {
 }
 
 const finiteUnit = (value: number) => Number.isFinite(value) && value >= 0 && value <= 1
+/** Mode 3 multiplies this once after the isolated leaf. Zero skips the old draw.
+ * `VITE_DESIGN_ANALYTIC_NODE_OPACITY=0` keeps partial layers on that draw. */
+function admittedNodeOpacity(node: GpuNode) {
+  const opacity = node.opacity
+  if (import.meta.env.VITE_DESIGN_ANALYTIC_NODE_OPACITY === '0') return opacity === 1 ? 1 : undefined
+  if (!finiteUnit(opacity) || opacity === 0 || Object.is(opacity, -0)) return
+  return opacity
+}
+function packedNodeOpacity(item: AnalyticSolid) {
+  const opacity = item.nodeOpacity ?? 1
+  if (!Number.isFinite(opacity) || opacity <= 0 || opacity > 1) throw new Error('Analytic node opacity')
+  return opacity
+}
 const lattice = (rect: Rect | undefined): rect is Rect => !!rect && rect.w > 0 && rect.h > 0 &&
   [rect.x, rect.y, rect.w, rect.h].every(value => Number.isSafeInteger(value) && Math.abs(value) <= 1_048_576)
 
@@ -56,7 +71,8 @@ export function analyticSolidLeaf(node: GpuNode | undefined, target: Rect, curve
   color: (value: string) => readonly number[], alpha: (value: string) => number): AnalyticSolid | undefined {
   const paint = node?.fills[0]
   const path = node?.fill
-  if (!node || !path || !paint || node.opacity !== 1 || node.blend !== 'normal' || node.passthrough ||
+  const nodeOpacity = node && admittedNodeOpacity(node)
+  if (!node || nodeOpacity === undefined || !path || !paint || node.blend !== 'normal' || node.passthrough ||
     node.mask || node.maskId || node.clip || node.children.length || node.strokes.length ||
     node.effects.some(effect => effect.visible) || node.captureReplay || node.textureReplay ||
     node.opticalPrefixNext || node.gaussianRegion || node.sourceFilterField || node.fills.length !== 1 ||
@@ -71,14 +87,14 @@ export function analyticSolidLeaf(node: GpuNode | undefined, target: Rect, curve
     path.area.first <= 16_777_216 && Number.isSafeInteger(path.area.count) &&
     path.area.first + path.area.count <= curveWords) {
     return { path: path.rect, write, program: { kind: 'area', first: path.area.first, count: path.area.count },
-      rgb: [rgb[0], rgb[1], rgb[2]], alpha: channel, opacity: paint.opacity }
+      rgb: [rgb[0], rgb[1], rgb[2]], alpha: channel, opacity: paint.opacity, nodeOpacity }
   }
   const edges = path.analyticRect
   if (!path.area && edges && edges.length === 4 && edges.every(value => Number.isFinite(value) && Math.abs(value) <= 1_048_576)) {
     const local = edges.map((value, index) => value - (index % 2 ? path.rect.y : path.rect.x)) as [number, number, number, number]
     if (local.every(value => Number.isFinite(value))) {
       return { path: path.rect, write, program: { kind: 'rect', edges: local },
-        rgb: [rgb[0], rgb[1], rgb[2]], alpha: channel, opacity: paint.opacity }
+        rgb: [rgb[0], rgb[1], rgb[2]], alpha: channel, opacity: paint.opacity, nodeOpacity }
     }
   }
 }
@@ -96,7 +112,7 @@ export function packAnalyticSolids(items: readonly AnalyticSolid[]) {
       ...(program.kind === 'rect' ? program.edges : [0, 0, 0, 0]),
       item.rgb[0], item.rgb[1], item.rgb[2], item.alpha,
       item.opacity, item.write.x, item.write.y, item.write.w,
-      item.write.h, item.group ?? 0, item.role ?? 0, 0,
+      item.write.h, item.group ?? 0, item.role ?? 0, packedNodeOpacity(item),
     ], at)
   })
   return out
@@ -198,11 +214,12 @@ function paintChannels(paint: GpuPaint | undefined, color: (value: string) => re
   return { rgb: [rgb[0], rgb[1], rgb[2]] as const, alpha: channel, opacity: paint.opacity }
 }
 
-/** Opaque solid fills and strokes of one leaf. The write is the whole node so
+/** Solid fills and strokes of one leaf. The write is the whole node so
  * the later single composite covers the same rectangle as the old isolation. */
 export function analyticSolidBrushes(node: GpuNode | undefined, target: Rect, curveWords: number,
   color: (value: string) => readonly number[], alpha: (value: string) => number): AnalyticSolid[] | undefined {
-  if (!node || node.opacity !== 1 || node.blend !== 'normal' || node.passthrough ||
+  const nodeOpacity = node && admittedNodeOpacity(node)
+  if (!node || nodeOpacity === undefined || node.blend !== 'normal' || node.passthrough ||
     node.mask || node.maskId || node.clip || node.children.length || !node.strokes.length ||
     node.effects.some(effect => effect.visible) || node.captureReplay || node.textureReplay ||
     node.opticalPrefixNext || node.gaussianRegion || node.sourceFilterField) return
@@ -216,11 +233,11 @@ export function analyticSolidBrushes(node: GpuNode | undefined, target: Rect, cu
   if ((fills.length || needsShape) && !shape) return
   const items: AnalyticSolid[] = []
   if (!fills.length && needsShape && shape)
-    items.push({ ...shape, rgb: [0, 0, 0], alpha: 0, opacity: 0, group: 1, role: 2, clip: 0 })
+    items.push({ ...shape, rgb: [0, 0, 0], alpha: 0, opacity: 0, group: 1, role: 2, clip: 0, nodeOpacity })
   for (const paint of fills) {
     const channels = paintChannels(paint, color, alpha)
     if (!channels || !shape) return
-    items.push({ ...shape, ...channels, group: 1, role: needsShape ? 1 : 0, clip: 0 })
+    items.push({ ...shape, ...channels, group: 1, role: needsShape ? 1 : 0, clip: 0, nodeOpacity })
   }
   for (const stroke of node.strokes) {
     if (stroke.align !== 'center' && stroke.align !== 'inside' && stroke.align !== 'outside') return
@@ -228,7 +245,7 @@ export function analyticSolidBrushes(node: GpuNode | undefined, target: Rect, cu
     const covered = coverageOf(stroke.path, write, curveWords)
     if (!channels || !covered) return
     const clip = stroke.align === 'inside' ? 2 : stroke.align === 'outside' ? 3 : 0
-    items.push({ ...covered, ...channels, group: 1, role: 0, clip })
+    items.push({ ...covered, ...channels, group: 1, role: 0, clip, nodeOpacity })
   }
   return items.length ? items : undefined
 }
@@ -267,18 +284,24 @@ export function analyticGradientFloats(item: AnalyticSolid) {
   return field ? ANALYTIC_GRADIENT_FLOATS + field.width * field.height * 4 : 0
 }
 
-/** One opaque gradient leaf whose kernel field fits the analytic draw.
+/** One gradient fill, or one center-aligned gradient stroke, whose kernel field fits this draw.
+ * Inside and outside strokes stay on the old path: this record has no shape clip.
  * The callback runs only after the structural gate, and only for this leaf. */
 export function analyticGradientLeaf(node: GpuNode | undefined, target: Rect, curveWords: number,
   color: (value: string) => readonly number[], alpha: (value: string) => number,
   fieldFor: (node: GpuNode, paint: GpuPaint) => AnalyticGradientField | undefined): AnalyticSolid | undefined {
-  const paint = node?.fills[0]
-  const path = node?.fill
-  if (!node || !path || !paint || node.opacity !== 1 || node.blend !== 'normal' || node.passthrough ||
-    node.mask || node.maskId || node.clip || node.children.length || node.strokes.length ||
+  const nodeOpacity = node && admittedNodeOpacity(node)
+  const fills = node?.fills.filter(paint => paint.visible) ?? []
+  const stroke = node?.strokes.length === 1 ? node.strokes[0] : undefined
+  const fillOnly = fills.length === 1 && !node?.strokes.length
+  const strokeOnly = fills.length === 0 && stroke?.align === 'center'
+  const paint = fillOnly ? fills[0] : strokeOnly ? stroke?.paint : undefined
+  const path = fillOnly ? node?.fill : strokeOnly ? stroke?.path : undefined
+  if (!node || nodeOpacity === undefined || !path || !paint || node.blend !== 'normal' || node.passthrough ||
+    node.mask || node.maskId || node.clip || node.children.length ||
     node.effects.some(effect => effect.visible) || node.captureReplay || node.textureReplay ||
     node.opticalPrefixNext || node.gaussianRegion || node.sourceFilterField || node.previewSource ||
-    node.fills.length !== 1 || !paint.visible || !gradientKinds.has(paint.kind) || paint.blend !== 'normal' ||
+    !paint.visible || !gradientKinds.has(paint.kind) || paint.blend !== 'normal' ||
     !finiteUnit(paint.opacity) || paint.stops.length < 2 || paint.stops.length > ANALYTIC_GRADIENT_STOPS) return
   if (!lattice(node.rect) || !lattice(path.rect) || !lattice(target) || node.rect.w * node.rect.h > 262144) return
   if (!node.size || node.size.length < 2 || !node.matrix || node.matrix.length < 6) return
@@ -312,7 +335,7 @@ export function analyticGradientLeaf(node: GpuNode | undefined, target: Rect, cu
   const maximum = gradientFieldMaximumStop(field.values)
   if (maximum === undefined || maximum >= stops.length) return
   return {
-    ...shape, rgb: base.rgb, alpha: base.alpha, opacity: paint.opacity,
+    ...shape, rgb: base.rgb, alpha: base.alpha, opacity: paint.opacity, nodeOpacity,
     gradient: { node: { ...node.rect }, field, stops, base: [base.rgb[0], base.rgb[1], base.rgb[2], base.alpha] },
   }
 }
@@ -336,7 +359,7 @@ export function packAnalyticGradients(items: readonly AnalyticSolid[]) {
       item.opacity, item.write.x, item.write.y, item.write.w,
       item.write.h, item.group ?? 0, item.role ?? 0, gradient.field.width,
       gradient.field.height, fieldAt, gradient.stops.length, gradient.base[3],
-      gradient.base[0], gradient.base[1], gradient.base[2], 0,
+      gradient.base[0], gradient.base[1], gradient.base[2], packedNodeOpacity(item),
     ], at)
     gradient.stops.forEach((stop, stopIndex) => {
       out.set([stop.offset, stop.rgb[0], stop.rgb[1], stop.rgb[2], stop.alpha, 0, 0, 0], at + 32 + stopIndex * 8)
@@ -359,10 +382,12 @@ export function acceptAnalyticGradientBatch(data: Float32Array, count: number) {
   for (let index = 0; index < count; index++) {
     const at = index * ANALYTIC_GRADIENT_FLOATS
     const fieldW = data[at + 23], fieldH = data[at + 24], fieldOffset = data[at + 25], stops = data[at + 26], opacity = data[at + 16]
-    if (![fieldW, fieldH, fieldOffset, stops, opacity].every(Number.isFinite)) return false
+    const nodeOpacity = data[at + 31]
+    if (![fieldW, fieldH, fieldOffset, stops, opacity, nodeOpacity].every(Number.isFinite)) return false
     if (!Number.isInteger(fieldW) || !Number.isInteger(fieldH) || !Number.isInteger(fieldOffset) || !Number.isInteger(stops)) return false
     if (fieldW < 1 || fieldH < 1 || fieldW * fieldH > ANALYTIC_GRADIENT_FIELD_TEXELS) return false
     if (stops < 2 || stops > ANALYTIC_GRADIENT_STOPS || opacity < 0 || opacity > 1) return false
+    if (nodeOpacity <= 0 || nodeOpacity > 1) return false
     if (fieldOffset !== cursor) return false
     const texels = fieldW * fieldH
     if (cursor + texels > words) return false
@@ -376,4 +401,15 @@ export function acceptAnalyticGradientBatch(data: Float32Array, count: number) {
     cursor += texels
   }
   return cursor === words
+}
+
+/** GPU admission for one analytic solid upload. Node opacity is the mode-3 factor. */
+export function acceptAnalyticSolidBatch(data: Float32Array, count: number) {
+  if (!Number.isInteger(count) || count < 1 || count > ANALYTIC_SOLID_LIMIT) return false
+  if (!(data instanceof Float32Array) || data.length !== count * ANALYTIC_SOLID_FLOATS) return false
+  for (let index = 0; index < count; index++) {
+    const nodeOpacity = data[index * ANALYTIC_SOLID_FLOATS + 23]
+    if (!Number.isFinite(nodeOpacity) || nodeOpacity <= 0 || nodeOpacity > 1) return false
+  }
+  return true
 }
