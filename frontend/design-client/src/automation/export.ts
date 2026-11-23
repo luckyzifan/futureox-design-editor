@@ -16,6 +16,7 @@ import {
   safeWebUrl, type AssetReference, type ContextOptions, type DesignAutomationWarning,
 } from './context'
 import { createScssColorSession } from './scss-export'
+import { cssLinearGradient, cssRadialGradient } from './css-gradient'
 
 export type CodeExportOptions = Pick<ContextOptions, 'pageId' | 'nodeIds'> & { maxNodes?: number; syntax?: 'css' | 'scss' }
 export type CodeAsset = AssetReference & { path: string; emitted: boolean; dataUrl?: string }
@@ -165,23 +166,26 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
   entries.forEach(({ node }, index) => { nodeIdMap[node.id] = { elementId: `design-node-${index + 1}`, selector: `#design-node-${index + 1}` } })
   const rules: { css: string; scss: string }[] = []
   const pushRule = (css: string, scss = css) => rules.push({ css, scss })
-  for (const rule of ['*{box-sizing:border-box}', 'html,body{margin:0;padding:0}', '.design-scene{position:relative;isolation:isolate}', '.design-node{position:absolute;transform-origin:0 0}', '.design-text{margin:0;white-space:pre-wrap;overflow-wrap:normal}']) pushRule(rule)
+  for (const rule of ['*{box-sizing:border-box}', 'html,body{margin:0;padding:0}', '.design-scene{position:relative;isolation:isolate}', '.design-node{position:absolute;left:0;top:0;transform-origin:0 0}', '.design-text{margin:0;white-space:pre-wrap;overflow-wrap:normal}']) pushRule(rule)
   const included = new Set(entries.map(e => e.node.id))
   const safeColor = (value: string, nodeId: string) => {
     const safe = cssColor(value)
     if (!safe) warn('UNSUPPORTED_COLOR', 'Unrecognized color syntax was omitted for safe CSS export.', nodeId)
     return safe
   }
+  const paintOpacityColor = (color: string, opacity: number) => {
+    const alpha = Math.max(0, Math.min(1, opacity))
+    return alpha === 1 ? color : `color-mix(in srgb, ${color} ${number(alpha * 100)}%, transparent)`
+  }
   const scssSession = options.syntax === 'scss' ? createScssColorSession(resolved, cssColor, () => warn('SCSS_COLOR_MISMATCH', 'A bound fill color did not match its resolved variable, so that declaration stayed a CSS literal.')) : undefined
-  const paintCss = (paint: Paint, nodeId: string, colorPath?: string): { css?: string; scss?: string } => {
+  const paintCss = (paint: Paint, nodeId: string, width: number, height: number, colorPath?: string): { css?: string; scss?: string } => {
     if (paint.blend !== 'normal' || paint.opacity !== 1) warn('PAINT_COMPOSITING', 'Per-paint blend and opacity may differ from the native compositor.', nodeId)
     const pair = (css?: string, scss = css) => ({ css, scss })
     if (paint.kind === 'solid') {
       const color = safeColor(paint.color, nodeId)
       if (!color) return {}
       const token = scssSession && colorPath ? scssSession.color(resolved.nodes[nodeId], colorPath, color) : color
-      const mix = (value: string) => paint.opacity === 1 ? value : `color-mix(in srgb, ${value} ${number(Math.max(0, Math.min(1, paint.opacity)) * 100)}%, transparent)`
-      return pair(mix(color), mix(token))
+      return pair(paintOpacityColor(color, paint.opacity), paintOpacityColor(token, paint.opacity))
     }
     if (paint.kind === 'image') {
       const asset = paint.image && assetsById.get(assetReference(paint.image, nodeId, paint.id, assetIdentities).id)
@@ -192,8 +196,14 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     if (paint.kind === 'linear' || paint.kind === 'radial') {
       if (paint.stops.length > 64) { warn('GRADIENT_LIMIT', 'Gradient with more than 64 stops was omitted.', nodeId); return {} }
       warn('GRADIENT_APPROXIMATION', 'CSS gradient coordinates and interpolation can differ from native rendering.', nodeId)
-      const stops = paint.stops.map(stop => { const c = safeColor(stop.color, nodeId); return c ? `${c} ${number(stop.offset * 100)}%` : undefined }).filter(Boolean)
-      return pair(stops.length ? `${paint.kind === 'linear' ? `linear-gradient(${number(paint.angle)}deg,` : 'radial-gradient(ellipse at center,'}${stops.join(',')})` : undefined)
+      const stops = paint.stops.flatMap(stop => {
+        const color = safeColor(stop.color, nodeId)
+        return color ? [{ offset: stop.offset, color: paintOpacityColor(color, paint.opacity) }] : []
+      })
+      if (!stops.length) return {}
+      return pair(paint.kind === 'linear'
+        ? cssLinearGradient(width, height, paint.angle, paint.transform, stops)
+        : cssRadialGradient(stops, paint.transform !== undefined))
     }
     warn('UNSUPPORTED_GRADIENT', `${paint.kind} gradients are not supported in semantic HTML export.`, nodeId)
     return {}
@@ -245,13 +255,13 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     if (n.kind === 'text') {
       const color = fills.find(item => item.paint.kind === 'solid')
       if (color) {
-        const safe = paintCss(color.paint, n.id, `fills.${color.index}.color`)
+        const safe = paintCss(color.paint, n.id, n.width, n.height, `fills.${color.index}.color`)
         if (safe.css) declPair(`color:${safe.css}`, `color:${safe.scss ?? safe.css}`)
       }
       if (fills.length > 1 || fills.some(item => item.paint.kind !== 'solid')) warn('TEXT_PAINTS', 'Text export uses one solid fill; additional text paints are omitted.', n.id)
     } else {
       const layers = fills.flatMap(item => {
-        const value = paintCss(item.paint, n.id, `fills.${item.index}.color`)
+        const value = paintCss(item.paint, n.id, n.width, n.height, `fills.${item.index}.color`)
         if (!value.css) return []
         const wrap = (color: string) => item.paint.kind === 'solid' ? `linear-gradient(${color},${color})` : color
         return [{ css: wrap(value.css), scss: wrap(value.scss ?? value.css) }]
@@ -266,7 +276,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     const strokes = n.strokes.filter(s => s.visible && s.paint.visible)
     const stroke = strokes[0]
     if (stroke?.paint.kind === 'solid') {
-      const color = paintCss(stroke.paint, n.id)
+      const color = paintCss(stroke.paint, n.id, n.width, n.height)
       if (color.css) declPair(`border:${px(stroke.width)} solid ${color.css}`, `border:${px(stroke.width)} solid ${color.scss ?? color.css}`)
     }
     if (strokes.length) warn('STROKE_APPROXIMATION', 'CSS border approximates strokes; alignment, multiple strokes, dashes, joins, markers and width profiles may differ.', n.id)
