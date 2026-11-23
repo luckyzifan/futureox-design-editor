@@ -2169,6 +2169,16 @@ self.onmessage = (e) => {
             const tileFence = (enforceFill: boolean, allowGapFill = false, canFillGap = false) =>
               admitAction(liveChoice(enforceFill, allowGapFill, canFillGap))
             const current = () => tileFence(channel === 'canvas') !== 'cancel'
+            // A pan bumps the fill generation before the queued edge tiles
+            // compile. Abort and a new document still stop the batch. A tile
+            // that still paints an uncovered part of the live camera does not:
+            // dropping it is the blank strip, and the next request only
+            // repeats the same world tile.
+            const abandonStaleBatch = (tile: RasterTile | undefined) => {
+              if (tileFence(true) !== 'cancel') return false
+              return !(tile && !retainCoverage && !cameraDependent && preparedTileCanFill(tile, displayFrame) &&
+                tileFence(true, true, true) === 'cover-gap')
+            }
             const canStreamGaussian = regionalGaussianDisplay({backend,channel,profile:renderOptions.rasterProfile,colorSpace:color?.documentSpace,
               displayOnly:!request.readback&&!request.png&&!request.referenceGpu&&!exportFormat&&(renderIntent==='preview'||renderIntent==='canvas'),
               regional:renderOptions.gpuGaussianRegions,hdr:executionPolicy.hdrCompositing,pixelPreview:renderOptions.pixelPreview,
@@ -2179,7 +2189,7 @@ self.onmessage = (e) => {
               tile.x, tile.y, tile.width, tile.height, tile.zoom, tile.phaseX ?? 0, tile.phaseY ?? 0,
               ...(cameraDependent ? [renderOptions.view.x, renderOptions.view.y, tile.zoom] : [])])
             const compileTile = async (tile: RasterTile) => {
-              if (!current()) throw Error('PREVIEW_CANCELLED')
+              if (abandonStaleBatch(tile)) throw Error('PREVIEW_CANCELLED')
               const at = performance.now()
               // Only the CPU packet preparation can be interrupted. The
               // batch still owns synchronization and previously drawn tiles.
@@ -2235,7 +2245,7 @@ self.onmessage = (e) => {
                 // A camera-wide preparation window is optional reuse, not
                 // admission for a bounded tile. Retry this exact crop once.
                 prepareViewport = undefined
-                if (!current()) throw Error('PREVIEW_CANCELLED')
+                if (abandonStaleBatch(tile)) throw Error('PREVIEW_CANCELLED')
                 bytes = await compile()
               }
               finally { if (tilePreparation) canvasTilePreparations.delete(tilePreparation) }
@@ -2247,7 +2257,7 @@ self.onmessage = (e) => {
               let undelivered: { bitmap?: ImageBitmap; gpuTile?: number } | undefined
               let nextColumnPlan: { index: number | undefined; changed: boolean; deltaY: number } | undefined
               try {
-              if (tileFence(true) === 'cancel') throw new Error('PREVIEW_CANCELLED')
+              if (abandonStaleBatch(tile)) throw new Error('PREVIEW_CANCELLED')
               // World slots retain the computation camera for measured byte
               // dithering, grids and pixel preview. Those established paths
               // cannot certify a translated hit from world address alone.
@@ -2493,7 +2503,10 @@ self.onmessage = (e) => {
               await queue.yieldToHigherPriority(channel === 'interaction' ? 1 : 0, GPU_PRIORITY_BURST)
               // A canceled returning lane must not retire the interaction's
               // current resources merely to restore an obsolete canvas owner.
-              if (tileFence(true) === 'cancel') throw new Error('PREVIEW_CANCELLED')
+              // The next queued tile may still be the uncovered pan strip.
+              const following = order.indexAt(tileOrderIndex + 1)
+              if (abandonStaleBatch(following === undefined ? undefined : tileViewport[following] as RasterTile))
+                throw new Error('PREVIEW_CANCELLED')
               selectLane(channel)
               if (settingsJson !== colorKey || preference !== requestPreference || referenceGpu !== wantsReference || solidBatchGpu !== wantsBatch) {
                 noteRetiredDevice(gpu); gpu?.dispose(); gpu = undefined; invalidateTileCache(); unavailable.clear()
