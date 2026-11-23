@@ -1220,22 +1220,29 @@ impl Engine {
             let node = &self.doc.as_ref().unwrap().nodes[id];
             node.children.is_empty() && (!affine || node.effects.iter().all(|effect| !effect.visible))
         });
-        if local_support_only && self.source_compile_context.is_none() {
+        if self.source_compile_context.is_none() {
             if let Some(cache)=&mut self.world_support {
                 if cache.revision==previous_revision {
                     // A shared snapshot must keep its own exact certificates.
-                    // A private cache can conservatively forget moved leaves
-                    // without flattening every unrelated path on each input.
+                    // A private cache can forget the moved geometry without
+                    // rebuilding every untouched sibling on the next sample.
                     if let Some(support)=Arc::get_mut(&mut cache.index) {
-                        support.invalidate_leaf_transforms(transforms.keys(),parents);
-                        cache.revision=self.geo_revision;
-                        // Translations preserve halo coefficients. An affine
-                        // leaf with no visible effects is absent from
-                        // every effect path in MarginIndex, so it cannot change
-                        // that index either. Stroke support belongs to the
-                        // removed leaf/ancestor certificates and is rebuilt.
-                        // PageProperties has no placement
-                        // facts; transformed() still refreshes camera metadata.
+                        if affine {
+                            if local_support_only {
+                                support.invalidate_leaf_transforms(transforms.keys(),parents);
+                                cache.revision=self.geo_revision;
+                            }
+                        } else {
+                            // Translation does not change effect scale or the
+                            // linear part of any matrix, so the margin index
+                            // stays valid. Descendants lose their world bounds.
+                            support.invalidate_rigid_translation(self.doc.as_ref().unwrap(),transforms.keys(),parents);
+                            cache.revision=self.geo_revision;
+                        }
+                        // An affine leaf with no visible effects is absent from
+                        // every effect path in MarginIndex. Stroke support
+                        // belongs to the removed certificates and is rebuilt.
+                        // PageProperties has no placement facts.
                     }
                 }
             }
