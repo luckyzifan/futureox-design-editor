@@ -2493,12 +2493,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       return [d.basis, d.localBox, d.start, p, d.handle || 0,
         d.kind === 'scale' || (!e.ctrlKey && (!!n.constrainProportions || e.shiftKey)),
         e.altKey,
-        d.kind !== 'scale' && (forcedPixelSnap(n) || (editor.state.snapPixels && !e.ctrlKey))]
+        // Control suspends object snap and the aspect lock. Pixel-grid snap
+        // stays on for a layer resize. Figma suspends it only in vector edit
+        // once the pixel grid is visible.
+        d.kind !== 'scale' && (forcedPixelSnap(n) || editor.state.snapPixels)]
     }
     return [[1, 0, 0, 1, d.box.x, d.box.y], { x: 0, y: 0, width: d.box.width, height: d.box.height },
       d.start, p, d.handle || 0,
       d.kind === 'scale' || (e.shiftKey && !e.ctrlKey), e.altKey,
-      d.kind !== 'scale' && editor.state.snapPixels && !e.ctrlKey]
+      d.kind !== 'scale' && editor.state.snapPixels]
   }
   function publishRotation(d: Drag, transform: Matrix) {
     const parents = editor.parentMap()
@@ -2591,7 +2594,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       guidedY = !!gy
     }
     const force = d.ids.some(id => forcedPixelSnap(editor.state.doc.nodes[id]))
-    const snapped = snapMove(d.box, { x: dx, y: dy }, force || (editor.state.snapPixels && !e.ctrlKey),
+    // Control already skipped object snap above. Pixel-grid snap still applies.
+    const snapped = snapMove(d.box, { x: dx, y: dy }, force || editor.state.snapPixels,
       { x: moveAxes.x && (force || !guidedX), y: moveAxes.y && (force || !guidedY) })
     return {
       matrix: translate(snapped.x, snapped.y),
