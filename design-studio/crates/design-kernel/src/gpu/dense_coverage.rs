@@ -213,7 +213,7 @@ pub(super) fn pack(scene: &mut GpuScene) -> Result<(), String> {
             remap_filter(field, &locations);
         }
     }
-    scene.curves = packed;
+    super::scratch::recycle_curves(std::mem::replace(&mut scene.curves, packed));
     Ok(())
 }
 
