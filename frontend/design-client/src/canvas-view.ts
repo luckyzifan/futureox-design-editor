@@ -91,6 +91,7 @@ export function resizeInBasis(
   aspect: boolean,
   center: boolean,
   snap: boolean,
+  pixelAxes?: { x: boolean; y: boolean },
 ): Matrix {
   const inv = inverse(basis),
     a = apply(inv, start),
@@ -110,23 +111,208 @@ export function resizeInBasis(
   const horizontal = edge < 0 || edge % 2 === 1, vertical = edge < 0 || edge % 2 === 0
   let sx = horizontal && box.width > 1e-10 ? (b.x - anchor.x) / (a.x - anchor.x || 1) : 1,
     sy = vertical && box.height > 1e-10 ? (b.y - anchor.y) / (a.y - anchor.y || 1) : 1
-  sx = Math.max(0.01, sx)
-  sy = Math.max(0.01, sy)
+  // A 1% magnitude floor keeps the matrix invertible. The sign stays, so the
+  // handle can cross the opposite edge and mirror that axis.
+  sx = sx < 0 ? Math.min(-0.01, sx) : Math.max(0.01, sx)
+  sy = sy < 0 ? Math.min(-0.01, sy) : Math.max(0.01, sy)
   if (aspect) {
-    sx = sy = edge >= 0 ? (horizontal ? sx : sy) : Math.max(sx, sy)
+    if (edge >= 0) {
+      const primary = horizontal ? sx : sy
+      if (primary >= 0) sx = sy = primary
+      else {
+        const magnitude = Math.abs(primary)
+        sx = horizontal ? primary : magnitude
+        sy = vertical ? primary : magnitude
+      }
+    } else if (sx < 0 || sy < 0) {
+      const magnitude = Math.max(Math.abs(sx), Math.abs(sy))
+      sx = (sx < 0 ? -1 : 1) * magnitude
+      sy = (sy < 0 ? -1 : 1) * magnitude
+    } else sx = sy = Math.max(sx, sy)
   }
   if (snap) {
-    const size = kernelSnapPoint({ x: box.width * sx, y: box.height * sy })
+    const allowX = pixelAxes?.x !== false
+    const allowY = pixelAxes?.y !== false
+    const signOf = (scale: number) => scale < 0 ? -1 : 1
+    const size = kernelSnapPoint({ x: Math.abs(box.width * sx), y: Math.abs(box.height * sy) })
     if (aspect) {
-      const factor =
-        box.width >= box.height
-          ? Math.max(1, size.x) / Math.max(box.width, 1e-10)
-          : Math.max(1, size.y) / Math.max(box.height, 1e-10)
-      sx = sy = factor
+      if (allowX && allowY) {
+        const factor =
+          box.width >= box.height
+            ? Math.max(1, size.x) / Math.max(box.width, 1e-10)
+            : Math.max(1, size.y) / Math.max(box.height, 1e-10)
+        sx = signOf(sx) * factor
+        sy = signOf(sy) * factor
+      }
     } else {
-      if (horizontal && box.width > 1e-10) sx = Math.max(1, size.x) / box.width
-      if (vertical && box.height > 1e-10) sy = Math.max(1, size.y) / box.height
+      if (allowX && horizontal && box.width > 1e-10) sx = signOf(sx) * Math.max(1, size.x) / box.width
+      if (allowY && vertical && box.height > 1e-10) sy = signOf(sy) * Math.max(1, size.y) / box.height
     }
   }
   return multiply(basis, multiply(around(anchor, [sx, 0, 0, sy, 0, 0]), inv))
+}
+
+export type ResizeSnapGuide = { axis: 'x' | 'y'; position: number; start: number; end: number }
+export type ResizeSnapQuery = (moving: Bounds, threshold: number) => {
+  dx: number
+  dy: number
+  guides: [ResizeSnapGuide | null, ResizeSnapGuide | null]
+  targetSpans?: [readonly [number, number] | null, readonly [number, number] | null]
+}
+export type ResizeSnapEnd = {
+  end: Point
+  guides: [ResizeSnapGuide | null, ResizeSnapGuide | null]
+  targetSpans: [readonly [number, number] | null, readonly [number, number] | null]
+  snapped: { x: boolean; y: boolean }
+}
+
+function resizeHandlePoint(box: Bounds, corner: number): Point {
+  const right = box.x + box.width, bottom = box.y + box.height
+  const corners = [
+    { x: box.x, y: box.y },
+    { x: right, y: box.y },
+    { x: right, y: bottom },
+    { x: box.x, y: bottom },
+  ]
+  if (corner < 4) return corners[corner] ?? corners[2]
+  const edge = corner - 4
+  const a = corners[edge] ?? corners[0], b = corners[(edge + 1) % 4]
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
+
+/** Object snap for an axis-aligned resize. Rotated local axes are unchanged:
+ * a world-axis correction would move the anchored edge. */
+export function resizeSnapEnd(
+  basis: Matrix,
+  box: Bounds,
+  start: Point,
+  end: Point,
+  corner: number,
+  aspect: boolean,
+  center: boolean,
+  threshold: number,
+  query: ResizeSnapQuery,
+): ResizeSnapEnd {
+  const none = (): ResizeSnapEnd => ({
+    end, guides: [null, null], targetSpans: [null, null], snapped: { x: false, y: false },
+  })
+  if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1e4) return none()
+  if (Math.abs(basis[1]) > 1e-8 || Math.abs(basis[2]) > 1e-8) return none()
+  let preliminary: Matrix
+  try { preliminary = resizeInBasis(basis, box, start, end, corner, aspect, center, false) }
+  catch { return none() }
+  const local = resizeHandlePoint(box, corner)
+  const at = (matrix: Matrix) => apply(matrix, apply(basis, local))
+  const worldHandle = at(preliminary)
+  const proposed = bounds(boxPoints(box).map(point => apply(preliminary, apply(basis, point))))
+  const edge = corner >= 4 ? corner - 4 : -1
+  const horizontal = edge < 0 || edge % 2 === 1
+  const vertical = edge < 0 || edge % 2 === 0
+  const mode = (active: boolean): 'move' | 'both' | 'none' => !active ? 'none' : center ? 'both' : 'move'
+  const line = (axis: 'x' | 'y', position: number) => {
+    const moving = axis === 'x'
+      ? { x: position, y: proposed.y, width: 0, height: Math.max(0, proposed.height) }
+      : { x: proposed.x, y: position, width: Math.max(0, proposed.width), height: 0 }
+    const hit = query(moving, threshold)
+    const slot = axis === 'x' ? 0 : 1
+    const guide = hit.guides[slot]
+    const delta = axis === 'x' ? hit.dx : hit.dy
+    if (!guide || guide.axis !== axis || !Number.isFinite(delta)) return null
+    return { delta, guide, span: hit.targetSpans?.[slot] ?? null }
+  }
+  type Pick = {
+    pointerDelta: number
+    guide: ResizeSnapGuide
+    span: readonly [number, number] | null
+    align: 'handle' | 'center' | 'opposite'
+  }
+  const choose = (axis: 'x' | 'y', kind: 'move' | 'both' | 'none'): Pick | null => {
+    if (kind === 'none') return null
+    const low = axis === 'x' ? proposed.x : proposed.y
+    const size = axis === 'x' ? proposed.width : proposed.height
+    const high = low + size
+    const handle = axis === 'x' ? worldHandle.x : worldHandle.y
+    const picks: (Pick & { feature: number; rank: number })[] = []
+    const push = (position: number, scale: number, rank: number, align: Pick['align']) => {
+      const hit = line(axis, position)
+      if (!hit || !Number.isFinite(hit.delta * scale)) return
+      picks.push({
+        pointerDelta: hit.delta * scale, guide: hit.guide, span: hit.span, align,
+        feature: Math.abs(hit.delta), rank,
+      })
+    }
+    if (kind === 'both') {
+      const pointerLow = Math.abs(handle - low) <= Math.abs(handle - high)
+      push(pointerLow ? low : high, 1, 0, 'handle')
+      push(pointerLow ? high : low, -1, 1, 'opposite')
+    } else {
+      push(handle, 1, 0, 'handle')
+      push(low + size / 2, 2, 1, 'center')
+    }
+    picks.sort((a, b) => Math.abs(a.pointerDelta) - Math.abs(b.pointerDelta) || a.feature - b.feature || a.rank - b.rank)
+    return picks[0] ?? null
+  }
+  const picked = { x: choose('x', mode(horizontal)), y: choose('y', mode(vertical)) }
+  if (!picked.x && !picked.y) return none()
+  const slope = (axis: 'x' | 'y') => {
+    const nudged = axis === 'x' ? { x: end.x + 1, y: end.y } : { x: end.x, y: end.y + 1 }
+    try {
+      const moved = at(resizeInBasis(basis, box, start, nudged, corner, aspect, center, false))
+      return axis === 'x' ? moved.x - worldHandle.x : moved.y - worldHandle.y
+    } catch { return 0 }
+  }
+  const shift = (axis: 'x' | 'y', pick: Pick) => {
+    const scale = slope(axis)
+    if (!Number.isFinite(scale) || Math.abs(scale) < 1e-6) return null
+    const delta = pick.pointerDelta / scale
+    return Number.isFinite(delta) ? delta : null
+  }
+  const placed = (next: Point, axis: 'x' | 'y', pick: Pick) => {
+    try {
+      const matrix = resizeInBasis(basis, box, start, next, corner, aspect, center, false)
+      const handle = at(matrix)
+      const rect = bounds(boxPoints(box).map(point => apply(matrix, apply(basis, point))))
+      const low = axis === 'x' ? rect.x : rect.y
+      const size = axis === 'x' ? rect.width : rect.height
+      const high = low + size
+      const handleCoord = axis === 'x' ? handle.x : handle.y
+      const value = pick.align === 'handle' ? handleCoord
+        : pick.align === 'center' ? low + size / 2
+        : Math.abs(handleCoord - low) <= Math.abs(handleCoord - high) ? high : low
+      return Math.abs(value - pick.guide.position) <= 1e-4
+    } catch { return false }
+  }
+  const from = (dx: number, dy: number): Point => ({ x: end.x + dx, y: end.y + dy })
+  const pack = (next: Point, x: Pick | null, y: Pick | null): ResizeSnapEnd => ({
+    end: next,
+    guides: [x?.guide ?? null, y?.guide ?? null],
+    targetSpans: [x?.span ?? null, y?.span ?? null],
+    snapped: { x: !!x, y: !!y },
+  })
+  let useX = picked.x, useY = picked.y
+  if (aspect && useX && useY) {
+    const options = (['x', 'y'] as const).flatMap(axis => {
+      const pick = axis === 'x' ? useX : useY
+      if (!pick) return []
+      const delta = shift(axis, pick)
+      if (delta === null) return []
+      const next = from(axis === 'x' ? delta : 0, axis === 'y' ? delta : 0)
+      return placed(next, axis, pick) ? [{ axis, delta, next }] : []
+    }).sort((a, b) => Math.abs(a.delta) - Math.abs(b.delta))
+    const best = options[0]
+    if (!best) return none()
+    return pack(best.next, best.axis === 'x' ? useX : null, best.axis === 'y' ? useY : null)
+  }
+  const dx = useX ? shift('x', useX) : 0
+  const dy = useY ? shift('y', useY) : 0
+  if (dx === null) useX = null
+  if (dy === null) useY = null
+  const accept = (x: Pick | null, y: Pick | null) => {
+    if (!x && !y) return null
+    const next = from(x ? dx ?? 0 : 0, y ? dy ?? 0 : 0)
+    if (x && !placed(next, 'x', x)) return null
+    if (y && !placed(next, 'y', y)) return null
+    return pack(next, x, y)
+  }
+  return accept(useX, useY) ?? accept(useX, null) ?? accept(null, useY) ?? none()
 }

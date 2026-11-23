@@ -67,7 +67,7 @@ import { lockedSelectionIds } from './canvas-menu-model'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { ViewControls } from './ViewControls'
 import { CanvasTextEditor } from './TextEditor'
-import { createBox, forcedPixelSnap, localClockwiseAfter, resizeInBasis, snapLocalClockwise, snapMove, selectionLocalBounds } from './canvas-view'
+import { createBox, forcedPixelSnap, localClockwiseAfter, resizeInBasis, resizeSnapEnd, snapLocalClockwise, snapMove, selectionLocalBounds } from './canvas-view'
 import { fitBounds, fitSelectedBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
 import { WheelCameraGesture } from './wheel-camera-gesture'
 import { desktopBridge,type LocalPeer } from './desktop'
@@ -894,7 +894,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }
   useLayoutEffect(() => {
     const gesture = drag.current
-    if (!editor.interactionActive || !gesture || gesture.kind !== 'move' ||
+    const guideGesture = gesture?.kind === 'move' || gesture?.kind === 'resize' || gesture?.kind === 'scale'
+    if (!editor.interactionActive || !gesture || !guideGesture ||
         gesture.session !== editor.sessionGeneration || gesture.page !== state.page) clearMoveGuides()
   }, [editor, editor.interactionActive, editor.sessionGeneration, state.page, state.tool])
   useLayoutEffect(() => {
@@ -2564,8 +2565,60 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     d.rotationDegrees = shared ?? d.rotationDegrees
     editor.setLiveRotation({ session: d.session, page: d.page, documentId: editor.state.doc.id, textById })
   }
+  function ensureGuideIndex(d: Drag) {
+    const targetKey = d.ids.join(',')
+    if (!guideIndex.current || guideIndex.current.drag !== d ||
+        guideIndex.current.rulers !== editor.state.rulers || guideIndex.current.ids !== targetKey) {
+      releaseGuideIndex()
+      const targetEntries = d.sourceEntries || entries, targetDocument = d.sourceDocument || editor.state.doc
+      const movingIds = new Set(d.ids)
+      const others = targetEntries.filter(v => !movingIds.has(v.id) && !v.ancestors.some(id => movingIds.has(id)))
+      const movingEntry = targetEntries.find(v => v.id === (d.originalIds?.[0] || d.ids[0]))
+      const parentId = d.ids.length === 1 ? movingEntry?.ancestors.at(-1) : undefined
+      const parent = parentId ? targetEntries.find(v => v.id === parentId)?.bounds : undefined
+      const siblings = others.map(v => v.bounds)
+      if (editor.state.rulers) {
+        const moving = new Set(targetEntries.filter(v => movingIds.has(v.id) || v.ancestors.some(id => movingIds.has(id))).map(v => v.id))
+        for (const guide of worldGuides(targetDocument, editor.state.page, targetEntries)) {
+          if (moving.has(guide.owner)) continue
+          if (Math.abs(guide.to.x - guide.from.x) < 1e-9) siblings.push({ x: guide.from.x, y: Math.min(guide.from.y, guide.to.y), width: 0, height: Math.abs(guide.to.y - guide.from.y) })
+          if (Math.abs(guide.to.y - guide.from.y) < 1e-9) siblings.push({ x: Math.min(guide.from.x, guide.to.x), y: guide.from.y, width: Math.abs(guide.to.x - guide.from.x), height: 0 })
+        }
+      }
+      guideIndex.current = { drag: d, rulers: editor.state.rulers, ids: targetKey, index: createSmartGuidesIndex(parent, siblings) }
+    }
+    return guideIndex.current?.index
+  }
+  function snappedResizeArgs(d: Drag, e: { ctrlKey: boolean }, args: Parameters<typeof resizeInBasis>): {
+    args: Parameters<typeof resizeInBasis>
+    guides: MoveGuides
+  } {
+    const unchanged = { args, guides: {} as MoveGuides }
+    if (!editor.state.snap || e.ctrlKey || Math.abs(args[0][1]) > 1e-8 || Math.abs(args[0][2]) > 1e-8) return unchanged
+    const index = ensureGuideIndex(d)
+    if (!index) return unchanged
+    const snapped = resizeSnapEnd(args[0], args[1], args[2], args[3], args[4], args[5], args[6], 6 / d.view.zoom,
+      (moving, threshold) => index.snap(moving, threshold))
+    if (!snapped.snapped.x && !snapped.snapped.y) return unchanged
+    const forced = d.ids.some(id => {
+      const node = (d.sourceDocument || editor.state.doc).nodes[id]
+      return !!node && forcedPixelSnap(node)
+    })
+    const showX = snapped.snapped.x && !forced, showY = snapped.snapped.y && !forced
+    const final = resizeInBasis(args[0], args[1], args[2], snapped.end, args[4], args[5], args[6], false)
+    const finalBounds = bounds(boxPoints(args[1]).map(point => apply(final, apply(args[0], point))))
+    return {
+      args: [args[0], args[1], args[2], snapped.end, args[4], args[5], args[6], args[7], {
+        x: !snapped.snapped.x || forced, y: !snapped.snapped.y || forced,
+      }],
+      guides: placedSmartGuides({
+        dx: snapped.end.x - args[3].x, dy: snapped.end.y - args[3].y,
+        guides: snapped.guides, targetSpans: snapped.targetSpans,
+      }, finalBounds, { x: showX, y: showY }),
+    }
+  }
   function gestureVisualMatrix(d: Drag, e: { shiftKey: boolean; altKey: boolean; ctrlKey: boolean }, p: Point, screen: Point): {
-    matrix: Matrix; guides: MoveGuides; degrees?: number
+    matrix: Matrix; guides: MoveGuides; degrees?: number; resizeArgs?: Parameters<typeof resizeInBasis>
     snapChanged?: boolean; constraintEnabled?: boolean; constraintChanged?: boolean; intentResolvedComparison?: 1 | 2
   } | null {
     if (d.kind === 'rotate') {
@@ -2595,7 +2648,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     if (d.kind === 'resize' || d.kind === 'scale') {
       const args = resizeArgs(d, e, p)
-      return args ? { matrix: resizeInBasis(...args), guides: {} } : null
+      if (!args) return null
+      const snapped = snappedResizeArgs(d, e, args)
+      return { matrix: resizeInBasis(...snapped.args), guides: snapped.guides, resizeArgs: snapped.args }
     }
     if (d.kind !== 'move' || !dragThresholdPassed(d.screen, screen, !!d.moved)) return null
     let dx = p.x - d.start.x, dy = p.y - d.start.y
@@ -2606,28 +2661,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     let guidedX = false, guidedY = false
     let snapResult: SmartSnapResult | undefined
     if (editor.state.snap && !e.ctrlKey) {
-      const targetKey = d.ids.join(',')
-      if (!guideIndex.current || guideIndex.current.drag !== d ||
-          guideIndex.current.rulers !== editor.state.rulers || guideIndex.current.ids !== targetKey) {
-        releaseGuideIndex()
-        const targetEntries = d.sourceEntries || entries, targetDocument = d.sourceDocument || editor.state.doc
-        const movingIds = new Set(d.ids)
-        const others = targetEntries.filter(v => !movingIds.has(v.id) && !v.ancestors.some(id => movingIds.has(id)))
-        const movingEntry = targetEntries.find(v => v.id === (d.originalIds?.[0] || d.ids[0]))
-        const parentId = d.ids.length === 1 ? movingEntry?.ancestors.at(-1) : undefined
-        const parent = parentId ? targetEntries.find(v => v.id === parentId)?.bounds : undefined
-        const siblings = others.map(v => v.bounds)
-        if (editor.state.rulers) {
-          const moving = new Set(targetEntries.filter(v => movingIds.has(v.id) || v.ancestors.some(id => movingIds.has(id))).map(v => v.id))
-          for (const guide of worldGuides(targetDocument, editor.state.page, targetEntries)) {
-            if (moving.has(guide.owner)) continue
-            if (Math.abs(guide.to.x - guide.from.x) < 1e-9) siblings.push({ x: guide.from.x, y: Math.min(guide.from.y, guide.to.y), width: 0, height: Math.abs(guide.to.y - guide.from.y) })
-            if (Math.abs(guide.to.y - guide.from.y) < 1e-9) siblings.push({ x: Math.min(guide.from.x, guide.to.x), y: guide.from.y, width: Math.abs(guide.to.x - guide.from.x), height: 0 })
-          }
-        }
-        guideIndex.current = { drag: d, rulers: editor.state.rulers, ids: targetKey, index: createSmartGuidesIndex(parent, siblings) }
-      }
-      const snap: SmartSnapResult = guideIndex.current?.index?.snap(
+      const index = ensureGuideIndex(d)
+      const snap: SmartSnapResult = index?.snap(
         { x: d.box.x + dx, y: d.box.y + dy, width: d.box.width, height: d.box.height }, 6 / d.view.zoom,
       ) ?? { dx: 0, dy: 0, guides: [null, null] }
       snapResult = snap
@@ -3042,7 +3077,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const duplicateMove = d.kind === 'move' && !d.moveFromAnywhere && e.altKey
     let transform: Matrix = translate(p.x - d.start.x, p.y - d.start.y)
     let moveGuides: MoveGuides = {}
-    if (d.kind !== 'move') clearMoveGuides()
+    if (d.kind !== 'move' && d.kind !== 'resize' && d.kind !== 'scale') clearMoveGuides()
     if (d.kind === 'move') {
       d.moved = dragThresholdPassed(d.screen, pointerScreen, !!d.moved)
       if (d.actionToken) actionTrace.sample(d.actionToken, { thresholdPassed: !!d.moved })
@@ -3090,8 +3125,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     } else if (d.kind === 'rotate' || d.kind === 'resize' || d.kind === 'scale') {
       const visual = gestureVisualMatrix(d, e, p, pointerScreen)
       if (!visual) return
-      const traced = (d.kind === 'resize' || d.kind === 'scale') ? resizeArgs(d, e, p) : null
+      const traced = visual.resizeArgs ?? ((d.kind === 'resize' || d.kind === 'scale') ? resizeArgs(d, e, p) : null)
       transform = traced ? resizeWithTrace(d, ...traced) : visual.matrix
+      if (d.kind === 'resize' || d.kind === 'scale') moveGuides = visual.guides
       if (d.kind === 'rotate') d.rotationDegrees = visual.degrees
     }
     if (d.kind === 'rotate') publishRotation(d, transform)
@@ -3171,7 +3207,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     editor.preview(patches,placement)
     guidePoses.current.clear()
     guideDocuments.current.set(editor.state.doc, { drag:d, guides:moveGuides })
-    if (geometryReady && !gpuPreviewAvailable && vectorPreviewSupported) showMoveGuides(moveGuides)
+    if (d.kind === 'resize' || d.kind === 'scale' || (geometryReady && !gpuPreviewAvailable && vectorPreviewSupported)) showMoveGuides(moveGuides)
     if (!d.cropFrame && d.kind === 'move' && !(geometryReady && !gpuPreviewAvailable && vectorPreviewSupported)) awaitFallbackMove()
     else clearFallbackMove()
     restoreGpuOverlays()
