@@ -25,8 +25,9 @@ import { desktopPet } from './desktop-pet'
 import { nudgePreference } from './nudge-preference'
 import { createKeyboardNudgeGesture, keyboardNudgeActive } from './keyboard-nudge-gesture'
 import { isDimensionNudgeCommand, nudgeSelectionDimensions, rulersToggleEvent } from './canvas-workflow-shortcuts'
-import { canvasMarqueeSelection, marqueeReleasePlan } from './canvas-selection-workflows'
+import { canvasMarqueeSelection, marqueeReleasePlan, marqueeUsesMatchingSelection } from './canvas-selection-workflows'
 import { deepSelectChord, doubleClickFollowUp, enterKeyEditsOutline, enterKeyEditsText } from './figma-basic-ops'
+import { selectionHasMatchingLayers, shiftMatchingClickTarget } from './selection-queries'
 import { CanvasSceneSnapshots } from './canvas-scene-snapshots'
 import { StartupPreview } from './StartupPreview'
 import type { StartupPreview as StartupPixels, PreviewPixels } from './startup-preview'
@@ -230,6 +231,7 @@ type Drag = {
   widthIndex?: number
   additive?: boolean
   sketchMarquee?: boolean
+  shiftMarquee?: boolean
   forcedMarquee?: boolean
   marqueeIgnoreId?: string | null
   originSelection: string[]
@@ -2342,9 +2344,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         ? target.closest('[data-frame-title]')?.getAttribute('data-frame-title') : null
       const title = frameTitleHit(s.doc,s.page,titleId)
       if(titleId&&!title){host.current?.releasePointerCapture(e.pointerId);return}
-      const hit = title || displayedHoverHit(p, deepSelectChord(e, shortcutPlatform()) || s.tool === 'vector')
+      const deepChord = deepSelectChord(e, shortcutPlatform()) || s.tool === 'vector'
+      const hit = title || displayedHoverHit(p, deepChord)
       const selectedNode = s.selection.length === 1 && ids.length === 1 ? s.doc.nodes[ids[0]] : null
-      const intentOptions = { inside: pointInContours(p, [selectionCorners]), deep: deepSelectChord(e, shortcutPlatform()) || s.tool === 'vector',
+      const intentOptions = { inside: pointInContours(p, [selectionCorners]), deep: deepChord,
         additive: e.shiftKey || s.tool === 'multiselect',
         readOnly: selectionFeedback.readOnly || !['select', 'scale'].includes(s.tool) }
       const hitNode = hit ? s.doc.nodes[hit] : null
@@ -2353,7 +2356,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         selectedChildDragIntent(selectedNode, hit, selected.find(entry => entry.id === selectedNode?.id)?.ancestors || [], intentOptions)
       const containerHit=hit&&selected.length>1&&selected.every(entry=>entry.ancestors.includes(hit))
       const gap = (!hit||containerHit) && ids.length>1 && !e.metaKey && !e.ctrlKey && ['select','scale'].includes(s.tool) && contains(selectionBox,p)
-      const intent = groupIntent || selectionPointerDown(s.selection, gap?null:hit, e.shiftKey || s.tool==='multiselect',!!gap)
+      let clickHit = hit
+      if (!title && hit && e.shiftKey && !deepChord && uiMode === 'figma' &&
+          (s.tool === 'select' || s.tool === 'multiselect' || s.tool === 'scale')) {
+        const parents = editor.parentMap(s.doc)
+        if (selectionHasMatchingLayers(s.doc, s.selection, parents)) {
+          const leaf = displayedHoverHit(p, true)
+          if (leaf && leaf !== hit) clickHit = shiftMatchingClickTarget(s.doc, s.page, s.selection, hit, leaf, parents)
+        }
+      }
+      const intent = groupIntent || selectionPointerDown(s.selection, gap?null:clickHit, e.shiftKey || s.tool==='multiselect',!!gap)
       const selectionChanged = actionTrace.enabled && (s.selection.length !== intent.selection.length || s.selection.some((id, i) => id !== intent.selection[i]))
       if (actionTrace.enabled) actionTrace.event(CanvasAction.hitTest, ActionSource.pointer, ActionOutcome.observed, ActionReason.none, {
         hitCount: hit ? 1 : 0, hitDepth: hit ? entries.find(entry => entry.id === hit)?.ancestors.length || 0 : 0,
@@ -2441,6 +2453,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       additive: e.shiftKey || s.tool==='multiselect',
       ...(dragKind === 'marquee' ? {
         sketchMarquee: uiMode === 'sketch',
+        shiftMarquee: uiMode === 'figma' && e.shiftKey,
         forcedMarquee: kind === 'marquee',
         // Sketch's forced marquee ignores its starting layer and reaches
         // nested content without requiring an additional deep-select chord.
@@ -2950,7 +2963,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             })
             const ids = plan.apply ? canvasMarqueeSelection(editor.state.doc, editor.state.page, d.originSelection,
               (d.pickIndex || index).query(box), box, { deep: plan.deep, contained: plan.contained,
-                additive: plan.additive, toggle: plan.toggle, ignoreId: d.marqueeIgnoreId }) : []
+                additive: plan.additive, toggle: plan.toggle, ignoreId: d.marqueeIgnoreId,
+                matching: marqueeUsesMatchingSelection({ sketch: !!d.sketchMarquee, deep: plan.deep, shift: e.shiftKey, startedWithShift: !!d.shiftMarquee }) }) : []
             setMarqueePreview(previous => previous && previous.length === ids.length && previous.every((id, i) => id === ids[i]) ? previous : ids)
           }
         }
@@ -3342,7 +3356,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         const area = createBox(d.start, screenToWorld(d.view, release), false)
         editor.select(canvasMarqueeSelection(editor.state.doc, editor.state.page, d.originSelection,
           (d.pickIndex || index).query(area), area, { deep: plan.deep, contained: plan.contained,
-            additive: plan.additive, toggle: plan.toggle, ignoreId: d.marqueeIgnoreId }))
+            additive: plan.additive, toggle: plan.toggle, ignoreId: d.marqueeIgnoreId,
+            matching: marqueeUsesMatchingSelection({ sketch: !!d.sketchMarquee, deep: plan.deep, shift: e.shiftKey, startedWithShift: !!d.shiftMarquee }) }))
       }
     } else if(d.kind==='pivot') {
       // The origin is an editing handle, not document geometry or undo state.

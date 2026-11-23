@@ -639,3 +639,115 @@ test('Figma keyboard box selection picks layers, enters children, follows the vi
   expect(cursor()).toBeNull()
   unchanged(doc)
 })
+
+function matchingFrames() {
+  const left = node('frame', 80, 40, 220, 160), right = node('frame', 420, 40, 220, 160)
+  const leftRow = node('group', 12, 14, 180, 90), rightRow = node('group', 12, 14, 180, 90)
+  const leftIcon = node('rectangle', 10, 8, 80, 16), rightIcon = node('rectangle', 10, 8, 80, 16)
+  const other = node('rectangle', 10, 36, 50, 20)
+  left.name = 'Screen A'; right.name = 'Screen B'
+  leftRow.name = 'Row'; rightRow.name = 'Row'
+  leftIcon.name = 'Icon'; rightIcon.name = 'Icon'; other.name = 'Other'
+  leftRow.children = [leftIcon.id]; rightRow.children = [rightIcon.id, other.id]
+  left.children = [leftRow.id]; right.children = [rightRow.id]
+  return { nodes: [left, right, leftRow, rightRow, leftIcon, rightIcon, other], left, right, leftRow, rightRow, leftIcon, rightIcon, other }
+}
+
+test('a direct frame child joins a Figma Shift-click and a second Shift-click removes it', async () => {
+  await act(async () => applyInterfaceLayout('figma'))
+  const left = node('frame', 80, 300, 200, 120), right = node('frame', 420, 300, 200, 120)
+  const leftIcon = node('rectangle', 20, 30, 80, 16), rightIcon = node('rectangle', 20, 30, 80, 16)
+  left.name = 'Screen A'; right.name = 'Screen B'; leftIcon.name = 'Icon'; rightIcon.name = 'Icon'
+  left.children = [leftIcon.id]; right.children = [rightIcon.id]
+  const doc = await render([left, right, leftIcon, rightIcon], [left.id, right.id])
+  await act(async () => pointer('pointerdown', 90, 310))
+  await act(async () => pointer('pointerup', 90, 310))
+  expect(editor.state.selection).toEqual([left.id])
+  await act(async () => pointer('pointerdown', 140, 338))
+  await act(async () => pointer('pointerup', 140, 338))
+  expect(editor.state.selection).toEqual([leftIcon.id])
+  await act(async () => editor.select([leftIcon.id]))
+  await act(async () => pointer('pointerdown', 480, 338, { shiftKey: true }))
+  await act(async () => pointer('pointerup', 480, 338, { shiftKey: true }))
+  expect(ordered(editor.state.selection)).toEqual(ordered([leftIcon.id, rightIcon.id]))
+  await act(async () => pointer('pointerdown', 480, 338, { shiftKey: true }))
+  await act(async () => pointer('pointerup', 480, 338, { shiftKey: true }))
+  expect(editor.state.selection).toEqual([leftIcon.id])
+  unchanged(doc)
+})
+
+test('Shift-click adds a matching layer inside another frame group, and Shift-click removes it', async () => {
+  await act(async () => applyInterfaceLayout('figma'))
+  const { nodes, left, right, leftRow, rightRow, leftIcon, rightIcon } = matchingFrames()
+  const doc = await render(nodes, [left.id, right.id])
+  await act(async () => pointer('pointerdown', 142, 70))
+  await act(async () => pointer('pointerup', 142, 70))
+  expect(editor.state.selection).toEqual([leftRow.id])
+  await act(async () => editor.select([leftIcon.id]))
+  await act(async () => pointer('pointerdown', 482, 70, { shiftKey: true }))
+  await act(async () => pointer('pointerup', 482, 70, { shiftKey: true }))
+  expect(ordered(editor.state.selection)).toEqual(ordered([leftIcon.id, rightIcon.id]))
+  await act(async () => pointer('pointerdown', 482, 70, { shiftKey: true }))
+  await act(async () => pointer('pointerup', 482, 70, { shiftKey: true }))
+  expect(editor.state.selection).toEqual([leftIcon.id])
+  await act(async () => pointer('pointerdown', 482, 70, { metaKey: true }))
+  await act(async () => pointer('pointerup', 482, 70, { metaKey: true }))
+  expect(editor.state.selection).toEqual([rightIcon.id])
+  unchanged(doc)
+})
+
+test('Shift-click keeps the shallow group when the parent group name differs', async () => {
+  await act(async () => applyInterfaceLayout('figma'))
+  const named = matchingFrames()
+  named.rightRow.name = 'Nav'
+  const doc = await render(named.nodes, [named.left.id, named.right.id])
+  await act(async () => editor.select([named.leftIcon.id]))
+  await act(async () => pointer('pointerdown', 482, 70, { shiftKey: true }))
+  await act(async () => pointer('pointerup', 482, 70, { shiftKey: true }))
+  expect(ordered(editor.state.selection)).toEqual(ordered([named.leftIcon.id, named.rightRow.id]))
+  unchanged(doc)
+})
+
+test('Shift-click keeps the shallow group when the nested layer name differs', async () => {
+  await act(async () => applyInterfaceLayout('figma'))
+  const different = matchingFrames()
+  const doc = await render(different.nodes, [different.left.id, different.right.id])
+  await act(async () => editor.select([different.leftIcon.id]))
+  await act(async () => pointer('pointerdown', 467, 100, { shiftKey: true }))
+  await act(async () => pointer('pointerup', 467, 100, { shiftKey: true }))
+  expect(ordered(editor.state.selection)).toEqual(ordered([different.leftIcon.id, different.rightRow.id]))
+  expect(editor.state.selection).not.toContain(different.other.id)
+  unchanged(doc)
+})
+
+test('Figma Shift-drag adds and removes only matching layers across top-level frames', async () => {
+  await act(async () => applyInterfaceLayout('figma'))
+  const { nodes, left, right, leftIcon, rightIcon, other } = matchingFrames()
+  const doc = await render(nodes, [left.id, right.id])
+  await act(async () => editor.select([leftIcon.id]))
+  await marquee([400, 20], [680, 220], { shiftKey: true })
+  expect(ordered(editor.state.selection)).toEqual(ordered([leftIcon.id, rightIcon.id]))
+  expect(editor.state.selection).not.toContain(other.id)
+  expect(editor.state.selection).not.toContain(left.id)
+  expect(editor.state.selection).not.toContain(right.id)
+  await marquee([400, 50], [540, 85], { shiftKey: true })
+  expect(editor.state.selection).toEqual([leftIcon.id])
+  await act(async () => editor.select([]))
+  await marquee([20, 20], [700, 240])
+  expect(ordered(editor.state.selection)).toEqual(ordered([left.id, right.id]))
+  await marquee([400, 20], [680, 220], { metaKey: true })
+  expect(ordered(editor.state.selection)).toEqual(ordered([rightIcon.id, other.id]))
+  await act(async () => editor.select([leftIcon.id]))
+  await marquee([400, 20], [680, 220], { shiftKey: true, metaKey: true })
+  expect(ordered(editor.state.selection)).toEqual(ordered([leftIcon.id, rightIcon.id, other.id]))
+  unchanged(doc)
+})
+
+test('Sketch Shift marquee does not adopt a nested match from another frame', async () => {
+  const { nodes, left, right, leftIcon, rightIcon } = matchingFrames()
+  const doc = await render(nodes, [left.id, right.id])
+  await act(async () => editor.select([leftIcon.id]))
+  await marquee([400, 20], [680, 220], { shiftKey: true })
+  expect(editor.state.selection).not.toContain(rightIcon.id)
+  unchanged(doc)
+})
