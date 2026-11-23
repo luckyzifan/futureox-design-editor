@@ -179,15 +179,311 @@ pub(crate) fn infer_smooth_coverage_bias(
     if controls_follow_chord(a, b, c, d) {
         return None;
     }
-    if let Some(smoothing) =
-        shoulder_smoothing(a, b, c, d).or_else(|| shoulder_smoothing(d, c, b, a))
-    {
+    if let Some((smoothing, _)) = shoulder_fit(a, b, c, d).or_else(|| shoulder_fit(d, c, b, a)) {
         return Some(crate::path::SmoothCoverageBias::Shoulder(smoothing));
     }
-    if let Some(smoothing) = arc_smoothing(a, b, c, d).or_else(|| arc_smoothing(d, c, b, a)) {
+    if let Some((smoothing, _)) = arc_fit(a, b, c, d).or_else(|| arc_fit(d, c, b, a)) {
         return Some(crate::path::SmoothCoverageBias::Arc(smoothing));
     }
     None
+}
+
+/// A float32 Figma flatten of a smooth rectangle is the same corner construction
+/// with coordinates rounded to a few ulps. Rebuilding that rectangle in f64 puts
+/// the fill on the contour the live rounded rectangle already matches. Anything
+/// that is not that construction, including a pure circular flatten, stays put.
+pub(crate) fn dequantized_smooth_rectangle(path: &Path) -> Option<Path> {
+    if !path.coverage_bias.is_empty() || path.commands.len() > 48 {
+        return None;
+    }
+    let cubics = smooth_rectangle_cubics(path)?;
+    if cubics.is_empty() || cubics.len() > 8 {
+        return None;
+    }
+    let (width, height) = rectangle_extent(path)?;
+    let slots = [
+        Point::new(0., 0.),
+        Point::new(width, 0.),
+        Point::new(width, height),
+        Point::new(0., height),
+    ];
+    let mut radii = [0.; 4];
+    let mut positive_smoothing = Vec::new();
+    let mut saw_quarter = false;
+    for corner in &cubics {
+        let (sharp, radius, smoothing) = corner_parameters(corner)?;
+        let (slot, distance) = slots
+            .iter()
+            .enumerate()
+            .map(|(index, corner)| (index, (*corner - sharp).length()))
+            .min_by(|(_, left), (_, right)| left.total_cmp(right))?;
+        if distance > 1e-3 || radii[slot] != 0. {
+            return None;
+        }
+        radii[slot] = radius;
+        if smoothing > 0. {
+            positive_smoothing.push(smoothing);
+        } else {
+            saw_quarter = true;
+        }
+    }
+    let mut candidates = positive_smoothing;
+    if candidates.is_empty() && saw_quarter {
+        // Fitted smoothing collapsed to a quarter circle. Any positive authored
+        // value produces that same cubic; zero would switch it to an arc command.
+        candidates.push(1.);
+    }
+    candidates.sort_by(|a, b| a.total_cmp(b));
+    candidates.dedup();
+    let source = cubic_controls(path)?;
+    let mut best: Option<(f64, Path)> = None;
+    for smoothing in candidates {
+        let built = rectangle(width, height, radii, smoothing);
+        let Some(controls) = cubic_controls(&built) else {
+            continue;
+        };
+        let Some(drift) = cubic_drift(&source, &controls) else {
+            continue;
+        };
+        if drift <= 5e-5 && best.as_ref().is_none_or(|(previous, _)| drift < *previous) {
+            best = Some((drift, built));
+        }
+    }
+    let (_, built) = best?;
+    (!built.coverage_bias.is_empty()).then_some(built)
+}
+
+fn quantize_f32(value: f64) -> f64 {
+    value as f32 as f64
+}
+
+enum Seg {
+    Line {
+        a: Point,
+        b: Point,
+    },
+    Cubic {
+        a: Point,
+        b: Point,
+        c: Point,
+        d: Point,
+    },
+}
+
+fn contour_segments(path: &Path) -> Option<Vec<Seg>> {
+    let mut pen = Point::default();
+    let mut start = pen;
+    let mut segs = Vec::new();
+    let mut closed = false;
+    for command in &path.commands {
+        match *command {
+            Command::Move(p) => {
+                if !segs.is_empty() || closed {
+                    return None;
+                }
+                pen = p;
+                start = p;
+            }
+            Command::Line(p) => {
+                if (p - pen).length() > 1e-8 {
+                    segs.push(Seg::Line { a: pen, b: p });
+                }
+                pen = p;
+            }
+            Command::Cubic(b, c, d) => {
+                segs.push(Seg::Cubic { a: pen, b, c, d });
+                pen = d;
+            }
+            Command::Close => {
+                if (pen - start).length() > 1e-8 {
+                    segs.push(Seg::Line { a: pen, b: start });
+                }
+                closed = true;
+            }
+            _ => return None,
+        }
+    }
+    closed.then_some(segs)
+}
+
+type Cubic = (Point, Point, Point, Point);
+
+fn smooth_rectangle_cubics(path: &Path) -> Option<Vec<Vec<Cubic>>> {
+    let segs = contour_segments(path)?;
+    let mut run = Vec::new();
+    let mut runs = Vec::new();
+    for seg in segs {
+        match seg {
+            Seg::Cubic { a, b, c, d } => run.push((a, b, c, d)),
+            Seg::Line { .. } => {
+                if !run.is_empty() {
+                    runs.push(std::mem::take(&mut run));
+                }
+            }
+        }
+    }
+    if !run.is_empty() {
+        runs.push(run);
+    }
+    let mut corners = Vec::new();
+    for run in runs {
+        let mut index = 0;
+        while index < run.len() {
+            let mut taken = None;
+            for len in 1..=3.min(run.len() - index) {
+                if corner_axes(&run[index..index + len]).is_some() {
+                    taken = Some(len);
+                    break;
+                }
+            }
+            let len = taken?;
+            corners.push(run[index..index + len].to_vec());
+            index += len;
+        }
+    }
+    (!corners.is_empty()).then_some(corners)
+}
+
+/// `true` is horizontal. A corner leaves one rectangle edge and arrives on the other.
+fn tangent_axis(delta: Point) -> Option<bool> {
+    let len = delta.length();
+    if len < 1e-6 {
+        return None;
+    }
+    let horizontal = delta.x.abs() / len;
+    if horizontal > 0.999 {
+        Some(true)
+    } else if delta.y.abs() / len > 0.999 {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn corner_axes(corner: &[Cubic]) -> Option<(bool, bool)> {
+    let (a, b, _, _) = *corner.first()?;
+    let (_, _, c, d) = *corner.last()?;
+    let start = tangent_axis(b - a)?;
+    let end = tangent_axis(d - c)?;
+    (start != end).then_some((start, end))
+}
+
+fn fit_cubic(a: Point, b: Point, c: Point, d: Point) -> Option<(f64, f64)> {
+    if controls_follow_chord(a, b, c, d) {
+        return None;
+    }
+    shoulder_fit(a, b, c, d)
+        .or_else(|| shoulder_fit(d, c, b, a))
+        .or_else(|| arc_fit(a, b, c, d))
+        .or_else(|| arc_fit(d, c, b, a))
+}
+
+fn corner_parameters(corner: &[Cubic]) -> Option<(Point, f64, f64)> {
+    let (start_horizontal, _) = corner_axes(corner)?;
+    let (a, _, _, _) = corner[0];
+    let (_, _, _, d) = *corner.last()?;
+    // The outer tangents lie on the rectangle edges, so their constant
+    // coordinates are the sharp corner even when a float32 anchor is a ulp off.
+    let x = if start_horizontal { d.x } else { a.x };
+    let y = if start_horizontal { a.y } else { d.y };
+    let mut radius = None;
+    let mut smoothing = 0_f64;
+    for (a, b, c, d) in corner {
+        let (fit_smoothing, fit_radius) = fit_cubic(*a, *b, *c, *d)?;
+        let quantized = quantize_f32(fit_radius);
+        if quantized < 0.25 {
+            return None;
+        }
+        if let Some(previous) = radius {
+            if previous != quantized {
+                return None;
+            }
+        } else {
+            radius = Some(quantized);
+        }
+        smoothing = smoothing.max(quantize_f32(fit_smoothing));
+    }
+    Some((Point::new(x, y), radius?, smoothing))
+}
+
+fn rectangle_extent(path: &Path) -> Option<(f64, f64)> {
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    let mut saw = false;
+    for command in &path.commands {
+        let point = match *command {
+            Command::Move(p) | Command::Line(p) => p,
+            Command::Cubic(_, _, p) => p,
+            Command::Close => continue,
+            _ => return None,
+        };
+        min_x = min_x.min(point.x);
+        min_y = min_y.min(point.y);
+        max_x = max_x.max(point.x);
+        max_y = max_y.max(point.y);
+        saw = true;
+    }
+    if !saw || min_x.abs() > 1e-3 || min_y.abs() > 1e-3 || max_x <= min_x || max_y <= min_y {
+        return None;
+    }
+    Some((max_x, max_y))
+}
+
+fn cubic_controls(path: &Path) -> Option<Vec<Cubic>> {
+    let mut pen = Point::default();
+    let mut controls = Vec::new();
+    for command in &path.commands {
+        match *command {
+            Command::Move(p) | Command::Line(p) => pen = p,
+            Command::Cubic(b, c, d) => {
+                controls.push((pen, b, c, d));
+                pen = d;
+            }
+            Command::Close => {}
+            _ => return None,
+        }
+    }
+    Some(controls)
+}
+
+fn cubic_drift(source: &[Cubic], built: &[Cubic]) -> Option<f64> {
+    if source.len() != built.len() || source.is_empty() {
+        return None;
+    }
+    let mut used = vec![false; built.len()];
+    let mut worst = 0_f64;
+    for (a, b, c, d) in source {
+        let mut best = f64::INFINITY;
+        let mut index = 0;
+        for (candidate, (e, f, g, h)) in built.iter().enumerate() {
+            if used[candidate] {
+                continue;
+            }
+            let forward = (*a - *e)
+                .length()
+                .max((*b - *f).length())
+                .max((*c - *g).length())
+                .max((*d - *h).length());
+            let reverse = (*a - *h)
+                .length()
+                .max((*b - *g).length())
+                .max((*c - *f).length())
+                .max((*d - *e).length());
+            let drift = forward.min(reverse);
+            if drift < best {
+                best = drift;
+                index = candidate;
+            }
+        }
+        if !best.is_finite() {
+            return None;
+        }
+        used[index] = true;
+        worst = worst.max(best);
+    }
+    Some(worst)
 }
 
 fn controls_follow_chord(a: Point, b: Point, c: Point, d: Point) -> bool {
@@ -209,7 +505,7 @@ fn rotate(point: Point, angle: f64) -> Point {
     Point::new(cos * point.x - sin * point.y, sin * point.x + cos * point.y)
 }
 
-fn shoulder_smoothing(a: Point, b: Point, c: Point, d: Point) -> Option<f64> {
+fn shoulder_fit(a: Point, b: Point, c: Point, d: Point) -> Option<(f64, f64)> {
     let tangent = b - a;
     if tangent.length() < 1e-6 {
         return None;
@@ -264,7 +560,7 @@ fn shoulder_smoothing(a: Point, b: Point, c: Point, d: Point) -> Option<f64> {
         {
             continue;
         }
-        return Some(smoothing);
+        return Some((smoothing, radius));
     }
     None
 }
@@ -285,7 +581,7 @@ fn shoulder_cubic(radius: f64, smoothing: f64) -> (Point, Point, Point, Point) {
     )
 }
 
-fn arc_smoothing(a: Point, b: Point, c: Point, d: Point) -> Option<f64> {
+fn arc_fit(a: Point, b: Point, c: Point, d: Point) -> Option<(f64, f64)> {
     let chord = d - a;
     let distance = chord.length();
     if distance < 0.05 {
@@ -307,9 +603,9 @@ fn arc_smoothing(a: Point, b: Point, c: Point, d: Point) -> Option<f64> {
         .max((c - Point::new(radius - k, -radius)).length())
         .max((d - Point::new(radius, -radius)).length());
     if radius >= 0.25 && quarter_error <= 2e-3 * radius.max(1.) {
-        return Some(0.);
+        return Some((0., radius));
     }
-    let mut best: Option<(f64, f64)> = None;
+    let mut best: Option<(f64, f64, f64)> = None;
     for step in 1..80 {
         let smoothing = step as f64 / 80.;
         let theta = smoothing * std::f64::consts::FRAC_PI_4;
@@ -332,14 +628,14 @@ fn arc_smoothing(a: Point, b: Point, c: Point, d: Point) -> Option<f64> {
             .length()
             .max((c - c2).length())
             .max((d - end_point).length());
-        if best.is_none_or(|(previous, _)| error < previous) {
-            best = Some((error, smoothing));
+        if best.is_none_or(|(previous, _, _)| error < previous) {
+            best = Some((error, smoothing, radius));
         }
     }
-    let (error, smoothing) = best?;
-    let radius = distance;
-    if error > 2e-3 * radius.max(1.) {
+    let (error, smoothing, radius) = best?;
+    // The acceptance radius is the chord length, matching the previous gate.
+    if error > 2e-3 * distance.max(1.) {
         return None;
     }
-    Some(smoothing)
+    Some((smoothing, radius))
 }

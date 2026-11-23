@@ -680,6 +680,11 @@ impl Path {
         if !tolerance.is_finite() || tolerance <= 0. || tolerance > 10. {
             return Err("Invalid flattening tolerance".into());
         }
+        if coverage_bias && self.coverage_bias.is_empty() {
+            if let Some(exact) = crate::rounded::dequantized_smooth_rectangle(self) {
+                return exact.flatten_impl(m, tolerance, clip, true);
+            }
+        }
         // Account for uncancelled affine products before fill-only culling.
         // A distant query must not conceal an unrepresentable curve contract.
         let tolerance = if self
