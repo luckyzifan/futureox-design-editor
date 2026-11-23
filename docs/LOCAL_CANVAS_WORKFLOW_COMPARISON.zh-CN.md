@@ -81,7 +81,7 @@
 | CLP-03 | Shift+Mod+V：Paste over selection，同父级覆盖所选位置 [F10] [S8] | 新 `paste-over-selection.ts` → 单次 `Editor.change`；菜单、DOM、原生路由一致 | 本轮部分补齐：Figma 单目标，Sketch 每目标一份；保留目标。父局部 Inspector x/y 顶左对齐；Sketch 锚点是明确的本地适配。原位粘贴仍独立菜单，无冲突快捷键 | `paste-over-selection.test.ts`；native main/preload/keyboard tests |
 | CLP-04 | Paste to replace：删除目标、继承目标约束 [F10] [S8] | 桌面 Shift+Mod+R / 菜单 → `pasteToSelection(true)` | 代码+测试；浏览器保留强刷新键，用菜单 | `smart-paste.test.ts` |
 | CLP-05 | Paste here：鼠标位置为复制内容放置点 [F10] | 右键 worldPoint → `Editor.paste(..., position)` | 代码入口存在；自动布局 frame 上方放置等全部语义未独立穷举 | `clipboard-semantics.test.ts`、`canvas-context-menu.test.ts` |
-| CLP-06 | Duplicate、Alt 拖复制、连续位移重复 [F10] [S8] | `Editor.duplicate/moveDuplication` | 代码+测试；Figma 布局里仅顶层画板的 ⌘D 向右移动世界包围盒宽度 + 40，普通对象仍 +10,+10。Sketch Duplicate behind、去除交互副本、偏移偏好缺口仍在；连续旋转重复未以位移测试代替 | `native-duplication.test.ts` |
+| CLP-06 | Duplicate、Alt 拖复制、连续位移重复 [F10] [S8] | `Editor.duplicate/moveDuplication` | 代码+测试；Figma 布局里页面上的画板和分区，以及分区直接子级的画板/分区，⌘D 向右移动世界包围盒宽度 + 40，并只把装不下副本的分区扩到副本边界。普通对象、编组内画板和自动布局流子级仍不使用这步距。Sketch Duplicate behind、去除交互副本、偏移偏好缺口仍在；连续旋转重复未以位移测试代替 | `native-duplication.test.ts` |
 | CLP-07 | 复制/粘贴属性、局部填充/描边/效果 | 右键与 Mod+Alt+C/V → `property-clipboard.ts` | 已有本地实现；Sketch “含/不含角半径”的偏好与额外快捷键未对齐 | `property-clipboard.test.ts` |
 | ORD-01 | 前移/后移、置顶/置底 [F5] [S1] | `Editor.reorder` 与菜单/共享快捷键表 | 本轮修正 Figma Windows 为 Ctrl+Shift+[ / ]；Mac Cmd+Option 保持；Sketch 仍用自己的主键+Option 适配 | `canvas-workflow-shortcuts.test.ts`、`shortcut-profiles.test.ts` |
 | ORD-02 | 列表拖入/拖出容器、排序、取消 [S10] | `Layers.tsx`、`layer-drop.ts`、`reparentMany` | 代码+测试；真实滚动/跨屏拖动未运行 | `layer-drop.test.ts`、`layout-order.test.ts` |
