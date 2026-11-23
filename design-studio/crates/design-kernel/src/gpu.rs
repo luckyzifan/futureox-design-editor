@@ -102,6 +102,10 @@ pub(crate) struct CameraPrepare {
     incomplete: bool,
     retained_nodes: usize,
     incremental: bool,
+    /// One integer device-pixel translation of every page root since the
+    /// programs currently in `programs` were compiled. Consumed by the next
+    /// scene compile. `None` means those programs cannot be shifted.
+    device_shift: Option<(i32, i32)>,
 }
 impl CameraPrepare {
     fn retained_bytes(&self) -> usize {
@@ -125,14 +129,14 @@ impl CameraPrepare {
     /// device-space effect margins (radius × scale) and the guard padding, so
     /// the camera metadata summary must be rebuilt instead of retained.
     pub(crate) fn transformed(&mut self, doc: &Document, ids: impl Iterator<Item = String>, revision: u64, parents: &impl crate::render_index::ParentLookup) {
-        self.translated(doc, ids, revision, parents);
+        self.translated(doc, ids, revision, parents, None);
         self.metadata = None;
     }
     /// Only called after a validated pure-translation edit. The exact camera,
     /// guard, styles and resource lineage are unchanged. Descendants need new
     /// device geometry; ancestors need new aggregate bounds. Other entries and
     /// their exact-crop programs remain immutable.
-    pub(crate) fn translated(&mut self, doc: &Document, ids: impl Iterator<Item = String>, revision: u64, parents: &impl crate::render_index::ParentLookup) {
+    pub(crate) fn translated(&mut self, doc: &Document, ids: impl Iterator<Item = String>, revision: u64, parents: &impl crate::render_index::ParentLookup, device_shift: Option<(i32, i32)>) {
         let mut dirty = std::collections::HashSet::new();
         let mut stack: Vec<String> = ids.collect();
         for id in &stack {
@@ -147,7 +151,11 @@ impl CameraPrepare {
         // preserves any live snapshot reader before the targeted removals.
         let prepared = Arc::make_mut(&mut self.prepared);
         for id in &dirty { prepared.remove(id); }
-        self.programs.retain_nodes(&dirty);
+        // An integer device shift keeps scanline words and only moves the
+        // crop origin. A fractional phase, or any non-uniform move, still
+        // drops the programs because the coverage intervals change.
+        if device_shift.is_none() { self.programs.retain_nodes(&dirty); }
+        self.device_shift = device_shift.filter(|(dx, dy)| *dx != 0 || *dy != 0);
         self.fragments.invalidate(&dirty); self.programs.reserve(self.fragments.bytes);
         self.key.0 = revision;
         self.zoom_bounds = None;
@@ -345,14 +353,37 @@ struct CameraMetadata {
 
 type ProgramShape = (usize, i32, i32, u32, u32, bool, bool);
 type ProgramKey = (String, ProgramShape);
-struct CachedProgram { program: crate::area_program::AreaProgram, fingerprint: u64 }
+struct CachedProgram { program: crate::area_program::AreaProgram, fingerprint: u64, contour_phase: u64 }
 impl CachedProgram {
-    fn new(program: crate::area_program::AreaProgram) -> Self {
+    fn new(program: crate::area_program::AreaProgram, contour_phase: u64) -> Self {
         use std::hash::{Hash, Hasher};
         let mut hash = std::collections::hash_map::DefaultHasher::new();
         program.data.len().hash(&mut hash);
         for value in &program.data { value.to_bits().hash(&mut hash); }
-        Self { program, fingerprint: hash.finish() }
+        Self { program, fingerprint: hash.finish(), contour_phase }
+    }
+    /// Geometry relative to the crop origin. Equal bits mean the scanline
+    /// function sees the same contours, so a shifted rectangle is exact.
+    fn phase(contours: &[crate::path::Contour], origin_x: i32, origin_y: i32) -> u64 {
+        // FNV-1a over crop-relative coordinates. This only accepts a shift when
+        // the contours are bit-identical relative to the crop; it does not use
+        // the default hasher, which showed up on the fractional compile path.
+        let mut hash = 0xcbf29ce484222325u64;
+        let (ox, oy) = (f64::from(origin_x), f64::from(origin_y));
+        let mix = |hash: &mut u64, bits: u64| {
+            *hash ^= bits;
+            *hash = hash.wrapping_mul(0x100000001b3);
+        };
+        mix(&mut hash, contours.len() as u64);
+        for contour in contours {
+            mix(&mut hash, u64::from(contour.closed));
+            mix(&mut hash, contour.points.len() as u64);
+            for point in &contour.points {
+                mix(&mut hash, (point.x - ox).to_bits());
+                mix(&mut hash, (point.y - oy).to_bits());
+            }
+        }
+        hash
     }
 }
 impl std::ops::Deref for CachedProgram {
@@ -388,6 +419,7 @@ struct ProgramCache {
     reserved_bytes: usize,
     hits: u64,
     builds: u64,
+    shifts: u64,
 }
 struct ProgramEntry { order: u64, program: Arc<CachedProgram> }
 impl ProgramCache {
@@ -439,7 +471,12 @@ impl ProgramCache {
         order
     }
     fn insert(&mut self, id: &str, shape: ProgramShape, program: Arc<CachedProgram>) {
-        self.builds += 1;
+        self.store(id, shape, program, true)
+    }
+    /// `count_build` is false when the words are an integer device shift of a
+    /// program this cache already compiled. That is not new scanline work.
+    fn store(&mut self, id: &str, shape: ProgramShape, program: Arc<CachedProgram>, count_build: bool) {
+        if count_build { self.builds += 1; } else { self.shifts += 1; }
         let size = Self::program_bytes(id, &program);
         if size > Self::LIMIT.saturating_sub(self.reserved_bytes) { return; }
         // Replacement is one live entry. Retire its old size/FIFO record
@@ -1891,6 +1928,9 @@ struct Compiler<'a> {
     wide_image_gaussians: HashMap<String, crate::wide_image_gaussian::Plan>,
     curves: Vec<f32>,
     area_paths: HashMap<ProgramIdentity, AreaPath>,
+    /// Integer device translation that maps programs retained from the
+    /// previous pose onto this pose's crop. Cleared for every other compile.
+    device_shift: Option<(i32, i32)>,
     fragments: fragments::FragmentCache,
     fragment_targets: std::collections::HashSet<String>,
     compiled_order: Vec<String>,
@@ -1899,6 +1939,29 @@ struct Compiler<'a> {
     vertices: Vec<f32>,
 }
 impl Compiler<'_> {
+    /// Reuse scanline words when this pose is an integer device translation of
+    /// the cached crop. The interval payload is stored relative to that crop,
+    /// so only the rectangle origin moves. A viewport clip that changes the
+    /// crop size or relative coverage misses and compiles again.
+    fn shifted_program(&mut self, id: &str, input: ProgramShape, contours: &[crate::path::Contour]) -> Option<Arc<CachedProgram>> {
+        let (dx, dy) = self.device_shift?;
+        // Glyph outlines can snap to the absolute pixel lattice. Shifting a
+        // cached text program would keep the old snap. Vectors and strokes
+        // are reused only when their crop-relative coordinates are identical.
+        if self.doc.nodes.get(id).is_some_and(|node| node.kind == "text") { return None; }
+        let mut prior = input;
+        prior.1 = prior.1.checked_sub(dx)?;
+        prior.2 = prior.2.checked_sub(dy)?;
+        let old = self.programs.get(id, &prior)?;
+        let phase = CachedProgram::phase(contours, input.1, input.2);
+        if old.contour_phase != phase || old.rect.x != prior.1 || old.rect.y != prior.2 || old.rect.w != prior.3 || old.rect.h != prior.4 {
+            return None;
+        }
+        let rect = Rect::new(old.rect.x.checked_add(dx)?, old.rect.y.checked_add(dy)?, old.rect.w, old.rect.h);
+        let shifted = Arc::new(CachedProgram::new(crate::area_program::AreaProgram { rect, data: old.data.clone() }, phase));
+        self.programs.store(id, input, Arc::clone(&shifted), false);
+        Some(shifted)
+    }
     fn area_path(
         &mut self,
         contours: &[crate::path::Contour],
@@ -1912,8 +1975,12 @@ impl Compiler<'_> {
         // a neighbouring effect's extent does not invalidate this path.
         let crop=match bounds{Some(b)=>crate::area_program::clip_bounds(b,limit)?,None=>crate::area_program::clipped_rect(contours,limit)?};
         let input = (slot.1,crop.x,crop.y,crop.w,crop.h,even_odd,self.compatible);
-        let program = if let Some(program) = self.programs.get(slot.0, &input) { program } else {
-            let program = Arc::new(CachedProgram::new(crate::area_program::AreaProgram::compile_crop(contours,crop,even_odd,self.compatible)?));
+        let program = if let Some(program) = self.programs.get(slot.0, &input) { program }
+        else if let Some(program) = self.shifted_program(slot.0, input, contours) { program }
+        else {
+            let compiled = crate::area_program::AreaProgram::compile_crop(contours,crop,even_odd,self.compatible)?;
+            let phase = CachedProgram::phase(contours, compiled.rect.x, compiled.rect.y);
+            let program = Arc::new(CachedProgram::new(compiled, phase));
             self.programs.insert(slot.0,input,Arc::clone(&program)); program
         };
         let area = self.install_program(Arc::clone(&program))?;
@@ -2534,7 +2601,7 @@ impl Engine {
     }
     pub fn gpu_compile_cache_stats(&self) -> serde_json::Value {
         let mut stats=self.camera_prepare.as_ref().map(|cache|serde_json::json!({"hits":cache.programs.hits,
-            "builds":cache.programs.builds,"bytes":cache.programs.bytes+cache.fragments.bytes,"fragmentHits":cache.fragments.hits,"fragmentBuilds":cache.fragments.builds,"entries":cache.programs.len(),
+            "builds":cache.programs.builds,"programShifts":cache.programs.shifts,"bytes":cache.programs.bytes+cache.fragments.bytes,"fragmentHits":cache.fragments.hits,"fragmentBuilds":cache.fragments.builds,"entries":cache.programs.len(),
             "preparedNodes":cache.prepared.len(),"pathNodes":self.paths.len(),"prepareReuses":cache.reuses,"retainedNodes":cache.retained_nodes,"textPaths":self.fonts.text_path_cache_stats(),"residentStrokes":self.local_strokes.stats(),"cameraResidency":self.camera_residency.stats()}))
             .unwrap_or_else(||serde_json::json!({"hits":0,"builds":0,"bytes":0,"entries":0}));
         stats["frameScene"]=self.frame_scene.stats();
@@ -2794,7 +2861,7 @@ impl Engine {
                 } else {
                     self.camera_prepare = Some(CameraPrepare {
                         key: key.clone(), prepared: prepared.clone(), programs: ProgramCache::default(), program_guard: None, fragments: fragments::FragmentCache::default(),
-                        metadata: Some(metadata), zoom_bounds: None, reuses: 0, incomplete: false, retained_nodes: 0, incremental:false,
+                        metadata: Some(metadata), zoom_bounds: None, reuses: 0, incomplete: false, retained_nodes: 0, incremental:false, device_shift: None,
                     });
                 }
             }
@@ -3058,15 +3125,16 @@ impl Engine {
             return Err("GPU surface budget exceeded".into());
         }
         let emission_guard=(emitted_guard.x,emitted_guard.y,emitted_guard.w,emitted_guard.h);
-        let mut programs = if cache_key.is_some() {
+        let (mut programs, device_shift) = if cache_key.is_some() {
             self.camera_prepare.as_mut().map(|cache|{
                 if cache.program_guard!=Some(emission_guard) {
                     cache.programs=ProgramCache::default();
                     cache.program_guard=Some(emission_guard);
+                    cache.device_shift=None;
                 }
-                std::mem::take(&mut cache.programs)
+                (std::mem::take(&mut cache.programs), cache.device_shift.take())
             }).unwrap_or_default()
-        } else { ProgramCache::default() };
+        } else { (ProgramCache::default(), None) };
         let PainterSupport { backdrop_outputs, shadow_outputs, stages, .. } = painter_support.unwrap_or_else(||
             PainterSupport { extent, backdrop_outputs: HashMap::new(), shadow_outputs: HashMap::new(), stages: None });
         let root_input_box = stages.as_ref().map(|s| device_box(s.root_input));
@@ -3114,6 +3182,7 @@ impl Engine {
             stages,
             curves: scratch::take_curves(),
             area_paths: HashMap::new(),
+            device_shift,
             fragments, fragment_targets, compiled_order:Vec::new(),
             programs,
             nodes: BTreeMap::new(),
@@ -3971,7 +4040,7 @@ mod program_identity_tests {
     use super::*;
     #[test]
     fn colliding_hashes_still_compare_all_float_bits() {
-        let make=|data|ProgramIdentity(Arc::new(CachedProgram{program:crate::area_program::AreaProgram{rect:Rect::default(),data},fingerprint:7}));
+        let make=|data|ProgramIdentity(Arc::new(CachedProgram{program:crate::area_program::AreaProgram{rect:Rect::default(),data},fingerprint:7,contour_phase:0}));
         let a=make(vec![0.,1.]);let equal=make(vec![0.,1.]);let signed=make(vec![-0.,1.]);let different=make(vec![0.,2.]);
         let mut map=HashMap::new();map.insert(a.clone(),1);
         assert_eq!(map.get(&a),Some(&1));assert_eq!(map.get(&equal),Some(&1));
@@ -3989,7 +4058,7 @@ mod program_cache_invalidation_tests {
     fn program(value: f32, words: usize) -> Arc<CachedProgram> {
         Arc::new(CachedProgram::new(crate::area_program::AreaProgram {
             rect: Rect::new(0, 0, 1, 1), data: vec![value; words],
-        }))
+        }, 0))
     }
     fn dirty(id: &str) -> HashSet<String> { [id.to_owned()].into_iter().collect() }
 
