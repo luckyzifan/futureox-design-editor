@@ -1378,6 +1378,68 @@ mod tests {
     }
 
     #[test]
+    fn figma_profile_keeps_flush_frame_edge_alpha() {
+        // Clamping replaces every outside tap with the opaque edge, so byte
+        // quantization stays at 255. Counting those taps as transparent drops
+        // the edge far below the official 242/249. Neither is this sample.
+        let mut field = crate::blend::Surface::new(crate::math::Rect::new(0, 0, 16, 1)).unwrap();
+        field.pixels.fill(crate::blend::Pixel::rgba(36. / 255., 36. / 255., 36. / 255., 1.));
+        let edge_alpha = |radius, clamp| {
+            let blurred = crate::effects::portable_tent_blur_edge(&field, radius, clamp).unwrap();
+            (blurred.pixels[15].0[3] * 255.).round() as u8
+        };
+        for radius in [4., 8., 12., 24.] {
+            assert_eq!(edge_alpha(radius, true), 255, "clamped radius {radius}");
+            assert!(edge_alpha(radius, false) < 80, "unclamped radius {radius}");
+        }
+
+        // 548×409 #242424 frame, same-size rounded vector, 10% white fill, and
+        // one light bar. Official 1× alpha at (547, 62) is 242 and 249. The
+        // Figma profile used to return 255 there because only PNG export read
+        // the outside capture tap. The bar's horizontal row stays opaque and
+        // is independent of that edge.
+        let rounded = |w: f64, h: f64| {
+            let (r, k) = (8., 3.);
+            json!({"fillRule":"nonzero","fill":[
+                {"move":[0., r]}, {"cubic":[0., r - k, k, 0., r, 0.]}, {"line":[w - r, 0.]},
+                {"cubic":[w - k, 0., w, k, w, r]}, {"line":[w, h - r]},
+                {"cubic":[w, h - k, w - k, h, w - r, h]}, {"line":[r, h]},
+                {"cubic":[k, h, 0., h - k, 0., h - r]}, "close"
+            ]})
+        };
+        for (blur, alpha) in [(4, 242u8), (12, 249u8)] {
+            let doc = json!({
+                "schemaVersion":19,"id":"d","name":"Flush edge",
+                "pages":[{"id":"p","name":"Page","children":["frame"],"background":"#ffffff"}],
+                "nodes":{
+                    "frame":{"id":"frame","kind":"frame","width":548,"height":409,"children":["stripe","lens"],
+                        "fills":[{"kind":"solid","color":"#242424"}]},
+                    "stripe":{"id":"stripe","kind":"rectangle","width":12,"height":409,"transform":[1,0,0,1,24,0],
+                        "fills":[{"kind":"solid","color":"#dddddd"}]},
+                    "lens":{"id":"lens","kind":"vector","width":548,"height":409,"vectorGeometry":rounded(548., 409.),
+                        "fills":[{"kind":"solid","color":"#ffffff","opacity":0.1}],
+                        "effects":[{"kind":"background-blur","radius":blur,"color":"#000000"}]}
+                }
+            });
+            let mut engine = Engine::new();
+            engine.load_document(&doc.to_string()).unwrap();
+            let options = engine.parse_options(json!({"pageId":"p","width":548,"height":409,
+                "view":{"x":0,"y":0,"zoom":1},"transparent":true,"rasterProfile":"figma"})).unwrap();
+            let rendered = engine.render(&options).unwrap();
+            let png = image::load_from_memory(&engine.render_region_png(&RegionRequest {
+                page_id: "p".into(), scale: 1., node_ids: None, color_output: None,
+                bounds: ExportBounds { x: 0., y: 0., width: 548., height: 409. },
+                raster_profile: Some(RasterProfile::Figma),
+            }).unwrap()).unwrap().into_rgba8();
+            assert_eq!(png.as_raw(), &rendered, "radius {blur} profile render matches its PNG");
+            assert!(png.pixels().all(|pixel| pixel[3] >= alpha), "radius {blur} alpha floor {alpha}");
+            assert_eq!(png.get_pixel(547, 62)[3], alpha, "radius {blur}");
+            assert_eq!(png.get_pixel(80, 62)[3], 255, "radius {blur} interior of the brightness row");
+            assert!(png.get_pixel(30, 62)[0] > png.get_pixel(80, 62)[0], "radius {blur} light bar");
+        }
+    }
+
+    #[test]
     fn rotated_sketch_backdrop_clamps_capture_and_replaces_revealed_alpha() {
         let doc = json!({
             "schemaVersion":19,"id":"d","name":"Rotated Sketch capture",
