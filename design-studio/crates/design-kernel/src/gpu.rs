@@ -416,6 +416,9 @@ impl ProgramCache {
         }
     }
     fn len(&self) -> usize { self.count }
+    fn contains(&self, id: &str, shape: &ProgramShape) -> bool {
+        self.entries.get(id).is_some_and(|entries| entries.contains_key(shape))
+    }
     fn get(&mut self, id: &str, shape: &ProgramShape) -> Option<Arc<CachedProgram>> {
         let value = self.entries.get(id)?.get(shape)?.program.clone(); self.hits += 1; Some(value)
     }
@@ -461,6 +464,119 @@ impl ProgramCache {
         self.order.insert(order, (id.to_owned(), shape));
         self.entries.entry(id.to_owned()).or_default().insert(shape, ProgramEntry { order, program });
     }
+}
+
+struct PoseAreaJob {
+    id: String,
+    shape: ProgramShape,
+    contours: Arc<Vec<crate::path::Contour>>,
+    crop: Rect,
+    even_odd: bool,
+    samples: bool,
+}
+
+/// The clipped-board drag spends most of one core inside `AreaProgram::compile_crop`.
+/// These programs are pure functions of contours that geometry preparation already
+/// owns. Build the missing ones on the otherwise idle cores, then let the
+/// existing single-threaded walk install them in painter order. A miss keeps
+/// the original compile; cancellation uses the same shared flag as tile batches.
+fn warm_pose_area_programs(
+    doc: &Document,
+    prepared: &HashMap<String, crate::geometry_snapshot::Prepared>,
+    programs: &mut ProgramCache,
+    extent: Rect,
+    samples: bool,
+) -> Result<(), String> {
+    let mut jobs = Vec::new();
+    for (id, entry) in prepared {
+        if entry.support_culled || entry.bounds.empty() { continue; }
+        let Some(node) = doc.nodes.get(id) else { continue; };
+        if !node.visible { continue; }
+        let limit = entry.bounds.intersect(extent);
+        if limit.empty() { continue; }
+        let mut push = |slot: usize, bounds: Rect, contours: Arc<Vec<crate::path::Contour>>, even_odd: bool| {
+            let Ok(crop) = crate::area_program::clip_bounds(bounds, limit) else { return; };
+            let shape = (slot, crop.x, crop.y, crop.w, crop.h, even_odd, samples);
+            if programs.contains(id, &shape) { return; }
+            jobs.push(PoseAreaJob { id: id.clone(), shape, contours, crop, even_odd, samples });
+        };
+        push(0, entry.fill_program_bounds, Arc::clone(&entry.fill), node.kind != "text" && node.fill_even_odd());
+        for (index, stroke) in node.strokes.iter().enumerate() {
+            if !stroke.visible || stroke.width <= 0. { continue; }
+            let Some(bounds) = entry.stroke_program_bounds.get(index).copied() else { continue; };
+            let Some(contours) = entry.strokes.get(index).cloned() else { continue; };
+            push(index + 1, bounds, contours, false);
+        }
+    }
+    jobs.sort_by(|a, b| a.id.cmp(&b.id).then(a.shape.0.cmp(&b.shape.0)));
+    let workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    // One core has nothing to overlap with. More than eight workers just
+    // contend on the same prepared contours.
+    if jobs.len() < 48 || workers < 2 { return Ok(()); }
+    let workers = workers.min(8);
+    let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let results = std::sync::Mutex::new(vec![None; jobs.len()]);
+    let arrived = Arc::new((std::sync::Mutex::new(0usize), std::sync::Condvar::new()));
+    struct Arrival<'a>(&'a (std::sync::Mutex<usize>, std::sync::Condvar));
+    impl Drop for Arrival<'_> {
+        fn drop(&mut self) {
+            let (lock, cvar) = self.0;
+            if let Ok(mut count) = lock.lock() {
+                *count += 1;
+                cvar.notify_one();
+            }
+        }
+    }
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            let jobs = &jobs;
+            let cancel = Arc::clone(&cancel);
+            let next = &next;
+            let results = &results;
+            let arrived = Arc::clone(&arrived);
+            scope.spawn(move || {
+                let _arrived = Arrival(&arrived);
+                let _guard = crate::render_cancellation::SharedCancelGuard::bind(Arc::clone(&cancel));
+                loop {
+                    if cancel.load(std::sync::atomic::Ordering::Acquire) { break; }
+                    let index = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if index >= jobs.len() { break; }
+                    let job = &jobs[index];
+                    let outcome = crate::area_program::AreaProgram::compile_crop(
+                        &job.contours, job.crop, job.even_odd, job.samples,
+                    ).map(|program| Arc::new(CachedProgram::new(program)));
+                    if outcome.is_err() { cancel.store(true, std::sync::atomic::Ordering::Release); }
+                    if let Ok(mut slot) = results.lock() { slot[index] = Some(outcome); }
+                }
+            });
+        }
+        let (lock, cvar) = &*arrived;
+        loop {
+            if crate::render_cancellation::checkpoint().is_err() {
+                cancel.store(true, std::sync::atomic::Ordering::Release);
+            }
+            let guard = lock.lock().unwrap_or_else(|error| error.into_inner());
+            if *guard == workers { break; }
+            let (guard, _) = cvar.wait_timeout(guard, std::time::Duration::from_millis(2))
+                .unwrap_or_else(|error| error.into_inner());
+            drop(guard);
+        }
+    });
+    let results = results.into_inner().unwrap_or_else(|error| error.into_inner());
+    let mut failure = None;
+    for (job, outcome) in jobs.iter().zip(results) {
+        match outcome {
+            Some(Ok(program)) => programs.insert(&job.id, job.shape, program),
+            Some(Err(error)) => {
+                if failure.is_none() && error != "PREVIEW_CANCELLED" { failure = Some(error); }
+            }
+            None => {}
+        }
+    }
+    if let Some(error) = failure { return Err(error); }
+    if cancel.load(std::sync::atomic::Ordering::Acquire) { return Err("PREVIEW_CANCELLED".into()); }
+    Ok(())
 }
 
 #[derive(Clone, Serialize)]
@@ -2930,7 +3046,7 @@ impl Engine {
             return Err("GPU surface budget exceeded".into());
         }
         let emission_guard=(emitted_guard.x,emitted_guard.y,emitted_guard.w,emitted_guard.h);
-        let programs = if cache_key.is_some() {
+        let mut programs = if cache_key.is_some() {
             self.camera_prepare.as_mut().map(|cache|{
                 if cache.program_guard!=Some(emission_guard) {
                     cache.programs=ProgramCache::default();
@@ -2954,6 +3070,17 @@ impl Engine {
         let fragment_targets=if retain_fragments {page.children.iter().flat_map(|id|{
             let n=&doc.nodes[id];if n.render_children().is_empty(){vec![id.clone()]}else{n.render_children().to_vec()}
         }).collect()}else{Default::default()};
+        // A retained interaction pose already flattened these contours. The
+        // following single-threaded walk only installs the programs, in order.
+        let pose_samples = self.interaction_transform_revision.as_ref()
+            .is_some_and(|(_, next, _)| *next == self.geo_revision)
+            && options.animation.is_none() && analytic.is_none() && stages.is_none()
+            && backdrop_outputs.is_empty() && shadow_outputs.is_empty()
+            && !gaussian_regions && gaussian_reduction == 0 && !source_filter_fields;
+        if pose_samples {
+            warm_pose_area_programs(doc, &prepared, &mut programs, extent,
+                options.raster_profile != crate::fidelity::RasterProfile::Analytic)?;
+        }
         let mut compiler = Compiler {
             analytic_regions: analytic.map(|plan| plan.nodes),
             wide_image_gaussians,
@@ -4298,5 +4425,70 @@ mod page_predicate_cache_tests {
         assert_eq!(constant_contours(std::slice::from_ref(&poly),false,Rect::new(1200,100,16,16)),Some(true));
         assert_eq!(constant_contours(std::slice::from_ref(&poly),false,Rect::new(100,1200,16,16)),Some(false));
         assert_eq!(constant_contours(&[poly],false,Rect::new(400,399,16,16)),None);
+    }
+}
+
+#[cfg(test)]
+mod pose_area_warm_tests {
+    use crate::{math::Transform, Engine};
+    use serde_json::json;
+
+    #[test]
+    fn parallel_pose_programs_match_a_fresh_fractional_board_translation() {
+        let mut nodes = serde_json::Map::new();
+        let mut children = Vec::new();
+        for i in 0..60 {
+            let id = format!("v{i:02}");
+            children.push(id.clone());
+            nodes.insert(id.clone(), json!({
+                "id": id, "kind": "vector", "width": 24, "height": 18,
+                "transform": [1, 0, 0, 1, (i % 10) as f64 * 28.0, (i / 10) as f64 * 26.0],
+                "fills": [{"kind": "solid", "color": "#243044"}],
+                "network": {
+                    "vertices": [
+                        {"id": "a", "x": 2, "y": 9}, {"id": "b", "x": 12, "y": 2},
+                        {"id": "c", "x": 22, "y": 9}, {"id": "d", "x": 12, "y": 16}
+                    ],
+                    "edges": [
+                        {"id": "ab", "from": "a", "to": "b", "c1": {"x": 2, "y": 4}, "c2": {"x": 6, "y": 2}},
+                        {"id": "bc", "from": "b", "to": "c", "c1": {"x": 18, "y": 2}, "c2": {"x": 22, "y": 4}},
+                        {"id": "cd", "from": "c", "to": "d", "c1": {"x": 22, "y": 14}, "c2": {"x": 18, "y": 16}},
+                        {"id": "da", "from": "d", "to": "a", "c1": {"x": 6, "y": 16}, "c2": {"x": 2, "y": 14}}
+                    ]
+                }
+            }));
+        }
+        nodes.insert("board".into(), json!({
+            "id": "board", "kind": "frame", "width": 320, "height": 180, "clip": true,
+            "transform": [1, 0, 0, 1, 8, 6],
+            "fills": [{"kind": "solid", "color": "color(srgb 0.86 0.91 0.94 / 1)"}],
+            "children": children
+        }));
+        let doc = json!({
+            "schemaVersion": 20, "id": "warm", "name": "warm",
+            "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["board"]}],
+            "nodes": nodes
+        });
+        let options = json!({
+            "pageId": "p", "width": 400, "height": 240,
+            "view": {"x": 0.0, "y": 0.0, "zoom": 1.6},
+            "rasterProfile": "figmaSubpixel",
+            "captureViewport": {"x": 0, "y": 0, "w": 400, "h": 240}
+        }).to_string();
+        let mut engine = Engine::new();
+        engine.load_document(&doc.to_string()).unwrap();
+        engine.compile_gpu(&serde_json::from_str(&options).unwrap()).unwrap();
+        let pose = std::collections::BTreeMap::from([
+            ("board".into(), Transform([1.0, 0.0, 0.0, 1.0, 8.37, 6.0])),
+        ]);
+        assert!(engine.apply_interaction_transforms(&pose).unwrap());
+        let packet = engine.compile_gpu_packet_request(&options).unwrap();
+        let mut moved = doc;
+        moved["nodes"]["board"]["transform"] = json!([1, 0, 0, 1, 8.37, 6]);
+        let mut fresh = Engine::new();
+        fresh.load_document(&moved.to_string()).unwrap();
+        let reference = fresh.compile_gpu_packet_request(&options).unwrap();
+        assert_eq!(packet, reference, "parallel pose programs must match a fresh fractional compile");
+        assert!(engine.gpu_compile_cache_stats()["builds"].as_u64().unwrap() > 48);
     }
 }
