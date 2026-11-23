@@ -1991,11 +1991,12 @@ impl Compiler<'_> {
     }
     fn area_path(
         &mut self,
-        contours: &Arc<Vec<crate::path::Contour>>,
+        contours: &[crate::path::Contour],
         slot: (&str, usize),
         limit: Rect,
         even_odd: bool,
         bounds:Option<Rect>,
+        phase_contours: Option<&Arc<Vec<crate::path::Contour>>>,
     ) -> Result<GpuPath, String> {
         // Two larger limits which expose the same path pixels generate the
         // identical interval program. Key the actual compiler crop, so moving
@@ -2003,10 +2004,10 @@ impl Compiler<'_> {
         let crop=match bounds{Some(b)=>crate::area_program::clip_bounds(b,limit)?,None=>crate::area_program::clipped_rect(contours,limit)?};
         let input = (slot.1,crop.x,crop.y,crop.w,crop.h,even_odd,self.compatible);
         let program = if let Some(program) = self.programs.get(slot.0, &input) { program }
-        else if let Some(program) = self.shifted_program(slot.0, input, contours) { program }
+        else if let Some(program) = phase_contours.and_then(|phase| self.shifted_program(slot.0, input, phase)) { program }
         else {
             let compiled = crate::area_program::AreaProgram::compile_crop(contours,crop,even_odd,self.compatible)?;
-            let phase = self.keep_program_phase.then(|| Arc::clone(contours));
+            let phase = phase_contours.filter(|_| self.keep_program_phase).cloned();
             let program = Arc::new(CachedProgram::new(compiled, phase));
             self.programs.insert(slot.0,input,Arc::clone(&program)); program
         };
@@ -2258,7 +2259,7 @@ impl Compiler<'_> {
             } else {
                 "evenodd"
             };
-        let fill = self.area_path(&fill_contours, (id,0), fill_rect, rule == "evenodd",if reduced.is_some(){None}else{prepared.as_ref().map(|p|p.fill_program_bounds)})?;
+        let fill = self.area_path(&fill_contours, (id,0), fill_rect, rule == "evenodd",if reduced.is_some(){None}else{prepared.as_ref().map(|p|p.fill_program_bounds)}, Some(&fill_contours))?;
         let mut strokes = Vec::new();
         let inverse = matrix.inverse_composed(rect)?;
         let rgba8 = self.compatible;
@@ -2286,7 +2287,7 @@ impl Compiler<'_> {
                 }
                 Arc::new(outline)
             };
-            let path = self.area_path(&outline, (id,index+1), rect, false,prepared.as_ref().map(|p|p.stroke_program_bounds[index]))?;
+            let path = self.area_path(&outline, (id,index+1), rect, false,prepared.as_ref().map(|p|p.stroke_program_bounds[index]), Some(&outline))?;
             strokes.push(GpuStroke {
                 path,
                 paint: GpuPaint::new(
