@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { blank, node, paint, effect, validateDocument } from '../model'
+import { blank, node, paint, effect, validateDocument, defaultLayout, defaultSizing } from '../model'
 import { layoutFixture } from '../layout-fixtures'
 import { componentFixture } from '../component-fixtures'
 import { emptySystem } from '../design-system'
@@ -100,6 +100,40 @@ describe('AI-friendly semantic export', () => {
     const { document } = fixture()
     expect(() => exportDesignCode(document, { maxNodes: 1 })).toThrow('maxNodes')
     expect(() => exportDesignCode(document, { nodeIds: ['missing'] })).toThrow('selected page')
+  })
+  it('places absolute children on the padding edge and maps gradient paints into CSS', () => {
+    const document = blank('CSS geometry')
+    document.schemaVersion = 4
+    const frame = node('frame', 0, 0, 200, 120)
+    frame.layout = { ...defaultLayout(), mode: 'horizontal', padding: [30, 10, 0, 40], gap: 0, lineGap: 0 }
+    const child = node('rectangle', 10, 15, 20, 20)
+    child.sizing = { ...defaultSizing(), absolute: true }
+    const gradient = node('rectangle', 0, 280, 200, 80)
+    const linear = paint('#ff0000', 'linear')
+    linear.angle = 0
+    linear.stops = [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#0000ff' }]
+    gradient.fills = [linear]
+    const faded = node('rectangle', 0, 380, 200, 80)
+    const vertical = paint('#112233', 'linear')
+    vertical.angle = 0
+    vertical.opacity = 0.5
+    vertical.transform = [0, 1, -1, 0, 1, 0]
+    vertical.stops = [{ offset: 0, color: '#112233' }, { offset: 1, color: '#abcdef' }]
+    faded.fills = [vertical]
+    const radialNode = node('ellipse', 0, 480, 100, 60)
+    const radial = paint('#00ff00', 'radial')
+    radial.stops = [{ offset: 1, color: '#0000ff' }, { offset: 0, color: '#00ff00' }]
+    radialNode.fills = [radial]
+    frame.children = [child.id]
+    document.nodes = { [frame.id]: frame, [child.id]: child, [gradient.id]: gradient, [faded.id]: faded, [radialNode.id]: radialNode }
+    document.pages[0].children = [frame.id, gradient.id, faded.id, radialNode.id]
+    const css = exportDesignCode(document).css
+    expect(css).toContain('.design-node{position:absolute;left:0;top:0;transform-origin:0 0}')
+    expect(css).toContain('padding:30px 10px 0px 40px')
+    expect(css).toContain('transform:matrix(1,0,0,1,10,15)')
+    expect(css).toContain('linear-gradient(90deg,#ff0000 0%,#0000ff 100%)')
+    expect(css).toContain('linear-gradient(180deg,color-mix(in srgb, #112233 50%, transparent) 0%,color-mix(in srgb, #abcdef 50%, transparent) 100%)')
+    expect(css).toContain('radial-gradient(ellipse closest-side at center,#00ff00 0%,#0000ff 100%)')
   })
 })
 describe('native document roundtrip', () => {

@@ -15,6 +15,7 @@ import {
   assetReference, boundedInteger, collectAssetReferences, contextEntries, contextOptions,
   safeWebUrl, type AssetReference, type ContextOptions, type DesignAutomationWarning,
 } from './context'
+import { cssLinearGradient, cssRadialGradient } from './css-gradient'
 
 export type CodeExportOptions = Pick<ContextOptions, 'pageId' | 'nodeIds'> & { maxNodes?: number }
 export type CodeAsset = AssetReference & { path: string; emitted: boolean; dataUrl?: string }
@@ -161,19 +162,26 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
   }
   const nodeIdMap: Record<string, { elementId: string; selector: string }> = Object.create(null)
   entries.forEach(({ node }, index) => { nodeIdMap[node.id] = { elementId: `design-node-${index + 1}`, selector: `#design-node-${index + 1}` } })
-  const styles: string[] = ['*{box-sizing:border-box}', 'html,body{margin:0;padding:0}', '.design-scene{position:relative;isolation:isolate}', '.design-node{position:absolute;transform-origin:0 0}', '.design-text{margin:0;white-space:pre-wrap;overflow-wrap:normal}']
+  // left/top 0 pins each node to its containing block's padding edge before the
+  // local matrix translates it. Auto left/top would add the static-position
+  // inset (parent padding, and a flex item's hypothetical place) on top of
+  // that translation, so absolute children of a padded frame land in the wrong place.
+  const styles: string[] = ['*{box-sizing:border-box}', 'html,body{margin:0;padding:0}', '.design-scene{position:relative;isolation:isolate}', '.design-node{position:absolute;left:0;top:0;transform-origin:0 0}', '.design-text{margin:0;white-space:pre-wrap;overflow-wrap:normal}']
   const included = new Set(entries.map(e => e.node.id))
   const safeColor = (value: string, nodeId: string) => {
     const safe = cssColor(value)
     if (!safe) warn('UNSUPPORTED_COLOR', 'Unrecognized color syntax was omitted for safe CSS export.', nodeId)
     return safe
   }
-  const paintCss = (paint: Paint, nodeId: string): string | undefined => {
+  const paintOpacityColor = (color: string, opacity: number, nodeId: string) => {
+    const safe = safeColor(color, nodeId)
+    if (!safe) return undefined
+    const alpha = Math.max(0, Math.min(1, opacity))
+    return alpha === 1 ? safe : `color-mix(in srgb, ${safe} ${number(alpha * 100)}%, transparent)`
+  }
+  const paintCss = (paint: Paint, nodeId: string, width: number, height: number): string | undefined => {
     if (paint.blend !== 'normal' || paint.opacity !== 1) warn('PAINT_COMPOSITING', 'Per-paint blend and opacity may differ from the native compositor.', nodeId)
-    if (paint.kind === 'solid') {
-      const color = safeColor(paint.color, nodeId)
-      return color && (paint.opacity === 1 ? color : `color-mix(in srgb, ${color} ${number(Math.max(0, Math.min(1, paint.opacity)) * 100)}%, transparent)`)
-    }
+    if (paint.kind === 'solid') return paintOpacityColor(paint.color, paint.opacity, nodeId)
     if (paint.kind === 'image') {
       const asset = paint.image && assetsById.get(assetReference(paint.image, nodeId, paint.id, assetIdentities).id)
       if (paint.transform || paint.tile || paint.adjust) warn('IMAGE_TRANSFORM', 'Image transforms, pattern tiling and color adjustments are not reproduced by CSS background sizing.', nodeId)
@@ -183,8 +191,14 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     if (paint.kind === 'linear' || paint.kind === 'radial') {
       if (paint.stops.length > 64) { warn('GRADIENT_LIMIT', 'Gradient with more than 64 stops was omitted.', nodeId); return }
       warn('GRADIENT_APPROXIMATION', 'CSS gradient coordinates and interpolation can differ from native rendering.', nodeId)
-      const stops = paint.stops.map(stop => { const c = safeColor(stop.color, nodeId); return c ? `${c} ${number(stop.offset * 100)}%` : undefined }).filter(Boolean)
-      return stops.length ? `${paint.kind === 'linear' ? `linear-gradient(${number(paint.angle)}deg,` : 'radial-gradient(ellipse at center,'}${stops.join(',')})` : undefined
+      const stops = paint.stops.flatMap(stop => {
+        const color = paintOpacityColor(stop.color, paint.opacity, nodeId)
+        return color ? [{ offset: stop.offset, color }] : []
+      })
+      if (!stops.length) return
+      return paint.kind === 'linear'
+        ? cssLinearGradient(width, height, paint.angle, paint.transform, stops)
+        : cssRadialGradient(stops, paint.transform !== undefined)
     }
     warn('UNSUPPORTED_GRADIENT', `${paint.kind} gradients are not supported in semantic HTML export.`, nodeId)
   }
@@ -232,10 +246,10 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     if (n.fills.length > 16) warn('PAINT_LIMIT', 'Only the first 16 visible fills are exported.', n.id)
     if (n.kind === 'text') {
       const color = fills.find(p => p.kind === 'solid')
-      if (color) { const safe = paintCss(color, n.id); if (safe) declarations.push(`color:${safe}`) }
+      if (color) { const safe = paintCss(color, n.id, n.width, n.height); if (safe) declarations.push(`color:${safe}`) }
       if (fills.length > 1 || fills.some(p => p.kind !== 'solid')) warn('TEXT_PAINTS', 'Text export uses one solid fill; additional text paints are omitted.', n.id)
     } else {
-      const layers = fills.map(p => { const value = paintCss(p, n.id); return value && p.kind === 'solid' ? `linear-gradient(${value},${value})` : value }).filter(Boolean)
+      const layers = fills.map(p => { const value = paintCss(p, n.id, n.width, n.height); return value && p.kind === 'solid' ? `linear-gradient(${value},${value})` : value }).filter(Boolean)
       if (layers.length) declarations.push(`background-image:${layers.reverse().join(',')}`)
       const image = fills.find(p => p.kind === 'image')
       if (image) declarations.push(`background-size:${image.fit === 'stretch' ? '100% 100%' : image.fit}`, 'background-position:center', 'background-repeat:no-repeat')
@@ -243,7 +257,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     const strokes = n.strokes.filter(s => s.visible && s.paint.visible)
     const stroke = strokes[0]
     if (stroke?.paint.kind === 'solid') {
-      const color = paintCss(stroke.paint, n.id)
+      const color = paintCss(stroke.paint, n.id, n.width, n.height)
       if (color) declarations.push(`border:${px(stroke.width)} solid ${color}`)
     }
     if (strokes.length) warn('STROKE_APPROXIMATION', 'CSS border approximates strokes; alignment, multiple strokes, dashes, joins, markers and width profiles may differ.', n.id)
