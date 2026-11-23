@@ -1,12 +1,13 @@
 import { afterEach, expect, test } from 'vitest'
 import { Editor } from './engine'
-import { blank, node, uid } from './model'
+import { blank, defaultLayout, defaultSizing, node, uid } from './model'
 import { allParents, multiply, translate, worldMatrix } from './geometry'
 import { createClip } from './animation'
 import { canvasMenuItems } from './canvas-menu-model'
 import { componentFixture } from './component-fixtures'
 import { interfacePreference } from './interface-preference'
 import { createDesignAutomation } from './automation/core'
+import { dispatchEditorShortcut } from './editor-shortcuts'
 
 const editors: Editor[] = []
 afterEach(() => { editors.splice(0).forEach(editor => editor.dispose()); interfacePreference.set({ uiMode: 'figma' }) })
@@ -145,7 +146,7 @@ test('duplicating an instance retains its definition and copying a page remaps c
   expect(editor.state.doc.nodes[ids.button]).toEqual(old.nodes[ids.button])
 })
 
-test('Figma layout ⌘D places only top-level frames to the right by the world box width plus 40', () => {
+test('Figma layout ⌘D places top-level frames and sections to the right by the world box width plus 40', () => {
   interfacePreference.set({ uiMode: 'figma' })
   const doc = blank('top-level duplicate')
   const frame = node('frame', 100, 50, 300, 200)
@@ -166,6 +167,12 @@ test('Figma layout ⌘D places only top-level frames to the right by the world b
     const before = [...worldMatrix(editor.state.doc, id)]
     editor.duplicate()
     const copy = editor.state.selection[0]
+    expect(editor.state.selection).toEqual([copy])
+    expect(copy).not.toBe(id)
+    const parent = allParents(editor.state.doc).get(copy)
+    const page = editor.state.doc.pages.find(item => item.id === parent)
+    const list = page ? page.children : editor.state.doc.nodes[parent!].children
+    expect(list[list.indexOf(id) + 1]).toBe(copy)
     return { before, copy, after: [...worldMatrix(editor.state.doc, copy)] }
   }
   const ordinary = place(shape.id)
@@ -177,7 +184,10 @@ test('Figma layout ⌘D places only top-level frames to the right by the world b
   expect(inner.after[5] - inner.before[5]).toBeCloseTo(10, 8)
   expect(allParents(editor.state.doc).get(inner.copy)).toBe(frame.id)
   editor.undo()
-  for (const id of [section.id, group.id, pageShape.id]) {
+  const sectionCopy = place(section.id)
+  expect(sectionCopy.after).toEqual([1, 0, 0, 1, 20 + 80 + 40, 30])
+  editor.undo()
+  for (const id of [group.id, pageShape.id]) {
     const stepped = place(id)
     expect(stepped.after[4] - stepped.before[4]).toBeCloseTo(10, 8)
     expect(stepped.after[5] - stepped.before[5]).toBeCloseTo(10, 8)
@@ -205,6 +215,9 @@ test('Figma layout ⌘D places only top-level frames to the right by the world b
   const left = worldMatrix(editor.state.doc, frame.id), right = worldMatrix(editor.state.doc, sibling.id)
   editor.duplicate()
   const [copyLeft, copyRight] = editor.state.selection
+  expect(editor.state.selection).toEqual([copyLeft, copyRight])
+  expect(copyLeft).not.toBe(frame.id)
+  expect(copyRight).not.toBe(sibling.id)
   expect(worldMatrix(editor.state.doc, copyLeft)[4] - left[4]).toBeCloseTo(440 + 40, 8)
   expect(worldMatrix(editor.state.doc, copyLeft)[5]).toBeCloseTo(left[5], 8)
   expect(worldMatrix(editor.state.doc, copyRight)[4] - right[4]).toBeCloseTo(440 + 40, 8)
@@ -219,12 +232,16 @@ test('Figma layout ⌘D places only top-level frames to the right by the world b
 })
 
 test('Sketch layout and an explicit offset do not use the Figma top-level frame landing', () => {
-  const doc = blank('sketch duplicate'), frame = node('frame', 10, 20, 100, 80)
-  doc.nodes[frame.id] = frame; doc.pages[0].children = [frame.id]
+  const doc = blank('sketch duplicate'), frame = node('frame', 10, 20, 100, 80), section = node('section', 40, 50, 90, 70)
+  doc.nodes[frame.id] = frame; doc.nodes[section.id] = section; doc.pages[0].children = [frame.id, section.id]
   interfacePreference.set({ uiMode: 'sketch' })
   const editor = new Editor(doc); editors.push(editor)
   editor.select([frame.id]); editor.duplicate()
   expect(worldMatrix(editor.state.doc, editor.state.selection[0])).toEqual([1, 0, 0, 1, 20, 30])
+  editor.undo()
+  editor.select([section.id]); editor.duplicate()
+  expect(editor.state.selection).toHaveLength(1)
+  expect(worldMatrix(editor.state.doc, editor.state.selection[0])).toEqual([1, 0, 0, 1, 50, 60])
   editor.undo()
   const sketchApi = createDesignAutomation(editor)
   const sketchCopy = sketchApi.execute({ method: 'node.duplicate', params: { ids: [frame.id] },
@@ -247,6 +264,174 @@ test('Sketch layout and an explicit offset do not use the Figma top-level frame 
   const instance = editor.state.doc.nodes[editor.state.selection[0]]
   expect(instance.instance?.componentId).toBe(frame.id)
   expect(instance.transform).toEqual([1, 0, 0, 1, 10 + 100 + 40, 20])
+})
+
+test('Figma ⌘D places a frame or nested section to the right and grows only the sections that must contain it', () => {
+  interfacePreference.set({ uiMode: 'figma' })
+  const doc = blank('section duplicate')
+  doc.schemaVersion = 11
+  const fitted = node('section', 0, 0, 400, 200)
+  const inside = node('frame', 10, 20, 100, 80)
+  const neighbour = node('frame', 300, 20, 40, 40)
+  fitted.children = [inside.id, neighbour.id]
+  const tight = node('section', 100, 100, 100, 100)
+  tight.guides = [{ id: 'guide-y', axis: 'y', position: 12 }]
+  const hanging = node('frame', 0, -30, 50, 40)
+  hanging.constraints = { horizontal: 'end', vertical: 'start', referenceWidth: 100, referenceHeight: 100 }
+  const parked = node('rectangle', 5, 5, 10, 10)
+  tight.children = [hanging.id, parked.id]
+  const outer = node('section', 0, 400, 250, 200)
+  const inner = node('section', 10, 10, 150, 120)
+  const nested = node('frame', 20, 20, 100, 40)
+  inner.children = [nested.id]
+  outer.children = [inner.id]
+  const holder = node('section', 0, 700, 300, 200)
+  const group = node('group', 10, 10, 40, 40)
+  const grouped = node('frame', 0, 0, 100, 80)
+  group.children = [grouped.id]
+  holder.children = [group.id]
+  doc.nodes = Object.fromEntries([fitted, inside, neighbour, tight, hanging, parked, outer, inner, nested, holder, group, grouped].map(n => [n.id, n]))
+  doc.pages[0].children = [fitted.id, tight.id, outer.id, holder.id]
+  const editor = new Editor(doc); editors.push(editor)
+  const world = (id: string) => [...worldMatrix(editor.state.doc, id)]
+  editor.select([inside.id])
+  const insideWorld = world(inside.id), neighbourWorld = world(neighbour.id)
+  editor.duplicate()
+  const fittedCopy = editor.state.selection[0]
+  expect(editor.state.selection).toEqual([fittedCopy])
+  expect(editor.state.doc.nodes[fitted.id].children).toEqual([inside.id, fittedCopy, neighbour.id])
+  expect(editor.state.doc.nodes[fitted.id].width).toBe(400)
+  expect(editor.state.doc.nodes[fitted.id].height).toBe(200)
+  expect(world(inside.id)).toEqual(insideWorld)
+  expect(world(neighbour.id)).toEqual(neighbourWorld)
+  expect(world(fittedCopy)).toEqual([1, 0, 0, 1, 150, 20])
+  editor.undo()
+
+  editor.select([hanging.id])
+  const hangingWorld = world(hanging.id), parkedWorld = world(parked.id)
+  editor.duplicate()
+  const hangingCopy = editor.state.selection[0]
+  expect(editor.state.selection).toEqual([hangingCopy])
+  expect(world(hanging.id)).toEqual(hangingWorld)
+  expect(world(parked.id)).toEqual(parkedWorld)
+  expect(world(hangingCopy)[4] - hangingWorld[4]).toBeCloseTo(90, 8)
+  expect(world(hangingCopy)[5]).toBeCloseTo(hangingWorld[5], 8)
+  const grown = editor.state.doc.nodes[tight.id]
+  expect(grown.width).toBe(140)
+  expect(grown.height).toBe(130)
+  expect(grown.transform).toEqual([1, 0, 0, 1, 100, 70])
+  expect(grown.guides).toEqual([{ id: 'guide-y', axis: 'y', position: 42 }])
+  expect(editor.state.doc.nodes[hanging.id].constraints).toEqual({ horizontal: 'end', vertical: 'start', referenceWidth: 140, referenceHeight: 130 })
+  expect(editor.state.doc.nodes[hanging.id].transform[4]).toBe(0)
+  editor.duplicate()
+  const hangingAgain = editor.state.selection[0]
+  expect(editor.state.selection).toEqual([hangingAgain])
+  expect(world(hangingAgain)[4] - world(hangingCopy)[4]).toBeCloseTo(90, 8)
+  expect(editor.state.doc.nodes[tight.id].width).toBe(230)
+  expect(world(hanging.id)).toEqual(hangingWorld)
+  editor.undo(); editor.undo()
+  expect(editor.state.doc.nodes[tight.id].width).toBe(100)
+  expect(editor.state.doc.nodes[tight.id].transform).toEqual([1, 0, 0, 1, 100, 100])
+  expect(editor.state.doc.nodes[hangingCopy]).toBeUndefined()
+
+  editor.select([nested.id])
+  const nestedWorld = world(nested.id), innerWorld = world(inner.id)
+  editor.duplicate()
+  const nestedCopy = editor.state.selection[0]
+  expect(editor.state.selection).toEqual([nestedCopy])
+  expect(editor.state.doc.nodes[inner.id].children).toEqual([nested.id, nestedCopy])
+  expect(editor.state.doc.nodes[inner.id].width).toBe(260)
+  expect(editor.state.doc.nodes[inner.id].transform.slice(4)).toEqual([10, 10])
+  expect(editor.state.doc.nodes[outer.id].width).toBe(270)
+  expect(editor.state.doc.nodes[outer.id].transform.slice(4)).toEqual([0, 400])
+  expect(world(nested.id)).toEqual(nestedWorld)
+  expect(world(inner.id)).toEqual(innerWorld)
+  expect(editor.state.doc.nodes[nestedCopy].transform.slice(4)).toEqual([160, 20])
+  editor.duplicate()
+  expect(editor.state.selection).toHaveLength(1)
+  expect(editor.state.doc.nodes[inner.id].width).toBe(400)
+  expect(editor.state.doc.nodes[outer.id].width).toBe(410)
+  expect(world(nested.id)).toEqual(nestedWorld)
+  editor.undo(); editor.undo()
+
+  editor.select([inner.id])
+  editor.duplicate()
+  const innerCopy = editor.state.selection[0]
+  expect(editor.state.selection).toEqual([innerCopy])
+  expect(editor.state.doc.nodes[innerCopy].kind).toBe('section')
+  expect(editor.state.doc.nodes[outer.id].children).toEqual([inner.id, innerCopy])
+  expect(editor.state.doc.nodes[inner.id].transform).toEqual([1, 0, 0, 1, 10, 10])
+  expect(world(innerCopy).slice(4)).toEqual([10 + 150 + 40, 410])
+  expect(editor.state.doc.nodes[outer.id].width).toBe(10 + 150 + 40 + 150)
+  editor.undo()
+
+  editor.select([grouped.id])
+  const groupedWorld = world(grouped.id)
+  editor.duplicate()
+  const groupedCopy = editor.state.selection[0]
+  expect(allParents(editor.state.doc).get(groupedCopy)).toBe(group.id)
+  expect(world(groupedCopy)[4] - groupedWorld[4]).toBeCloseTo(10, 8)
+  expect(world(groupedCopy)[5] - groupedWorld[5]).toBeCloseTo(10, 8)
+  expect(editor.state.doc.nodes[holder.id].width).toBe(300)
+  expect(editor.state.doc.nodes[holder.id].height).toBe(200)
+})
+
+test('Ctrl+D and Command+D select only the copy of a top-level frame and park it one gap to the right', async () => {
+  interfacePreference.set({ uiMode: 'figma' })
+  const doc = blank('shortcut frame'), frame = node('frame', 40, 70, 120, 90)
+  doc.nodes[frame.id] = frame
+  doc.pages[0].children = [frame.id]
+  const editor = new Editor(doc); editors.push(editor)
+  const press = (mod: 'ctrl' | 'meta', platform: 'linux' | 'mac') => dispatchEditorShortcut(editor, {
+    key: 'd', code: 'KeyD', ctrlKey: mod === 'ctrl', metaKey: mod === 'meta', altKey: false, shiftKey: false,
+    repeat: false, isComposing: false, defaultPrevented: false, target: null, preventDefault() {},
+  }, { profile: 'figma-like', platform })
+  editor.select([frame.id])
+  expect(await press('ctrl', 'linux')).toBe(true)
+  const copy = editor.state.selection[0]
+  expect(editor.state.selection).toEqual([copy])
+  expect(editor.state.doc.pages[0].children).toEqual([frame.id, copy])
+  expect(worldMatrix(editor.state.doc, copy)).toEqual([1, 0, 0, 1, 40 + 120 + 40, 70])
+  expect(editor.state.doc.nodes[frame.id].transform).toEqual([1, 0, 0, 1, 40, 70])
+  editor.undo()
+  editor.select([frame.id])
+  expect(await press('meta', 'mac')).toBe(true)
+  expect(editor.state.selection).toHaveLength(1)
+  expect(editor.state.selection[0]).not.toBe(frame.id)
+  expect(worldMatrix(editor.state.doc, editor.state.selection[0])).toEqual([1, 0, 0, 1, 40 + 120 + 40, 70])
+})
+
+test('Figma duplicate of an auto-layout child uses the flow gap, while an absolute child keeps +10,+10', () => {
+  interfacePreference.set({ uiMode: 'figma' })
+  const doc = blank('flow duplicate')
+  const frame = node('frame', 0, 0, 400, 200)
+  frame.layout = { ...defaultLayout(), mode: 'horizontal', gap: 20, padding: [0, 0, 0, 0] }
+  const flow = node('frame', 0, 0, 80, 30)
+  const absolute = node('rectangle', 50, 60, 20, 20)
+  absolute.sizing = { ...defaultSizing(), absolute: true }
+  frame.children = [flow.id, absolute.id]
+  doc.nodes = Object.fromEntries([frame, flow, absolute].map(n => [n.id, n]))
+  doc.pages[0].children = [frame.id]
+  const editor = new Editor(doc); editors.push(editor)
+  const source = editor.state.doc.nodes[flow.id]
+  editor.select([flow.id]); editor.duplicate()
+  const copy = editor.state.selection[0]
+  expect(editor.state.selection).toEqual([copy])
+  expect(editor.state.doc.nodes[frame.id].children[0]).toBe(flow.id)
+  expect(editor.state.doc.nodes[frame.id].children[1]).toBe(copy)
+  expect(editor.state.doc.nodes[flow.id].transform).toEqual(source.transform)
+  expect(editor.state.doc.nodes[copy].transform[4] - source.transform[4]).toBeCloseTo(source.width + 20, 6)
+  expect(source.width + 20).not.toBeCloseTo(10, 6)
+  editor.undo()
+  const parked = editor.state.doc.nodes[absolute.id].transform
+  editor.select([absolute.id]); editor.duplicate()
+  const stepped = editor.state.doc.nodes[editor.state.selection[0]]
+  expect(editor.state.selection).toHaveLength(1)
+  expect(stepped.transform[4] - parked[4]).toBeCloseTo(10, 8)
+  expect(stepped.transform[5] - parked[5]).toBeCloseTo(10, 8)
+  editor.undo()
+  editor.select([frame.id]); editor.duplicate()
+  expect(worldMatrix(editor.state.doc, editor.state.selection[0]).slice(4)).toEqual([400 + 40, 0])
 })
 
 test('Option-copy in auto layout leaves source flow stationary, restores sizing at drop, and undoes once', () => {

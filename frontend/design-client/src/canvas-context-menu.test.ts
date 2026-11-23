@@ -123,7 +123,7 @@ test('ordinary Duplicate steps 10px down-right; top-level frames move right at u
   interfacePreference.set({ uiMode: 'figma' })
 })
 
-test('Figma Duplicate places a top-level frame to the right; sections, groups, nested frames, and paste stay at +10,+10', () => {
+test('Figma Duplicate places a top-level frame or section to the right; groups, nested frames, and paste stay at +10,+10', () => {
   interfacePreference.set({ uiMode: 'figma' })
   const document = blank('container duplicate'), frame = node('frame', 140, 486, 500, 300), nested = node('frame', 16, 18, 40, 30)
   const section = node('section', 20, 30, 80, 40), group = node('group', 8, 12, 40, 20), child = node('rectangle', 4, 6, 10, 10)
@@ -148,7 +148,8 @@ test('Figma Duplicate places a top-level frame to the right; sections, groups, n
     expect(worldMatrix(editor.state.doc, id)).toEqual(before)
   }
   step(frame.id, frame.width + 40, 0)
-  for (const id of [section.id, group.id, nested.id]) step(id, 10, 10)
+  step(section.id, section.width + 40, 0)
+  for (const id of [group.id, nested.id]) step(id, 10, 10)
   editor.select([frame.id]); const origin = worldMatrix(editor.state.doc, frame.id)
   editor.copy(); editor.paste()
   const pasted = worldMatrix(editor.state.doc, editor.state.selection[0])
