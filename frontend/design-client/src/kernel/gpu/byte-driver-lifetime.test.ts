@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { WebGpuDriver } from './webgpu'
 import { ByteTentPrefix, ByteTentPrefixLease, planByteTentPrefix, type ByteTentOptions } from './byte-tent-prefix'
+import { RASTER_SLICE_COMMANDS } from './raster-queue-pacer'
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers() })
 const options = (): ByteTentOptions => ({ radius: 1920, axis: 0,
@@ -114,6 +115,48 @@ test('a CPU-only yield keeps partial raster commands while an older submission r
   expect(f.driver.scratchBytes).toBe(bytes)
   expect(f.allocated[0].destroy).not.toHaveBeenCalled()
   f.waits[1].resolve()
+})
+
+test('the uniform limit can force a task yield when the queue has room', () => {
+  const f = fixture()
+  f.driver.offset = (RASTER_SLICE_COMMANDS - 1) * 1024
+  expect(f.driver.rasterUniformSliceReady).toBe(false)
+  f.driver.offset += 1024
+  expect(f.driver.rasterUniformSliceReady).toBe(true)
+  f.driver.submissionSequence = 2
+  expect(f.driver.rasterUniformSliceReady).toBe(false)
+})
+
+test.each(['tail-pending', 'drained', 'cancelled'] as const)('a CPU-only yield refills just a current, drained queue (%s)', async state => {
+  const f = fixture()
+  f.driver.rasterPacing = true
+  f.driver.submissionSequence = 1
+  await f.driver.yieldRasterQueue(false)
+  f.driver.submissionSequence = 2
+  await f.driver.prepareByteTent()
+  expect(f.encode()).toBe(true)
+  const encoder = f.driver.encoder
+  const checkCurrent = vi.fn(() => { if (state === 'cancelled') throw Error('PREVIEW_CANCELLED') })
+  const pause = f.driver.yieldRasterQueue(false, checkCurrent)
+  expect(f.device.queue.submit).not.toHaveBeenCalled()
+  expect(f.waits).toHaveLength(2)
+  const outcome = state === 'cancelled' ? expect(pause).rejects.toThrow('PREVIEW_CANCELLED') :
+    expect(pause).resolves.toBeUndefined()
+  f.waits[0].resolve()
+  if (state !== 'tail-pending') f.waits[1].resolve()
+  await outcome
+  expect(checkCurrent).toHaveBeenCalledTimes(state === 'tail-pending' ? 0 : 1)
+  expect(f.device.queue.submit).toHaveBeenCalledTimes(state === 'drained' ? 1 : 0)
+  expect(f.driver.completedResourceEpoch).toBe(4)
+  expect(f.allocated[0].destroy).not.toHaveBeenCalled()
+  if (state === 'drained') {
+    expect(f.driver.encoder).not.toBe(encoder)
+    expect(f.waits).toHaveLength(3)
+    f.waits[2].resolve()
+  } else {
+    expect(f.driver.encoder).toBe(encoder)
+    f.waits[1].resolve()
+  }
 })
 
 test('multiple axis jobs are charged and submitted together; a rejected completion preserves every lease', async () => {

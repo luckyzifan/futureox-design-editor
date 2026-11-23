@@ -89,6 +89,16 @@ test('a full display command slice yields even when the CPU time window has not 
   expect(f.internal.yieldEncoding()).toBeUndefined()
 })
 
+test('a full uniform slice uses the task yield even before the draw limit', async () => {
+  const f = fixture()
+  vi.spyOn(performance, 'now').mockReturnValue(100)
+  f.internal.encodeYield.begin()
+  f.driver.rasterPacing = true
+  Object.defineProperty(f.driver, 'rasterUniformSliceReady', { value: true })
+  await f.internal.yieldEncoding()
+  expect(f.events).toEqual(['current', 'current', 'submit'])
+})
+
 test('disabled submit still yields and checks cancellation without sending work', async () => {
   vi.stubEnv('VITE_DESIGN_ENCODE_SUBMIT', '0')
   const f = fixture()

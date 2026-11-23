@@ -8,6 +8,7 @@ function fixture(transientBytes=3*MiB) {
   let boundary: Promise<void>=Promise.resolve()
   const driver={name:'webgpu',managed:true,captureDisplay:true,scratchBytes:0,
     resourceEpoch:12,completedResourceEpoch:11,
+    rasterPacing: false, captureAdmissionCompletion: vi.fn<() => (() => boolean) | undefined>(() => undefined),
     checkpoint:vi.fn(async()=>{await boundary}),destroy:vi.fn()}
   const renderer=new GpuRenderer(driver as unknown as Driver) as any
   renderer.scene={};renderer.bytes=400*MiB
@@ -115,6 +116,32 @@ test('the soft pool watermark reclaims completed surfaces without stalling the c
   expect(driver.completedResourceEpoch).toBe(11)
 })
 
+test('paced pool-only trim retains the full completed batch when both paths qualify', async () => {
+  const { renderer, driver, coordinate } = fixture()
+  renderer.coordinateMaps.delete(coordinate)
+  renderer.residentImageRequest = true
+  driver.rasterPacing = true
+  renderer.frameBudget = 512 * MiB
+  renderer.bytes = 450 * MiB
+  renderer.free.clear()
+  const retired = Array.from({ length: 2 }, () => ({
+    width: 1024, height: 1536, bytes: 24 * MiB, resource: {},
+  } as Texture))
+  renderer.free.setOwned('1024:1536', retired.slice())
+  for (const texture of retired) {
+    renderer.free.added(texture)
+    renderer.touch(texture)
+    renderer.poolReleaseEpoch.set(texture, 11)
+  }
+
+  await renderer.reclaimScratch()
+
+  expect(driver.checkpoint).not.toHaveBeenCalled()
+  expect(driver.destroy.mock.calls.map(call => call[0])).toEqual(retired)
+  expect(renderer.bytes).toBe(402 * MiB)
+  expect(driver.completedResourceEpoch).toBe(11)
+})
+
 test('large transient cohort still fences even in native display mode',async()=>{
   const f=fixture(65*MiB);let complete!:()=>void
   f.setBoundary(new Promise<void>(r=>complete=r))
@@ -158,4 +185,121 @@ test('maintenance reason bits identify unknown epoch rather than display mode',a
   const events:any[]=[];setGpuDiagnosticSink((event:string,fields:any)=>{if(event==='cache')events.push(fields)})
   const f=fixture();delete (f.driver as any).resourceEpoch;await f.renderer.reclaimScratch()
   expect(events.find(e=>e.maintenanceDecision!==undefined)).toMatchObject({maintenanceDecision:1,mandatoryReasonBits:32})
+})
+
+test('soft trimming uses already-completed free surfaces without fencing this frame', async () => {
+  const f = fixture()
+  f.renderer.frameBudget = 512 * MiB
+  f.renderer.poolReleaseEpoch.set(f.pool, 11)
+  f.driver.rasterPacing = true
+  await f.renderer.reclaimScratch()
+  expect(f.driver.checkpoint).not.toHaveBeenCalled()
+  expect(f.driver.destroy).toHaveBeenCalledExactlyOnceWith(f.pool)
+  expect(f.renderer.coordinateMaps.has(f.coordinate)).toBe(true)
+})
+
+test('soft trimming cannot borrow completion for a surface touched by this frame', async () => {
+  const f = fixture()
+  f.renderer.frameBudget = 512 * MiB
+  f.renderer.poolReleaseEpoch.set(f.pool, 11)
+  f.renderer.used.add(f.pool)
+  f.driver.rasterPacing = true
+  let complete!: () => void
+  f.setBoundary(new Promise<void>(resolve => { complete = resolve }))
+  const pending = f.renderer.reclaimScratch()
+  expect(f.driver.checkpoint).toHaveBeenCalledOnce()
+  expect(f.driver.destroy).not.toHaveBeenCalled()
+  complete()
+  await pending
+})
+
+test('coordinate maintenance keeps one charged batch and merges later requests before completion', async () => {
+  const f = fixture()
+  let completed = false
+  f.driver.rasterPacing = true
+  f.driver.captureAdmissionCompletion = vi.fn(() => () => completed)
+  const paint = {}
+  f.renderer.imageGrids.set(paint, new Map([[0, { texture: f.coordinate }]]))
+  for (let i = 0; i < 12; i++) await f.renderer.reclaimScratch()
+  expect(f.driver.captureAdmissionCompletion).toHaveBeenCalledOnce()
+  expect(f.driver.checkpoint).not.toHaveBeenCalled()
+  expect(f.driver.destroy).not.toHaveBeenCalled()
+  expect(f.renderer.bytes).toBe(400 * MiB)
+  expect(f.renderer.imageGrids.get(paint)).toBeUndefined()
+  expect(f.renderer.retiredUploads).toContain(f.coordinate)
+
+  completed = true
+  await f.renderer.reclaimScratch()
+  expect(f.driver.destroy).toHaveBeenCalledExactlyOnceWith(f.coordinate)
+  expect(f.renderer.retiredUploads).not.toContain(f.coordinate)
+  expect(f.renderer.bytes).toBe(397 * MiB)
+})
+
+test('real allocation pressure still fences when a coordinate batch is pending', async () => {
+  const f = fixture()
+  f.driver.rasterPacing = true
+  f.driver.captureAdmissionCompletion = vi.fn(() => () => false)
+  for (let i = 0; i < 9; i++) await f.renderer.reclaimScratch()
+  let complete!: () => void
+  f.setBoundary(new Promise<void>(resolve => { complete = resolve }))
+  const pending = f.renderer.reclaimScratch(700 * MiB)
+  expect(f.driver.checkpoint).toHaveBeenCalledOnce()
+  expect(f.driver.destroy).not.toHaveBeenCalled()
+  complete()
+  await pending
+  expect(f.driver.destroy).toHaveBeenCalledWith(f.coordinate)
+})
+
+function smallCompletedPool() {
+  const f = fixture()
+  f.renderer.frameBudget = 512 * MiB
+  f.driver.rasterPacing = true
+  f.renderer.lastUsed.set(f.pool, 65)
+  const small = Array.from({ length: 64 }, (_, index) => {
+    const texture = { width: 128, height: 2, bytes: 4096, resource: {} } as Texture
+    f.renderer.poolReleaseEpoch.set(texture, 11)
+    f.renderer.lastUsed.set(texture, index + 1)
+    return texture
+  })
+  f.renderer.free.set('128:2', [...small])
+  return { ...f, small }
+}
+
+test('soft trimming retires a full completed resource batch below its byte target', async () => {
+  const f = smallCompletedPool()
+  await f.renderer.reclaimScratch()
+  expect(f.driver.checkpoint).not.toHaveBeenCalled()
+  expect(f.driver.destroy.mock.calls.map(call => call[0])).toEqual(f.small)
+  expect(f.renderer.free.get('1024:5120')).toEqual([f.pool])
+})
+
+test('an incomplete batch below its byte target retains the original fence', async () => {
+  const f = smallCompletedPool()
+  f.renderer.poolReleaseEpoch.set(f.small[0], 12)
+  let complete!: () => void
+  f.setBoundary(new Promise<void>(resolve => { complete = resolve }))
+  const pending = f.renderer.reclaimScratch()
+  expect(f.driver.checkpoint).toHaveBeenCalledOnce()
+  expect(f.driver.destroy).not.toHaveBeenCalled()
+  complete()
+  await pending
+})
+
+test('soft trim releases completed pool bytes while a separate coordinate batch stays charged', async () => {
+  const f = smallCompletedPool()
+  f.renderer.frameBudget = 768 * MiB
+  let completed = false
+  f.driver.captureAdmissionCompletion = vi.fn(() => () => completed)
+  for (let i = 0; i < 9; i++) await f.renderer.reclaimScratch()
+  expect(f.renderer.retiredUploads).toContain(f.coordinate)
+  expect(f.driver.destroy).not.toHaveBeenCalled()
+  f.renderer.frameBudget = 512 * MiB
+  await f.renderer.reclaimScratch()
+  expect(f.driver.checkpoint).not.toHaveBeenCalled()
+  expect(f.driver.destroy.mock.calls.map(call => call[0])).toEqual(f.small)
+  expect(f.renderer.retiredUploads).toContain(f.coordinate)
+  expect(f.renderer.bytes).toBe(400 * MiB - 64 * 4096)
+  completed = true
+  await f.renderer.reclaimScratch()
+  expect(f.driver.destroy).toHaveBeenLastCalledWith(f.coordinate)
 })

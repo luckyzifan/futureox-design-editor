@@ -8,8 +8,10 @@ const M=1024*1024
 const src=readFileSync(process.env.RENDERER_SOURCE || new URL('./renderer.ts',import.meta.url),'utf8')
 const start=src.indexOf('  private async reclaimScratch('),end=src.indexOf('\n  private ',start+1)
 const noteStart=src.indexOf('  private noteScratch('),noteEnd=src.indexOf('\n  }',noteStart)
-assert(start>=0&&end>start&&noteStart>=0&&noteEnd>noteStart,'Production reclaimScratch and noteScratch method boundaries must exist')
-const body=(src.slice(start,end)+'\n'+src.slice(noteStart,noteEnd+4)).replaceAll("import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX", "'0'").replaceAll("import.meta.env.VITE_DESIGN_IMAGE_ASSET_RESIDENCY", "'0'")
+const collectStart=src.indexOf('  private collectDeferredCoordinates('),collectEnd=src.indexOf('\n  private ',collectStart+1)
+assert(start>=0&&end>start&&noteStart>=0&&noteEnd>noteStart&&collectStart>=0&&collectEnd>collectStart,
+  'Production maintenance method boundaries must exist')
+const body=[src.slice(start,end),src.slice(noteStart,noteEnd+4),src.slice(collectStart,collectEnd)].join('\n').replaceAll("import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX", "'0'").replaceAll("import.meta.env.VITE_DESIGN_IMAGE_ASSET_RESIDENCY", "'0'")
 const Renderer=Function('gpuDiagnosticsEnabled','recordGpuDiagnostic','RECLAIM_BATCH_BYTES','RECLAIM_BATCH_RESOURCES','return '+stripTypeScriptTypes('class Harness {\n'+body+'\n}'))(()=>true,(event,data)=>records.push({event,...data}),Number(src.match(/const RECLAIM_BATCH_BYTES = (\d+) \* 1024 \* 1024/)[1])*M,Number(src.match(/const RECLAIM_BATCH_RESOURCES = (\d+)/)[1]))
 const records=[]
 function fixture(working=272586144,pool=9844192,transient=160118336) {

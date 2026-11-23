@@ -348,10 +348,11 @@ export interface Driver {
   submitPending?(): void
   /** Pace canvas encoding against the already submitted queue without
    * retiring frame resources or treating presentation ACKs as completion. */
-  yieldRasterQueue?(sliceFull?: boolean): Promise<void>
+  yieldRasterQueue?(sliceFull?: boolean, checkCurrent?: () => void): Promise<void>
   /** Display-only bounded command slices; never a resource completion proof. */
   rasterPacing?: boolean
   readonly pendingDrawCalls?: number
+  readonly rasterUniformSliceReady?: boolean
   captureDisplay?: boolean
   retainedSampleCapture?(): boolean
   attachPresenter?(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void, atomic?:boolean): void
@@ -412,6 +413,9 @@ export interface Driver {
    * mere finish() return does not imply completion. */
   readonly resourceEpoch?: number
   readonly completedResourceEpoch?: number
+  /** Completion of the current encoder's submitted queue prefix. The caller
+   * owns any retired resources and keeps their charges until it is covered. */
+  captureAdmissionCompletion?(): (() => boolean) | undefined
   /** Aggregate device-side ledger. finishTransientBytes covers the finish()
    * output copy, readback target and MAP_READ staging that live outside the
    * renderer's pool budget; gates read it to reason about the true footprint. */
