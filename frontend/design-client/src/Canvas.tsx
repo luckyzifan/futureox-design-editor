@@ -12,7 +12,7 @@ import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_ME
 import { rotationChromeHeldToTexture, rotationDocumentChromeSuppressed, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
-import { crispOutlinePath } from './kernel/gpu/canvas-overlay'
+import { ALIGNMENT_GUIDE, crispOutlinePath, crispSegmentPath } from './kernel/gpu/canvas-overlay'
 import { altMeasurementTarget, measurementTicks, SPACING_RED, textMeasurementBounds } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
 import { frameTitleShown } from './page-frame-chrome'
@@ -4521,26 +4521,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               {Number(rubber.width.toFixed(2))} × {Number(rubber.height.toFixed(2))}
             </text>}</g>
           )}
-          {!guides.surface && guides.x && (
-            <line
-              x1={guides.x.position}
-              x2={guides.x.position}
-              y1={guides.x.start}
-              y2={guides.x.end}
-              stroke="#ed6996"
-              strokeWidth={1 / zoom}
-            />
-          )}{' '}
-          {!guides.surface && guides.y && (
-            <line
-              y1={guides.y.position}
-              y2={guides.y.position}
-              x1={guides.y.start}
-              x2={guides.y.end}
-              stroke="#ed6996"
-              strokeWidth={1 / zoom}
-            />
-          )}
+          {!guides.surface && (['x', 'y'] as const).map(axis => {
+            const guide = guides[axis]
+            if (!guide) return null
+            const d = crispSegmentPath(
+              axis === 'x' ? { x: guide.position, y: guide.start } : { x: guide.start, y: guide.position },
+              axis === 'x' ? { x: guide.position, y: guide.end } : { x: guide.end, y: guide.position },
+              displayView, 1)
+            if (!d) return null
+            return <path key={axis} data-testid="canvas-alignment-guide" data-axis={axis} data-position={guide.position}
+              d={d} fill={ALIGNMENT_GUIDE} stroke="none" shapeRendering="crispEdges" pointerEvents="none" />
+          })}
           {pen && (
             <g
               transform={pen.id ? matrixString(worldMatrix(state.doc, pen.id)) : undefined}
