@@ -28,6 +28,7 @@ import { acceptFrameClarity } from './frame-acceptance'
 import { previewCameraScaleWithinLimit, tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
 import { canvasStatusLabel } from '../canvas-status-label'
 import { fitBounds, type CanvasCamera } from '../canvas-camera'
+import { boundsContain, intersectBounds } from './page-translation'
 import { useRasterDensity } from './use-raster-density'
 import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
@@ -404,8 +405,9 @@ export function ProgressiveSurfaceImpl(
   const [mailbox] = useState(() => new RenderMailbox())
   const [navigationRefinement] = useState(() => new NavigationRefinementScheduler(mailbox))
   const [translationRefinement] = useState(() => new NavigationRefinementScheduler(mailbox))
-  type TranslationFill = {source:SurfaceProps['document'];offset:{x:number;y:number};sequence:number;failed:()=>void}
+  type TranslationFill = {source:SurfaceProps['document'];offset:{x:number;y:number};sequence:number;failed:()=>void;region?:{x:number;y:number;width:number;height:number}}
   const translationCoverage = useRef<((request:TranslationFill)=>boolean) | undefined>(undefined)
+  const boardTileFill = useRef<{token:number;state:'running'|'resident'|'rejected';keys:string[];coversBoard:boolean;target?:{x:number;y:number;width:number;height:number}}>()
   const translationRequest = useRef<TranslationFill | undefined>(undefined)
   const rasterOwner = useRef<object | null>(null)
   const fillOwner = useRef<{ contract: object; key: string } | null>(null)
@@ -1561,31 +1563,81 @@ export function ProgressiveSurfaceImpl(
       else setFailure(String(error))
     }
     translationCoverage.current = request => {
+      const region = request.region
+      if (region && (![region.x, region.y, region.width, region.height].every(Number.isFinite) ||
+          region.width <= 0 || region.height <= 0 || [region.x, region.y, region.width, region.height].some(value => Math.abs(value) > 16_000_000))) return false
+      const deviceOffset = [request.offset.x * dpr * view.zoom, request.offset.y * dpr * view.zoom]
       if (!residentDisplay || cameraDependent || hdrCompositing || props.grid || props.checkerboard || props.pixelPreview ||
           request.source !== doc || !latestContext.current.interaction?.active || !current() ||
-          ![request.offset.x*dpr*view.zoom,request.offset.y*dpr*view.zoom].every(value =>
-            Number.isFinite(value) && Math.abs(value) < 4_000_000 &&
-            (renderExecutionPolicy.desktopDisplay && rasterProfile === 'figmaSubpixel' || Number.isSafeInteger(value)))) return false
+          !deviceOffset.every(value => Number.isFinite(value) && Math.abs(value) < 4_000_000 &&
+            (region !== undefined || renderExecutionPolicy.desktopDisplay && rasterProfile === 'figmaSubpixel' || Number.isSafeInteger(value)))) return false
+      const shifted = { x: -view.x / view.zoom - request.offset.x, y: -view.y / view.zoom - request.offset.y,
+        width: width / view.zoom, height: height / view.zoom }
+      const needed = region ? intersectBounds(region, shifted) : undefined
+      if (region && !needed) return false
+      const prior = boardTileFill.current
+      if (region && prior?.token === request.sequence) {
+        if (prior.state === 'rejected') return false
+        if (prior.state === 'running' || prior.coversBoard) return true
+        if (prior.target && needed && boundsContain(prior.target, needed)) return true
+      }
       translationRequest.current = request
       const scope = `${contract.revision}:${token}`
-      translationRefinement.update({scope,sequence:request.sequence,current:()=>current()&&latestContext.current.interaction?.active===true,
-        failed: error=>{recordRenderDiagnostic({kind:'error',errorCode:renderDiagnosticError(error)});request.failed()},
+      const scheduleKey = region && needed
+        ? `${request.sequence}:${Math.round(needed.x)}:${Math.round(needed.y)}:${Math.round(needed.width)}:${Math.round(needed.height)}`
+        : request.sequence
+      const rejectBoard = () => {
+        if (!region) return
+        boardTileFill.current = { token: request.sequence, state: 'rejected', keys: [], coversBoard: false }
+        request.failed()
+      }
+      if (region) boardTileFill.current = { token: request.sequence, state: 'running', keys: [], coversBoard: false, target: prior?.token === request.sequence ? prior.target : undefined }
+      translationRefinement.update({scope,sequence:scheduleKey,current:()=>current()&&latestContext.current.interaction?.active===true,
+        failed: error=>{recordRenderDiagnostic({kind:'error',errorCode:renderDiagnosticError(error)});if(region)boardTileFill.current={token:request.sequence,state:'rejected',keys:[],coversBoard:false};request.failed()},
         run: async()=>{
           await initializeKernelModule()
-          if(!current())return
-          const target={x:-view.x/view.zoom-request.offset.x,y:-view.y/view.zoom-request.offset.y,
-            width:width/view.zoom,height:height/view.zoom}
+          if(!current()){
+            if (region && boardTileFill.current?.token === request.sequence && boardTileFill.current.state === 'running')
+              boardTileFill.current = undefined
+            return
+          }
           const native=canvasRasterPlan(view,dpr,width,height,{rasterProfile,exactPhase:true})
-          const plan=planTilesAligned(target,native.scale,budgetTileLimit(displayBudget,false),native.phase)
-            .map(tile=>({...tile,key:tileComputationKey(tile,native.camera,false)}))
+          const limit=budgetTileLimit(displayBudget,false)
+          let target=region??shifted, coversBoard=!!region
+          let planned
+          try { planned=planTilesAligned(target,native.scale,limit,native.phase) }
+          catch (error) {
+            if (!region || !needed) {
+              if (region) rejectBoard()
+              else throw error
+              return
+            }
+            target=needed; coversBoard=false
+            try { planned=planTilesAligned(target,native.scale,limit,native.phase) }
+            catch { rejectBoard(); return }
+          }
+          const plan=planned.map(tile=>({...tile,key:tileComputationKey(tile,native.camera,false)}))
           const missing=plan.filter(tile=>{const resident=tileRef.current.get(tile.key)
             return !resident||resident.document!==doc||resident.revision!==contract.revision||!ready.current.has(tile.key)})
-          if(!missing.length)return
+          if (region) boardTileFill.current = { token: request.sequence, state: 'running', keys: plan.map(tile => tile.key), coversBoard, target }
+          if(!missing.length){
+            const filling = boardTileFill.current
+            if (region && filling && filling.token === request.sequence)
+              boardTileFill.current = { ...filling, state: 'resident' }
+            return
+          }
+          if (region) for (const tile of missing) protectedKeys.current.add(tile.key)
           await c.render(doc,{pageId,width:Math.ceil(width*dpr),height:Math.ceil(height*dpr),view:native.camera,
             transparent:false,grid:false,checkerboard:false,rasterProfile,renderIntent:'canvas',tileViewport:missing,
             tilePrepareViewport:tilePrepareViewport(plan,native.camera),
             ...(props.presentationEpoch===undefined?{}:{tileOwner:{documentId:doc.id,sessionEpoch:props.presentationEpoch}})},
             false,backend,false,false,undefined,receive)
+          if (!region || boardTileFill.current?.token !== request.sequence) return
+          const dropped = missing.some(tile => tileRef.current.get(tile.key)?.document !== doc)
+          boardTileFill.current = dropped
+            ? { token: request.sequence, state: 'rejected', keys: [], coversBoard: false }
+            : { token: request.sequence, state: 'resident', keys: plan.map(tile => tile.key), coversBoard, target }
+          if (dropped) request.failed()
         }})
       void translationRefinement.request()
       return true

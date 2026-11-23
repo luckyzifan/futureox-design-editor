@@ -6,7 +6,7 @@ import type { SurfaceProps } from './Surface'
 import { ResidentPresentation, type ResidentAcknowledgement } from './resident-presentation'
 import { registerContentPlane } from './content-plane'
 import type { CanvasCamera } from '../canvas-camera'
-import type { DesignDocument } from '../model'
+import type { Bounds, DesignDocument } from '../model'
 import { renderExecutionPolicy, type KernelClient, type KernelOptions } from './client'
 import type { BackendPreference } from './gpu/types'
 import type { CompositeItem } from './gpu/tile-compositor'
@@ -75,7 +75,7 @@ export function ResidentCompositeSurface(props: {
   /** Actual queued page/movement composition, retaining the source objects.
    * This is not a GPU completion or a rendered-pixel quality certificate. */
   onCompositeItems?: (items: readonly CompositeItem[]) => void
-  onTranslatedCoverage?: (source:DesignDocument,offset:{x:number;y:number},sequence:number,failed:()=>void)=>boolean
+  onTranslatedCoverage?: (source:DesignDocument,offset:{x:number;y:number},sequence:number,failed:()=>void,region?:Bounds)=>boolean
 }) {
   const trace=useRef<HandoffTrace|null>(null)
   if(!trace.current)trace.current=createHandoffTrace()
@@ -497,7 +497,7 @@ export function ResidentCompositeSurface(props: {
           p.rasterProfile, p.backend, p.settledDocument, { width: p.width, height: p.height })
         return renderer.control.apply(document, patches, undefined, guides)
       }, p.client.presentationDiagnosticsEnabled?.() ? fields=>latest.current.client.recordViewportDiagnostic(fields) : undefined,
-        (source,offset,sequence,failed)=>latest.current.onTranslatedCoverage?.(source,offset,sequence,failed)===true)
+        (source,offset,sequence,failed,region)=>latest.current.onTranslatedCoverage?.(source,offset,sequence,failed,region)===true)
     } catch (error) {
       p.onFailure(String(error))
     }
