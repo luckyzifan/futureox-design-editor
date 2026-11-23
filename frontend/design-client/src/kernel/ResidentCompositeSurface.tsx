@@ -18,7 +18,7 @@ import { PageTranslation } from './page-translation'
 import { liveInteractionStack } from './resident-layer-stack'
 import { settleResidentImport } from './resident-import-ownership'
 import { viewportPreviewDeviceKey, type ViewportPreviewDevice } from './viewport-preview-cache'
-import {allowIncompletePanPreview,type PanPreviewBacking} from './pan-preview'
+import {allowIncompletePanPreview,suppressCameraPreviewForZoom,type PanPreviewBacking} from './pan-preview'
 import {zoomOutBeyondPreview} from './tile-preview'
 import { allowsReducedSampling } from './render-quality'
 import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap,keepCompleteCameraBacking} from './camera-reprojection'
@@ -64,6 +64,8 @@ export function ResidentCompositeSurface(props: {
   terminalQuality?: ResidentFrame['terminalQuality']
   presentation: PresentedFrame | null
   allowPanPreview?:boolean
+  /** Zoom of the picture already on screen, when this surface has not accepted one yet. */
+  retainedZoom?: number
   preserveZoomBasis?: boolean
   zoomInputActive?: boolean
   overview?: import('../model').Bounds
@@ -259,10 +261,13 @@ export function ResidentCompositeSurface(props: {
         gpuSelectionIdentity: overlay?.selection ? scopedOverlay?.selectionIdentity : undefined,
         gpuOverlayCapture: overlay ? capturedOverlay?.cohort : undefined } : null) }
       catch (error) { p.onFailure(String(error)); return }
-      // The white camera-preview fill is a same-zoom pan strip. Using it while
-      // the live zoom is a 3200% return clears the only picture on screen.
-      const heldZoom=acceptedCamera.current?.actual.view.zoom??actualPresentation.current?.view.zoom??0
-      const panPreview=!zoomOutBeyondPreview(heldZoom,p.view.zoom)&&!moved&&allowIncompletePanPreview({allowed:p.allowPanPreview &&
+      // The white camera-preview fill is a same-zoom pan strip. Submitting it
+      // after the zoom has changed clears the accepted picture and leaves every
+      // tile that has not arrived as an empty region. A return past 2× and a
+      // smaller wheel step are the same clear; atomic presentation does not
+      // make that submit safe.
+      const heldZoom=acceptedCamera.current?.actual.view.zoom??actualPresentation.current?.view.zoom??p.retainedZoom??0
+      const panPreview=!suppressCameraPreviewForZoom(heldZoom,p.view.zoom)&&!zoomOutBeyondPreview(heldZoom,p.view.zoom)&&!moved&&allowIncompletePanPreview({allowed:p.allowPanPreview &&
         (atomicCanvas.current || actualPresentation.current?.view.zoom===p.view.zoom),frame:p.presentation,
         document:p.sourceDocument,revision:p.contentRevision,pageId:p.pageId,width:p.width,height:p.height,dpr:p.dpr,items:p.items,backing:p.panBacking})
       const frame: ResidentFrame = {
