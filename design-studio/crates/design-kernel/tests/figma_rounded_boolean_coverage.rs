@@ -101,13 +101,6 @@ fn official_smooth_corner_vectors_and_rounded_booleans_match_figma_pngs() {
             ("flattened", &vector, &flat_png),
         ] {
             let result = gap(actual, expected);
-            // The single 40px corner's frozen flatten is float32. One edge pixel
-            // stays 12 codes off after the coverage residual; boolean of the
-            // authored rectangle matches. Do not treat that pixel as passing.
-            if id == "curve-9" && label == "flattened" {
-                assert_eq!(result, (1, 12), "{id} flattened residual changed");
-                continue;
-            }
             if result != (0, 0) {
                 failures.push(format!("{id} {label} {result:?}"));
             }

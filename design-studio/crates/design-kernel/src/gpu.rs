@@ -2227,7 +2227,7 @@ impl Compiler<'_> {
             + (n.strokes
                 .iter()
                 .filter(|s| s.visible)
-                .map(|s| stroke::maximum_width(s) * 4. * scale)
+                .map(|s| stroke::maximum_width(s) * stroke::allowance_scale(s) * scale)
                 .fold(0., f64::max))
             .ceil() as i32
             + 2;

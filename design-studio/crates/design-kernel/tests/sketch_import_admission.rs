@@ -849,9 +849,34 @@ fn sketch_legacy_nested_artboard_and_open_border_match_canvas_semantics() {
         scale:1., node_ids:Some(vec!["outer".into()]), raster_profile:None,color_output:None,
     }).unwrap();
     let actual = image::load_from_memory(&png).unwrap().to_rgba8();
-    assert_eq!(actual.get_pixel(20,20).0, [255;4]);
+    // Background checkbox off: the nested artboard does not paint a white
+    // viewport. The archived 117 preview shows the layers underneath.
+    assert_eq!(actual.get_pixel(20,20).0[3], 0);
     assert_eq!(actual.get_pixel(35,35).0[3], 0);
     let back = interop::import_sketch_report(&interop::export_sketch(&doc).unwrap()).unwrap().document;
     assert_eq!(back.nodes["open"].strokes[0].align, "center");
-    assert!(back.nodes["nested"].fills.iter().any(|paint| paint.visible));
+    assert!(back.nodes["nested"].fills.iter().all(|paint| !paint.visible));
+}
+
+#[test]
+fn open_sketch_outline_with_a_repeated_anchor_still_fills() {
+    let shape = json!({"_class":"shapePath","do_objectID":"mark","name":"Mark","isClosed":false,
+        "frame":{"x":0,"y":0,"width":20,"height":20},
+        "points":[
+            {"point":"{0, 0}","curveMode":1},
+            {"point":"{1, 0}","curveMode":1},
+            {"point":"{1, 1}","curveMode":1},
+            {"point":"{0, 1}","curveMode":1},
+            {"point":"{0, 0}","curveMode":1}
+        ],
+        "style":{"fills":[{"isEnabled":true,"fillType":0,"color":{"red":0,"green":0,"blue":0,"alpha":1}}],"windingRule":1}});
+    let bytes = archive(json!({"pages":[{"_ref":"pages/p"}]}), &[("p", page("p", vec![shape]))]);
+    let doc = interop::import_sketch_report(&bytes).unwrap().document;
+    let pixels = render(&doc, 20, 20);
+    let pixel = &pixels[(10 * 20 + 10) * 4..(10 * 20 + 10) * 4 + 4];
+    assert_eq!(pixel, &[0, 0, 0, 255], "the repeated anchor still encloses the fill");
+    let again = interop::import_sketch_report(&interop::export_sketch(&doc).unwrap())
+        .unwrap()
+        .document;
+    assert_eq!(render(&again, 20, 20), pixels);
 }

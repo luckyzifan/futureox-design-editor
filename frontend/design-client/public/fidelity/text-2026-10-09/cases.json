@@ -74,7 +74,11 @@
      "points": 6,
      "innerRadius": 0.45,
      "text": "Handgloves 0123 &?",
-     "fontSize": 28
+     "fontSize": 28,
+     "textStyle": {
+      "lineHeightAuto": true,
+      "lineBoxBaseline": "figma-font-metrics"
+     }
     },
     "root": {
      "id": "root",
@@ -223,7 +227,11 @@
      "points": 6,
      "innerRadius": 0.45,
      "text": "Fractional xyz",
-     "fontSize": 26
+     "fontSize": 26,
+     "textStyle": {
+      "lineHeightAuto": true,
+      "lineBoxBaseline": "figma-font-metrics"
+     }
     },
     "root": {
      "id": "root",
@@ -372,7 +380,11 @@
      "points": 6,
      "innerRadius": 0.45,
      "text": "Size 12",
-     "fontSize": 12
+     "fontSize": 12,
+     "textStyle": {
+      "lineHeightAuto": true,
+      "lineBoxBaseline": "figma-font-metrics"
+     }
     },
     "s2": {
      "id": "s2",
@@ -429,7 +441,11 @@
      "points": 6,
      "innerRadius": 0.45,
      "text": "Size 30.5",
-     "fontSize": 30.5
+     "fontSize": 30.5,
+     "textStyle": {
+      "lineHeightAuto": true,
+      "lineBoxBaseline": "figma-font-metrics"
+     }
     },
     "s3": {
      "id": "s3",
@@ -486,7 +502,11 @@
      "points": 6,
      "innerRadius": 0.45,
      "text": "Size 64",
-     "fontSize": 64
+     "fontSize": 64,
+     "textStyle": {
+      "lineHeightAuto": true,
+      "lineBoxBaseline": "figma-font-metrics"
+     }
     },
     "root": {
      "id": "root",
@@ -637,7 +657,11 @@
      "points": 6,
      "innerRadius": 0.45,
      "text": "中英混排 Mixed 測試",
-     "fontSize": 24
+     "fontSize": 24,
+     "textStyle": {
+      "lineHeightAuto": true,
+      "lineBoxBaseline": "figma-font-metrics"
+     }
     },
     "c2": {
      "id": "c2",
@@ -694,7 +718,11 @@
      "points": 6,
      "innerRadius": 0.45,
      "text": "——「引用」42°±0.5",
-     "fontSize": 20
+     "fontSize": 20,
+     "textStyle": {
+      "lineHeightAuto": true,
+      "lineBoxBaseline": "figma-font-metrics"
+     }
     },
     "root": {
      "id": "root",
@@ -845,8 +873,9 @@
      "innerRadius": 0.45,
      "text": "First line\nSecond line\n第三行 here",
      "fontSize": 18,
-     "text_style": {
-      "line_height": 1.4
+     "textStyle": {
+      "lineHeight": 1.4,
+      "lineBoxBaseline": "figma-pixel-leading"
      }
     },
     "root": {
@@ -997,8 +1026,10 @@
      "innerRadius": 0.45,
      "text": "Tracked reading",
      "fontSize": 22,
-     "text_style": {
-      "letter_spacing": 2.5
+     "textStyle": {
+      "lineHeightAuto": true,
+      "lineBoxBaseline": "figma-font-metrics",
+      "letterSpacing": 2.5
      }
     },
     "l2": {
@@ -1057,8 +1088,10 @@
      "innerRadius": 0.45,
      "text": "Tight run",
      "fontSize": 22,
-     "text_style": {
-      "letter_spacing": -0.75
+     "textStyle": {
+      "lineHeightAuto": true,
+      "lineBoxBaseline": "figma-font-metrics",
+      "letterSpacing": -0.75
      }
     },
     "root": {
@@ -1139,7 +1172,7 @@
   "strictComparable": true,
   "mappingNote": "Noto Sans SC Regular; per-case node geometry mirrored in create-in-figma.js",
   "document": {
-   "schemaVersion": 2,
+   "schemaVersion": 4,
    "rasterProfile": "analytic",
    "id": "Text · Styled runs",
    "name": "Text · Styled runs",
@@ -1210,17 +1243,21 @@
      "innerRadius": 0.45,
      "text": "BigRed small rest",
      "fontSize": 24,
-     "text_runs": [
+     "textStyle": {
+      "lineHeightAuto": true,
+      "lineBoxBaseline": "figma-font-metrics"
+     },
+     "textRuns": [
       {
        "start": 0,
        "end": 6,
-       "font_size": 30,
+       "fontSize": 30,
        "color": "#c0392b"
       },
       {
        "start": 6,
        "end": 17,
-       "font_size": 18
+       "fontSize": 18
       }
      ]
     },

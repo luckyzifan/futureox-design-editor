@@ -39,6 +39,7 @@ export function validStroke(s: Stroke): boolean {
     !Number.isFinite(s.dashOffset ?? 0) ||
     Math.abs(s.dashOffset ?? 0) > 1e7 ||
     (s.centerDashes !== undefined && typeof s.centerDashes !== 'boolean') ||
+    (s.miterLimit !== undefined && !(Number.isFinite(s.miterLimit) && s.miterLimit >= 1 && s.miterLimit <= 1000)) ||
     !['center', 'inside', 'outside'].includes(s.align) ||
     !['butt', 'round', 'square'].includes(s.cap) ||
     !['round', 'miter', 'bevel'].includes(s.join) ||

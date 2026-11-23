@@ -130,8 +130,10 @@ test('headed Chrome measures the four Figma controls', { timeout: 90_000 }, asyn
   const sketch = measured.sketch.rows
   assert.equal(sketch.status.ink, '#777c8e')
   assert.equal(sketch['hint-name'].ink, '#007aff')
-  assert.equal(sketch['show-grid'].ink, '#9699a7')
-  assert.equal(sketch['smart-snap'].ink, '#9699a7')
+  for (const id of ['show-grid', 'smart-snap']) {
+    assert.equal(sketch[id].ink, '#5d6673')
+    assert.ok(sketch[id].contrast >= 4.5, sketch[id].contrast)
+  }
   assert.equal(measured.sketch.rows['status-error'].ink, '#bd3b54')
 })
 

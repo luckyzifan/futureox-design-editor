@@ -1021,6 +1021,52 @@ fn blend_name(v: &Value) -> String {
     .into()
 }
 
+/// Missing or exactly the SVG/Figma default stays 4. Anything else in range
+/// is executable. Out of range is reported instead of silently using 4.
+pub(crate) fn authored_miter_limit(value: Option<&Value>) -> Result<f64, String> {
+    let Some(value) = value else {
+        return Ok(4.);
+    };
+    match value.as_f64() {
+        Some(limit) if limit.is_finite() && (1. ..=crate::stroke::MITER_LIMIT_MAX).contains(&limit) => {
+            Ok(limit)
+        }
+        _ => Err(format!("miterLimit={value}")),
+    }
+}
+
+fn page_background(record: &Value, display_p3: bool) -> Result<String, Error> {
+    let enabled = match record.get("backgroundEnabled") {
+        None => true,
+        Some(Value::Bool(value)) => *value,
+        Some(_) => {
+            return Err(Error::Malformed(
+                "FIG backgroundEnabled is not a boolean".into(),
+            ))
+        }
+    };
+    let opacity = match record.get("backgroundOpacity") {
+        None => 1.,
+        Some(value) => value
+            .as_f64()
+            .filter(|v| v.is_finite() && (0. ..=1.).contains(v))
+            .ok_or_else(|| Error::Malformed("FIG backgroundOpacity is out of range".into()))?,
+    };
+    let color = record.get("backgroundColor");
+    let color_alpha = match color.and_then(|c| c.get("a")) {
+        None => 1.,
+        Some(value) => value
+            .as_f64()
+            .filter(|v| v.is_finite() && (0. ..=1.).contains(v))
+            .ok_or_else(|| Error::Malformed("FIG backgroundColor.a is out of range".into()))?,
+    };
+    // Figma paints backgroundColor.a * backgroundOpacity, and paints nothing
+    // when the page background is switched off.
+    let alpha = if enabled { color_alpha * opacity } else { 0. };
+    let fallback = serde_json::json!({"r": 1.0, "g": 1.0, "b": 1.0});
+    Ok(fig_color(color.unwrap_or(&fallback), display_p3, alpha))
+}
+
 fn fig_color(color: &Value, display_p3: bool, alpha: f64) -> String {
     let rgb = ["r", "g", "b"].map(|key| f64_of(Some(color), key));
     if !display_p3 && alpha == 1. && rgb.iter().all(|v| (0. ..=1.).contains(v) && (v * 255.).round() / 255. == *v) {
@@ -1666,6 +1712,13 @@ impl FigImporter {
                 "BEVEL" => "bevel",
                 _ => "miter",
             };
+            let miter_limit = match authored_miter_limit(change.get("miterLimit")) {
+                Ok(limit) => limit,
+                Err(note) => {
+                    untranslated.push(note);
+                    4.
+                }
+            };
             let dash = change
                 .get("dashPattern")
                 .and_then(Value::as_array)
@@ -1693,6 +1746,7 @@ impl FigImporter {
                         .into(),
                         cap: cap.0.into(),
                         join: join.into(),
+                        miter_limit,
                         dash: dash.clone(),
                         dash_offset: 0.,
                         center_dashes: false,
@@ -3132,10 +3186,10 @@ pub fn document_from_canvas(
             id: canvas_id.clone(),
             name: canvas_name,
             children: kids,
-            background: record
-                .and_then(|r| r.get("backgroundColor"))
-                .map(|c| fig_color(c, display_p3, 1.))
-                .unwrap_or_else(|| "#ffffff".into()),
+            background: match record {
+                Some(record) => page_background(record, display_p3)?,
+                None => "#ffffff".into(),
+            },
         });
     }
     // stackReverseZIndex: reverse the authored child order after assembly

@@ -457,6 +457,12 @@ pub struct Stroke {
     pub cap: String,
     #[serde(default = "round")]
     pub join: String,
+    /// SVG/FIG miter limit. 4 is the historical renderer cap and is omitted.
+    #[serde(
+        default = "crate::stroke::default_miter_limit",
+        skip_serializing_if = "crate::stroke::is_default_miter_limit"
+    )]
+    pub miter_limit: f64,
     #[serde(default)]
     pub dash: String,
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -1221,16 +1227,44 @@ impl Network {
                     h.1 = !h.1;
                 }
             }
+            let mut contour = Path::default();
             for (i, h) in walk.iter().enumerate() {
                 emit(&mut stroke, h.0, h.1, i == 0);
+                emit(&mut contour, h.0, h.1, i == 0);
             }
             if closed {
                 stroke.commands.push(Command::Close);
+            } else if contour_meets_itself(&contour) {
+                // Sketch stores some filled outlines with isClosed false and a
+                // repeated final anchor. The chain is not a graph cycle, so the
+                // face walk emits no fill, but the outline still encloses ink.
+                contour.commands.push(Command::Close);
+                fill.commands.extend(contour.commands);
             }
         }
         Ok((fill, stroke))
     }
 }
+
+fn contour_meets_itself(path: &Path) -> bool {
+    let mut start = None;
+    let mut end = None;
+    for command in &path.commands {
+        match *command {
+            Command::Move(point) => {
+                start = Some(point);
+                end = Some(point);
+            }
+            Command::Line(point) | Command::Quad(_, point) | Command::Cubic(_, _, point) => {
+                end = Some(point);
+            }
+            Command::Close | Command::Arc { .. } | Command::SmoothCorner(_) => {}
+        }
+    }
+    start.zip(end).is_some_and(|(start, end)| (start - end).length() <= 1e-6)
+        && path.commands.len() > 2
+}
+
 impl Node {
     pub fn paths(&self) -> Result<(Path, Path), String> {
         if let Some(brush) = &self.vector_brush {
@@ -1777,6 +1811,26 @@ impl Document {
         }
         Ok(())
     }
+    pub fn requires_schema33(&self) -> bool {
+        let listed = |style: &crate::font::TextStyle| !style.list.is_empty() || style.list_level.is_some();
+        let paragraph = |p: &crate::font::TextParagraph| !p.list.is_empty() || p.list_level.is_some();
+        let raw = |value: &serde_json::Value| {
+            value.get("list").is_some_and(|item| !item.is_null())
+                || value.get("listLevel").is_some_and(|item| !item.is_null())
+        };
+        self.nodes.values().any(|node| {
+            node.text_style.as_ref().is_some_and(|style| listed(style))
+                || node.text_runs.iter().any(|run| run.paragraph.as_ref().is_some_and(paragraph))
+                || node.instance.as_ref().is_some_and(|instance| {
+                    instance.overrides.values().any(|override_value| {
+                        override_value.get("textStyle").is_some_and(raw)
+                            || override_value.get("textRuns").and_then(|runs| runs.as_array()).is_some_and(|runs| {
+                                runs.iter().any(|run| run.get("paragraph").is_some_and(raw))
+                            })
+                    })
+                })
+        })
+    }
     pub fn requires_schema21(&self) -> bool {
         let runs = |v: &serde_json::Value| v.as_array().is_some_and(|rows| rows.iter().any(|run| {
             run.get("letterSpacing").is_some_and(|value| !value.is_null())
@@ -1841,6 +1895,7 @@ impl Document {
     }
     fn validate_edit_scope(&self, changed:Option<&std::collections::BTreeSet<String>>) -> Result<(),String> {
         if self.schema_version<21 && self.requires_schema21() {return Err("Per-run letter spacing and line height require schema 21".into());}
+        if self.schema_version<33 && self.requires_schema33() {return Err("Text lists require schema 33".into());}
         if self.schema_version<20 && self.requires_schema20() {return Err("Paragraph and vertical text layout require schema 20".into());}
         if self.schema_version<19 && self.requires_schema19() {return Err("Zoom blur requires schema 19".into());}
         if self.schema_version<18 && self.requires_schema18() {return Err("Spatial sigma filters require schema 18".into());}
@@ -1930,7 +1985,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if !(1..=32).contains(&self.schema_version)
+        if !(1..=33).contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32

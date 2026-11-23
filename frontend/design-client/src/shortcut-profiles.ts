@@ -5,7 +5,7 @@ import { sketchBooleanCommands, sketchBooleanCommandIds } from './sketch-boolean
 
 export type ShortcutProfile = 'figma-like' | 'sketch-like'
 export type ShortcutPlatform = 'mac' | 'windows' | 'linux'
-export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-layer-find' | 'toggle-layout-guides' | 'toggle-pixel-grid' | 'toggle-pixel-snapping' | 'select-parent' | 'open-shortcut-reference' | 'keyboard-box-select'
+export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-layer-find' | 'toggle-layout-guides' | 'toggle-pixel-grid' | 'toggle-pixel-snapping' | 'select-parent' | 'open-shortcut-reference' | 'keyboard-box-select' | 'decrease-font-size' | 'increase-font-size' | 'decrease-font-weight' | 'increase-font-weight' | 'decrease-letter-spacing' | 'increase-letter-spacing' | 'decrease-line-height' | 'increase-line-height' | 'toggle-text-underline' | 'text-bullet-list' | 'text-numbered-list'
 export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean; uiMode?: UiMode; keyboardLayout?: FigmaKeyboardLayout }
 export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean; preserveFrameContents?: true; physicalCode?: string }
 export type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'isComposing' | 'defaultPrevented'> & { keyCode?: number; getModifierState?: (key: string) => boolean }
@@ -179,6 +179,24 @@ export function shortcutBindings(context: ShortcutContext): readonly ShortcutBin
   if (profile === 'figma-like' && desktop) bindings.push({ command: 'open-layer-find', combo: 'Mod+F' })
   if (profile === 'figma-like' && platform === 'mac') bindings.push({ command: 'set-tool-eyedropper', combo: 'Ctrl+C' })
   if (profile === 'figma-like') bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })
+  // US/Generic keyboard-layout table: comma decreases and period increases.
+  // Explore text properties reverses that direction and uses Option for letter
+  // spacing; that chord stays free. Underline is only documented there:
+  // Mac Option+U, Windows/Linux Ctrl+U. German QWERTZ keeps its comma chords.
+  if (profile === 'figma-like' && keyboardLayout !== 'de-qwertz') {
+    const step = (command: ShortcutAction, combo: string, physicalCode: string): ShortcutBinding => ({ command, combo, physicalCode, repeat: true })
+    bindings.push(
+      step('decrease-font-size', 'Mod+Shift+,', 'Comma'), step('increase-font-size', 'Mod+Shift+.', 'Period'),
+      step('decrease-font-weight', 'Mod+Alt+,', 'Comma'), step('increase-font-weight', 'Mod+Alt+.', 'Period'),
+      step('decrease-letter-spacing', 'Mod+,', 'Comma'), step('increase-letter-spacing', 'Mod+.', 'Period'),
+      step('decrease-line-height', 'Shift+Alt+,', 'Comma'), step('increase-line-height', 'Shift+Alt+.', 'Period'),
+      platform === 'mac'
+        ? { command: 'toggle-text-underline', combo: 'Alt+U', physicalCode: 'KeyU' }
+        : { command: 'toggle-text-underline', combo: 'Mod+U', physicalCode: 'KeyU' },
+      { command: 'text-bullet-list', combo: 'Mod+Shift+8', physicalCode: 'Digit8' },
+      { command: 'text-numbered-list', combo: 'Mod+Shift+7', physicalCode: 'Digit7' },
+    )
+  }
   const result = Object.freeze(bindings.map(binding => Object.freeze(
     profile === 'figma-like' && keyboardLayout === 'de-qwertz' ? germanBinding(binding) : binding,
   )))

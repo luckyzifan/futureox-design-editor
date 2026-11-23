@@ -7,6 +7,7 @@ import { requestLayerFind } from './layer-find-session'
 import { recordShortcutUse, requestShortcutReference } from './shortcut-reference-session'
 import { editableFrameCrop } from './selection-properties'
 import { resolveShortcut, shortcutContextForLayout, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
+import { applyFigmaTextShortcut, figmaTextCommandRepeats, isFigmaTextCommand } from './figma-text-shortcuts'
 export function shortcutTargetOwnsKeyboard(target: EventTarget | null): boolean {
   return editableOwnsKeyboard(target) || modalOwnsKeyboard(target)
 }
@@ -15,33 +16,45 @@ export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey 
   if (shortcutTargetOwnsKeyboard(event.target)) return false
   const layout = shortcutContextForLayout(context)
   const binding = resolveShortcut(event, layout)
-  if (!binding || binding.command === 'keyboard-box-select' || binding.preserveFrameContents && !editableFrameCrop(editor)) return false
+  if (!binding) return false
+  const action = binding.command
+  if (isFigmaTextCommand(action)) {
+    if ((event.repeat && !figmaTextCommandRepeats(action)) || editor.state.busy || editor.interactionActive) {
+      event.preventDefault()
+      return true
+    }
+    if (!applyFigmaTextShortcut(editor, action)) return false
+    event.preventDefault()
+    if (!event.repeat && layout.profile === 'figma-like') recordShortcutUse(binding)
+    return true
+  }
+  if (action === 'keyboard-box-select' || binding.preserveFrameContents && !editableFrameCrop(editor)) return false
   event.preventDefault()
   if (!event.repeat && !editor.interactionActive && !editor.state.busy && layout.profile === 'figma-like') recordShortcutUse(binding)
-  if (binding.command === 'open-command-search' || binding.command === 'open-layer-find' || binding.command === 'open-shortcut-reference') {
+  if (action === 'open-command-search' || action === 'open-layer-find' || action === 'open-shortcut-reference') {
     if (!event.repeat && !editor.interactionActive) {
-      if (binding.command === 'open-command-search') requestCommandSearch(event.target)
-      else if (binding.command === 'open-layer-find') requestLayerFind(event.target)
+      if (action === 'open-command-search') requestCommandSearch(event.target)
+      else if (action === 'open-layer-find') requestLayerFind(event.target)
       else requestShortcutReference(event.target)
     }
     return true
   }
-  if (binding.command === 'toggle-layout-guides' || binding.command === 'toggle-pixel-grid' || binding.command === 'toggle-pixel-snapping') {
+  if (action === 'toggle-layout-guides' || action === 'toggle-pixel-grid' || action === 'toggle-pixel-snapping') {
     if (!event.repeat && !editor.interactionActive) {
-      if (binding.command === 'toggle-pixel-grid') editor.set({ pixelGrid: !editor.state.pixelGrid })
-      else if (binding.command === 'toggle-pixel-snapping') editor.set({ snapPixels: !editor.state.snapPixels })
+      if (action === 'toggle-pixel-grid') editor.set({ pixelGrid: !editor.state.pixelGrid })
+      else if (action === 'toggle-pixel-snapping') editor.set({ snapPixels: !editor.state.snapPixels })
       else editor.set({ showAuthoredLayout: editor.state.showAuthoredLayout === false })
     }
     return true
   }
   // Consume held destructive chords without creating additional history entries.
   if ((event.repeat && !binding.repeat) || editor.state.busy || editor.interactionActive) return true
-  if (binding.command === 'select-parent') {
+  if (action === 'select-parent') {
     editor.selectParent()
     return true
   }
-  const command: EditorCommand = binding.command === 'toggle-lock' ? (lockedSelectionIds(editor).length ? 'unlock-selection' : 'lock-selection') :
-    binding.command === 'toggle-visibility' ? (editor.state.selection.some(id => !editor.state.doc.nodes[id]?.visible) ? 'show-selection' : 'hide-selection') : binding.command
+  const command: EditorCommand = action === 'toggle-lock' ? (lockedSelectionIds(editor).length ? 'unlock-selection' : 'lock-selection') :
+    action === 'toggle-visibility' ? (editor.state.selection.some(id => !editor.state.doc.nodes[id]?.visible) ? 'show-selection' : 'hide-selection') : action
   await dispatchEditorCommand(editor, command, {
     zoomAnchor: editor.pointerScreen || undefined,
     shortcutProfile: layout.profile,

@@ -94,7 +94,10 @@ fn world_entry(doc:&Document,n:&Node,m:Transform,absolute:Transform,depth:u32,fo
     let scale=mul(frobenius,1.+gamma(depth)).max(0.001);
     // Same conservative stroke support as the existing leaf preparation guard.
     let stroke=n.strokes.iter().filter(|s|s.visible).map(crate::stroke::maximum_width).fold(0.,f64::max);
-    entry.own_halo=add(crate::spatial_blur::world_read_outset(doc,n,m,scale).next_up(),mul(mul(stroke,4.),scale));
+    // Init 4, and allowance_scale returns 4 unless a miter is sharper, so the
+    // common path stays mul(mul(width, 4), scale).
+    let allowance=n.strokes.iter().filter(|s|s.visible).map(crate::stroke::allowance_scale).fold(4.,f64::max);
+    entry.own_halo=add(crate::spatial_blur::world_read_outset(doc,n,m,scale).next_up(),mul(mul(stroke,allowance),scale));
     // Gaussian/motion support has two device-pixel neighbours per active
     // operator. Keep them separately: multiplying a world bound by a small
     // camera scale must never shrink that fixed device support.

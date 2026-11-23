@@ -52,7 +52,7 @@ function overrideProperties(doc: DesignDocument, records: Map<string, any>, ids:
 }
 /** Resolve after assembly so property references name actual template layers. */
 const NULL_STYLE = new Set(['4294967295:4294967295', '0:0'])
-const STROKE_INPUTS = ['strokeWeight','strokeAlign','strokeCap','strokeJoin','dashPattern','borderStrokeWeightsIndependent','borderTopWeight','borderRightWeight','borderBottomWeight','borderLeftWeight']
+const STROKE_INPUTS = ['strokeWeight','strokeAlign','strokeCap','strokeJoin','miterLimit','dashPattern','borderStrokeWeightsIndependent','borderTopWeight','borderRightWeight','borderBottomWeight','borderLeftWeight']
 const LAYOUT_KEYS = ['stackMode','stackSpacing','stackCounterSpacing','stackHorizontalPadding','stackVerticalPadding','stackPaddingRight','stackPaddingBottom','stackPadding','stackWrap','stackPrimaryAlignItems','stackCounterAlignItems','stackPrimarySizing','stackCounterSizing','stackPositioning','stackChildPrimaryGrow','stackChildAlignSelf','minSize','maxSize','horizontalConstraint','verticalConstraint']
 const FONT_KEYS = ['fontVariantCommonLigatures','fontVariantContextualLigatures','fontVariantDiscretionaryLigatures','fontVariantHistoricalLigatures','fontVariantOrdinal','fontVariantSlashedZero','fontVariantNumericFigure','fontVariantNumericSpacing','fontVariantNumericFraction','fontVariantCaps','fontVariantPosition','toggledOnOTFeatures','toggledOffOTFeatures','fontVariations']
 const BINDING_FIELDS: Record<string, string> = {
@@ -351,10 +351,13 @@ function applyStrokeAttrs(fields: Record<string, unknown>, override: any, target
     const borders = [override.borderTopWeight, override.borderRightWeight, override.borderBottomWeight, override.borderLeftWeight]
     if(!borders.every(value => value === borders[0])) warnings?.add('FIG 实例覆盖 borderStrokeWeightsIndependent 暂不能执行，其余覆盖已保留')
   }
+  const miterLimit = override.miterLimit === undefined ? undefined : (typeof override.miterLimit === 'number' && Number.isFinite(override.miterLimit) && override.miterLimit >= 1 && override.miterLimit <= 1000 ? override.miterLimit : null)
+  if (miterLimit === null) warnings?.add(`FIG 实例覆盖 miterLimit=${JSON.stringify(override.miterLimit)} 暂不能执行，其余覆盖已保留`)
   fields.strokes = strokes.map(stroke => ({
     ...stroke,
     ...(weight !== undefined ? { width: weight } : {}),
     ...(align ? { align } : {}),
+    ...(typeof miterLimit === 'number' ? miterLimit === 4 ? { miterLimit: undefined } : { miterLimit } : {}),
   }))
 }
 

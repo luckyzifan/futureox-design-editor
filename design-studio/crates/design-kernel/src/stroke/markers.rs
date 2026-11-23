@@ -125,6 +125,7 @@ pub(super) fn expand(
                         width + dilation * 2.,
                         "butt",
                         "miter",
+                        4.,
                         tolerance,
                         count,
                     )?);
@@ -137,6 +138,7 @@ pub(super) fn expand(
                     dilation * 2.,
                     "round",
                     "round",
+                    4.,
                     tolerance,
                     count,
                 )?);

@@ -448,6 +448,7 @@ impl Projection<'_> {
                     _ => "miter",
                 }
                 .into(),
+                miter_limit: 4.,
                 dash: array(opts, "dashPattern")
                     .iter()
                     .map(Value::to_string)
@@ -768,6 +769,7 @@ impl Projection<'_> {
             maximum_line_height: maximum_line,
             spacing: num(p, "paragraphSpacing", 0.),
             indent: num(p, "firstLineHeadIndent", 0.),
+            ..TextParagraph::default()
         });
         if n.fills.is_empty() {
             n.fills.push(solid(
