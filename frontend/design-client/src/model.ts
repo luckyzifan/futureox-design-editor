@@ -183,6 +183,13 @@ export function hasSchema21Features(d: DesignDocument): boolean {
 export function hasSchema22Features(d: DesignDocument): boolean {
   return Object.values(d.nodes).some(node => node.layout?.reverseFlow === true)
 }
+export function hasSchema33Features(d: DesignDocument): boolean {
+  const listed = (style: { list?: unknown; listLevel?: unknown } | null | undefined) =>
+    !!style && (style.list !== undefined || style.listLevel !== undefined)
+  const runs = (value: unknown) => Array.isArray(value) && value.some(run => listed(run?.paragraph))
+  return Object.values(d.nodes).some(node => listed(node.textStyle) || runs(node.textRuns) ||
+    Object.values(node.instance?.overrides || {}).some(override => listed(override.textStyle as { list?: unknown } | undefined) || runs(override.textRuns)))
+}
 export function hasSchema20Features(d: DesignDocument, nodes = Object.values(d.nodes)): boolean {
   const action = (a: import('./prototype').PrototypeAction): boolean => a.transitionStyle !== undefined || !!a.thenActions?.some(action) || !!a.elseActions?.some(action)
   if (Object.values(d.prototype?.interactions||{}).some(es=>es.some(e=>e.actions.some(action)))) return true
@@ -442,6 +449,10 @@ export type TextStyle = {
   textCase?: TextCase
   paragraphSpacing?: number
   paragraphIndent?: number
+  /** Figma list style for every paragraph that does not set its own. */
+  list?: TextListStyle
+  /** Indent level 0–4. Absent means the first level. */
+  listLevel?: number
   fontId: string
   fallbacks: string[]
   weight: number
@@ -461,12 +472,20 @@ export type TextStyle = {
   /** Vertical CJK writing (upright CJK, rotated Latin runs). */
   writingMode?: 'horizontal' | 'vertical'
 }
-export type TextParagraph = { align: 'start'|'center'|'end'|'justify'; minimumLineHeight: number; maximumLineHeight: number; spacing: number; indent: number }
+export type TextListStyle = 'bullet' | 'ordered'
+export type TextParagraph = { align: 'start'|'center'|'end'|'justify'; minimumLineHeight: number; maximumLineHeight: number; spacing: number; indent: number; list?: TextListStyle | 'none'; listLevel?: number }
+export function validTextList(list: unknown, level: unknown, allowNone = false) {
+  if (list === undefined && level === undefined) return true
+  if (list !== 'bullet' && list !== 'ordered' && !(allowNone && list === 'none')) return false
+  if (level === undefined) return true
+  return (list === 'bullet' || list === 'ordered') && Number.isInteger(level) && (level as number) >= 0 && (level as number) <= 4
+}
 export function validTextParagraph(p: TextParagraph): boolean {
   return !!p && ['start','center','end','justify'].includes(p.align)
     && [p.minimumLineHeight,p.maximumLineHeight,p.spacing].every(v=>Number.isFinite(v)&&v>=0&&v<=10000)
     && Number.isFinite(p.indent)&&Math.abs(p.indent)<=10000
     && (p.maximumLineHeight===0||p.maximumLineHeight>=p.minimumLineHeight)
+    && validTextList(p.list, p.listLevel, true)
 }
 export type TextRun = {
   paragraph?: TextParagraph
@@ -523,7 +542,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33
   id: string
   name: string
   pages: Page[]
@@ -852,7 +871,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -912,6 +931,7 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
   if (d.schemaVersion < 15 && hasSchema15Features(featureDoc)) throw new Error('此设计功能需要设计文件版本 15')
   if (d.schemaVersion < 8 && (hasStrokeMarkers(featureDoc) || hasLayerExports(featureDoc))) throw new Error('描边端点需要设计文件版本 8')
   if (d.schemaVersion < 21 && hasSchema21Features(featureDoc)) throw new Error('片段字距或行高需要设计文件版本 21')
+  if (d.schemaVersion < 33 && hasSchema33Features(featureDoc)) throw new Error('文字列表需要设计文件版本 33')
   // Mirror scene::Document::validate and animation::validate schema gates.
   // This pre-initialization boundary is not a replacement for full Rust validation.
   for (const events of Object.values(d.prototype?.interactions || {})) for (const event of events) {
@@ -1031,6 +1051,7 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
         !['start', 'center', 'end', 'justify'].includes(style.align) ||
         !['top','center','bottom'].includes(style.verticalAlign ?? 'top') ||
         !['auto', 'ltr', 'rtl'].includes(style.direction) ||
+        !validTextList(style.list, style.listLevel) ||
         !Array.isArray(style.fallbacks) ||
         style.fallbacks.length > 16 ||
         [style.fontId, ...style.fallbacks].some(

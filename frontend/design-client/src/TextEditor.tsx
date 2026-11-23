@@ -17,7 +17,8 @@ import { ImportOwner, importStep, type ImportRequest } from './import-ownership'
 import { equalValue } from './document-patch'
 import { interfacePreference } from './interface-preference'
 import { matchesTypefaceShortcut, openTypefaceSelect } from './typeface-shortcut'
-import { shortcutPlatform } from './shortcut-profiles'
+import { shortcutPlatform, shortcutProfileForUiMode } from './shortcut-profiles'
+import { commitFigmaTextCommand, commitListIndent, figmaTextCommandFromEvent, figmaTextCommandRepeats, textSelectionIsList } from './figma-text-shortcuts'
 
 function comparableRuns(runs: DesignNode['textRuns']) {
   // Native layout may reorder fields and omit defaults when it returns runs.
@@ -205,6 +206,8 @@ export function CanvasTextEditor({
   const previewFonts = useMemo(() => stagedFonts && { ...document.fonts, ...stagedFonts }, [document.fonts, stagedFonts])
   useEffect(() => { fontRequests.activate(); return () => fontRequests.dispose() }, [fontRequests])
   const draftChanged = () => latest.current.text !== original.current.text ||
+    latest.current.fontSize !== original.current.fontSize ||
+    !equalValue(latest.current.textStyle, original.current.textStyle) ||
     JSON.stringify(latest.current.textRuns) !== JSON.stringify(original.current.textRuns) ||
     (editedSource.current !== undefined && !equalValue(editedSource.current, originalSource))
   latest.current = draft
@@ -286,6 +289,9 @@ export function CanvasTextEditor({
             if (resource) doc.fonts = withFontResource(doc.fonts, id, resource)
           }
           n.text = latest.current.text
+          n.fontSize = latest.current.fontSize
+          if (latest.current.textStyle) n.textStyle = latest.current.textStyle
+          else delete n.textStyle
           n.textRuns = latest.current.textRuns
           storeRemappedSourceFonts(doc, n.id, editedSource.current)
         },
@@ -294,6 +300,8 @@ export function CanvasTextEditor({
       const committed = editor.state.doc.nodes[node.id]
       const versionUpdated = resultVersion !== editor.state.version
       if (committed?.text !== latest.current.text ||
+          committed.fontSize !== latest.current.fontSize ||
+          !equalValue(committed.textStyle, latest.current.textStyle) ||
           !equalValue(comparableRuns(committed.textRuns), comparableRuns(latest.current.textRuns)) ||
           (editedSource.current && !versionUpdated)) {
         diagnostic.finish(false, false)
@@ -724,6 +732,68 @@ export function CanvasTextEditor({
           if (sketch && primary && !e.altKey && !e.shiftKey && e.nativeEvent.keyCode !== 229 && ['b', 'i', 'u'].includes(letter)) {
             e.preventDefault()
             if (!e.repeat && !done.current && (!isCurrent || isCurrent())) formatShortcut(letter, e.currentTarget)
+            return
+          }
+          const snapshot = interfacePreference.getSnapshot()
+          const adopt = (selection: [number, number]) => {
+            const committed = editor.state.doc.nodes[node.id]
+            if (!committed) return
+            original.current = committed
+            const clone = structuredClone(committed)
+            latest.current = clone
+            setDraft(clone)
+            select(selection[0], selection[1])
+          }
+          const flushDraft = () => {
+            if (!draftChanged()) return true
+            if (editor.sessionGeneration !== session.current || editor.state.doc.nodes[node.id] !== original.current) return false
+            const version = editor.state.version
+            editor.update([node.id], (n, doc) => {
+              for (const id of new Set(latest.current.textRuns?.map(run => run.fontId))) {
+                const resource = id && draftFonts.current?.[id]
+                if (resource) doc.fonts = withFontResource(doc.fonts, id, resource)
+              }
+              n.text = latest.current.text
+              n.fontSize = latest.current.fontSize
+              if (latest.current.textStyle) n.textStyle = latest.current.textStyle
+              else delete n.textStyle
+              n.textRuns = latest.current.textRuns
+              storeRemappedSourceFonts(doc, n.id, editedSource.current)
+            }, '编辑富文本')
+            if (editor.state.version === version) return false
+            adopt([e.currentTarget.selectionStart, e.currentTarget.selectionEnd])
+            return editor.state.doc.nodes[node.id] === original.current
+          }
+          if (primary && !e.altKey && letter === 'z') {
+            e.preventDefault()
+            if (!e.repeat && !draftChanged() && !done.current && (!isCurrent || isCurrent())) {
+              if (e.shiftKey) editor.redo()
+              else editor.undo()
+              adopt([e.currentTarget.selectionStart, e.currentTarget.selectionEnd])
+            }
+            return
+          }
+          const textCommand = figmaTextCommandFromEvent(e.nativeEvent, {
+            profile: shortcutProfileForUiMode(snapshot.uiMode), platform: shortcutPlatform(),
+            uiMode: snapshot.uiMode, keyboardLayout: snapshot.figmaKeyboardLayout,
+          })
+          if (textCommand) {
+            e.preventDefault()
+            if ((e.repeat && !figmaTextCommandRepeats(textCommand)) || done.current || (isCurrent && !isCurrent())) return
+            const range: [number, number] = [e.currentTarget.selectionStart, e.currentTarget.selectionEnd]
+            if (flushDraft() && commitFigmaTextCommand(editor, node.id, textCommand, range)) adopt(range)
+            return
+          }
+          if (!sketch && primary && !e.altKey && !e.shiftKey && (e.code === 'BracketLeft' || e.code === 'BracketRight')) {
+            e.preventDefault()
+            if (e.repeat || done.current || (isCurrent && !isCurrent())) return
+            const range: [number, number] = [e.currentTarget.selectionStart, e.currentTarget.selectionEnd]
+            const direction = e.code === 'BracketRight' ? 1 : -1
+            if (!flushDraft()) return
+            const current = editor.state.doc.nodes[node.id]
+            if (current && textSelectionIsList(current, range)) {
+              if (commitListIndent(editor, node.id, range, direction)) adopt(range)
+            } else editor.reorder(direction > 0 ? 'forward' : 'backward')
             return
           }
           navigate(e)
