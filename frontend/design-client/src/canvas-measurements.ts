@@ -211,3 +211,12 @@ export function spacingDiagram(selection: Bounds, target: Bounds, zoom = 1): { l
   }
   return { lines: [...outline, ...gaps], pills }
 }
+
+/** One numeral per equal-gap segment. Sits off the stroke the way a wide Option gap does. */
+export function gapSnapPills(lines: readonly Pick<Measurement, 'from' | 'to' | 'distance' | 'axis'>[]): SpacingPill[] {
+  return lines.map(line => ({
+    text: distanceText(line.distance),
+    anchor: { x: (line.from.x + line.to.x) / 2, y: (line.from.y + line.to.y) / 2 },
+    offset: line.axis === 'vertical' ? { x: 14, y: 0 } : { x: 0, y: -14 },
+  }))
+}

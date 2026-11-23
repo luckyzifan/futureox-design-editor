@@ -10,11 +10,23 @@ export type SmartGuideSegment = {
   start: number
   end: number
 }
+/** One equal gap to draw while a move is spacing-snapped. */
+export type GapSnapLine = {
+  axis: 'x' | 'y'
+  /** Interval on the snap axis, in world units, after the spacing correction. */
+  start: number
+  end: number
+  /** Center of that gap on the other axis. */
+  cross: number
+  distance: number
+}
 export type SmartSnapResult = {
   dx: number
   dy: number
   guides: [SmartGuideSegment | null, SmartGuideSegment | null]
   targetSpans?: [readonly [number, number] | null, readonly [number, number] | null]
+  /** Present only when spacing won an axis. Edge wins leave this unset. */
+  gapLines?: GapSnapLine[]
 }
 
 /** Preserve fractional world coordinates through the kernel snap query. */

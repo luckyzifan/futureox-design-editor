@@ -128,6 +128,10 @@ test('spacingSnap: repeats an existing sibling gap after the second sibling', ()
   expect(guide.start).toBeLessThanOrEqual(0)
   expect(guide.end).toBeGreaterThanOrEqual(10)
   expect(snap.guides[1]).toBeNull()
+  expect(snap.gapLines?.map(line => [line.axis, line.start, line.end, line.cross, line.distance])).toEqual([
+    ['x', 10, 20, 5, 10],
+    ['x', 30, 40, 5, 10],
+  ])
 })
 
 test('spacingSnap: repeats the gap before the first sibling', () => {
@@ -135,6 +139,7 @@ test('spacingSnap: repeats the gap before the first sibling', () => {
   const snap = spacingSnap(rect(-13, 0, 5, 10), [rect(0, 0, 10, 10), rect(20, 0, 10, 10)], 5)
   expect(snap.dx).toBe(-2)
   expect(snap.guides[0]!.position).toBe(0) // stationary leading edge of A
+  expect(snap.gapLines?.map(line => [line.start, line.end, line.distance])).toEqual([[10, 20, 10], [-10, 0, 10]])
 })
 
 test('spacingSnap: centers with equal gaps inside a bracketing sibling pair', () => {
@@ -145,6 +150,7 @@ test('spacingSnap: centers with equal gaps inside a bracketing sibling pair', ()
   expect(snap.guides[0]!.position).toBe(10)
   expect(snap.guides[0]!.start).toBeLessThanOrEqual(0)
   expect(snap.guides[0]!.end).toBeGreaterThanOrEqual(10)
+  expect(snap.gapLines?.map(line => [line.start, line.end, line.distance])).toEqual([[10, 20, 10], [30, 40, 10]])
 })
 
 test('spacingSnap: vertical axis, threshold stays exclusive, distant rows ignored', () => {
@@ -153,6 +159,7 @@ test('spacingSnap: vertical axis, threshold stays exclusive, distant rows ignore
   expect(snap.dy).toBe(3)
   expect(snap.guides[1]!.axis).toBe('y')
   expect(snap.guides[1]!.position).toBe(30)
+  expect(snap.gapLines?.map(line => [line.axis, line.start, line.end, line.cross])).toEqual([['y', 10, 20, 5], ['y', 30, 40, 5]])
   // |delta| == threshold must not snap.
   expect(spacingSnap(rect(35, 0, 5, 10), [rect(0, 0, 10, 10), rect(20, 0, 10, 10)], 5).guides[0]).toBeNull()
   // Siblings on a far-away row never generate spacing candidates.
@@ -161,6 +168,87 @@ test('spacingSnap: vertical axis, threshold stays exclusive, distant rows ignore
   // Zero-area ruler-guide rects never contribute spacing values.
   const guides = [rect(0, 0, 0, 100), rect(20, 0, 0, 100)]
   expect(spacingSnap(rect(37, 0, 5, 10), guides, 5)).toEqual(NO_SNAP)
+})
+
+test('an exact gap is skipped and the next gap within threshold wins', () => {
+  // Already sitting on the 10px repeat. The 14px gap is 4px away and still inside the threshold.
+  const siblings = [rect(0, 0, 10, 10), rect(20, 0, 10, 10), rect(44, 0, 10, 10)]
+  const snap = spacingSnap(rect(40, 0, 5, 10), siblings, 6)
+  expect(snap.dx).toBe(4)
+  expect(snap.guides[0]!.position).toBe(30)
+})
+
+test('a long equal-gap row repeats the last gap without a line per sibling', () => {
+  const siblings = Array.from({ length: 3000 }, (_, i) => rect(i * 20, 0, 10, 10))
+  const last = 2999 * 20 + 10
+  const started = performance.now()
+  const snap = spacingSnap(rect(last + 7, 0, 5, 10), siblings, 5)
+  expect(performance.now() - started).toBeLessThan(25)
+  expect(snap.dx).toBe(3)
+  expect(snap.gapLines?.map(line => [line.start, line.end])).toEqual([[last - 20, last - 10], [last, last + 10]])
+})
+
+/** The pre-index scan. Closest-gap search has to pick the same correction. */
+function referenceSpacing(moving: Bounds, siblings: Bounds[], threshold: number) {
+  const axisOf = (axis: 'x' | 'y') => {
+    const start = axis === 'x' ? moving.x : moving.y
+    const size = axis === 'x' ? moving.width : moving.height
+    const crossStart = axis === 'x' ? moving.y : moving.x
+    const crossEnd = crossStart + (axis === 'x' ? moving.height : moving.width)
+    const near = (a: Bounds, b: Bounds) => {
+      const a0 = axis === 'x' ? a.y : a.x, a1 = a0 + (axis === 'x' ? a.height : a.width)
+      const b0 = axis === 'x' ? b.y : b.x, b1 = b0 + (axis === 'x' ? b.height : b.width)
+      return a0 <= b1 + threshold && b0 <= a1 + threshold
+    }
+    const list = siblings.filter(s => s.width > 0 && s.height > 0 && near(s, moving))
+      .map(s => axis === 'x'
+        ? { start: s.x, end: s.x + s.width, crossStart: s.y, crossEnd: s.y + s.height }
+        : { start: s.y, end: s.y + s.height, crossStart: s.x, crossEnd: s.x + s.width })
+      .sort((a, b) => a.start - b.start)
+    const gaps: number[] = []
+    for (let i = 1; i < list.length; i++) {
+      const cross = list[i - 1].crossStart <= list[i].crossEnd + threshold && list[i].crossStart <= list[i - 1].crossEnd + threshold
+      const g = list[i].start - list[i - 1].end
+      if (cross && g >= 0 && !gaps.some(v => Math.abs(v - g) < 1e-6)) gaps.push(g)
+    }
+    let best: { delta: number; position: number } | null = null
+    const consider = (delta: number, position: number) => {
+      if (!Number.isFinite(delta) || Math.abs(delta) < 1e-9 || Math.abs(delta) >= threshold) return
+      if (best && Math.abs(delta) >= Math.abs(best.delta)) return
+      best = { delta, position }
+    }
+    for (const s of list) for (const g of gaps) {
+      consider(s.end + g - start, s.end)
+      consider(s.start - g - size - start, s.start)
+    }
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = list[i], b = list[j], span = b.start - a.end
+      if (span < size - 1e-9 || start < a.end - 1e-9 || start + size > b.start + 1e-9) continue
+      consider(a.end + (span - size) / 2 - start, a.end)
+    }
+    return best
+  }
+  const x = axisOf('x'), y = axisOf('y')
+  return { dx: x?.delta ?? 0, dy: y?.delta ?? 0, x: x?.position ?? null, y: y?.position ?? null }
+}
+
+test('closest-gap search matches the full pair scan', () => {
+  let seed = 17
+  const next = () => { seed = seed * 1103515245 + 12345; return ((seed >>> 16) & 0x7fff) / 0x8000 }
+  for (let sample = 0; sample < 80; sample++) {
+    const count = 2 + Math.floor(next() * 8)
+    const siblings = Array.from({ length: count }, () => rect(next() * 80, next() * 40, 4 + next() * 12, 4 + next() * 12))
+    const moving = rect(next() * 90, next() * 50, 3 + next() * 10, 3 + next() * 10)
+    const threshold = 2 + next() * 8
+    const actual = spacingSnap(moving, siblings, threshold)
+    const expected = referenceSpacing(moving, siblings, threshold)
+    expect(actual.dx).toBeCloseTo(expected.dx, 6)
+    expect(actual.dy).toBeCloseTo(expected.dy, 6)
+    if (expected.x === null) expect(actual.guides[0]).toBeNull()
+    else expect(actual.guides[0]?.position).toBeCloseTo(expected.x, 6)
+    if (expected.y === null) expect(actual.guides[1]).toBeNull()
+    else expect(actual.guides[1]?.position).toBeCloseTo(expected.y, 6)
+  }
 })
 
 test('dragSnap: spacing beats edge snapping only when its correction is smaller', () => {
@@ -174,10 +262,12 @@ test('dragSnap: spacing beats edge snapping only when its correction is smaller'
   let result = dragSnap(moving, undefined, siblings, 5, () => edgeAt(4))
   expect(result.dx).toBe(3)
   expect(result.guides[0]!.position).toBe(30)
+  expect(result.gapLines?.some(line => line.start === 30 && line.end === 40)).toBe(true)
   // edge (2) < spacing (3) → edge wins
   result = dragSnap(moving, undefined, siblings, 5, () => edgeAt(2))
   expect(result.dx).toBe(2)
   expect(result.guides[0]!.position).toBe(42)
+  expect(result.gapLines).toBeUndefined()
   // tie → edge wins (spacing strictly smaller only)
   result = dragSnap(moving, undefined, siblings, 5, () => edgeAt(3))
   expect(result.dx).toBe(3)

@@ -184,13 +184,38 @@ test.each(['pointercancel', 'lostpointercapture', 'escape', 'blur'] as const)('q
 
 test('a queued first vertex input uses current Control modifiers and cannot replay stale snapping afterward', async () => {
   const { start } = await begin('vertex')
-  await act(async () => editor.set({ snapPixels: true }))
+  await act(async () => editor.set({ snapPixels: true, pixelGrid: true }))
   await act(async () => pointer('pointermove', start.x + 8.125, start.y + 6.25))
   await act(async () => key('Control', { ctrlKey: true }))
-  if (!baseline) expect(editor.state.doc.nodes['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'].network!.vertices[0]).toEqual({ id: 'a', x: 8.125, y: 6.25 })
+  // Zoom 1 does not draw the pixel grid, so Control still snaps the point.
+  if (!baseline) expect(editor.state.doc.nodes['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'].network!.vertices[0]).toEqual({ id: 'a', x: 8, y: 6 })
   await flushFrames()
   await act(async () => pointer('pointerup', start.x + 8.125, start.y + 6.25, { ctrlKey: true }))
-  expect(editor.state.doc.nodes['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'].network!.vertices[0]).toEqual({ id: 'a', x: 8.125, y: 6.25 })
+  expect(editor.state.doc.nodes['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'].network!.vertices[0]).toEqual({ id: 'a', x: 8, y: 6 })
+})
+
+test('Control suspends vector pixel snap only after the pixel grid is drawn', async () => {
+  const n = vector()
+  await render([n])
+  await act(async () => { editor.select([n.id]); editor.set({ tool: 'vector', snapPixels: true, pixelGrid: true, view: { x: 0, y: 0, zoom: 4 } }) })
+  const target = mount.querySelector('[data-testid="vector-anchor"]')!
+  const start = { x: 400, y: 400 }
+  await act(async () => pointer('pointerdown', start.x, start.y, {}, target))
+  await act(async () => pointer('pointermove', start.x + 32.5, start.y + 25))
+  await act(async () => key('Control', { ctrlKey: true }))
+  if (!baseline) expect(editor.state.doc.nodes[n.id].network!.vertices[0]).toEqual({ id: 'a', x: 8.125, y: 6.25 })
+  await flushFrames()
+  await act(async () => pointer('pointerup', start.x + 32.5, start.y + 25, { ctrlKey: true }))
+  expect(editor.state.doc.nodes[n.id].network!.vertices[0]).toEqual({ id: 'a', x: 8.125, y: 6.25 })
+  await act(async () => editor.undo())
+  await act(async () => { editor.select([n.id]); editor.set({ tool: 'vector', snapPixels: true, pixelGrid: false, view: { x: 0, y: 0, zoom: 4 } }) })
+  const again = mount.querySelector('[data-testid="vector-anchor"]')
+  expect(again).not.toBeNull()
+  await act(async () => pointer('pointerdown', start.x, start.y, {}, again!))
+  await act(async () => pointer('pointermove', start.x + 32.5, start.y + 25))
+  await act(async () => key('Control', { ctrlKey: true }))
+  await act(async () => pointer('pointerup', start.x + 32.5, start.y + 25, { ctrlKey: true }))
+  expect(editor.state.doc.nodes[n.id].network!.vertices[0]).toEqual({ id: 'a', x: 8, y: 6 })
 })
 
 test('returning an existing vertex to its start preserves its original geometry exactly', async () => {

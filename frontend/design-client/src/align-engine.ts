@@ -4,7 +4,7 @@ import { CORE_SELECTION_PROFILE } from './commands/profiles'
 import type { Bounds, DesignDocument, Matrix, Point } from './model'
 import { identity } from './model'
 import { allParents, inverse, multiply, scene, translate, unionBounds, worldMatrix } from './geometry'
-import { smartGuidesSnapWorld, type SmartGuideSegment, type SmartSnapResult } from './canvas-smart-guides'
+import { smartGuidesSnapWorld, type GapSnapLine, type SmartGuideSegment, type SmartSnapResult } from './canvas-smart-guides'
 
 export type AlignCommand =
   | 'align-left'
@@ -95,12 +95,40 @@ function axisInterval(b: Bounds, axis: 'x' | 'y'): AxisInterval {
     : { start: b.y, end: b.y + b.height, crossStart: b.x, crossEnd: b.x + b.width }
 }
 
+function crossCenter(parts: AxisInterval[]): number {
+  const overlapLo = Math.max(...parts.map(part => part.crossStart))
+  const overlapHi = Math.min(...parts.map(part => part.crossEnd))
+  if (overlapLo <= overlapHi) return (overlapLo + overlapHi) / 2
+  return (Math.min(...parts.map(part => part.crossStart)) + Math.max(...parts.map(part => part.crossEnd))) / 2
+}
+function gapLine(axis: 'x' | 'y', start: number, end: number, cross: number): GapSnapLine | null {
+  if (!(end - start > EPS) || !Number.isFinite(cross)) return null
+  return { axis, start, end, cross, distance: end - start }
+}
+function dedupLines(lines: GapSnapLine[]): GapSnapLine[] {
+  const out: GapSnapLine[] = []
+  for (const line of lines) {
+    if (out.some(item => Math.abs(item.start - line.start) < 1e-6 && Math.abs(item.end - line.end) < 1e-6 && Math.abs(item.cross - line.cross) < 1e-6)) continue
+    out.push(line)
+  }
+  return out
+}
+function lowerBoundStart(list: AxisInterval[], from: number, value: number): number {
+  let lo = from, hi = list.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (list[mid].start < value) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
 function spacingSnapAxis(
   moving: Bounds,
   siblings: Bounds[],
   axis: 'x' | 'y',
   threshold: number,
-): { delta: number; guide: SmartGuideSegment } | null {
+): { delta: number; guide: SmartGuideSegment; lines: GapSnapLine[] } | null {
   const m = axisInterval(moving, axis),
     size = m.end - m.start
   const near = (a: AxisInterval, b: AxisInterval) =>
@@ -116,10 +144,56 @@ function spacingSnapAxis(
     const g = list[i].start - list[i - 1].end
     if (g >= 0 && !gaps.some((v) => Math.abs(v - g) < 1e-6)) gaps.push(g)
   }
+  const sortedGaps = gaps.map((g, index) => ({ g, index })).sort((a, b) => a.g - b.g || a.index - b.index)
+  // One reference gap, the nearest pair with this width. A uniform row must not
+  // emit a line for every sibling or the drag overlay grows with the page.
+  const nearestMatchingGap = (gap: number, anchor: number) => {
+    if (!(gap > EPS)) return null
+    let best: { line: GapSnapLine; distance: number } | null = null
+    for (let i = 1; i < list.length; i++) {
+      if (!near(list[i - 1], list[i])) continue
+      const g = list[i].start - list[i - 1].end
+      if (!(g > EPS) || Math.abs(g - gap) >= 1e-6) continue
+      const line = gapLine(axis, list[i - 1].end, list[i].start, crossCenter([list[i - 1], list[i]]))
+      if (!line) continue
+      const distance = Math.min(Math.abs(line.start - anchor), Math.abs(line.end - anchor))
+      if (!best || distance < best.distance) best = { line, distance }
+    }
+    return best?.line ?? null
+  }
+  // |correction| is the distance from the ideal gap, so only the closest gap
+  // value (and the closest legal bracket) can win. Ties keep the earlier pair.
+  const bestGap = (ideal: number) => {
+    const found: { best?: { g: number; index: number; distance: number } } = {}
+    const tryAt = (index: number) => {
+      if (index < 0 || index >= sortedGaps.length) return
+      const item = sortedGaps[index]
+      const distance = Math.abs(item.g - ideal)
+      if (distance < EPS || distance >= threshold) return
+      if (!found.best || distance < found.best.distance || (distance === found.best.distance && item.index < found.best.index))
+        found.best = { g: item.g, index: item.index, distance }
+    }
+    let lo = 0, hi = sortedGaps.length
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (sortedGaps[mid].g < ideal) lo = mid + 1
+      else hi = mid
+    }
+    tryAt(lo - 1)
+    tryAt(lo)
+    if (!found.best) {
+      let left = lo - 1, right = lo
+      while (left >= 0 && Math.abs(sortedGaps[left].g - ideal) < EPS) left--
+      while (right < sortedGaps.length && Math.abs(sortedGaps[right].g - ideal) < EPS) right++
+      tryAt(left)
+      tryAt(right)
+    }
+    return found.best
+  }
   // The holder keeps callback assignments visible to TypeScript's control-flow
   // analysis; a captured nullable local is otherwise narrowed to `never` here.
-  const candidate: { best?: { delta: number; position: number; start: number; end: number } } = {}
-  const consider = (delta: number, position: number, others: AxisInterval[]) => {
+  const candidate: { best?: { delta: number; position: number; start: number; end: number; lines: GapSnapLine[] } } = {}
+  const consider = (delta: number, position: number, others: AxisInterval[], linesFor: () => GapSnapLine[]) => {
     if (!Number.isFinite(delta) || Math.abs(delta) < EPS || Math.abs(delta) >= threshold) return
     if (candidate.best && Math.abs(delta) >= Math.abs(candidate.best.delta)) return
     candidate.best = {
@@ -127,39 +201,133 @@ function spacingSnapAxis(
       position,
       start: Math.min(m.crossStart, ...others.map((o) => o.crossStart)),
       end: Math.max(m.crossEnd, ...others.map((o) => o.crossEnd)),
+      lines: linesFor(),
     }
   }
-  for (const s of list)
-    for (const g of gaps) {
-      consider(s.end + g - m.start, s.end, [s])
-      consider(s.start - g - size - m.start, s.start, [s])
+  const snappedAt = (delta: number): AxisInterval => ({
+    start: m.start + delta, end: m.start + delta + size, crossStart: m.crossStart, crossEnd: m.crossEnd,
+  })
+  for (const s of list) {
+    const after = bestGap(m.start - s.end)
+    const before = bestGap(s.start - size - m.start)
+    const chosen: { best?: { delta: number; g: number; index: number; kind: 'after' | 'before' } } = {}
+    const take = (kind: 'after' | 'before', found: { g: number; index: number; distance: number } | undefined, delta: number) => {
+      if (!found) return
+      const current = chosen.best
+      if (current) {
+        const currentDistance = Math.abs(current.delta)
+        if (found.distance > currentDistance) return
+        if (found.distance === currentDistance && (found.index > current.index || (found.index === current.index && kind === 'before'))) return
+      }
+      chosen.best = { delta, g: found.g, index: found.index, kind }
     }
+    if (after) take('after', after, s.end + after.g - m.start)
+    if (before) take('before', before, s.start - before.g - size - m.start)
+    const pick = chosen.best
+    if (!pick) continue
+    const anchor = pick.kind === 'after' ? s.end : s.start
+    consider(pick.delta, anchor, [s], () => {
+      const snapped = snappedAt(pick.delta)
+      const lines: GapSnapLine[] = []
+      const reference = nearestMatchingGap(pick.g, anchor)
+      if (reference) lines.push(reference)
+      const created = pick.kind === 'after'
+        ? gapLine(axis, s.end, snapped.start, crossCenter([s, snapped]))
+        : gapLine(axis, snapped.end, s.start, crossCenter([s, snapped]))
+      if (created) lines.push(created)
+      return dedupLines(lines)
+    })
+  }
   // Bracketed pair: equalize the gap on both sides of the moving rect.
-  for (let i = 0; i < list.length; i++)
-    for (let j = i + 1; j < list.length; j++) {
-      const a = list[i],
-        b = list[j],
-        span = b.start - a.end
-      if (span < size - EPS || m.start < a.end - EPS || m.end > b.start + EPS) continue
-      consider(a.end + (span - size) / 2 - m.start, a.end, [a, b])
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i]
+    if (m.start < a.end - EPS) continue
+    const minStart = Math.max(m.end - EPS, a.end + size - EPS)
+    const from = lowerBoundStart(list, i + 1, minStart)
+    if (from >= list.length) continue
+    const target = 2 * m.start + size - a.end
+    const at = lowerBoundStart(list, from, target)
+    const deltaAt = (index: number) => {
+      const b = list[index]
+      return a.end + (b.start - a.end - size) / 2 - m.start
     }
+    const bracket: { best?: { index: number; delta: number; distance: number } } = {}
+    const tryBracket = (index: number) => {
+      if (index < from || index >= list.length) return
+      const delta = deltaAt(index)
+      const distance = Math.abs(delta)
+      if (distance < EPS || distance >= threshold) return
+      if (!bracket.best || distance < bracket.best.distance || (distance === bracket.best.distance && index < bracket.best.index))
+        bracket.best = { index, delta, distance }
+    }
+    tryBracket(at - 1)
+    tryBracket(at)
+    if (!bracket.best) {
+      let left = at - 1, right = at
+      while (left >= from && Math.abs(deltaAt(left)) < EPS) left--
+      while (right < list.length && Math.abs(deltaAt(right)) < EPS) right++
+      tryBracket(left)
+      tryBracket(right)
+    }
+    const found = bracket.best
+    if (!found) continue
+    const b = list[found.index]
+    consider(found.delta, a.end, [a, b], () => {
+      const snapped = snappedAt(found.delta)
+      const lines: GapSnapLine[] = []
+      const reference = nearestMatchingGap((b.start - a.end - size) / 2, (a.end + b.start) / 2)
+      if (reference) lines.push(reference)
+      const left = gapLine(axis, a.end, snapped.start, crossCenter([a, snapped]))
+      const right = gapLine(axis, snapped.end, b.start, crossCenter([b, snapped]))
+      if (left) lines.push(left)
+      if (right) lines.push(right)
+      return dedupLines(lines)
+    })
+  }
   const best = candidate.best
-  return best ? { delta: best.delta, guide: { axis, position: best.position, start: best.start, end: best.end } } : null
+  return best ? { delta: best.delta, lines: best.lines, guide: { axis, position: best.position, start: best.start, end: best.end } } : null
 }
 
 const NO_SNAP: SmartSnapResult = { dx: 0, dy: 0, guides: [null, null] }
 
 /** Spacing snap: drag toward a position whose edge gap to a sibling repeats an
  * existing sibling gap, or sits centered with equal gaps inside a sibling pair.
- * The returned guide line marks the stationary sibling edge and spans every
- * participating rect on the cross axis. Zero-area rects (ruler guides) never
- * contribute spacing values. */
+ * The guide still marks the stationary sibling edge. `gapLines` are the new gap
+ * and the nearest existing gap of that same width.
+ * Zero-area rects (ruler guides) never contribute spacing values. */
 export function spacingSnap(moving: Bounds, siblings: Bounds[], threshold: number): SmartSnapResult {
   if (!Number.isFinite(threshold) || threshold <= 0) return NO_SNAP
   const solid = siblings.filter((s) => s.width > 0 && s.height > 0)
   const x = spacingSnapAxis(moving, solid, 'x', threshold),
     y = spacingSnapAxis(moving, solid, 'y', threshold)
-  return { dx: x?.delta ?? 0, dy: y?.delta ?? 0, guides: [x?.guide ?? null, y?.guide ?? null] }
+  const gapLines = [...(x?.lines ?? []), ...(y?.lines ?? [])]
+  return {
+    dx: x?.delta ?? 0, dy: y?.delta ?? 0, guides: [x?.guide ?? null, y?.guide ?? null],
+    ...(gapLines.length ? { gapLines } : {}),
+  }
+}
+
+/** Smallest correction per axis. Spacing wins only when its correction is strictly smaller. */
+export function combineSmartSnap(edge: SmartSnapResult, spaced: SmartSnapResult): SmartSnapResult {
+  const pick = (
+    edgeDelta: number,
+    edgeGuide: SmartGuideSegment | null,
+    spaceDelta: number,
+    spaceGuide: SmartGuideSegment | null,
+    lines: GapSnapLine[],
+  ) => {
+    if (edgeGuide && spaceGuide)
+      return Math.abs(spaceDelta) < Math.abs(edgeDelta)
+        ? { delta: spaceDelta, guide: spaceGuide, lines }
+        : { delta: edgeDelta, guide: edgeGuide, lines: [] as GapSnapLine[] }
+    if (spaceGuide) return { delta: spaceDelta, guide: spaceGuide, lines }
+    return { delta: edgeGuide ? edgeDelta : 0, guide: edgeGuide, lines: [] as GapSnapLine[] }
+  }
+  const linesFor = (axis: 'x' | 'y') => (spaced.gapLines ?? []).filter(line => line.axis === axis)
+  const x = pick(edge.dx, edge.guides[0], spaced.dx, spaced.guides[0], linesFor('x'))
+  const y = pick(edge.dy, edge.guides[1], spaced.dy, spaced.guides[1], linesFor('y'))
+  const gapLines = [...x.lines, ...y.lines]
+  return { dx: x.delta, dy: y.delta, guides: [x.guide, y.guide], ...(gapLines.length ? { gapLines } : {}) }
 }
 
 /** Full drag snap: kernel edge/center snapping plus spacing snapping, picking
@@ -172,24 +340,7 @@ export function dragSnap(
   threshold: number,
   edgeSnap: typeof smartGuidesSnapWorld = smartGuidesSnapWorld,
 ): SmartSnapResult {
-  const edge = edgeSnap(moving, parent, siblings, threshold),
-    spaced = spacingSnap(moving, siblings, threshold)
-  const pick = (
-    edgeDelta: number,
-    edgeGuide: SmartGuideSegment | null,
-    spaceDelta: number,
-    spaceGuide: SmartGuideSegment | null,
-  ): [number, SmartGuideSegment | null] => {
-    if (edgeGuide && spaceGuide)
-      return Math.abs(spaceDelta) < Math.abs(edgeDelta)
-        ? [spaceDelta, spaceGuide]
-        : [edgeDelta, edgeGuide]
-    if (spaceGuide) return [spaceDelta, spaceGuide]
-    return [edgeGuide ? edgeDelta : 0, edgeGuide]
-  }
-  const [dx, gx] = pick(edge.dx, edge.guides[0], spaced.dx, spaced.guides[0]),
-    [dy, gy] = pick(edge.dy, edge.guides[1], spaced.dy, spaced.guides[1])
-  return { dx, dy, guides: [gx, gy] }
+  return combineSmartSnap(edgeSnap(moving, parent, siblings, threshold), spacingSnap(moving, siblings, threshold))
 }
 
 /** Drag-time snap entry point used by the canvas: identical result shape to

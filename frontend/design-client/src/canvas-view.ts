@@ -1,6 +1,7 @@
 import type { Bounds, DesignDocument, DesignNode, Matrix, Point } from './model'
 import { apply, around, inverse, multiply, rotate, boxPoints, bounds } from './geometry'
 import { kernelSnapPoint, kernelBounds } from './kernel/picking'
+import { pixelGridVisible } from './pixel-grid'
 export { zoomAt } from './canvas-camera'
 
 export function localBounds(n: DesignNode): Bounds {
@@ -58,8 +59,11 @@ export function rotateNode(n: DesignNode, degrees: number, b = localBounds(n)) {
   const center = apply(n.transform, { x: b.x + b.width / 2, y: b.y + b.height / 2 })
   n.transform = multiply(around(center, rotate(degrees - rotationDegrees(n))), n.transform)
 }
-export const forcedPixelSnap = (n: DesignNode) =>
-  ['frame', 'section'].includes(n.kind) || !!n.component || !!n.instance || !!n.componentSet
+/** Control suspends vector pixel snap only while this editor is drawing the pixel grid. */
+export function snapVectorPoint(point: Point, snapPixels: boolean, ctrlKey: boolean, zoom: number, pixelGrid: boolean): Point {
+  if (!snapPixels || (ctrlKey && pixelGrid && pixelGridVisible(zoom))) return point
+  return kernelSnapPoint(point)
+}
 export function snapMove(
   box: Bounds,
   delta: Point,

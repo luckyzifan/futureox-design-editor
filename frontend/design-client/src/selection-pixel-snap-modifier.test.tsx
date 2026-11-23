@@ -21,6 +21,7 @@ vi.mock('./kernel/Surface', async () => {
 })
 
 let dom: JSDOM, root: Root, mount: HTMLDivElement, editor: Editor, errors: unknown[][]
+let frames: Map<number, FrameRequestCallback>, frameId: number
 beforeEach(() => {
   dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://design.invalid/' })
   for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLCanvasElement', 'Element', 'Node', 'Event', 'MouseEvent', 'WheelEvent', 'KeyboardEvent', 'FocusEvent', 'localStorage'])
@@ -31,8 +32,9 @@ beforeEach(() => {
   vi.stubGlobal('CSS', { escape: (value: string) => value })
   dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
-  vi.stubGlobal('requestAnimationFrame', () => 1)
-  vi.stubGlobal('cancelAnimationFrame', () => {})
+  frames = new Map(); frameId = 0
+  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { frames.set(++frameId, fn); return frameId })
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id) })
   Object.defineProperties(dom.window.HTMLElement.prototype, {
     clientWidth: { configurable: true, get: () => 1000 },
     clientHeight: { configurable: true, get: () => 800 },
@@ -80,6 +82,13 @@ function pointer(type: string, x: number, y: number, options: MouseEventInit = {
   Object.defineProperties(event, { pointerId: { value: 7 }, isPrimary: { value: true }, pointerType: { value: 'mouse' } })
   target.dispatchEvent(event)
 }
+async function flushFrames() {
+  await act(async () => {
+    const pending = [...frames]
+    frames.clear()
+    for (const [, fn] of pending) fn(0)
+  })
+}
 
 test('Control keeps pixel-grid snap while resizing a layer', async () => {
   const shape = node('rectangle', 0, 0, 100, 80)
@@ -122,4 +131,84 @@ test('Control still suspends object snap while pixel snap is off', async () => {
   await drag(true)
   expect(editor.state.doc.nodes[moving.id].transform[4]).toBeCloseTo(46, 6)
   expect(editor.state.doc.nodes[target.id].transform[4]).toBeCloseTo(100, 6)
+})
+
+test.each(['frame', 'section'] as const)('a %s follows Snap to pixel grid instead of always landing on integers', async kind => {
+  const board = node(kind, 8.125, 8.125, 80, 60)
+  await render([board], { snapPixels: false })
+  await act(async () => editor.select([board.id]))
+  await act(async () => pointer('pointerdown', 48.125, 38.125))
+  await act(async () => pointer('pointermove', 53.125, 38.125))
+  await act(async () => pointer('pointerup', 53.125, 38.125))
+  expect(editor.state.doc.nodes[board.id].transform[4]).toBeCloseTo(13.125, 6)
+  expect(editor.state.doc.nodes[board.id].transform[5]).toBeCloseTo(8.125, 6)
+  await act(async () => editor.undo())
+  await act(async () => editor.set({ snapPixels: true }))
+  await act(async () => pointer('pointerdown', 48.125, 38.125))
+  await act(async () => pointer('pointermove', 53.125, 38.125))
+  await act(async () => pointer('pointerup', 53.125, 38.125))
+  expect(editor.state.doc.nodes[board.id].transform[4]).toBeCloseTo(13, 6)
+  expect(editor.state.doc.nodes[board.id].transform[5]).toBeCloseTo(8, 6)
+})
+
+test('a frame resize uses pixel snap only while the preference is on', async () => {
+  const board = node('frame', 8.125, 8.125, 80, 60)
+  await render([board], { snapPixels: false })
+  await act(async () => editor.select([board.id]))
+  const edge = mount.querySelector('[data-testid="resize-edge-1"]')!
+  await act(async () => pointer('pointerdown', 88.125, 38.125, {}, edge))
+  await act(async () => pointer('pointerup', 93.525, 38.125))
+  expect(editor.state.doc.nodes[board.id].width).toBeCloseTo(85.4, 4)
+  await act(async () => editor.undo())
+  await act(async () => editor.set({ snapPixels: true }))
+  await act(async () => pointer('pointerdown', 88.125, 38.125, {}, mount.querySelector('[data-testid="resize-edge-1"]')!))
+  await act(async () => pointer('pointerup', 93.525, 38.125))
+  expect(editor.state.doc.nodes[board.id].width).toBeCloseTo(85, 4)
+})
+
+test('moving snaps onto an existing gap and draws both gap segments', async () => {
+  // A 0..40, B 50..90, gap 10. From x=93, a 3px drag reaches 96. The edge at 90
+  // is exactly the 6px threshold, so only the equal gap at 100 snaps.
+  const a = node('rectangle', 0, 0, 40, 40)
+  const b = node('rectangle', 50, 0, 40, 40)
+  const moving = node('rectangle', 93, 0, 20, 40)
+  await render([a, b, moving], { snap: true, snapPixels: false })
+  await act(async () => editor.select([moving.id]))
+  await flushFrames()
+  await act(async () => pointer('pointerdown', 103, 20))
+  expect(editor.interactionActive).toBe(true)
+  await flushFrames()
+  await act(async () => pointer('pointermove', 106, 20))
+  await flushFrames()
+  const lines = [...mount.querySelectorAll('[data-testid="canvas-gap-snap"] [data-measure="gap"]')]
+    .map(line => [Number(line.getAttribute('x1')), Number(line.getAttribute('x2')), Number(line.getAttribute('y1')), Number(line.getAttribute('data-distance'))])
+    .sort((p, q) => p[0] - q[0])
+  expect(lines).toEqual([[40, 50, 20, 10], [90, 100, 20, 10]])
+  expect(mount.querySelectorAll('[data-testid="canvas-gap-snap"] [data-measure="edge"]')).toHaveLength(4)
+  expect(mount.querySelector('[data-testid="canvas-gap-pill-0"]')?.textContent).toBe('10')
+  expect(mount.querySelector('[data-testid="canvas-alignment-guide"][data-axis="x"]')).toBeNull()
+  await act(async () => pointer('pointerup', 106, 20))
+  expect(editor.state.doc.nodes[moving.id].transform[4]).toBeCloseTo(100, 6)
+  expect(mount.querySelector('[data-testid="canvas-gap-snap"]')).toBeNull()
+  await act(async () => editor.undo())
+  await act(async () => editor.set({ snap: false }))
+  await act(async () => pointer('pointerdown', 103, 20))
+  await act(async () => pointer('pointerup', 106, 20))
+  expect(editor.state.doc.nodes[moving.id].transform[4]).toBeCloseTo(96, 6)
+  expect(mount.querySelector('[data-testid="canvas-gap-snap"]')).toBeNull()
+})
+
+test('pen placement keeps pixel snap at zoom 1 and lets Control skip it once the grid is drawn', async () => {
+  await render([], { snapPixels: true })
+  const anchorX = () => {
+    const mark = [...mount.querySelectorAll('[data-testid="pen-anchor"]')].at(-1)!
+    return Number(mark.getAttribute('x')) + 3.5 / editor.state.view.zoom
+  }
+  await act(async () => editor.set({ tool: 'pen', snapPixels: true, pixelGrid: true, view: { x: 0, y: 0, zoom: 1 } }))
+  await act(async () => pointer('pointerdown', 8.125, 6.25, { ctrlKey: true }))
+  expect(anchorX()).toBeCloseTo(8, 6)
+  await act(async () => pointer('pointerup', 8.125, 6.25, { ctrlKey: true }))
+  await act(async () => editor.set({ tool: 'pen', pixelGrid: true, view: { x: 0, y: 0, zoom: 4 } }))
+  await act(async () => pointer('pointerdown', 160.5, 81, { ctrlKey: true }))
+  expect(anchorX()).toBeCloseTo(40.125, 6)
 })

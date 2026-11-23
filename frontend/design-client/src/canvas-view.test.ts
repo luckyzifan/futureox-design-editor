@@ -5,6 +5,7 @@ import { initializePicking, kernelBounds } from './kernel/picking'
 import {
   createBox,
   snapMove,
+  snapVectorPoint,
   zoomAt,
   resizeInBasis,
   rotateNode,
@@ -41,6 +42,15 @@ test('pixel drag matches the measured Figma x/y result while disabled snapping p
   expect(snapMove(box, { x: 5, y: 0 }, false)).toEqual({ x: 5, y: 0 })
   const created = createBox({ x: 8.125, y: 8.125 }, { x: 30.4, y: 26.6 }, true)
   expect(created).toEqual({ x: 8, y: 8, width: 22, height: 19 })
+})
+test('Control suspends vector pixel snap only while the pixel grid is drawn', () => {
+  const point = { x: 8.125, y: 6.25 }
+  expect(snapVectorPoint(point, true, true, 1, true)).toEqual({ x: 8, y: 6 })
+  expect(snapVectorPoint(point, true, true, 3.99, true)).toEqual({ x: 8, y: 6 })
+  expect(snapVectorPoint(point, true, true, 4, true)).toEqual(point)
+  expect(snapVectorPoint(point, true, true, 4, false)).toEqual({ x: 8, y: 6 })
+  expect(snapVectorPoint(point, true, false, 4, true)).toEqual({ x: 8, y: 6 })
+  expect(snapVectorPoint(point, false, true, 4, true)).toEqual(point)
 })
 test('rotation direction and centre match Figma 17-degree property measurements', () => {
   const n = curve()
