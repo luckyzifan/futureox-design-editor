@@ -2999,6 +2999,7 @@ export function ProgressiveSurfaceImpl(
         {singleCanvas ? (() => {
           const CompositeSurface = residentDisplay && rasterClient ? ResidentCompositeSurface : TileCompositeSurface
           return <CompositeSurface key={residentDisplay && rasterClient ? 'resident' : 'bitmap'} client={rasterClient!}
+          navigationInputOwner={props.navigationInputOwner}
           {...(residentDisplay ? { reuseSequence: previewReuseSequence.current, overviewPresentation,
             progressiveBlurDragActive: props.progressiveBlurDragActive } : {})}
           items={compositeItems}

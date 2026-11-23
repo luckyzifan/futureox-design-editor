@@ -2,7 +2,7 @@
 import { JSDOM } from 'jsdom'
 import { afterEach, expect, test, vi } from 'vitest'
 import { scheduleCanvasView } from './canvas-view-schedule'
-import { CameraReprojection } from './kernel/camera-reprojection'
+import { CameraReprojection, coalescedSameZoomPan, subscribeCoalescedPan } from './kernel/camera-reprojection'
 import { Editor } from './engine'
 import { blank } from './model'
 import type { CanvasCamera } from './canvas-camera'
@@ -74,6 +74,50 @@ test('a parked shrink is published before the immediate pan and the retained pic
   slide(projection, backing, bounds, published)
   expect(canvas.style.transform).toBe('translate(60px, 0px) scale(1)')
   expect(JSON.parse(canvas.dataset.projectedCamera!)).toEqual({ x: 60, y: 0, zoom: 1 })
+  editor.dispose()
+})
+
+test('coalesced same-zoom samples slide the accepted bitmap and stage before the next frame', () => {
+  const dom = new JSDOM('<div data-testid="canvas"><div id="host"><canvas></canvas></div><svg class="stage"></svg></div>', { url: 'http://localhost/' })
+  worlds.push(dom)
+  const frames = new Map<number, FrameRequestCallback>()
+  let sequence = 0
+  vi.stubGlobal('window', dom.window)
+  vi.stubGlobal('document', dom.window.document)
+  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { frames.set(++sequence, fn); return sequence })
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id) })
+  const editor = new Editor(blank())
+  editor.set({ view: { x: 0, y: 0, zoom: 1 } })
+  const canvas = dom.window.document.querySelector('canvas')!
+  const stage = dom.window.document.querySelector('svg.stage')!
+  const projection = new CameraReprojection(canvas, dom.window.document.querySelector('#host')!)
+  const backing = {
+    presentationId: 'accepted', view: { x: 0, y: 0, zoom: 1 }, width: 100, height: 80, dpr: 2, interaction: false, ids: [1],
+  }
+  const bounds = { x: 0, y: 0, width: 400, height: 400 }
+  projection.update(backing, backing.view, 100, 80, true, bounds)
+  const committed = { x: 4, y: 1, zoom: 1 }
+  editor.setViewCoalesced(committed, true)
+  expect(editor.state.view).toEqual(committed)
+  let projections = 0
+  const stop = subscribeCoalescedPan(editor, view => {
+    if (!coalescedSameZoomPan(view, editor.state.view)) return
+    projection.update(backing, view, 100, 80, true, bounds)
+    projections++
+  })
+  editor.setViewCoalesced({ x: 28, y: 9, zoom: 1 }, true)
+  expect(editor.state.view).toEqual(committed)
+  expect(frames.size).toBe(1)
+  expect(projections).toBe(1)
+  expect(canvas.style.transform).toBe('translate(28px, 9px) scale(1)')
+  expect(stage.style.transform).toBe(canvas.style.transform)
+  expect(canvas.dataset.cameraReprojected).toBe('true')
+  editor.setViewCoalesced({ x: 28, y: 9, zoom: 1.5 }, true)
+  expect(projections).toBe(1)
+  expect(coalescedSameZoomPan({ x: 1, y: 2, zoom: 2 }, { x: 3, y: 4, zoom: 1 })).toBe(false)
+  stop()
+  projection.dispose()
+  expect(stage.style.transform).toBe('')
   editor.dispose()
 })
 
