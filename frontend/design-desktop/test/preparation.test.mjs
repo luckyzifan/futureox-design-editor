@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { inflateSync } from 'node:zlib'
-import { NativePreparation, PreparationAdmission, registerNativePreparation, bindPosePreparationPort } from '../src/preparation.mjs'
+import { MessageChannel } from 'node:worker_threads'
+import { NativePreparation, PreparationAdmission, registerNativePreparation, bindPosePreparationPort, poseReplyTransfers } from '../src/preparation.mjs'
 import { DOCUMENT_BYTE_LIMIT } from '../src/document-capacity.mjs'
 
 test('host admits the shared interaction pose query without admitting unknown methods or private snapshots', async () => {
@@ -156,9 +157,9 @@ test('host admission is shared across sessions and cancellation retains clones u
 })
 
 test('pose transport binds one native interaction owner and retains the physical cancellation fence',async()=>{
- const port=new EventEmitter(),sent=[],jobs=[],cancels=[]
+ const port=new EventEmitter(),sent=[],transfers=[],jobs=[],cancels=[]
  let resolve,valid=true,retired=0
- Object.assign(port,{start(){},close(){this.emit('close')},postMessage(value){sent.push(value)}})
+ Object.assign(port,{start(){},close(){this.emit('close')},postMessage(value,transfer){sent.push(value);transfers.push(transfer||[])}})
  const worker={request(request){jobs.push(request);return new Promise(done=>{resolve=done})},cancel:id=>cancels.push(id)}
  bindPosePreparationPort(port,worker,()=>valid,()=>{retired++;valid=false})
  const send=data=>port.emit('message',{data})
@@ -166,13 +167,25 @@ test('pose transport binds one native interaction owner and retains the physical
  send({id:2,lane:'interaction',method:'load_document',args:['x']});assert.equal(jobs.length,0)
  const packet={id:3,lane:'interaction',method:'compile_gpu_packet',args:['{}'],cancellable:true};send(packet)
  send({...packet,id:4});assert.equal(jobs.length,1);send({cancel:2});send({cancel:3});assert.deepEqual(cancels,[3])
- resolve({value:new Uint8Array([3])});await new Promise(done=>setImmediate(done));assert.equal(sent.at(-1).value[0],3)
+ const packetBytes=new Uint8Array([3]);resolve({value:packetBytes});await new Promise(done=>setImmediate(done));assert.equal(sent.at(-1).value[0],3);assert.deepEqual(transfers.at(-1),[packetBytes.buffer])
  send(packet);assert.match(sent.at(-1).error,/Invalid/);assert.equal(jobs.length,1)
  const patch={id:5,lane:'interaction',method:'apply_document_patch_with_damage',args:['{"fields":{},"nodes":{}}']}
  send({...patch,lane:'canvas'});assert.match(sent.at(-1).error,/Invalid/)
  send({...patch,args:[patch.args[0],{expectedBaseReceipt:{}}]});assert.match(sent.at(-1).error,/Invalid/)
  send(patch);assert.equal(jobs.length,2);assert.equal(jobs.at(-1).method,patch.method)
- resolve({value:'paint damage'});await new Promise(done=>setImmediate(done));assert.equal(sent.at(-1).value,'paint damage')
+ resolve({value:'paint damage'});await new Promise(done=>setImmediate(done));assert.equal(sent.at(-1).value,'paint damage');assert.deepEqual(transfers.at(-1),[])
  send({...packet,id:6});port.close();assert.equal(retired,1)
  const count=sent.length;resolve({value:new Uint8Array([6])});await new Promise(done=>setImmediate(done));assert.equal(sent.length,count)
+})
+
+test('pose packet buffers move across a message port without a second byte copy', async () => {
+  const { port1, port2 } = new MessageChannel()
+  const received = new Promise(resolve => port2.once('message', resolve))
+  const value = new Uint8Array([9, 8, 7, 6, 5, 4])
+  const reply = { id: 7, value }
+  port1.postMessage({ ...reply, id: reply.id }, poseReplyTransfers(reply))
+  const message = await received
+  assert.deepEqual([...message.value], [9, 8, 7, 6, 5, 4])
+  assert.equal(value.byteLength, 0)
+  port1.close(); port2.close()
 })

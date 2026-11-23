@@ -13,6 +13,14 @@ import { PreparedPacket, waitForPacket } from './prepared-packet'
 import { canRebuildImageDecoder } from './image-decode-recovery'
 import type { DocumentPatch } from '../document-patch'
 export type NativeSourceIdentity={documentId:string;pageId:string;stageId:string;nodes:number}
+/** Drag poses reuse receiver-confirmed curve blocks. A release keeps curves
+ * inline and compresses that packet, skipping block registration. */
+export type ScenePacketTransport = 'exact' | 'curves' | 'inline-lz4'
+function sceneTransport(transport: boolean | ScenePacketTransport | undefined): ScenePacketTransport {
+  if (transport === true || transport === 'curves') return 'curves'
+  if (transport === 'inline-lz4') return 'inline-lz4'
+  return 'exact'
+}
 
 /** The GPU worker keeps only the image decoder on its synchronous boundary.
  * Document/layout/geometry work lives in the preparation worker. CPU-only hosts
@@ -187,9 +195,12 @@ export class RenderKernel {
   async compile_gpu_packet(options: string, signal?: AbortSignal) {
     return this.compileOwned(options,signal,(bytes,shared)=>shared?copyScenePacket(bytes):bytes)
   }
-  private async compileOwned<T>(options:string,signal:AbortSignal|undefined,own:(bytes:Uint8Array,shared:boolean)=>T,curvePrograms=false):Promise<T> {
+  private async compileOwned<T>(options:string,signal:AbortSignal|undefined,own:(bytes:Uint8Array,shared:boolean)=>T,transport: boolean | ScenePacketTransport = false):Promise<T> {
     if (signal?.aborted) throw Error('PREVIEW_CANCELLED')
-    const enabled = !!this.preparation && !curvePrograms
+    const mode = sceneTransport(transport)
+    // Curve reuse and inline compression both depend on this lease. They cannot
+    // share an in-flight exact packet that was built for a different acknowledgement.
+    const enabled = !!this.preparation && mode === 'exact'
     const revision = this.revision
     const pending = enabled && !this.pendingMutations ? this.pendingPackets.get(options) : undefined
     if (pending?.revision === revision) {
@@ -199,7 +210,7 @@ export class RenderKernel {
       // Each waiter needs independent ownership, including before cache admission.
       return own(await waitForPacket(pending.bytes, signal),true)
     }
-    const entry = { revision, bytes: this.compileFrame(options, revision, signal, curvePrograms), shared: false }
+    const entry = { revision, bytes: this.compileFrame(options, revision, signal, mode), shared: false }
     // A cancellable physical compile cannot be the shared owner of an exact
     // request (or another preview owner). Only noncancellable jobs are shared.
     if (enabled && !this.pendingMutations && !signal) this.pendingPackets.set(options, entry)
@@ -220,10 +231,10 @@ export class RenderKernel {
     if (!current()) throw Error('STALE_PREPARED_PACKET')
     return new PreparedPacket({ lane: this.lane, revision, options, settings }, bytes, current, signal)
   }
-  async prepare_gpu_scene(options: string, signal?: AbortSignal, curvePrograms=false): Promise<PreparedPacket<CompiledScenePacket>> {
+  async prepare_gpu_scene(options: string, signal?: AbortSignal, transport: boolean | ScenePacketTransport = false): Promise<PreparedPacket<CompiledScenePacket>> {
     if(this.pendingMutations)throw Error('DOCUMENT_PREPARATION_PENDING')
     const revision=this.revision,settings=this.settings
-    const scene=await this.compileOwned(options,signal,(bytes,shared)=>CompiledScenePacket.from(bytes,shared),curvePrograms)
+    const scene=await this.compileOwned(options,signal,(bytes,shared)=>CompiledScenePacket.from(bytes,shared),transport)
     const current=()=>revision===this.revision&&!this.pendingMutations&&settings===this.settings
     if(!current())throw Error('STALE_PREPARED_PACKET')
     return new PreparedPacket({lane:this.lane,revision,options,settings},scene,current,signal)
@@ -238,10 +249,15 @@ export class RenderKernel {
     try { return await this.call<boolean>('apply_interaction_transforms', [value]) }
     finally { this.pendingMutations-- }
   }
-  private async compileFrame(options:string, revision:number, signal?:AbortSignal, curvePrograms=false) {
+  private async compileFrame(options:string, revision:number, signal?:AbortSignal, transport: ScenePacketTransport = 'exact') {
     const lease=this.resources.capture(),owner=this.contentOwner
     try {
-      const frameResources = curvePrograms ? { ...lease.acknowledgement, curvePrograms: true } : lease.acknowledgement
+      const acknowledgement = lease.acknowledgement
+      const frameResources = transport === 'curves'
+        ? { ...acknowledgement, curvePrograms: true, sceneLz4: true }
+        : transport === 'inline-lz4'
+          ? { ...acknowledgement, sceneLz4: true }
+          : acknowledgement
       const request=JSON.stringify({...JSON.parse(options),frameResources})
       const bytes=await this.call<Uint8Array>('compile_gpu_packet',[request],signal)
       const scene=decodeScenePacket(bytes,revision===this.revision&&!this.pendingMutations?this.resources:undefined,lease)
