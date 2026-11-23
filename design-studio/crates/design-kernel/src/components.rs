@@ -745,6 +745,11 @@ impl Builder<'_> {
             overrides.get(&qualify(prefix, "$root")),
             inherited_modes,
         )?;
+        // The master background is a Sketch artboard color, not symbol content.
+        // Format metadata keeps the include flag off the executable bindings.
+        if crate::interop::sketch_binding(self.source, template, "sketchIncludeBackgroundInInstance") == Some("false") {
+            n.fills.retain(|paint| paint.id != crate::interop::SKETCH_SYMBOL_BACKGROUND);
+        }
         // A materialized outer root doubles as the authored placement on the
         // next edit/reload. Never bake template defaults or root overrides into
         // its local mode map: clearing an override must restore inheritance.
