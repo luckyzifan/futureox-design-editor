@@ -51,6 +51,7 @@ import { bindEditorSettings } from './settings-preference'
 import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootControls'
 import { useShortcutProfile } from './shortcut-preference'
 import { getPrototypeTab, setPrototypeTab, subscribePrototypeTab } from './prototype-chrome'
+import { inlinePrototypePreviewChord, pageHasFrame, presentPrototypeChord, prototypePlaybackReady } from './prototype-playback-shortcut'
 import { shortcutPlatform, toolShortcutLabel, shortcutLabel, shortcutLabels, formatShortcutCombo } from './shortcut-profiles'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { NativeAutomationDialog } from './AutomationPanelLauncher'
@@ -618,6 +619,34 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [startupPreview, setStartupPreview] = useState<StartupPreview>()
   const [localFiles, setLocalFiles] = useState<LocalEntry[] | null>(null)
   const [switching, setSwitching] = useState(false)
+  useEffect(() => {
+    // Figma layout only. Shift+Space is the inline preview; Option-Command-Return
+    // (Ctrl+Alt+Enter off Mac) presents. Both open the existing player.
+    if (uiMode !== 'figma' || showHome || !ready || largeDocument) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.key === 'Process' || event.keyCode === 229 ||
+          event.getModifierState?.('AltGraph')) return
+      if (switching || editor.interactionActive || editor.state.busy || shortcutTargetOwnsKeyboard(event.target)) return
+      const present = presentPrototypeChord(event, shortcutPlatform())
+      const inline = inlinePrototypePreviewChord(event)
+      if (!present && !inline) return
+      const doc = editor.state.doc
+      if (present) {
+        event.preventDefault()
+        event.stopPropagation()
+        if (!event.repeat && prototypePlaybackReady(doc)) setShowPrototype(true)
+        return
+      }
+      const canvas = document.querySelector<HTMLElement>('[data-testid="canvas"]')
+      if (!canvas || (event.target !== canvas && document.activeElement !== canvas) ||
+          !pageHasFrame(doc, editor.state.page) || !prototypePlaybackReady(doc)) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (!event.repeat) setShowPrototype(true)
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [uiMode, showHome, ready, largeDocument, switching, editor])
   const [importing, setImporting] = useState(false)
   const switchGate = useRef<object | null>(null)
   const panelHost = useRef<HTMLDivElement>(null)
