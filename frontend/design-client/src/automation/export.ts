@@ -15,8 +15,9 @@ import {
   assetReference, boundedInteger, collectAssetReferences, contextEntries, contextOptions,
   safeWebUrl, type AssetReference, type ContextOptions, type DesignAutomationWarning,
 } from './context'
+import { createScssColorSession } from './scss-export'
 
-export type CodeExportOptions = Pick<ContextOptions, 'pageId' | 'nodeIds'> & { maxNodes?: number }
+export type CodeExportOptions = Pick<ContextOptions, 'pageId' | 'nodeIds'> & { maxNodes?: number; syntax?: 'css' | 'scss' }
 export type CodeAsset = AssetReference & { path: string; emitted: boolean; dataUrl?: string }
 export const EXPORT_LIMITS = Object.freeze({ nodes: 500, bytes: 8 * 1024 * 1024, nativeBytes: 32 * 1024 * 1024 - 64 * 1024, embeddedAsset: 256 * 1024, embeddedTotal: 2 * 1024 * 1024, previewPixels: 16 * 1024 * 1024 })
 const htmlEscape = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)
@@ -120,7 +121,8 @@ export function importNativeDocument(document: DesignDocument, params: Record<st
 }
 function codeOptions(params: Record<string, unknown>, pageId?: string): CodeExportOptions {
   const options = contextOptions({ pageId: params.pageId, nodeIds: params.nodeIds }, pageId)
-  return { pageId: options.pageId, nodeIds: options.nodeIds, maxNodes: boundedInteger(params.maxNodes, 200, 1, EXPORT_LIMITS.nodes, 'maxNodes') }
+  if (params.syntax !== undefined && params.syntax !== 'css' && params.syntax !== 'scss') throw new AutomationError('invalid_params', 'syntax must be css or scss')
+  return { pageId: options.pageId, nodeIds: options.nodeIds, maxNodes: boundedInteger(params.maxNodes, 200, 1, EXPORT_LIMITS.nodes, 'maxNodes'), ...(params.syntax === 'scss' ? { syntax: 'scss' as const } : {}) }
 }
 /** Semantic, editable HTML, not a screenshot renderer. Resolved kernel layout,
  * component materialization and token values remain the source of truth. Every
@@ -161,32 +163,40 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
   }
   const nodeIdMap: Record<string, { elementId: string; selector: string }> = Object.create(null)
   entries.forEach(({ node }, index) => { nodeIdMap[node.id] = { elementId: `design-node-${index + 1}`, selector: `#design-node-${index + 1}` } })
-  const styles: string[] = ['*{box-sizing:border-box}', 'html,body{margin:0;padding:0}', '.design-scene{position:relative;isolation:isolate}', '.design-node{position:absolute;transform-origin:0 0}', '.design-text{margin:0;white-space:pre-wrap;overflow-wrap:normal}']
+  const rules: { css: string; scss: string }[] = []
+  const pushRule = (css: string, scss = css) => rules.push({ css, scss })
+  for (const rule of ['*{box-sizing:border-box}', 'html,body{margin:0;padding:0}', '.design-scene{position:relative;isolation:isolate}', '.design-node{position:absolute;transform-origin:0 0}', '.design-text{margin:0;white-space:pre-wrap;overflow-wrap:normal}']) pushRule(rule)
   const included = new Set(entries.map(e => e.node.id))
   const safeColor = (value: string, nodeId: string) => {
     const safe = cssColor(value)
     if (!safe) warn('UNSUPPORTED_COLOR', 'Unrecognized color syntax was omitted for safe CSS export.', nodeId)
     return safe
   }
-  const paintCss = (paint: Paint, nodeId: string): string | undefined => {
+  const scssSession = options.syntax === 'scss' ? createScssColorSession(resolved, cssColor, () => warn('SCSS_COLOR_MISMATCH', 'A bound fill color did not match its resolved variable, so that declaration stayed a CSS literal.')) : undefined
+  const paintCss = (paint: Paint, nodeId: string, colorPath?: string): { css?: string; scss?: string } => {
     if (paint.blend !== 'normal' || paint.opacity !== 1) warn('PAINT_COMPOSITING', 'Per-paint blend and opacity may differ from the native compositor.', nodeId)
+    const pair = (css?: string, scss = css) => ({ css, scss })
     if (paint.kind === 'solid') {
       const color = safeColor(paint.color, nodeId)
-      return color && (paint.opacity === 1 ? color : `color-mix(in srgb, ${color} ${number(Math.max(0, Math.min(1, paint.opacity)) * 100)}%, transparent)`)
+      if (!color) return {}
+      const token = scssSession && colorPath ? scssSession.color(resolved.nodes[nodeId], colorPath, color) : color
+      const mix = (value: string) => paint.opacity === 1 ? value : `color-mix(in srgb, ${value} ${number(Math.max(0, Math.min(1, paint.opacity)) * 100)}%, transparent)`
+      return pair(mix(color), mix(token))
     }
     if (paint.kind === 'image') {
       const asset = paint.image && assetsById.get(assetReference(paint.image, nodeId, paint.id, assetIdentities).id)
       if (paint.transform || paint.tile || paint.adjust) warn('IMAGE_TRANSFORM', 'Image transforms, pattern tiling and color adjustments are not reproduced by CSS background sizing.', nodeId)
       const uri = asset && (asset.dataUrl ?? asset.uri)
-      return uri ? `url(${cssString(uri)})` : undefined
+      return pair(uri ? `url(${cssString(uri)})` : undefined)
     }
     if (paint.kind === 'linear' || paint.kind === 'radial') {
-      if (paint.stops.length > 64) { warn('GRADIENT_LIMIT', 'Gradient with more than 64 stops was omitted.', nodeId); return }
+      if (paint.stops.length > 64) { warn('GRADIENT_LIMIT', 'Gradient with more than 64 stops was omitted.', nodeId); return {} }
       warn('GRADIENT_APPROXIMATION', 'CSS gradient coordinates and interpolation can differ from native rendering.', nodeId)
       const stops = paint.stops.map(stop => { const c = safeColor(stop.color, nodeId); return c ? `${c} ${number(stop.offset * 100)}%` : undefined }).filter(Boolean)
-      return stops.length ? `${paint.kind === 'linear' ? `linear-gradient(${number(paint.angle)}deg,` : 'radial-gradient(ellipse at center,'}${stops.join(',')})` : undefined
+      return pair(stops.length ? `${paint.kind === 'linear' ? `linear-gradient(${number(paint.angle)}deg,` : 'radial-gradient(ellipse at center,'}${stops.join(',')})` : undefined)
     }
     warn('UNSUPPORTED_GRADIENT', `${paint.kind} gradients are not supported in semantic HTML export.`, nodeId)
+    return {}
   }
   const align: Record<string, string> = { start: 'flex-start', end: 'flex-end', center: 'center', 'unsafe-center': 'unsafe center', 'unsafe-end': 'unsafe end', stretch: 'stretch', 'space-between': 'space-between', 'space-around': 'space-around', 'space-evenly': 'space-evenly' }
   const rootSet = new Set(roots)
@@ -196,55 +206,68 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     warn('MULTIPLE_PARENT_SPACES', 'Selected roots have different parent spaces; each root keeps its local transform. Export a common ancestor for a spatially aligned composition.')
   let right = 1, bottom = 1
   for (const { node, parentId } of entries) {
-    const n = node, selector = nodeIdMap[n.id].selector, declarations: string[] = []
+    const n = node, selector = nodeIdMap[n.id].selector, declarations: string[] = [], scssDeclarations: string[] = []
+    const decl = (...css: string[]) => { declarations.push(...css); if (scssSession) scssDeclarations.push(...css) }
+    const declPair = (css: string, scss: string) => { declarations.push(css); if (scssSession) scssDeclarations.push(scss) }
     const parent = parentId && !rootSet.has(n.id) ? resolved.nodes[parentId] : undefined
     const flow = !!parent?.layout && parent.layout.mode !== 'none' && !n.sizing?.absolute
-    declarations.push(`width:${px(n.width)}`, `height:${px(n.height)}`, `opacity:${number(n.opacity)}`)
-    if (!n.visible || n.kind === 'slice') declarations.push('display:none')
+    decl(`width:${px(n.width)}`, `height:${px(n.height)}`, `opacity:${number(n.opacity)}`)
+    if (!n.visible || n.kind === 'slice') decl('display:none')
     const matrix = [...n.transform]
     if (flow) {
-      declarations.push('position:relative', 'flex-shrink:0')
+      decl('position:relative', 'flex-shrink:0')
       matrix[4] = 0; matrix[5] = 0
-      if (n.sizing?.width === 'fill' && parent!.layout!.mode === 'horizontal') declarations.push('flex:1 1 0', 'min-width:0')
-      if (n.sizing?.height === 'fill' && parent!.layout!.mode === 'vertical') declarations.push('flex:1 1 0', 'min-height:0')
-      if (n.sizing?.alignSelf) declarations.push(`align-self:${align[n.sizing.alignSelf]}`)
-      if (parent!.layout!.mode === 'grid') declarations.push(`grid-column:span ${number(n.sizing?.columnSpan ?? 1)}`, `grid-row:span ${number(n.sizing?.rowSpan ?? 1)}`)
+      if (n.sizing?.width === 'fill' && parent!.layout!.mode === 'horizontal') decl('flex:1 1 0', 'min-width:0')
+      if (n.sizing?.height === 'fill' && parent!.layout!.mode === 'vertical') decl('flex:1 1 0', 'min-height:0')
+      if (n.sizing?.alignSelf) decl(`align-self:${align[n.sizing.alignSelf]}`)
+      if (parent!.layout!.mode === 'grid') decl(`grid-column:span ${number(n.sizing?.columnSpan ?? 1)}`, `grid-row:span ${number(n.sizing?.rowSpan ?? 1)}`)
     }
-    declarations.push(`transform:matrix(${matrix.map(number).join(',')})`)
+    decl(`transform:matrix(${matrix.map(number).join(',')})`)
     if (rootSet.has(n.id)) { right = Math.max(right, n.transform[4] + n.width); bottom = Math.max(bottom, n.transform[5] + n.height) }
-    if (n.clip) declarations.push('overflow:hidden')
+    if (n.clip) decl('overflow:hidden')
     if (n.blend !== 'normal' && n.blend !== 'pass-through') {
       if (['linear-burn', 'linear-dodge'].includes(n.blend)) warn('UNSUPPORTED_BLEND', `${n.blend} blend is omitted.`, n.id)
-      else declarations.push(`mix-blend-mode:${n.blend}`)
+      else decl(`mix-blend-mode:${n.blend}`)
     }
     if (n.blend === 'pass-through') warn('PASS_THROUGH_COMPOSITING', 'Pass-through group compositing is approximated by DOM stacking.', n.id)
     if (n.mask || n.booleanOperation) warn('MASK_OR_BOOLEAN', 'Mask and boolean geometry is not reproduced; the source graph is retained in native export.', n.id)
     if (n.smoothing) warn('CORNER_SMOOTHING', 'Continuous corner smoothing is approximated by CSS border-radius.', n.id)
-    if (n.kind === 'ellipse') declarations.push('border-radius:50%')
-    else declarations.push(`border-radius:${n.radii.map(px).join(' ')}`)
+    if (n.kind === 'ellipse') decl('border-radius:50%')
+    else decl(`border-radius:${n.radii.map(px).join(' ')}`)
     if (n.repeat) warn('REPEAT_TRANSFORMS_NOT_EXPORTED', 'Semantic HTML includes only the editable source, not its derived repeat appearances. Use native FD/JSON to preserve the repeat, or PNG/SVG/PDF for visual output.', n.id)
     if (n.arc || n.textPath || n.pathOffset || n.vectorBrush) warn('SPECIAL_GEOMETRY', 'Arc, text-on-path, path-offset and vector-brush geometry is not reproduced in HTML.', n.id)
     if (['vector', 'polygon', 'star', 'line'].includes(n.kind)) {
       warn('UNSUPPORTED_SHAPE', `${n.kind} geometry uses a bounding-box placeholder; use native SVG/image export for its exact shape.`, n.id)
-      declarations.push('outline:1px dashed #999')
+      decl('outline:1px dashed #999')
     }
-    const fills = n.fills.filter(p => p.visible).slice(0, 16)
+    const fills = n.fills.map((paint, index) => ({ paint, index })).filter(item => item.paint.visible).slice(0, 16)
     if (n.fills.length > 16) warn('PAINT_LIMIT', 'Only the first 16 visible fills are exported.', n.id)
     if (n.kind === 'text') {
-      const color = fills.find(p => p.kind === 'solid')
-      if (color) { const safe = paintCss(color, n.id); if (safe) declarations.push(`color:${safe}`) }
-      if (fills.length > 1 || fills.some(p => p.kind !== 'solid')) warn('TEXT_PAINTS', 'Text export uses one solid fill; additional text paints are omitted.', n.id)
+      const color = fills.find(item => item.paint.kind === 'solid')
+      if (color) {
+        const safe = paintCss(color.paint, n.id, `fills.${color.index}.color`)
+        if (safe.css) declPair(`color:${safe.css}`, `color:${safe.scss ?? safe.css}`)
+      }
+      if (fills.length > 1 || fills.some(item => item.paint.kind !== 'solid')) warn('TEXT_PAINTS', 'Text export uses one solid fill; additional text paints are omitted.', n.id)
     } else {
-      const layers = fills.map(p => { const value = paintCss(p, n.id); return value && p.kind === 'solid' ? `linear-gradient(${value},${value})` : value }).filter(Boolean)
-      if (layers.length) declarations.push(`background-image:${layers.reverse().join(',')}`)
-      const image = fills.find(p => p.kind === 'image')
-      if (image) declarations.push(`background-size:${image.fit === 'stretch' ? '100% 100%' : image.fit}`, 'background-position:center', 'background-repeat:no-repeat')
+      const layers = fills.flatMap(item => {
+        const value = paintCss(item.paint, n.id, `fills.${item.index}.color`)
+        if (!value.css) return []
+        const wrap = (color: string) => item.paint.kind === 'solid' ? `linear-gradient(${color},${color})` : color
+        return [{ css: wrap(value.css), scss: wrap(value.scss ?? value.css) }]
+      })
+      if (layers.length) {
+        layers.reverse()
+        declPair(`background-image:${layers.map(item => item.css).join(',')}`, `background-image:${layers.map(item => item.scss).join(',')}`)
+      }
+      const image = fills.find(item => item.paint.kind === 'image')
+      if (image) decl(`background-size:${image.paint.fit === 'stretch' ? '100% 100%' : image.paint.fit}`, 'background-position:center', 'background-repeat:no-repeat')
     }
     const strokes = n.strokes.filter(s => s.visible && s.paint.visible)
     const stroke = strokes[0]
     if (stroke?.paint.kind === 'solid') {
       const color = paintCss(stroke.paint, n.id)
-      if (color) declarations.push(`border:${px(stroke.width)} solid ${color}`)
+      if (color.css) declPair(`border:${px(stroke.width)} solid ${color.css}`, `border:${px(stroke.width)} solid ${color.scss ?? color.css}`)
     }
     if (strokes.length) warn('STROKE_APPROXIMATION', 'CSS border approximates strokes; alignment, multiple strokes, dashes, joins, markers and width profiles may differ.', n.id)
     const shadows: string[] = [], filters: string[] = [], backdrop: string[] = []
@@ -258,29 +281,29 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
         warn('EFFECT_APPROXIMATION', 'Browser CSS shadow and blur kernels differ from the native compositor.', n.id)
       } else warn('UNSUPPORTED_EFFECT', `${effect.kind}${effect.gradientBlur ? ' with gradient blur' : ''} is omitted; native material parameters remain in semantic context and canonical export.`, n.id)
     }
-    if (shadows.length) declarations.push(`box-shadow:${shadows.join(',')}`)
-    if (filters.length) declarations.push(`filter:${filters.join(' ')}`)
-    if (backdrop.length) declarations.push(`backdrop-filter:${backdrop.join(' ')}`)
+    if (shadows.length) decl(`box-shadow:${shadows.join(',')}`)
+    if (filters.length) decl(`filter:${filters.join(' ')}`)
+    if (backdrop.length) decl(`backdrop-filter:${backdrop.join(' ')}`)
     if (n.layout && n.layout.mode !== 'none') {
       const l = n.layout
-      if (l.wrap && (l.align === 'unsafe-center' || l.align === 'unsafe-end')) declarations.push('align-content:' + align[l.align])
-      declarations.push(`display:${n.visible ? l.mode === 'grid' ? 'grid' : 'flex' : 'none'}`, `padding:${l.padding.map(px).join(' ')}`, `gap:${px(l.mode === 'vertical' ? l.gap : l.lineGap)} ${px(l.mode === 'vertical' ? l.lineGap : l.gap)}`, `justify-content:${align[l.justify]}`, `align-items:${align[l.align]}`)
-      if (l.mode === 'grid') declarations.push(`grid-template-columns:repeat(${number(l.columns)},minmax(0,1fr))`)
-      else declarations.push(`flex-direction:${l.mode === 'horizontal' ? 'row' : 'column'}`, `flex-wrap:${l.wrap ? 'wrap' : 'nowrap'}`)
+      if (l.wrap && (l.align === 'unsafe-center' || l.align === 'unsafe-end')) decl('align-content:' + align[l.align])
+      decl(`display:${n.visible ? l.mode === 'grid' ? 'grid' : 'flex' : 'none'}`, `padding:${l.padding.map(px).join(' ')}`, `gap:${px(l.mode === 'vertical' ? l.gap : l.lineGap)} ${px(l.mode === 'vertical' ? l.lineGap : l.gap)}`, `justify-content:${align[l.justify]}`, `align-items:${align[l.align]}`)
+      if (l.mode === 'grid') decl(`grid-template-columns:repeat(${number(l.columns)},minmax(0,1fr))`)
+      else decl(`flex-direction:${l.mode === 'horizontal' ? 'row' : 'column'}`, `flex-wrap:${l.wrap ? 'wrap' : 'nowrap'}`)
       warn('LAYOUT_APPROXIMATION', 'CSS flex/grid uses resolved dimensions but may size and wrap differently from the design layout engine.', n.id)
     }
     if (n.kind === 'text') {
       const s = n.textStyle
       const font = s?.fontId ? document.fonts?.[s.fontId] : undefined
-      declarations.push(`font-size:${px(n.fontSize)}`, `font-family:${font ? `${cssString(font.family)},sans-serif` : 'sans-serif'}`, `font-weight:${number(s?.weight ?? 400)}`, `line-height:${number(s?.lineHeight ?? 1.35)}`, `letter-spacing:${px(s?.letterSpacing ?? 0)}`, `text-align:${s?.align ?? 'start'}`, `white-space:${s?.wrap ? 'pre-wrap' : 'pre'}`)
-      if (s?.direction && s.direction !== 'auto') declarations.push(`direction:${s.direction}`)
-      if (s?.writingMode === 'vertical') declarations.push('writing-mode:vertical-rl')
-      if (s?.textCase && s.textCase !== 'original') declarations.push(textTransform(s.textCase, n.id))
+      decl(`font-size:${px(n.fontSize)}`, `font-family:${font ? `${cssString(font.family)},sans-serif` : 'sans-serif'}`, `font-weight:${number(s?.weight ?? 400)}`, `line-height:${number(s?.lineHeight ?? 1.35)}`, `letter-spacing:${px(s?.letterSpacing ?? 0)}`, `text-align:${s?.align ?? 'start'}`, `white-space:${s?.wrap ? 'pre-wrap' : 'pre'}`)
+      if (s?.direction && s.direction !== 'auto') decl(`direction:${s.direction}`)
+      if (s?.writingMode === 'vertical') decl('writing-mode:vertical-rl')
+      if (s?.textCase && s.textCase !== 'original') decl(textTransform(s.textCase, n.id))
       warn('FONT_METRICS', 'HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.', n.id)
     }
-    styles.push(`${selector}{${declarations.join(';')}}`)
+    pushRule(`${selector}{${declarations.join(';')}}`, scssSession ? `${selector}{${scssDeclarations.join(';')}}` : undefined)
   }
-  styles.push(`.design-scene{width:${px(right)};height:${px(bottom)};background:${cssColor(page.background) ?? 'transparent'}}`)
+  pushRule(`.design-scene{width:${px(right)};height:${px(bottom)};background:${cssColor(page.background) ?? 'transparent'}}`)
   const renderText = (n: DesignNode) => {
     if (!n.textRuns?.length) return htmlEscape(n.text)
     if (n.textRuns.length > 128) { warn('TEXT_RUN_LIMIT', 'More than 128 text runs: plain text retained; run formatting omitted.', n.id); return htmlEscape(n.text) }
@@ -295,7 +318,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
       if (run.fontId && document.fonts?.[run.fontId]) declarations.push(`font-family:${cssString(document.fonts[run.fontId].family)},sans-serif`)
       if (run.underline || run.strikethrough) declarations.push(`text-decoration:${[run.underline && 'underline', run.strikethrough && 'line-through'].filter(Boolean).join(' ')}`)
       if (run.textCase) declarations.push(textTransform(run.textCase, n.id))
-      if (declarations.length) styles.push(`.${className}{${declarations.join(';')}}`)
+      if (declarations.length) pushRule(`.${className}{${declarations.join(';')}}`)
       const text = htmlEscape(n.text.slice(start, end)), link = run.link && safeWebUrl(run.link)
       if (run.link && !link) warn('UNSAFE_LINK', 'A non-HTTP(S) or unsafe text link was omitted; its text remains.', n.id)
       return link ? `<a class="${className}" href="${htmlEscape(link)}" rel="noopener noreferrer">${text}</a>` : `<span class="${className}">${text}</span>`
@@ -308,8 +331,10 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     markup.set(n.id, `<div id="${nodeIdMap[n.id].elementId}" class="design-node${n.kind === 'text' ? ' design-text' : ''}" data-node-id="${htmlEscape(n.id)}" data-node-kind="${htmlEscape(n.kind)}" aria-label="${htmlEscape(n.name)}">${content}</div>`)
   }
   const html = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self' data: https: http:; script-src 'none'; object-src 'none'; base-uri 'none'"><title>${htmlEscape(document.name)}</title><link rel="stylesheet" href="styles.css"></head><body><main class="design-scene">${roots.map(id => markup.get(id) ?? '').join('')}</main></body></html>`
-  const css = `${styles.join('\n')}\n`
-  const result = { format: 'futureox.design-code.v1', language: 'html-css', html, css, nodeIdMap, assets, warnings, fidelity: 'approximate', sourceDocumentId: document.id, pageId: page.id }
+  const css = `${rules.map(rule => rule.css).join('\n')}\n`
+  const scssResult = scssSession?.render(rules.map(rule => rule.scss), entries)
+  if (scssResult) for (const warning of scssResult.warnings) warn(warning.code, warning.message, warning.nodeId)
+  const result = { format: 'futureox.design-code.v1', language: 'html-css', html, css, ...(scssResult ? { scss: scssResult.scss } : {}), nodeIdMap, assets, warnings, fidelity: 'approximate', sourceDocumentId: document.id, pageId: page.id }
   if (new TextEncoder().encode(JSON.stringify(result)).byteLength > EXPORT_LIMITS.bytes) throw new AutomationError('invalid_params', 'Code export exceeds 8 MiB; select a smaller subtree')
   return result
 }
@@ -412,8 +437,8 @@ export const exportExtensions: AutomationExtension[] = [
   { name: 'document.import', description: 'Atomically append a validated fd binary or native-json document through the existing importer. Preserves destination identity and remaps nodes, components, tokens, fonts and interactions; returns nodeIdMap. HTML import is unsupported.', mutates: true,
     inputSchema: { type: 'object', required: ['format'], properties: { format: { type: 'string', enum: ['fd', 'native-json'] }, base64: { type: 'string' }, content: { type: 'string' }, document: { type: 'object' }, pageId: { type: 'string' } }, additionalProperties: false },
     execute: importNativeDocument },
-  { name: 'code.export', description: 'Deterministic editable HTML/CSS plus stable node-ID map, portable image manifest and explicit fidelity gaps. No scripts are generated.', mutates: false,
-    inputSchema: { type: 'object', properties: { pageId: { type: 'string' }, nodeIds: { type: 'array', items: { type: 'string' }, maxItems: 500 }, maxNodes: { type: 'integer', minimum: 1, maximum: 500 } }, additionalProperties: false },
+  { name: 'code.export', description: 'Deterministic editable HTML/CSS plus stable node-ID map, portable image manifest and explicit fidelity gaps. No scripts are generated. syntax scss also returns selection-scoped Sass variables for bound fill colors; the css field stays the flat stylesheet.', mutates: false,
+    inputSchema: { type: 'object', properties: { pageId: { type: 'string' }, nodeIds: { type: 'array', items: { type: 'string' }, maxItems: 500 }, maxNodes: { type: 'integer', minimum: 1, maximum: 500 }, syntax: { type: 'string', enum: ['css', 'scss'] } }, additionalProperties: false },
     execute: (document, params, context) => exportDesignCode(document, codeOptions(params, context.pageId)) },
   { name: 'document.export', description: 'Lossless native carrier: format fd uses the existing checksum-protected kernel binfmt codec and returns base64. Default native-json preserves compatibility. Includes nodes, tokens, fonts, components, assets and materials; native transfers capped at 32 MiB including a 64 KiB envelope reserve.', mutates: false,
     inputSchema: { type: 'object', properties: { format: { type: 'string', enum: ['fd', 'native-json'] } }, additionalProperties: false }, execute: (document, params) => params.format === 'fd' ? exportBinaryDocument(document) : exportNativeDocument(document) },
