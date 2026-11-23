@@ -119,6 +119,13 @@ pub struct TextStyle {
     /// rotates non-CJK runs a quarter turn clockwise, the conventional CJK
     /// mixed layout; wrapping stays horizontal-only.
     pub writing_mode: String,
+    /// Empty means this layer is not a list. `bullet` and `ordered` are the
+    /// Figma list styles. Paragraphs can override this.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub list: String,
+    /// Explicit indent level, 0 through 4. Absent inherits the first level.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_level: Option<u8>,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -156,6 +163,15 @@ fn is_top(s: &str) -> bool {
 fn is_false(value: &bool) -> bool {
     !*value
 }
+fn valid_list(list: &str, level: Option<u8>, allow_none: bool) -> bool {
+    let known = matches!(list, "" | "bullet" | "ordered") || (allow_none && list == "none");
+    known
+        && match (list, level) {
+            ("", None) | ("none", None) => true,
+            ("bullet" | "ordered", None | Some(0..=4)) => true,
+            _ => false,
+        }
+}
 impl Default for TextStyle {
     fn default() -> Self {
         Self {
@@ -176,6 +192,8 @@ impl Default for TextStyle {
             features: vec![],
             variations: vec![],
             writing_mode: "horizontal".into(),
+            list: String::new(),
+            list_level: None,
         }
     }
 }
@@ -188,6 +206,11 @@ pub struct TextParagraph {
     pub maximum_line_height: f64,
     pub spacing: f64,
     pub indent: f64,
+    /// `none` clears an inherited layer list. Empty inherits it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub list: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_level: Option<u8>,
 }
 impl Default for TextParagraph {
     fn default() -> Self {
@@ -197,6 +220,8 @@ impl Default for TextParagraph {
             maximum_line_height: 0.,
             spacing: 0.,
             indent: 0.,
+            list: String::new(),
+            list_level: None,
         }
     }
 }
@@ -219,6 +244,7 @@ impl TextParagraph {
             || self.indent.abs() > 10000.
             || (self.maximum_line_height > 0.
                 && self.minimum_line_height > self.maximum_line_height)
+            || !valid_list(&self.list, self.list_level, true)
         {
             return Err("Invalid paragraph style".into());
         }
@@ -603,6 +629,7 @@ impl TextStyle {
                 .features
                 .iter()
                 .any(|f| rustybuzz::Feature::from_str(f).is_err())
+            || !valid_list(&self.list, self.list_level, false)
         {
             return Err("Invalid text style".into());
         }

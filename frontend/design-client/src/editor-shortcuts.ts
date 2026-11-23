@@ -7,6 +7,7 @@ import { requestLayerFind } from './layer-find-session'
 import { recordShortcutUse, requestShortcutReference } from './shortcut-reference-session'
 import { editableFrameCrop } from './selection-properties'
 import { resolveShortcut, shortcutContextForLayout, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
+import { applyFigmaTextShortcut, figmaTextCommandRepeats, isFigmaTextCommand } from './figma-text-shortcuts'
 export function shortcutTargetOwnsKeyboard(target: EventTarget | null): boolean {
   return editableOwnsKeyboard(target) || modalOwnsKeyboard(target)
 }
@@ -15,6 +16,16 @@ export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey 
   if (shortcutTargetOwnsKeyboard(event.target)) return false
   const layout = shortcutContextForLayout(context)
   const binding = resolveShortcut(event, layout)
+  if (binding && isFigmaTextCommand(binding.command)) {
+    if ((event.repeat && !figmaTextCommandRepeats(binding.command)) || editor.state.busy || editor.interactionActive) {
+      event.preventDefault()
+      return true
+    }
+    if (!applyFigmaTextShortcut(editor, binding.command)) return false
+    event.preventDefault()
+    if (!event.repeat && layout.profile === 'figma-like') recordShortcutUse(binding)
+    return true
+  }
   if (!binding || binding.command === 'keyboard-box-select' || binding.preserveFrameContents && !editableFrameCrop(editor)) return false
   event.preventDefault()
   if (!event.repeat && !editor.interactionActive && !editor.state.busy && layout.profile === 'figma-like') recordShortcutUse(binding)

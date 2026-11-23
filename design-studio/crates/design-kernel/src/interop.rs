@@ -2429,6 +2429,7 @@ impl<'a> Importer<'a> {
                                 maximum_line_height: p.get("maximumLineHeight").and_then(Value::as_f64).unwrap_or(0.),
                                 spacing: p.get("paragraphSpacing").and_then(Value::as_f64).unwrap_or(0.),
                                 indent: p.get("firstLineHeadIndent").and_then(Value::as_f64).unwrap_or(0.),
+                                ..crate::font::TextParagraph::default()
                             };
                             if value.validate().is_ok() { Some(value) } else { import_lossy.push("paragraph-values-outside-supported-range".into()); None }
                         });

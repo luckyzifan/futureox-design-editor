@@ -78,6 +78,7 @@ import {
   hasSchema20Features,
   hasSchema21Features,
   hasSchema22Features,
+  hasSchema33Features,
   hasLocalVariableModes,
   hasStrokeMarkers,
   hasLayerExports,
@@ -827,6 +828,7 @@ export class Editor {
         if (draft.schemaVersion < 30 && featureNodesOf(authored).some(n => n.layout?.bordersAffectLayout)) draft.schemaVersion = 30
         if (draft.schemaVersion < 31 && featureNodesOf(authored).some(n => n.layout?.stackingOrder)) draft.schemaVersion = 31
         if (draft.schemaVersion < 32 && featureNodesOf(authored).some(n => n.sketchTemplate)) draft.schemaVersion = 32
+        if (draft.schemaVersion < 33 && hasSchema33Features(featureDocOf(authored))) draft.schemaVersion = 33
         if(draft.schemaVersion < 19 && hasSchema19Features(featureDocOf(authored)))draft.schemaVersion=19
         draft.rasterProfile ??= before.doc.rasterProfile || (draft.colorManagement ? 'figma' : 'analytic')
         // Before component/dependency cleanup, only root schema/profile fields
