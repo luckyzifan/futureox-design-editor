@@ -2040,11 +2040,24 @@ impl Engine {
     /// coverage, so those frames never read residency.
     pub(crate) fn render_exact(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
         if self.integer_bucket_residency(options) {
-            return Ok(self.render_tiled_frame(options, None)?.rgba);
+            match self.render_tiled_frame(options, None) {
+                Ok(frame) => return Ok(frame.rgba),
+                // The tiled route must admit the support of complete world
+                // tiles. The existing viewport renderer can still paint a
+                // smaller certified dependency region and keeps its own cap.
+                Err(error) if error == crate::export::BACKDROP_PADDING_BUDGET_ERROR => {}
+                Err(error) => return Err(error),
+            }
         }
         self.render_unretained(options)
     }
     fn integer_bucket_residency(&self, options: &RenderOptions) -> bool {
+        // File-backed image rows share an in-flight read budget. Keep their
+        // exact viewport path until tile workers can share that admission.
+        #[cfg(not(target_arch="wasm32"))]
+        if self.images.source.is_some() {
+            return false;
+        }
         if self.display_degrade
             || options.pixel_preview.is_some()
             || options.animation.is_some()

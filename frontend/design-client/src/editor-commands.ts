@@ -431,15 +431,14 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         // An empty stack does not write history.
         const fills = command === 'remove-fill'
         const stack = fills ? 'fills' : 'strokes'
-        // Official Figma edits every selected layer that owns the paint,
-        // including locked and hidden layers and a child selected with its
-        // parent. topSelection() is for structural edits: it drops those
-        // layers, so a property shortcut must use the selection itself.
-        // Unselected descendants stay untouched. No paint and no style
-        // reference means the document is not written.
-        const ids = editor.state.selection.filter(id => nodeHasRemovablePaint(editor.state.doc.nodes[id], stack))
+        // Fill applies to the top editable selection. Stroke applies to
+        // every selected layer that owns the paint, including locked and
+        // hidden layers and a selected child of another selected layer.
+        const selection = fills ? editor.topSelection() : editor.state.selection
+        const ids = selection.filter(id => nodeHasRemovablePaint(editor.state.doc.nodes[id], stack))
         if (!ids.length) break
-        editor.updateProperties(ids, node => clearStyleStack(node, stack), fills ? '去掉填充' : '去掉描边')
+        if (fills) editor.update(ids, node => clearStyleStack(node, stack), '去掉填充')
+        else editor.updateProperties(ids, node => clearStyleStack(node, stack), '去掉描边')
         break
       }
       case 'flatten': await editor.flattenSelection(); break

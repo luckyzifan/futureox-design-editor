@@ -427,7 +427,7 @@ mod tests {
     fn exact(session: &mut Preparation, options: &Value) -> Vec<u8> {
         let engine = &mut session.lanes[0].engine;
         let parsed = engine.parse_options(options.clone()).unwrap();
-        engine.render(&parsed).unwrap()
+        engine.render_unretained(&parsed).unwrap()
     }
 
     fn derive_request(session: &Preparation, operation: u64) -> Value {
