@@ -29,8 +29,7 @@ const number = (value: number) => {
   return String(Math.round(value * 1e6) / 1e6)
 }
 const px = (value: number) => `${number(value)}px`
-/** 1×1 transparent PNG. The cross-fade partner that carries image-fill opacity. */
-const TRANSPARENT_PIXEL_URL = `url(${cssString('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=')})`
+const TRANSPARENT_GRADIENT = 'linear-gradient(transparent,transparent)'
 function cssColor(value: string): string | undefined {
   if (/^#[\da-f]{3,4}$/i.test(value) || /^#(?:[\da-f]{6}|[\da-f]{8})$/i.test(value)) return value.toLowerCase()
   if (/^(?:transparent|black|white|red|green|blue|gray|grey|currentcolor)$/i.test(value)) return value.toLowerCase()
@@ -212,16 +211,15 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
       const asset = paint.image && assetsById.get(assetReference(paint.image, nodeId, paint.id, assetIdentities).id)
       if (paint.transform || paint.tile || paint.adjust) warn('IMAGE_TRANSFORM', 'Image transforms, pattern tiling and color adjustments are not reproduced by CSS background sizing.', nodeId)
       const uri = asset && (asset.dataUrl ?? asset.uri)
-      if (!uri) return {}
+      if (!uri || paint.opacity <= 0) return {}
       const url = `url(${cssString(uri)})`
       const alpha = Math.max(0, Math.min(1, paint.opacity))
       if (alpha === 1) return pair(url)
-      // One background layer, so the opacity does not multiply strokes, children,
-      // or the other fills. Chrome's prefixed percentage weights the second image.
-      const clear = TRANSPARENT_PIXEL_URL
+      // Use a transparent partner without intrinsic dimensions so fading the
+      // image preserves its aspect ratio for contain and cover.
       const keep = number(alpha * 100)
       const toward = number((1 - alpha) * 100)
-      return pair(`cross-fade(${url},${clear},${keep}%)`, undefined, `-webkit-cross-fade(${url},${clear},${toward}%)`)
+      return pair(`cross-fade(${url} ${keep}%,transparent)`, undefined, `-webkit-cross-fade(${url},${TRANSPARENT_GRADIENT},${toward}%)`)
     }
     if (paint.kind === 'linear' || paint.kind === 'radial') {
       if (paint.stops.length > 64) { warn('GRADIENT_LIMIT', 'Gradient with more than 64 stops was omitted.', nodeId); return {} }
@@ -250,6 +248,8 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     return {}
   }
   const align: Record<string, string> = { start: 'flex-start', end: 'flex-end', center: 'center', 'unsafe-center': 'unsafe center', 'unsafe-end': 'unsafe end', stretch: 'stretch', 'space-between': 'space-between', 'space-around': 'space-around', 'space-evenly': 'space-evenly' }
+  const reversesFlex = (layout: DesignNode['layout']) =>
+    (layout?.mode === 'horizontal' || layout?.mode === 'vertical') && stackOrder(layout) === 'first-on-top'
   const rootSet = new Set(roots)
   // Keep selected roots in their authored parent coordinate system. Different
   // parents require world composition, so explicitly report this limitation.
@@ -302,12 +302,13 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     return parts
   }
   let right = 1, bottom = 1
-  for (const { node, parentId } of entries) {
+  for (const [index, { node, parentId }] of entries.entries()) {
     const n = node, selector = nodeIdMap[n.id].selector, declarations: string[] = [], scssDeclarations: string[] = []
     const decl = (...css: string[]) => { declarations.push(...css); if (scssSession) scssDeclarations.push(...css) }
     const declPair = (css: string, scss: string) => { declarations.push(css); if (scssSession) scssDeclarations.push(scss) }
     const parent = parentId && !rootSet.has(n.id) ? resolved.nodes[parentId] : undefined
     const flow = !!parent?.layout && parent.layout.mode !== 'none' && !n.sizing?.absolute
+    const parentWrapsInReverse = parent?.layout?.wrap && reversesFlex(parent.layout)
     const lengthToken = (path: string, value: number, unit: 'px' | 'none') => {
       const cssValue = unit === 'px' ? px(value) : number(value)
       return scssSession ? scssSession.number(n, path, value, unit, cssValue) : cssValue
@@ -320,12 +321,16 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     const matrix = [...n.transform]
     if (flow) {
       decl('position:relative', 'flex-shrink:0')
+      if (parentWrapsInReverse) decl(`order:${-index}`)
       matrix[4] = 0; matrix[5] = 0
       if (n.sizing?.width === 'fill' && parent!.layout!.mode === 'horizontal') decl('flex:1 1 0', 'min-width:0')
       if (n.sizing?.height === 'fill' && parent!.layout!.mode === 'vertical') decl('flex:1 1 0', 'min-height:0')
       if (n.sizing?.alignSelf) decl(`align-self:${align[n.sizing.alignSelf]}`)
       if (parent!.layout!.mode === 'grid') decl(`grid-column:span ${number(n.sizing?.columnSpan ?? 1)}`, `grid-row:span ${number(n.sizing?.rowSpan ?? 1)}`)
     }
+    // Flex order changes paint order too. Keep the authored order across all
+    // direct children, including the absolute children that skip flex layout.
+    if (parentWrapsInReverse) decl(`z-index:${index}`)
     decl(`transform:matrix(${matrix.map(number).join(',')})`)
     if (rootSet.has(n.id)) { right = Math.max(right, n.transform[4] + n.width); bottom = Math.max(bottom, n.transform[5] + n.height) }
     if (n.clip) decl('overflow:hidden')
@@ -361,15 +366,19 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
         const value = paintCss(item.paint, n.id, n.width, n.height, `fills.${item.index}.color`)
         if (!value.css) return []
         const wrap = (color: string) => item.paint.kind === 'solid' ? `linear-gradient(${color},${color})` : color
-        return [{ css: wrap(value.css), scss: wrap(value.scss ?? value.css), ...(value.prefixed ? { prefixed: value.prefixed } : {}) }]
+        const size = item.paint.kind === 'image'
+          ? item.paint.fit === 'stretch' ? '100% 100%' : item.paint.fit
+          : 'auto'
+        return [{ css: wrap(value.css), scss: wrap(value.scss ?? value.css), size, ...(value.prefixed ? { prefixed: value.prefixed } : {}) }]
       })
       if (layers.length) {
         layers.reverse()
         if (layers.some(item => item.prefixed)) declPair(`background-image:${layers.map(item => item.prefixed ?? item.css).join(',')}`, `background-image:${layers.map(item => item.prefixed ?? item.scss).join(',')}`)
         declPair(`background-image:${layers.map(item => item.css).join(',')}`, `background-image:${layers.map(item => item.scss).join(',')}`)
       }
-      const image = fills.find(item => item.paint.kind === 'image')
-      if (image) decl(`background-size:${image.paint.fit === 'stretch' ? '100% 100%' : image.paint.fit}`, 'background-position:center', 'background-repeat:no-repeat')
+      if (layers.some(layer => layer.size !== 'auto')) {
+        decl(`background-size:${layers.map(layer => layer.size).join(',')}`, 'background-position:center', 'background-repeat:no-repeat')
+      }
     }
     if (stroke?.paint.kind === 'solid') {
       const color = paintCss(stroke.paint, n.id, n.width, n.height)
@@ -400,7 +409,9 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     if (scssSession) for (const piece of effectScss) scssDeclarations.push(piece)
     if (n.layout && n.layout.mode !== 'none') {
       const l = n.layout
+      const reverse = reversesFlex(l)
       if (l.wrap && (l.align === 'unsafe-center' || l.align === 'unsafe-end')) decl('align-content:' + align[l.align])
+      else if (l.wrap && reverse) decl('align-content:start')
       const mainValue = l.mode === 'vertical' ? l.gap : l.lineGap
       const crossValue = l.mode === 'vertical' ? l.lineGap : l.gap
       const mainPath = l.mode === 'vertical' ? 'layout.gap' : 'layout.lineGap'
@@ -409,13 +420,24 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
       decl(display)
       declPair(`padding:${l.padding.map(px).join(' ')}`, `padding:${l.padding.map((value, index) => lengthToken(`layout.padding.${index}`, value, 'px')).join(' ')}`)
       declPair(`gap:${px(mainValue)} ${px(crossValue)}`, `gap:${lengthToken(mainPath, mainValue, 'px')} ${lengthToken(crossPath, crossValue, 'px')}`)
-      decl(`justify-content:${align[l.justify]}`, `align-items:${align[l.align]}`)
-      // Grid children stay in source order. Flex follows the authored stacking order.
+      let justify = align[l.justify]
+      if (reverse && !l.wrap) {
+        // Rust reverses item order and keeps the original main-axis origin.
+        // CSS flex-start and flex-end change sides with flex-direction.
+        if (l.justify === 'start' || l.justify === 'stretch') justify = 'start'
+        else if (l.justify === 'end') justify = 'safe end'
+        else if (l.justify === 'center') justify = 'safe center'
+        else if (l.justify === 'space-between' && n.children.filter(id => {
+          const child = resolved.nodes[id]
+          return included.has(id) && child.visible && child.kind !== 'slice' && !child.sizing?.absolute
+        }).length <= 1) justify = 'start'
+      }
+      decl(`justify-content:${justify}`, `align-items:${align[l.align]}`)
       if (l.mode === 'grid') decl(`grid-template-columns:repeat(${number(l.columns)},minmax(0,1fr))`)
       else {
-        const reverse = stackOrder(l) === 'first-on-top'
         const axis = l.mode === 'horizontal' ? 'row' : 'column'
-        decl(`flex-direction:${reverse ? `${axis}-reverse` : axis}`, `flex-wrap:${l.wrap ? 'wrap' : 'nowrap'}`)
+        // Wrapped stacks sort the items before CSS chooses which line they fit.
+        decl(`flex-direction:${reverse && !l.wrap ? `${axis}-reverse` : axis}`, `flex-wrap:${l.wrap ? 'wrap' : 'nowrap'}`)
       }
       warn('LAYOUT_APPROXIMATION', 'CSS flex/grid uses resolved dimensions but may size and wrap differently from the design layout engine.', n.id)
     }
