@@ -23,7 +23,8 @@ export function TileCompositeSurface({ items, view, width, height, dpr, onReady,
     onReady: (key: string, serial: number, managed: boolean) => void;
     onGone: (key: string, serial: number) => void;
     onError: (key: string, serial: number, message: string) => void;
-    onFailure: (message: string) => void }) {
+    onFailure: (message: string) => void;
+    navigationInputOwner?: object }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const compositor = useRef<TileCompositor | null>(null)
   const published = useRef(new Map<number, string>())

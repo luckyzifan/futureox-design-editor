@@ -1,5 +1,5 @@
 import { createHandoffTrace, gestureCode, type HandoffTrace } from './handoff-trace'
-import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 import { flushSync } from 'react-dom'
 import type { PresentedFrame } from './Surface'
 import type { SurfaceProps } from './Surface'
@@ -21,7 +21,7 @@ import { viewportPreviewDeviceKey, type ViewportPreviewDevice } from './viewport
 import {allowIncompletePanPreview,suppressCameraPreviewForZoom,type PanPreviewBacking} from './pan-preview'
 import {zoomOutBeyondPreview} from './tile-preview'
 import { allowsReducedSampling } from './render-quality'
-import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap,keepCompleteCameraBacking} from './camera-reprojection'
+import {CameraReprojection,atomicPresentationContext,coalescedSameZoomPan,consumePresentationBitmap,keepCompleteCameraBacking,subscribeCoalescedPan,type PanFollowOwner} from './camera-reprojection'
 import { keepReversibleZoomBasis } from './navigation-backing'
 
 const activeAffineGesture = (interaction?: InteractionProps) =>
@@ -78,6 +78,9 @@ export function ResidentCompositeSurface(props: {
    * This is not a GPU completion or a rendered-pixel quality certificate. */
   onCompositeItems?: (items: readonly CompositeItem[]) => void
   onTranslatedCoverage?: (source:DesignDocument,offset:{x:number;y:number},sequence:number,failed:()=>void,region?:Bounds)=>boolean
+  /** Editor camera publication. Coalesced pan samples project through it
+   * without waiting for the next committed render. */
+  navigationInputOwner?: object
 }) {
   const trace=useRef<HandoffTrace|null>(null)
   if(!trace.current)trace.current=createHandoffTrace()
@@ -111,6 +114,27 @@ export function ResidentCompositeSurface(props: {
     props.presentation?.animation])
   const currentHistoryScope = useRef(historyScope)
   currentHistoryScope.current = historyScope
+  const panOwner = props.navigationInputOwner as PanFollowOwner | undefined
+  const projectLivePan=(live: CanvasCamera)=>{
+    const committed = latest.current.view
+    if (!coalescedSameZoomPan(live, committed)) return
+    const p = latest.current, backing = acceptedCamera.current, projection = cameraProjection.current
+    const allowed = atomicCanvas.current && p.allowPanPreview === true && !!backing &&
+      backing.client === p.client && backing.source.document === p.sourceDocument && backing.source.pageId === p.pageId &&
+      backing.source.epoch === p.presentation?.epoch && backing.source.rasterProfile === p.rasterProfile &&
+      (backing.actual.dpr === p.dpr || backing.actual.preview === true) && backing.source.displayCapability === p.presentation?.displayCapability &&
+      !p.presentation?.managed && !p.presentation?.grid && !p.presentation?.checkerboard && !p.presentation?.pixelPreview &&
+      backing.source.animation === p.presentation?.animation &&
+      !backing.actual.interaction && !p.interaction?.active && !backing.source.managed && !backing.source.grid && !backing.source.checkerboard && !backing.source.pixelPreview
+    if (!allowed || !projection) return
+    // DOM only. A GPU submit still belongs to the committed frame, so the
+    // present queue is not filled with samples the browser will coalesce.
+    projection.history.bind(currentHistoryScope.current)
+    projection.update(backing.actual, live, p.width, p.height, true, p.overview)
+  }
+  const projectLivePanRef = useRef(projectLivePan)
+  projectLivePanRef.current = projectLivePan
+  useEffect(() => subscribeCoalescedPan(panOwner, view => projectLivePanRef.current(view)), [panOwner])
   const projectCamera=(newBacking=false)=>{
     const p=latest.current,backing=acceptedCamera.current
     const allowed=atomicCanvas.current&&p.allowPanPreview===true&&!!backing&&
@@ -133,6 +157,11 @@ export function ResidentCompositeSurface(props: {
       p.overviewPresentation.current = { client: p.client, document: p.sourceDocument, pageId: p.pageId, revision: p.contentRevision,
         view: p.view, width: p.width, height: p.height, dpr: p.dpr }
     }
+    // A render of the committed camera must not pull the picture back over a
+    // newer same-zoom sample that has not reached this snapshot yet.
+    const live = panOwner?.effectiveView?.()
+    if (live && projection && backing && allowed && coalescedSameZoomPan(live, p.view))
+      projection.update(backing.actual, live, p.width, p.height, true, p.overview)
     return { ...projected, allowed }
   }
   repaint.current = () => {
