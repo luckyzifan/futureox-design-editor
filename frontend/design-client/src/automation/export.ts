@@ -9,7 +9,7 @@ import { svgSource } from '../export'
 import { appendDocument } from '../append-document'
 import { validateDocument } from '../model'
 import { kernelLayout, kernelExportPlan, prepareDocumentForEditing } from '../kernel/picking'
-import type { DesignDocument, DesignNode, Paint, TextCase, TextRun } from '../model'
+import { defaultTextStyle, type DesignDocument, type DesignNode, type Effect, type Paint, type TextCase, type TextRun, type TextStyle } from '../model'
 import { AutomationError, type AutomationExtension, type AutomationContext } from './types'
 import {
   assetReference, boundedInteger, collectAssetReferences, contextEntries, contextOptions,
@@ -140,10 +140,11 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
   const warn = (code: string, message: string, nodeId?: string) => {
     if (!warnings.some(w => w.code === code && w.nodeId === nodeId)) warnings.push({ code, message, ...(nodeId ? { nodeId } : {}) })
   }
+  const textTransformCss = (textCase: TextCase) => `text-transform:${{ original: 'none', upper: 'uppercase', lower: 'lowercase', title: 'capitalize' }[textCase]}`
   const textTransform = (textCase: TextCase, nodeId: string) => {
     if (textCase === 'title')
       warn('TEXT_CASE_APPROXIMATION', 'Browser capitalization may preserve uppercase letters that the native title case lowers.', nodeId)
-    return `text-transform:${{ original: 'none', upper: 'uppercase', lower: 'lowercase', title: 'capitalize' }[textCase]}`
+    return textTransformCss(textCase)
   }
   warn('APPROXIMATE_HTML', 'HTML/CSS is an editable approximation. Use preview.capture or native export for renderer-faithful pixels; no pixel-equivalence claim is made.')
   if (document.colorManagement) warn('COLOR_MANAGEMENT', 'Browser CSS does not reproduce native HDR, tone mapping or color-managed compositing.')
@@ -164,8 +165,8 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
   }
   const nodeIdMap: Record<string, { elementId: string; selector: string }> = Object.create(null)
   entries.forEach(({ node }, index) => { nodeIdMap[node.id] = { elementId: `design-node-${index + 1}`, selector: `#design-node-${index + 1}` } })
-  const rules: { css: string; scss: string }[] = []
-  const pushRule = (css: string, scss = css) => rules.push({ css, scss })
+  const rules: { css: string; scss: string; nodeId?: string }[] = []
+  const pushRule = (css: string, scss = css, nodeId?: string) => rules.push({ css, scss, nodeId })
   for (const rule of ['*{box-sizing:border-box}', 'html,body{margin:0;padding:0}', '.design-scene{position:relative;isolation:isolate}', '.design-node{position:absolute;left:0;top:0;transform-origin:0 0}', '.design-text{margin:0;white-space:pre-wrap;overflow-wrap:normal}']) pushRule(rule)
   const included = new Set(entries.map(e => e.node.id))
   const safeColor = (value: string, nodeId: string) => {
@@ -173,19 +174,36 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     if (!safe) warn('UNSUPPORTED_COLOR', 'Unrecognized color syntax was omitted for safe CSS export.', nodeId)
     return safe
   }
-  const paintOpacityColor = (color: string, opacity: number) => {
+  const paintOpacityColor = (color: string, opacity: number, percent?: string) => {
     const alpha = Math.max(0, Math.min(1, opacity))
-    return alpha === 1 ? color : `color-mix(in srgb, ${color} ${number(alpha * 100)}%, transparent)`
+    return alpha === 1 ? color : `color-mix(in srgb, ${color} ${percent ?? `${number(alpha * 100)}%`}, transparent)`
   }
-  const scssSession = options.syntax === 'scss' ? createScssColorSession(resolved, cssColor, () => warn('SCSS_COLOR_MISMATCH', 'A bound fill color did not match its resolved variable, so that declaration stayed a CSS literal.')) : undefined
+  const scssSession = options.syntax === 'scss' ? createScssColorSession(resolved, cssColor, {
+    colorMismatch: () => warn('SCSS_COLOR_MISMATCH', 'A bound fill color did not match its resolved variable, so that declaration stayed a CSS literal.'),
+    numberMismatch: () => warn('SCSS_NUMBER_MISMATCH', 'A bound number did not match its resolved variable, so that declaration stayed a CSS literal.'),
+  }, number) : undefined
+  const opacityPercent = (nodeId: string, opacityPath: string | undefined, opacity: number) => {
+    const alpha = Math.max(0, Math.min(1, opacity))
+    if (!scssSession || !opacityPath || alpha === 1) return undefined
+    const literal = `${number(alpha * 100)}%`
+    const token = scssSession.number(resolved.nodes[nodeId], opacityPath, opacity, 'percent', literal)
+    return token === literal ? undefined : token
+  }
   const paintCss = (paint: Paint, nodeId: string, width: number, height: number, colorPath?: string): { css?: string; scss?: string } => {
     if (paint.blend !== 'normal' || paint.opacity !== 1) warn('PAINT_COMPOSITING', 'Per-paint blend and opacity may differ from the native compositor.', nodeId)
     const pair = (css?: string, scss = css) => ({ css, scss })
+    const opacityPath = colorPath?.endsWith('.color') ? `${colorPath.slice(0, -'color'.length)}opacity` : undefined
+    const fillIndex = colorPath?.startsWith('fills.') ? Number(colorPath.split('.')[1]) : undefined
+    const percent = opacityPercent(nodeId, opacityPath, paint.opacity)
     if (paint.kind === 'solid') {
       const color = safeColor(paint.color, nodeId)
       if (!color) return {}
-      const token = scssSession && colorPath ? scssSession.color(resolved.nodes[nodeId], colorPath, color) : color
-      return pair(paintOpacityColor(color, paint.opacity), paintOpacityColor(token, paint.opacity))
+      let token = color
+      if (scssSession && colorPath) {
+        const bound = scssSession.color(resolved.nodes[nodeId], colorPath, color)
+        token = bound !== color ? bound : fillIndex !== undefined && Number.isInteger(fillIndex) ? scssSession.fillColor(resolved.nodes[nodeId], fillIndex, color) ?? color : color
+      }
+      return pair(paintOpacityColor(color, paint.opacity), paintOpacityColor(token, paint.opacity, percent))
     }
     if (paint.kind === 'image') {
       const asset = paint.image && assetsById.get(assetReference(paint.image, nodeId, paint.id, assetIdentities).id)
@@ -196,14 +214,21 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     if (paint.kind === 'linear' || paint.kind === 'radial') {
       if (paint.stops.length > 64) { warn('GRADIENT_LIMIT', 'Gradient with more than 64 stops was omitted.', nodeId); return {} }
       warn('GRADIENT_APPROXIMATION', 'CSS gradient coordinates and interpolation can differ from native rendering.', nodeId)
-      const stops = paint.stops.flatMap(stop => {
+      const stopsFor = (percentToken?: string) => paint.stops.flatMap(stop => {
         const color = safeColor(stop.color, nodeId)
-        return color ? [{ offset: stop.offset, color: paintOpacityColor(color, paint.opacity) }] : []
+        return color ? [{ offset: stop.offset, color: paintOpacityColor(color, paint.opacity, percentToken) }] : []
       })
+      const stops = stopsFor()
       if (!stops.length) return {}
-      return pair(paint.kind === 'linear'
+      const css = paint.kind === 'linear'
         ? cssLinearGradient(width, height, paint.angle, paint.transform, stops)
-        : cssRadialGradient(stops, paint.transform !== undefined))
+        : cssRadialGradient(stops, paint.transform !== undefined)
+      if (!percent) return pair(css)
+      const scssStops = stopsFor(percent)
+      const scss = paint.kind === 'linear'
+        ? cssLinearGradient(width, height, paint.angle, paint.transform, scssStops)
+        : cssRadialGradient(scssStops, paint.transform !== undefined)
+      return pair(css, scss ?? css)
     }
     warn('UNSUPPORTED_GRADIENT', `${paint.kind} gradients are not supported in semantic HTML export.`, nodeId)
     return {}
@@ -214,6 +239,52 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
   // parents require world composition, so explicitly report this limitation.
   if (new Set(entries.filter(e => rootSet.has(e.node.id)).map(e => e.parentId)).size > 1)
     warn('MULTIPLE_PARENT_SPACES', 'Selected roots have different parent spaces; each root keeps its local transform. Export a common ancestor for a spatially aligned composition.')
+  const effectDeclarations = (effects: Effect[], nodeId: string, emitWarnings: boolean) => {
+    const shadows: string[] = [], filters: string[] = [], backdrop: string[] = []
+    for (const effect of effects.filter(item => item.visible)) {
+      if (effect.kind === 'shadow' || effect.kind === 'inner-shadow') {
+        const color = safeColor(effect.color, nodeId)
+        if (color) shadows.push(`${effect.kind === 'inner-shadow' ? 'inset ' : ''}${px(effect.x)} ${px(effect.y)} ${px(effect.radius)} ${px(effect.spread)} color-mix(in srgb, ${color} ${number(effect.opacity * 100)}%, transparent)`)
+        if (emitWarnings) warn('EFFECT_APPROXIMATION', 'Browser CSS shadow and blur kernels differ from the native compositor.', nodeId)
+      } else if ((effect.kind === 'blur' || effect.kind === 'background-blur') && !effect.gradientBlur) {
+        ;(effect.kind === 'blur' ? filters : backdrop).push(`blur(${px(effect.radius)})`)
+        if (emitWarnings) warn('EFFECT_APPROXIMATION', 'Browser CSS shadow and blur kernels differ from the native compositor.', nodeId)
+      } else if (emitWarnings) warn('UNSUPPORTED_EFFECT', `${effect.kind}${effect.gradientBlur ? ' with gradient blur' : ''} is omitted; native material parameters remain in semantic context and canonical export.`, nodeId)
+    }
+    const decls: string[] = []
+    if (shadows.length) decls.push(`box-shadow:${shadows.join(',')}`)
+    if (filters.length) decls.push(`filter:${filters.join(' ')}`)
+    if (backdrop.length) decls.push(`backdrop-filter:${backdrop.join(' ')}`)
+    return decls
+  }
+  const textParts = (node: DesignNode | undefined, style: TextStyle | undefined, fontSize: number | undefined, bindNumbers: boolean) => {
+    const parts: { css: string; scss: string }[] = []
+    const token = (path: string, value: number, unit: 'px' | 'none', cssValue: string) =>
+      scssSession && node && bindNumbers ? scssSession.number(node, path, value, unit, cssValue) : cssValue
+    if (fontSize !== undefined) {
+      const cssValue = px(fontSize)
+      parts.push({ css: `font-size:${cssValue}`, scss: `font-size:${token('fontSize', fontSize, 'px', cssValue)}` })
+    }
+    const font = style?.fontId ? document.fonts?.[style.fontId] : undefined
+    const family = `font-family:${font ? `${cssString(font.family)},sans-serif` : 'sans-serif'}`
+    parts.push({ css: family, scss: family })
+    const weight = number(style?.weight ?? 400)
+    parts.push({ css: `font-weight:${weight}`, scss: `font-weight:${token('textStyle.weight', style?.weight ?? 400, 'none', weight)}` })
+    const line = number(style?.lineHeight ?? 1.35)
+    parts.push({ css: `line-height:${line}`, scss: `line-height:${token('textStyle.lineHeight', style?.lineHeight ?? 1.35, 'none', line)}` })
+    const spacing = px(style?.letterSpacing ?? 0)
+    parts.push({ css: `letter-spacing:${spacing}`, scss: `letter-spacing:${token('textStyle.letterSpacing', style?.letterSpacing ?? 0, 'px', spacing)}` })
+    parts.push({ css: `text-align:${style?.align ?? 'start'}`, scss: `text-align:${style?.align ?? 'start'}` })
+    const white = `white-space:${style?.wrap ? 'pre-wrap' : 'pre'}`
+    parts.push({ css: white, scss: white })
+    if (style?.direction && style.direction !== 'auto') parts.push({ css: `direction:${style.direction}`, scss: `direction:${style.direction}` })
+    if (style?.writingMode === 'vertical') parts.push({ css: 'writing-mode:vertical-rl', scss: 'writing-mode:vertical-rl' })
+    if (style?.textCase && style.textCase !== 'original') {
+      const transform = bindNumbers && node ? textTransform(style.textCase, node.id) : textTransformCss(style.textCase)
+      parts.push({ css: transform, scss: transform })
+    }
+    return parts
+  }
   let right = 1, bottom = 1
   for (const { node, parentId } of entries) {
     const n = node, selector = nodeIdMap[n.id].selector, declarations: string[] = [], scssDeclarations: string[] = []
@@ -221,8 +292,15 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     const declPair = (css: string, scss: string) => { declarations.push(css); if (scssSession) scssDeclarations.push(scss) }
     const parent = parentId && !rootSet.has(n.id) ? resolved.nodes[parentId] : undefined
     const flow = !!parent?.layout && parent.layout.mode !== 'none' && !n.sizing?.absolute
-    decl(`width:${px(n.width)}`, `height:${px(n.height)}`, `opacity:${number(n.opacity)}`)
+    const lengthToken = (path: string, value: number, unit: 'px' | 'none') => {
+      const cssValue = unit === 'px' ? px(value) : number(value)
+      return scssSession ? scssSession.number(n, path, value, unit, cssValue) : cssValue
+    }
+    declPair(`width:${px(n.width)}`, `width:${lengthToken('width', n.width, 'px')}`)
+    declPair(`height:${px(n.height)}`, `height:${lengthToken('height', n.height, 'px')}`)
+    declPair(`opacity:${number(n.opacity)}`, `opacity:${lengthToken('opacity', n.opacity, 'none')}`)
     if (!n.visible || n.kind === 'slice') decl('display:none')
+    if (scssSession && n.bindings?.visible) scssSession.boolean(n, 'visible')
     const matrix = [...n.transform]
     if (flow) {
       decl('position:relative', 'flex-shrink:0')
@@ -243,7 +321,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     if (n.mask || n.booleanOperation) warn('MASK_OR_BOOLEAN', 'Mask and boolean geometry is not reproduced; the source graph is retained in native export.', n.id)
     if (n.smoothing) warn('CORNER_SMOOTHING', 'Continuous corner smoothing is approximated by CSS border-radius.', n.id)
     if (n.kind === 'ellipse') decl('border-radius:50%')
-    else decl(`border-radius:${n.radii.map(px).join(' ')}`)
+    else declPair(`border-radius:${n.radii.map(px).join(' ')}`, `border-radius:${n.radii.map((radius, index) => lengthToken(`radii.${index}`, radius, 'px')).join(' ')}`)
     if (n.repeat) warn('REPEAT_TRANSFORMS_NOT_EXPORTED', 'Semantic HTML includes only the editable source, not its derived repeat appearances. Use native FD/JSON to preserve the repeat, or PNG/SVG/PDF for visual output.', n.id)
     if (n.arc || n.textPath || n.pathOffset || n.vectorBrush) warn('SPECIAL_GEOMETRY', 'Arc, text-on-path, path-offset and vector-brush geometry is not reproduced in HTML.', n.id)
     if (['vector', 'polygon', 'star', 'line'].includes(n.kind)) {
@@ -273,45 +351,56 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
       const image = fills.find(item => item.paint.kind === 'image')
       if (image) decl(`background-size:${image.paint.fit === 'stretch' ? '100% 100%' : image.paint.fit}`, 'background-position:center', 'background-repeat:no-repeat')
     }
-    const strokes = n.strokes.filter(s => s.visible && s.paint.visible)
-    const stroke = strokes[0]
+    const strokeIndex = n.strokes.findIndex(s => s.visible && s.paint.visible)
+    const stroke = strokeIndex >= 0 ? n.strokes[strokeIndex] : undefined
+    const strokes = stroke ? [stroke] : []
     if (stroke?.paint.kind === 'solid') {
       const color = paintCss(stroke.paint, n.id, n.width, n.height)
-      if (color.css) declPair(`border:${px(stroke.width)} solid ${color.css}`, `border:${px(stroke.width)} solid ${color.scss ?? color.css}`)
+      const widthCss = px(stroke.width)
+      const widthScss = lengthToken(`strokes.${strokeIndex}.width`, stroke.width, 'px')
+      if (color.css) declPair(`border:${widthCss} solid ${color.css}`, `border:${widthScss} solid ${color.scss ?? color.css}`)
     }
     if (strokes.length) warn('STROKE_APPROXIMATION', 'CSS border approximates strokes; alignment, multiple strokes, dashes, joins, markers and width profiles may differ.', n.id)
-    const shadows: string[] = [], filters: string[] = [], backdrop: string[] = []
-    for (const effect of n.effects.filter(e => e.visible)) {
-      if (effect.kind === 'shadow' || effect.kind === 'inner-shadow') {
-        const color = safeColor(effect.color, n.id)
-        if (color) shadows.push(`${effect.kind === 'inner-shadow' ? 'inset ' : ''}${px(effect.x)} ${px(effect.y)} ${px(effect.radius)} ${px(effect.spread)} color-mix(in srgb, ${color} ${number(effect.opacity * 100)}%, transparent)`)
-        warn('EFFECT_APPROXIMATION', 'Browser CSS shadow and blur kernels differ from the native compositor.', n.id)
-      } else if ((effect.kind === 'blur' || effect.kind === 'background-blur') && !effect.gradientBlur) {
-        ;(effect.kind === 'blur' ? filters : backdrop).push(`blur(${px(effect.radius)})`)
-        warn('EFFECT_APPROXIMATION', 'Browser CSS shadow and blur kernels differ from the native compositor.', n.id)
-      } else warn('UNSUPPORTED_EFFECT', `${effect.kind}${effect.gradientBlur ? ' with gradient blur' : ''} is omitted; native material parameters remain in semantic context and canonical export.`, n.id)
+    const effectCss = effectDeclarations(n.effects, n.id, true)
+    let effectScss = effectCss
+    if (scssSession && n.styleRefs?.effects) {
+      const shared = resolved.designSystem?.styles[n.styleRefs.effects]
+      if (shared?.kind === 'effect' && Array.isArray(shared.value)) effectScss = scssSession.effectScss(n.styleRefs.effects, shared.name, effectDeclarations(shared.value as Effect[], n.id, false), effectCss)
     }
-    if (shadows.length) decl(`box-shadow:${shadows.join(',')}`)
-    if (filters.length) decl(`filter:${filters.join(' ')}`)
-    if (backdrop.length) decl(`backdrop-filter:${backdrop.join(' ')}`)
+    for (const css of effectCss) declarations.push(css)
+    if (scssSession) for (const piece of effectScss) scssDeclarations.push(piece)
     if (n.layout && n.layout.mode !== 'none') {
       const l = n.layout
       if (l.wrap && (l.align === 'unsafe-center' || l.align === 'unsafe-end')) decl('align-content:' + align[l.align])
-      decl(`display:${n.visible ? l.mode === 'grid' ? 'grid' : 'flex' : 'none'}`, `padding:${l.padding.map(px).join(' ')}`, `gap:${px(l.mode === 'vertical' ? l.gap : l.lineGap)} ${px(l.mode === 'vertical' ? l.lineGap : l.gap)}`, `justify-content:${align[l.justify]}`, `align-items:${align[l.align]}`)
+      const mainValue = l.mode === 'vertical' ? l.gap : l.lineGap
+      const crossValue = l.mode === 'vertical' ? l.lineGap : l.gap
+      const mainPath = l.mode === 'vertical' ? 'layout.gap' : 'layout.lineGap'
+      const crossPath = l.mode === 'vertical' ? 'layout.lineGap' : 'layout.gap'
+      const display = `display:${n.visible ? l.mode === 'grid' ? 'grid' : 'flex' : 'none'}`
+      decl(display)
+      declPair(`padding:${l.padding.map(px).join(' ')}`, `padding:${l.padding.map((value, index) => lengthToken(`layout.padding.${index}`, value, 'px')).join(' ')}`)
+      declPair(`gap:${px(mainValue)} ${px(crossValue)}`, `gap:${lengthToken(mainPath, mainValue, 'px')} ${lengthToken(crossPath, crossValue, 'px')}`)
+      decl(`justify-content:${align[l.justify]}`, `align-items:${align[l.align]}`)
       if (l.mode === 'grid') decl(`grid-template-columns:repeat(${number(l.columns)},minmax(0,1fr))`)
       else decl(`flex-direction:${l.mode === 'horizontal' ? 'row' : 'column'}`, `flex-wrap:${l.wrap ? 'wrap' : 'nowrap'}`)
       warn('LAYOUT_APPROXIMATION', 'CSS flex/grid uses resolved dimensions but may size and wrap differently from the design layout engine.', n.id)
     }
     if (n.kind === 'text') {
-      const s = n.textStyle
-      const font = s?.fontId ? document.fonts?.[s.fontId] : undefined
-      decl(`font-size:${px(n.fontSize)}`, `font-family:${font ? `${cssString(font.family)},sans-serif` : 'sans-serif'}`, `font-weight:${number(s?.weight ?? 400)}`, `line-height:${number(s?.lineHeight ?? 1.35)}`, `letter-spacing:${px(s?.letterSpacing ?? 0)}`, `text-align:${s?.align ?? 'start'}`, `white-space:${s?.wrap ? 'pre-wrap' : 'pre'}`)
-      if (s?.direction && s.direction !== 'auto') decl(`direction:${s.direction}`)
-      if (s?.writingMode === 'vertical') decl('writing-mode:vertical-rl')
-      if (s?.textCase && s.textCase !== 'original') decl(textTransform(s.textCase, n.id))
+      const parts = textParts(n, n.textStyle, n.fontSize, true)
+      let scssParts = parts.map(part => part.scss)
+      if (scssSession && n.styleRefs?.textStyle) {
+        const shared = resolved.designSystem?.styles[n.styleRefs.textStyle]
+        const value = shared?.kind === 'text' ? shared.value : undefined
+        if (shared && value && typeof value === 'object' && !Array.isArray(value)) {
+          const styleCss = textParts(undefined, { ...defaultTextStyle(), ...(value as TextStyle) }, undefined, false).map(part => part.css)
+          scssParts = scssSession.applyText(n.styleRefs.textStyle, shared.name, styleCss, parts)
+        }
+      }
+      for (const part of parts) declarations.push(part.css)
+      if (scssSession) for (const piece of scssParts) scssDeclarations.push(piece)
       warn('FONT_METRICS', 'HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.', n.id)
     }
-    pushRule(`${selector}{${declarations.join(';')}}`, scssSession ? `${selector}{${scssDeclarations.join(';')}}` : undefined)
+    pushRule(`${selector}{${declarations.join(';')}}`, scssSession ? `${selector}{${scssDeclarations.join(';')}}` : undefined, n.id)
   }
   pushRule(`.design-scene{width:${px(right)};height:${px(bottom)};background:${cssColor(page.background) ?? 'transparent'}}`)
   const renderText = (n: DesignNode) => {
@@ -342,7 +431,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
   }
   const html = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self' data: https: http:; script-src 'none'; object-src 'none'; base-uri 'none'"><title>${htmlEscape(document.name)}</title><link rel="stylesheet" href="styles.css"></head><body><main class="design-scene">${roots.map(id => markup.get(id) ?? '').join('')}</main></body></html>`
   const css = `${rules.map(rule => rule.css).join('\n')}\n`
-  const scssResult = scssSession?.render(rules.map(rule => rule.scss), entries)
+  const scssResult = scssSession?.render(rules.map(rule => ({ scss: rule.scss, nodeId: rule.nodeId })), entries)
   if (scssResult) for (const warning of scssResult.warnings) warn(warning.code, warning.message, warning.nodeId)
   const result = { format: 'futureox.design-code.v1', language: 'html-css', html, css, ...(scssResult ? { scss: scssResult.scss } : {}), nodeIdMap, assets, warnings, fidelity: 'approximate', sourceDocumentId: document.id, pageId: page.id }
   if (new TextEncoder().encode(JSON.stringify(result)).byteLength > EXPORT_LIMITS.bytes) throw new AutomationError('invalid_params', 'Code export exceeds 8 MiB; select a smaller subtree')
@@ -447,7 +536,7 @@ export const exportExtensions: AutomationExtension[] = [
   { name: 'document.import', description: 'Atomically append a validated fd binary or native-json document through the existing importer. Preserves destination identity and remaps nodes, components, tokens, fonts and interactions; returns nodeIdMap. HTML import is unsupported.', mutates: true,
     inputSchema: { type: 'object', required: ['format'], properties: { format: { type: 'string', enum: ['fd', 'native-json'] }, base64: { type: 'string' }, content: { type: 'string' }, document: { type: 'object' }, pageId: { type: 'string' } }, additionalProperties: false },
     execute: importNativeDocument },
-  { name: 'code.export', description: 'Deterministic editable HTML/CSS plus stable node-ID map, portable image manifest and explicit fidelity gaps. No scripts are generated. syntax scss also returns selection-scoped Sass variables for bound fill colors; the css field stays the flat stylesheet.', mutates: false,
+  { name: 'code.export', description: 'Deterministic editable HTML/CSS plus stable node-ID map, portable image manifest and explicit fidelity gaps. No scripts are generated. syntax scss also returns selection-scoped Sass for bound values, unused variable modes, solid fill styles, text and effect mixins, and @at-root nesting. The css field stays the flat stylesheet.', mutates: false,
     inputSchema: { type: 'object', properties: { pageId: { type: 'string' }, nodeIds: { type: 'array', items: { type: 'string' }, maxItems: 500 }, maxNodes: { type: 'integer', minimum: 1, maximum: 500 }, syntax: { type: 'string', enum: ['css', 'scss'] } }, additionalProperties: false },
     execute: (document, params, context) => exportDesignCode(document, codeOptions(params, context.pageId)) },
   { name: 'document.export', description: 'Lossless native carrier: format fd uses the existing checksum-protected kernel binfmt codec and returns base64. Default native-json preserves compatibility. Includes nodes, tokens, fonts, components, assets and materials; native transfers capped at 32 MiB including a 64 KiB envelope reserve.', mutates: false,
