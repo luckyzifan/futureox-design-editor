@@ -1,4 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest'
+import { insertInstance, stampKeys } from './components'
+import { originNode } from './component-fixtures'
 import { Editor } from './engine'
 import { blank, node, paint, stroke, type DesignNode } from './model'
 import { emptySystem } from './design-system'
@@ -64,8 +66,10 @@ test('Shift+/ removes the selected stroke and one undo restores it', async () =>
   shape.strokes = [stroke('#112233', 4)]
   const editor = editorFor([shape])
   const before = editor.state.doc
+  expect(editor.state.selection).toEqual([shape.id])
   expect(editor.canUndo).toBe(false)
   await dispatchEditorShortcut(editor, shiftSlash(), figma())
+  expect(editor.state.selection).toEqual([shape.id])
   expect(editor.state.doc.nodes[shape.id].strokes).toEqual([])
   expect(editor.state.doc.nodes[shape.id].fills).toEqual(before.nodes[shape.id].fills)
   expect(editor.state.doc.nodes[shape.id].width).toBe(before.nodes[shape.id].width)
@@ -75,9 +79,12 @@ test('Shift+/ removes the selected stroke and one undo restores it', async () =>
   expect(held.preventDefault).toHaveBeenCalledOnce()
   expect(editor.state.doc).toBe(cleared)
   editor.undo()
+  expect(editor.state.selection).toEqual([shape.id])
   expect(editor.state.doc).toEqual(before)
+  expect(editor.state.doc.nodes[shape.id].strokes).toEqual(before.nodes[shape.id].strokes)
   expect(editor.canUndo).toBe(false)
   editor.redo()
+  expect(editor.state.selection).toEqual([shape.id])
   expect(editor.state.doc.nodes[shape.id].strokes).toEqual([])
 })
 
@@ -100,17 +107,17 @@ test('Shift+/ clears every stroke in the selection in one undo, including a hidd
   expect(editor.canUndo).toBe(false)
 })
 
-test('no stroke, no selection, locked layers, and unselected children do not change the document', async () => {
+test('no stroke, an empty selection, and unselected children do not change the document', async () => {
   const bare = node('rectangle', 0, 0, 20, 20)
-  const locked = node('rectangle', 30, 0, 20, 20)
-  locked.locked = true
-  locked.strokes = [stroke('#445566', 2)]
   const frame = node('frame', 0, 40, 120, 80)
-  frame.locked = true
   const child = node('rectangle', 8, 8, 20, 20)
   child.strokes = [stroke('#778899', 3)]
   frame.children = [child.id]
-  const editor = editorFor([bare, locked, frame, child], [bare.id, locked.id, frame.id])
+  const group = node('group', 140, 40, 40, 40)
+  const grouped = node('rectangle', 0, 0, 20, 20)
+  grouped.strokes = [stroke('#998877', 2)]
+  group.children = [grouped.id]
+  const editor = editorFor([bare, frame, child, group, grouped], [bare.id, frame.id, group.id])
   const before = editor.state.doc
   editor.select([])
   expect(await dispatchEditorShortcut(editor, shiftSlash(), figma())).toBe(true)
@@ -119,16 +126,113 @@ test('no stroke, no selection, locked layers, and unselected children do not cha
   expect(await dispatchEditorShortcut(editor, shiftSlash(), figma())).toBe(true)
   expect(editor.state.doc).toBe(before)
   expect(editor.canUndo).toBe(false)
-  editor.select([locked.id])
-  expect(await dispatchEditorShortcut(editor, shiftSlash(), figma())).toBe(true)
-  expect(editor.state.doc).toBe(before)
-  editor.select([child.id])
-  expect(await dispatchEditorShortcut(editor, shiftSlash(), figma())).toBe(true)
-  expect(editor.state.doc.nodes[child.id].strokes).toEqual(before.nodes[child.id].strokes)
-  expect(editor.state.doc).toBe(before)
   editor.select([frame.id])
   expect(await dispatchEditorShortcut(editor, shiftSlash(), figma())).toBe(true)
+  expect(editor.state.doc.nodes[child.id]).toBe(before.nodes[child.id])
   expect(editor.state.doc).toBe(before)
+  editor.select([group.id])
+  expect(await dispatchEditorShortcut(editor, shiftSlash(), figma())).toBe(true)
+  expect(editor.state.doc.nodes[grouped.id]).toBe(before.nodes[grouped.id])
+  expect(editor.state.doc).toBe(before)
+})
+
+test('Shift+/ removes strokes from locked, hidden, and nested selected layers in one undo', async () => {
+  const locked = node('rectangle', 0, 0, 24, 24)
+  locked.locked = true
+  locked.fills = [paint('#ffffff')]
+  locked.strokes = [stroke('#445566', 2)]
+  const hidden = node('ellipse', 40, 0, 24, 24)
+  hidden.visible = false
+  hidden.strokes = [stroke('#556677', 3)]
+  const frame = node('frame', 0, 40, 160, 80)
+  frame.locked = true
+  frame.strokes = [stroke('#101010', 1)]
+  const child = node('rectangle', 8, 8, 20, 20)
+  child.strokes = [stroke('#778899', 4), stroke('#aabbcc', 1)]
+  const sibling = node('rectangle', 40, 8, 20, 20)
+  sibling.strokes = [stroke('#ddeeff', 1)]
+  frame.children = [child.id, sibling.id]
+  const plain = node('rectangle', 180, 0, 16, 16)
+  const editor = editorFor(
+    [locked, hidden, frame, child, sibling, plain],
+    [locked.id, hidden.id, frame.id, plain.id],
+  )
+  const before = editor.state.doc
+  const selected = [locked.id, hidden.id, frame.id, child.id, plain.id]
+  editor.select(selected)
+  await dispatchEditorShortcut(editor, shiftSlash(), figma())
+  expect(editor.state.selection).toEqual(selected)
+  expect(editor.state.doc.nodes[locked.id].strokes).toEqual([])
+  expect(editor.state.doc.nodes[locked.id].locked).toBe(true)
+  expect(editor.state.doc.nodes[locked.id].fills).toEqual(before.nodes[locked.id].fills)
+  expect(editor.state.doc.nodes[hidden.id].strokes).toEqual([])
+  expect(editor.state.doc.nodes[hidden.id].visible).toBe(false)
+  expect(editor.state.doc.nodes[frame.id].strokes).toEqual([])
+  expect(editor.state.doc.nodes[frame.id].locked).toBe(true)
+  expect(editor.state.doc.nodes[child.id].strokes).toEqual([])
+  expect(editor.state.doc.nodes[sibling.id]).toBe(before.nodes[sibling.id])
+  expect(editor.state.doc.nodes[plain.id]).toBe(before.nodes[plain.id])
+  expect(editor.canUndo).toBe(true)
+  editor.undo()
+  expect(editor.state.selection).toEqual(selected)
+  expect(editor.state.doc).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+})
+
+test('Shift+/ overrides one instance stroke and undo restores that same instance', async () => {
+  const doc = blank('Instance stroke')
+  doc.schemaVersion = 12
+  const main = node('frame', 0, 0, 80, 60)
+  main.component = { variants: {}, properties: {} }
+  main.fills = [paint('#ffffff')]
+  main.strokes = [stroke('#112233', 3)]
+  const shape = node('rectangle', 8, 8, 30, 20)
+  shape.fills = [paint('#818cf8')]
+  shape.strokes = [stroke('#aa0000', 2), stroke('#00aa00', 1)]
+  main.children = [shape.id]
+  doc.nodes[main.id] = main
+  doc.nodes[shape.id] = shape
+  doc.pages[0].children = [main.id]
+  stampKeys(doc, main.id)
+  const first = insertInstance(doc, main.id, doc.pages[0].id, { x: 120, y: 0 })
+  const second = insertInstance(doc, main.id, doc.pages[0].id, { x: 240, y: 0 })
+  const editor = new Editor(doc)
+  editors.push(editor)
+  const otherChild = () => originNode(editor.state.doc, second, shape.id)
+  editor.select([first])
+  const before = editor.state.doc
+  const nestedBefore = originNode(before, first, shape.id)
+  expect(before.nodes[first].strokes.length).toBeGreaterThan(0)
+  await dispatchEditorShortcut(editor, shiftSlash(), figma())
+  expect(editor.state.selection).toEqual([first])
+  expect(editor.state.doc.nodes[first].strokes).toEqual([])
+  expect(editor.state.doc.nodes[first].fills).toEqual(before.nodes[first].fills)
+  expect(editor.state.doc.nodes[main.id].strokes).toEqual(before.nodes[main.id].strokes)
+  expect(editor.state.doc.nodes[second].strokes).toEqual(before.nodes[second].strokes)
+  expect(originNode(editor.state.doc, first, shape.id).strokes).toEqual(nestedBefore.strokes)
+  expect(editor.state.doc.nodes[first].instance?.overrides.$root?.strokes).toEqual([])
+  editor.undo()
+  expect(editor.state.selection).toEqual([first])
+  expect(editor.state.doc).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+
+  const target = originNode(editor.state.doc, first, shape.id)
+  editor.select([target.id])
+  const childBefore = editor.state.doc
+  await dispatchEditorShortcut(editor, shiftSlash(), figma())
+  const cleared = originNode(editor.state.doc, first, shape.id)
+  expect(editor.state.selection).toEqual([target.id])
+  expect(cleared.id).toBe(target.id)
+  expect(cleared.strokes).toEqual([])
+  expect(editor.state.doc.nodes[main.id].strokes).toEqual(childBefore.nodes[main.id].strokes)
+  expect(editor.state.doc.nodes[shape.id].strokes).toEqual(childBefore.nodes[shape.id].strokes)
+  expect(otherChild().strokes.length).toBe(2)
+  expect(editor.state.doc.nodes[first].strokes).toEqual(childBefore.nodes[first].strokes)
+  expect(editor.state.doc.nodes[first].instance?.overrides[shape.id]?.strokes).toEqual([])
+  editor.undo()
+  expect(editor.state.selection).toEqual([target.id])
+  expect(editor.state.doc).toEqual(childBefore)
+  expect(originNode(editor.state.doc, first, shape.id).strokes).toEqual(childBefore.nodes[target.id].strokes)
 })
 
 test('a selected frame loses its own stroke and keeps descendant strokes', async () => {
