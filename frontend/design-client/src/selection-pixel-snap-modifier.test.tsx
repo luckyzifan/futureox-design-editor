@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Canvas } from './Canvas'
 import { Editor } from './engine'
+import { apply, rotate } from './geometry'
 import { kernelSnapPoint } from './kernel/picking'
 import { blank, node, type DesignNode } from './model'
 import { shortcutPreference } from './shortcut-preference'
@@ -220,6 +221,40 @@ test('shift-resize snap keeps aspect while the dragged edge meets the target', a
   expect(layer.width).toBeCloseTo(100, 6)
   expect(layer.height).toBeCloseTo(80, 6)
   expect(layer.transform[4]).toBeCloseTo(0, 6)
+})
+
+test('rotated resize snaps the moving extent without shifting the opposite edge', async () => {
+  const moving = node('rectangle', 20, 30, 50, 40)
+  const [a, b, c, d] = rotate(30)
+  moving.transform = [a, b, c, d, 20, 30]
+  const target = node('rectangle', 100.5, 250, 40, 40)
+  const start = apply(moving.transform, { x: 50, y: 20 })
+  const unsnappedWidth = (96.5 - 20) / a
+  const end = apply(moving.transform, { x: unsnappedWidth, y: 20 })
+  await render([moving, target], { snap: true, snapPixels: true })
+  await act(async () => editor.select([moving.id]))
+  const edge = () => mount.querySelector('[data-testid="resize-edge-1"]')!
+  const anchor = apply(moving.transform, { x: 0, y: 20 })
+  const before = editor.state.doc
+  await act(async () => pointer('pointerdown', start.x, start.y, {}, edge()))
+  await act(async () => pointer('pointermove', end.x, end.y))
+  await flushFrames()
+  const guide = mount.querySelector('[data-testid="canvas-alignment-guide"][data-axis="x"]')
+  expect(Number(guide?.getAttribute('data-position'))).toBeCloseTo(100.5, 6)
+  await act(async () => pointer('pointerup', end.x, end.y))
+  const layer = editor.state.doc.nodes[moving.id]
+  expect(layer.width).toBeCloseTo((100.5 - 20) / a, 6)
+  expect(layer.height).toBeCloseTo(40, 6)
+  const posedAnchor = apply(layer.transform, { x: 0, y: 20 })
+  expect(posedAnchor.x).toBeCloseTo(anchor.x, 6)
+  expect(posedAnchor.y).toBeCloseTo(anchor.y, 6)
+  expect(mount.querySelector('[data-testid="canvas-alignment-guide"]')).toBeNull()
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+
+  await act(async () => pointer('pointerdown', start.x, start.y, { ctrlKey: true }, edge()))
+  await act(async () => pointer('pointerup', end.x, end.y, { ctrlKey: true }))
+  expect(editor.state.doc.nodes[moving.id].width).toBeCloseTo(Math.round(unsnappedWidth), 6)
 })
 
 test('Control still suspends object snap while pixel snap is off', async () => {

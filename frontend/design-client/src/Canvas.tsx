@@ -68,7 +68,7 @@ import { lockedSelectionIds } from './canvas-menu-model'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { ViewControls } from './ViewControls'
 import { CanvasTextEditor } from './TextEditor'
-import { createBox, localClockwiseAfter, resizeInBasis, resizeSnapEnd, snapLocalClockwise, snapMove, selectionLocalBounds, vectorPointSnaps } from './canvas-view'
+import { createBox, localClockwiseAfter, resizeBasisIsAxisAligned, resizeInBasis, resizeSnapEnd, snapLocalClockwise, snapMove, selectionLocalBounds, vectorPointSnaps } from './canvas-view'
 import { fitBounds, fitSelectedBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
 import { WheelCameraGesture } from './wheel-camera-gesture'
 import { desktopBridge,type LocalPeer } from './desktop'
@@ -2790,7 +2790,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     guides: MoveGuides
   } {
     const unchanged = { args, guides: {} as MoveGuides }
-    if (!editor.state.snap || e.ctrlKey || Math.abs(args[0][1]) > 1e-8 || Math.abs(args[0][2]) > 1e-8) return unchanged
+    const axisAligned = resizeBasisIsAxisAligned(args[0])
+    if (!editor.state.snap || e.ctrlKey || (!axisAligned && uiMode === 'sketch')) return unchanged
     const index = ensureGuideIndex(d)
     if (!index) return unchanged
     const snapped = resizeSnapEnd(args[0], args[1], args[2], args[3], args[4], args[5], args[6], 6 / d.view.zoom,
@@ -2803,7 +2804,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const finalBounds = bounds(boxPoints(args[1]).map(point => apply(final, apply(args[0], point))))
     return {
       args: [args[0], args[1], args[2], snapped.end, args[4], args[5], args[6], args[7], {
-        x: !snapped.snapped.x, y: !snapped.snapped.y,
+        // A rotated world guide can depend on both local dimensions.
+        x: axisAligned && !snapped.snapped.x, y: axisAligned && !snapped.snapped.y,
       }],
       guides: placedSmartGuides({
         dx: snapped.end.x - args[3].x, dy: snapped.end.y - args[3].y,

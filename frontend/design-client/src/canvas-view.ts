@@ -170,6 +170,10 @@ export type ResizeSnapEnd = {
   snapped: { x: boolean; y: boolean }
 }
 
+export function resizeBasisIsAxisAligned(basis: Matrix): boolean {
+  return Math.abs(basis[1]) <= 1e-8 && Math.abs(basis[2]) <= 1e-8
+}
+
 function resizeHandlePoint(box: Bounds, corner: number): Point {
   const right = box.x + box.width, bottom = box.y + box.height
   const corners = [
@@ -184,8 +188,97 @@ function resizeHandlePoint(box: Bounds, corner: number): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
 }
 
-/** Object snap for an axis-aligned resize. Rotated local axes are unchanged:
- * a world-axis correction would move the anchored edge. */
+function queryResizeLine(query: ResizeSnapQuery, axis: 'x' | 'y', position: number, proposed: Bounds, threshold: number) {
+  const moving = axis === 'x'
+    ? { x: position, y: proposed.y, width: 0, height: proposed.height }
+    : { x: proposed.x, y: position, width: proposed.width, height: 0 }
+  const hit = query(moving, threshold)
+  const slot = axis === 'x' ? 0 : 1
+  const guide = hit.guides[slot]
+  const delta = axis === 'x' ? hit.dx : hit.dy
+  if (!guide || guide.axis !== axis || !Number.isFinite(delta)) return null
+  return { delta, guide, span: hit.targetSpans?.[slot] ?? null }
+}
+
+/** Find a world guide by correcting the pointer within the existing resize
+ * transform. This leaves the opposite edge or the center at its anchor. */
+function rotatedResizeSnapEnd(
+  proposed: Bounds, end: Point, threshold: number, query: ResizeSnapQuery,
+  measure: (at: Point) => Bounds, proportionalDirection?: Point,
+): ResizeSnapEnd | undefined {
+  type Axis = 'x' | 'y'
+  const coordinate = (rect: Bounds, axis: Axis, fraction: number) =>
+    axis === 'x' ? rect.x + rect.width * fraction : rect.y + rect.height * fraction
+  const move = (dx: number, dy: number) => ({ x: end.x + dx, y: end.y + dy })
+  const step = Math.min(0.25, threshold / 8)
+  const magnitude = proportionalDirection ? Math.hypot(proportionalDirection.x, proportionalDirection.y) : 1
+  if (magnitude < 1e-8) return
+  const directions = proportionalDirection
+    ? [{ x: proportionalDirection.x / magnitude, y: proportionalDirection.y / magnitude }]
+    : [{ x: 1, y: 0 }, { x: 0, y: 1 }]
+  const probes = directions.map(({ x, y }) => ({
+    x, y,
+    before: measure(move(-step * x, -step * y)),
+    after: measure(move(step * x, step * y)),
+  }))
+  const landed = (pose: Bounds, axis: Axis, fraction: number, guide: ResizeSnapGuide) =>
+    Math.abs(coordinate(pose, axis, fraction) - guide.position) <= 1e-4
+  const pick = (axis: Axis) => {
+    type Hit = NonNullable<ReturnType<typeof queryResizeLine>> & {
+      gradient: Point; fraction: number; pointer: Point; pose: Bounds; distance: number; limit: number
+    }
+    let best: Hit | undefined
+    for (const fraction of [0, 1, 0.5]) {
+      const gradient = { x: 0, y: 0 }
+      for (const { x, y, before, after } of probes) {
+        const slope = (coordinate(after, axis, fraction) - coordinate(before, axis, fraction)) / (2 * step)
+        gradient.x += x * slope
+        gradient.y += y * slope
+      }
+      const scale = gradient.x ** 2 + gradient.y ** 2
+      if (!(scale > 1e-12)) continue
+      const hit = queryResizeLine(query, axis, coordinate(proposed, axis, fraction), proposed, threshold)
+      if (!hit) continue
+      const dx = hit.delta * gradient.x / scale, dy = hit.delta * gradient.y / scale
+      const distance = Math.hypot(dx, dy)
+      // A nearly perpendicular target must not pull the handle a long way.
+      // A center moves half as far as a resize edge.
+      const limit = threshold * (fraction === 0.5 ? 2 : 1)
+      if (!(distance <= limit) || (best && best.distance <= distance)) continue
+      const pointer = move(dx, dy), pose = measure(pointer)
+      if (landed(pose, axis, fraction, hit.guide)) best = { ...hit, gradient, fraction, pointer, pose, distance, limit }
+    }
+    return best
+  }
+  const x = pick('x'), y = pick('y')
+  if (!x && !y) return
+  const pack = (pointer: Point, pose: Bounds): ResizeSnapEnd => {
+    const gx = x && landed(pose, 'x', x.fraction, x.guide) ? x : undefined
+    const gy = y && landed(pose, 'y', y.fraction, y.guide) ? y : undefined
+    return {
+      end: pointer, guides: [gx?.guide ?? null, gy?.guide ?? null],
+      targetSpans: [gx?.span ?? null, gy?.span ?? null], snapped: { x: !!gx, y: !!gy },
+    }
+  }
+  if (x && y) {
+    // A free corner can satisfy two independent guides. An edge or a
+    // proportional resize has only one usable direction.
+    const a = x.gradient, b = y.gradient
+    const determinant = a.x * b.y - a.y * b.x
+    if (Math.abs(determinant) > 1e-8) {
+      const dx = (x.delta * b.y - a.y * y.delta) / determinant
+      const dy = (a.x * y.delta - x.delta * b.x) / determinant
+      if (Math.hypot(dx, dy) <= Math.hypot(x.limit, y.limit)) {
+        const pointer = move(dx, dy)
+        const combined = pack(pointer, measure(pointer))
+        if (combined.snapped.x && combined.snapped.y) return combined
+      }
+    }
+  }
+  const nearest = x && (!y || x.distance <= y.distance) ? x : y!
+  return pack(nearest.pointer, nearest.pose)
+}
+
 export function resizeSnapEnd(
   basis: Matrix,
   box: Bounds,
@@ -201,29 +294,30 @@ export function resizeSnapEnd(
     end, guides: [null, null], targetSpans: [null, null], snapped: { x: false, y: false },
   })
   if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1e4) return none()
-  if (Math.abs(basis[1]) > 1e-8 || Math.abs(basis[2]) > 1e-8) return none()
   let preliminary: Matrix
   try { preliminary = resizeInBasis(basis, box, start, end, corner, aspect, center, false) }
   catch { return none() }
+  const worldCorners = boxPoints(box).map(point => apply(basis, point))
+  const outerBounds = (matrix: Matrix) => bounds(worldCorners.map(point => apply(matrix, point)))
+  const proposed = outerBounds(preliminary)
+  if (!resizeBasisIsAxisAligned(basis)) {
+    const measure = (at: Point) => outerBounds(resizeInBasis(basis, box, start, at, corner, aspect, center, false))
+    let proportionalDirection: Point | undefined
+    if (aspect && corner < 4) {
+      const anchor = apply(basis, center
+        ? { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+        : resizeHandlePoint(box, (corner + 2) % 4))
+      proportionalDirection = { x: end.x - anchor.x, y: end.y - anchor.y }
+    }
+    return rotatedResizeSnapEnd(proposed, end, threshold, query, measure, proportionalDirection) ?? none()
+  }
   const local = resizeHandlePoint(box, corner)
   const at = (matrix: Matrix) => apply(matrix, apply(basis, local))
   const worldHandle = at(preliminary)
-  const proposed = bounds(boxPoints(box).map(point => apply(preliminary, apply(basis, point))))
   const edge = corner >= 4 ? corner - 4 : -1
   const horizontal = edge < 0 || edge % 2 === 1
   const vertical = edge < 0 || edge % 2 === 0
   const mode = (active: boolean): 'move' | 'both' | 'none' => !active ? 'none' : center ? 'both' : 'move'
-  const line = (axis: 'x' | 'y', position: number) => {
-    const moving = axis === 'x'
-      ? { x: position, y: proposed.y, width: 0, height: Math.max(0, proposed.height) }
-      : { x: proposed.x, y: position, width: Math.max(0, proposed.width), height: 0 }
-    const hit = query(moving, threshold)
-    const slot = axis === 'x' ? 0 : 1
-    const guide = hit.guides[slot]
-    const delta = axis === 'x' ? hit.dx : hit.dy
-    if (!guide || guide.axis !== axis || !Number.isFinite(delta)) return null
-    return { delta, guide, span: hit.targetSpans?.[slot] ?? null }
-  }
   type Pick = {
     pointerDelta: number
     guide: ResizeSnapGuide
@@ -238,7 +332,7 @@ export function resizeSnapEnd(
     const handle = axis === 'x' ? worldHandle.x : worldHandle.y
     const picks: (Pick & { feature: number; rank: number })[] = []
     const push = (position: number, scale: number, rank: number, align: Pick['align']) => {
-      const hit = line(axis, position)
+      const hit = queryResizeLine(query, axis, position, proposed, threshold)
       if (!hit || !Number.isFinite(hit.delta * scale)) return
       picks.push({
         pointerDelta: hit.delta * scale, guide: hit.guide, span: hit.span, align,
@@ -275,7 +369,7 @@ export function resizeSnapEnd(
     try {
       const matrix = resizeInBasis(basis, box, start, next, corner, aspect, center, false)
       const handle = at(matrix)
-      const rect = bounds(boxPoints(box).map(point => apply(matrix, apply(basis, point))))
+      const rect = outerBounds(matrix)
       const low = axis === 'x' ? rect.x : rect.y
       const size = axis === 'x' ? rect.width : rect.height
       const high = low + size
