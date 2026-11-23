@@ -71,6 +71,13 @@ function pointer(type: string, x: number, y: number, options: MouseEventInit = {
   Object.defineProperties(event, { pointerId: { value: pointerId }, isPrimary: { value: true }, pointerType: { value: 'mouse' } })
   target.dispatchEvent(event); return event
 }
+async function flushFrames() {
+  await act(async () => {
+    const batch = [...frames.values()]
+    frames.clear()
+    batch.forEach(fn => fn(performance.now()))
+  })
+}
 function key(value: string, options: KeyboardEventInit = {}, type = 'keydown', target: EventTarget = host()) {
   const event = new KeyboardEvent(type, { key: value, code: value.length === 1 ? `Key${value.toUpperCase()}` : value, bubbles: true, cancelable: true, ...options })
   target.dispatchEvent(event); return event
@@ -130,6 +137,60 @@ test.each(['pointerup', 'pointercancel'])('the original pointer can finish or ca
     await act(async () => editor.redo())
     expect(editor.state.doc).toEqual(after)
   }
+})
+
+test.each([
+  ['space-left', true, 0, 1],
+  ['middle', false, 1, 4],
+] as const)('hand pan %s follows a cross-element move and the original button-up after capture loss', async (_label, space, button, buttons) => {
+  Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+  const board = node('frame', 40, 50, 240, 160)
+  const before = await render([board])
+  const outside = document.createElement('div')
+  document.body.append(outside)
+  const start = { ...editor.state.view }
+  if (space) {
+    await act(async () => key(' ', { code: 'Space' }))
+    expect(host().classList.contains('canvas-space-held')).toBe(true)
+  }
+  await act(async () => pointer('pointerdown', 400, 300, { button, buttons }))
+  expect(host().classList.contains('canvas-panning')).toBe(true)
+  await act(async () => pointer('pointermove', 250, 160, { button, buttons }))
+  await flushFrames()
+  expect(editor.state.view).toEqual({ ...start, x: start.x - 150, y: start.y - 140 })
+  // The last delivered move is the 2–4 CSS px residual. The real release is the original point.
+  await act(async () => pointer('pointermove', 403, 304, { button, buttons }))
+  await flushFrames()
+  expect(editor.state.view).toEqual({ ...start, x: start.x + 3, y: start.y + 4 })
+  expect(editor.effectiveView()).toEqual(editor.state.view)
+  await act(async () => pointer('lostpointercapture', 403, 304, { button, buttons }))
+  expect(host().classList.contains('canvas-panning')).toBe(true)
+  expect(host().getAttribute('data-transform-gesture')).toBe('pan')
+  expect(editor.state.view).toEqual({ ...start, x: start.x + 3, y: start.y + 4 })
+  expect(editor.state.doc).toBe(before)
+  // Capture loss can report no buttons before the real pointerup. That sample is not a release.
+  await act(async () => pointer('pointermove', 12, 16, { button, buttons: 0 }, outside))
+  await flushFrames()
+  expect(editor.effectiveView()).toEqual({ ...start, x: start.x + 3, y: start.y + 4 })
+  await act(async () => pointer('pointermove', 430, 280, { button, buttons }, outside))
+  await flushFrames()
+  expect(editor.state.view).toEqual({ ...start, x: start.x + 30, y: start.y - 20 })
+  expect(editor.state.doc).toBe(before)
+  expect(editor.state.doc.nodes[board.id].transform.slice(4)).toEqual([40, 50])
+  await act(async () => pointer('pointerup', 400, 300, { button: button === 0 ? 1 : 0, buttons: 0 }, outside))
+  expect(host().classList.contains('canvas-panning')).toBe(true)
+  expect(editor.state.view).toEqual({ ...start, x: start.x + 30, y: start.y - 20 })
+  await act(async () => pointer('pointerup', 400, 300, { button, buttons: 0 }, outside, 9))
+  expect(host().classList.contains('canvas-panning')).toBe(true)
+  await act(async () => pointer('pointerup', 400, 300, { button, buttons: 0 }, outside))
+  expect(editor.state.view).toEqual(start)
+  expect(editor.effectiveView()).toEqual(start)
+  expect(editor.state.doc).toBe(before)
+  expect(editor.state.doc.nodes[board.id].transform.slice(4)).toEqual([40, 50])
+  expect(editor.canUndo).toBe(false)
+  expect(editor.canRedo).toBe(false)
+  expect(host().classList.contains('canvas-panning')).toBe(false)
+  expect(host().getAttribute('data-transform-gesture')).toBeNull()
 })
 
 test('asset placement inserts at the next canvas point and Escape clears a pending placement', async () => {
