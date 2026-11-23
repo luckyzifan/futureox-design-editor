@@ -73,6 +73,7 @@ pub mod freehand;
 mod geometry_snapshot;
 mod cpu_frame_plan;
 mod geometry_support;
+mod display_cull;
 mod world_support;
 mod margin_index;
 mod render_index;
