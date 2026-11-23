@@ -796,6 +796,10 @@ main {
   color: #9699a7;
   margin-top: 12px;
 }
+/* Shared .check-row ink is 2.83:1 on white. That is also the open Figma
+   inspector ticket, so only the Sketch card is overridden. #5d6673 is 5.81:1
+   on the white inspector card and is already the secondary ink. */
+.editor-shell[data-ui-mode="sketch"] .properties-content .check-row { color: #5d6673; }
 .property-card {
   border: 1px solid #eeeef4;
   background: var(--workspace-field);
@@ -2716,6 +2720,10 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell .header-right .ui-mode-switch { flex: none; display: inline-flex; border: 1px solid var(--workspace-border); border-radius: 8px; overflow: hidden; }
 .editor-shell .header-right .ui-mode-switch button { height: 26px; padding: 0 8px; font-size: 11px; white-space: nowrap; color: var(--workspace-muted); background: transparent; }
 .editor-shell .header-right .ui-mode-switch button[aria-pressed=true] { color: var(--workspace-text); background: var(--workspace-selected); }
+/* Sketch toolbar fill is #e8ebec. --workspace-muted #6e6e73 is 4.23:1 there.
+   #5d6673 is the existing secondary ink and clears 4.5:1. Pressed Sketch stays
+   --workspace-text. Figma layout keeps its own muted token. */
+.editor-shell[data-ui-mode="sketch"] .header-right .ui-mode-switch button:not([aria-pressed=true]) { color: #5d6673; }
 .editor-shell .header-right .locale-switch { flex: none; }
 .editor-shell .header-right .locale-switch select { max-width: 76px; }
 .editor-shell.design-agent-open .properties-workspace { display: flex; }
@@ -3100,6 +3108,18 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell[data-ui-mode="sketch"] .sketch-window-tools .tool-group { gap: 2px; }
 .editor-shell[data-ui-mode="sketch"] .sketch-window-tools .tool-group > button,
 .editor-shell[data-ui-mode="sketch"] .sketch-window-tools .tool-popover > button { width: 29px; height: 32px; padding: 4px; }
+/* Sketch 2025.1.3 hit targets from #225: insert 47×40, canvas tools 49×40,
+   edit and preview 48×52. Other window commands stay on the 29×32 rule. */
+.editor-shell[data-ui-mode="sketch"] .sketch-window-tools button.sketch-insert-tool {
+  width: 47px; height: 40px; padding: 0; flex: none;
+}
+.editor-shell[data-ui-mode="sketch"] .sketch-window-tools button.sketch-main-tool {
+  width: 49px; height: 40px; padding: 0; flex: none;
+}
+.editor-shell[data-ui-mode="sketch"] .sketch-window-tools button.sketch-edit-tool,
+.editor-shell[data-ui-mode="sketch"] .sketch-window-tools button.sketch-preview-tool {
+  width: 48px; height: 52px; padding: 0; flex: none;
+}
 @media (max-width: 1180px) {
   .editor-shell[data-ui-mode="sketch"] .sketch-window-tools .sketch-secondary-tool { display: none; }
 }
