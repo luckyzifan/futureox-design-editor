@@ -1511,7 +1511,9 @@ impl Compositor<'_, '_, '_> {
                 } else {
                     let phase = (sample < 4).then_some(sample);
                     let values = if self.scene.float_compositing {
-                        futureox_design_kernel::paint::image_sampling_grid_with_sketch_sampling(
+                        // Large axis-aligned bitmap layers keep two address rows.
+                        // Rotated and patterned fills still receive the dense grid.
+                        futureox_design_kernel::paint::image_sampling_field_with_sketch_sampling(
                             n.rect, n.matrix, n.size, dims, &p.paint, phase, level, origin, sketch_bitmap, motion_axis,
                         )?
                     } else {
@@ -1519,18 +1521,19 @@ impl Compositor<'_, '_, '_> {
                             n.rect, n.matrix, n.size, dims, &p.paint, phase, level, origin,
                         )?
                     };
+                    let compact = (!self.scene.float_compositing && values.get(3) == Some(&1.))
+                        || (self.scene.float_compositing && values.get(3) == Some(&-1.));
                     let grid = if let Some((_, grid)) = known {
                         // Only the next sample's addresses change. All previous
                         // reads are encoded before this ordered queue update.
                         self.frame.rewrite_parameters(grid, &values)?;
                         grid
                     } else {
-                        let field_rect =
-                            if !self.scene.float_compositing && values.get(3) == Some(&1.) {
-                                Rect::new(0, 0, n.rect.w.max(n.rect.h), 2)
-                            } else {
-                                n.rect
-                            };
+                        let field_rect = if compact {
+                            Rect::new(0, 0, n.rect.w.max(n.rect.h), 2)
+                        } else {
+                            n.rect
+                        };
                         self.frame.upload_parameters(field_rect, &values)?
                     };
                     self.image_grids.insert(key, (sample, grid));
@@ -1585,6 +1588,17 @@ impl Compositor<'_, '_, '_> {
         self.configure_paint(&mut u, n, p, sample)?;
         if atlased_image {
             u[186] = 1.;
+        }
+        // Compact float rows are indexed from the node origin, matching the
+        // hosted WebGPU rewrite of linearImage. Dense fields keep u(0).
+        if self.scene.float_compositing
+            && let Some(grid) = inputs.get(3)
+            && grid.rect.h == 2
+            && n.rect.h > 2
+            && grid.rect.w == n.rect.w.max(n.rect.h)
+        {
+            u[204] = n.rect.x as f32;
+            u[205] = n.rect.y as f32;
         }
         self.frame.draw(out, u, &inputs, false, None)?;
         Ok(out)

@@ -933,6 +933,25 @@ pub fn image_sampling_grid_with_sketch_sampling(
     }
     Ok(values)
 }
+/// Float image addresses for one sample plane. Separable placements return the
+/// compact axis field (`W = -1`); every other placement returns the dense grid.
+/// The two representations store the same binary64 cell and fraction bits.
+#[allow(clippy::too_many_arguments)]
+pub fn image_sampling_field_with_sketch_sampling(
+    rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2],
+    paint: &Paint, sample: Option<usize>, level: u32, origin: [i32; 2],
+    sketch_bitmap: bool, motion_axis: Option<u8>,
+) -> Result<Vec<f32>, String> {
+    let axes = image_sampling_axes_with_sketch_sampling(
+        rect, matrix, size, image, paint, sample, level, origin, sketch_bitmap, motion_axis,
+    )?;
+    if axes.get(3) == Some(&-1.) {
+        return Ok(axes);
+    }
+    image_sampling_grid_with_sketch_sampling(
+        rect, matrix, size, image, paint, sample, level, origin, sketch_bitmap, motion_axis,
+    )
+}
 /// The analytic canvas samples image color at device pixel centres. Return
 /// just the two one-dimensional rows for a bounded, separable Gaussian.
 pub(crate) fn image_gaussian_axes(
@@ -2058,6 +2077,76 @@ fn premultiply_byte_color(color: Pixel, opacity: f32) -> Pixel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fields_match_dense(
+        rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2], paint: &Paint,
+        sample: Option<usize>, origin: [i32; 2],
+    ) {
+        let dense = image_sampling_grid_placed(rect, matrix, size, image, paint, sample, 0, origin).unwrap();
+        let field = image_sampling_field_with_sketch_sampling(
+            rect, matrix, size, image, paint, sample, 0, origin, false, None,
+        ).unwrap();
+        assert_eq!(field.get(3), Some(&-1.), "separable bitmap drag must keep compact axes");
+        let span = rect.w.max(rect.h) as usize;
+        assert_eq!(field.len(), span * 8);
+        assert!(field.len() < dense.len());
+        for y in 0..rect.h as usize {
+            for x in 0..rect.w as usize {
+                let pixel = &dense[(y * rect.w as usize + x) * 4..][..4];
+                let ax = &field[x * 4..][..4];
+                let ay = &field[(span + y) * 4..][..4];
+                assert_eq!((ax[3], ay[3]), (-1., -1.));
+                if ax[2] == 0. || ay[2] == 0. {
+                    assert_eq!(pixel, [-2., -2., 0., 0.], "x={x} y={y}");
+                } else {
+                    assert_eq!(pixel[0].to_bits(), ax[0].to_bits(), "cell x {x},{y}");
+                    assert_eq!(pixel[1].to_bits(), ay[0].to_bits(), "cell y {x},{y}");
+                    assert_eq!(pixel[2].to_bits(), ax[1].to_bits(), "frac x {x},{y}");
+                    assert_eq!(pixel[3].to_bits(), ay[1].to_bits(), "frac y {x},{y}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn large_bitmap_drag_field_matches_dense_grid() {
+        let stretch: Paint = serde_json::from_value(serde_json::json!(
+            {"kind":"image","fit":"stretch","color":"#ffffff"}
+        )).unwrap();
+        let contain: Paint = serde_json::from_value(serde_json::json!(
+            {"kind":"image","fit":"contain","color":"#ffffff"}
+        )).unwrap();
+        let rect = Rect::new(17, 9, 960, 540);
+        let matrix = Transform([1., 0., 0., 1., 17.25, 9.5]);
+        let size = [960., 540.];
+        let image = [2048, 1536];
+        fields_match_dense(rect, matrix, size, image, &stretch, Some(0), [0, 0]);
+        fields_match_dense(rect, matrix, size, image, &stretch, Some(2), [4, 7]);
+        fields_match_dense(Rect::new(3, 5, 180, 140), Transform([1., 0., 0., 1., 3.125, 5.375]),
+            [180., 140.], [64, 96], &contain, Some(1), [0, 0]);
+        let base = image_sampling_field_with_sketch_sampling(
+            rect, matrix, size, image, &stretch, Some(0), 0, [0, 0], false, None,
+        ).unwrap();
+        let translated = image_sampling_field_with_sketch_sampling(
+            Rect::new(18, 11, 960, 540), Transform([1., 0., 0., 1., 18.25, 11.5]),
+            size, image, &stretch, Some(0), 0, [0, 0], false, None,
+        ).unwrap();
+        assert_eq!(translated, base, "integer device translation keeps local bitmap addresses");
+        let fractional = image_sampling_field_with_sketch_sampling(
+            rect, Transform([1., 0., 0., 1., 17.4, 9.5]), size, image, &stretch, Some(0), 0, [0, 0], false, None,
+        ).unwrap();
+        assert_ne!(fractional, base);
+        let rotated = Transform([0.6, 0.8, -0.8, 0.6, 4., 6.]);
+        let small = Rect::new(0, 0, 12, 10);
+        let dense = image_sampling_grid_with_sketch_sampling(
+            small, rotated, [12., 10.], [32, 24], &stretch, Some(1), 0, [0, 0], false, None,
+        ).unwrap();
+        let field = image_sampling_field_with_sketch_sampling(
+            small, rotated, [12., 10.], [32, 24], &stretch, Some(1), 0, [0, 0], false, None,
+        ).unwrap();
+        assert_eq!(field, dense);
+        assert_ne!(field.get(3), Some(&-1.));
+    }
 
     #[test]
     fn motion_bitmap_phase_keeps_native_replicated_stripe_taps_in_both_fields() {

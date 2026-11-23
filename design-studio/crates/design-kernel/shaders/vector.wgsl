@@ -983,6 +983,21 @@ fn byteImageAddress(p:vec2<f32>)->vec4<f32>{
 }
 fn hostedStraightByteImage(p:vec2<f32>)->vec4<f32>{return linearImage(p);}
 fn linearImage(p:vec2<f32>)->vec4<f32>{
+ // A two-row field whose first word is negative is the compact axis layout
+ // (W=-1). Taller fields, and a two-row dense strip, keep u(0) indexing.
+ // Hosted WebGPU replaces this body; the replacement uses the same W test.
+ let dims:vec2<u32>=textureDimensions(sourceD);
+ if(dims.y==2u){
+  let probe:vec4<f32>=textureLoad(sourceD,vec2<i32>(0),0);
+  if(probe.w<0.){
+   let pixel:vec2<i32>=vec2<i32>(floor(p-u(51).xy));
+   let x:vec4<f32>=textureLoad(sourceD,vec2<i32>(pixel.x,0),0);
+   let y:vec4<f32>=textureLoad(sourceD,vec2<i32>(pixel.y,1),0);
+   if(x.z==0.||y.z==0.){return vec4<f32>(0.);}
+   let q:vec2<i32>=vec2<i32>(i32(x.x),i32(y.x));
+   return bsBilinear4(linearImageTexel(q),linearImageTexel(q+vec2<i32>(1,0)),linearImageTexel(q+vec2<i32>(0,1)),linearImageTexel(q+vec2<i32>(1,1)),vec2<f32>(x.y,y.y),u32(u(63).w),u32(u(63).z));
+  }
+ }
  let grid:vec4<f32>=textureLoad(sourceD,vec2<i32>(floor(p-u(0).xy)),0);let q:vec2<i32>=vec2<i32>(grid.xy);
  return bsBilinear4(linearImageTexel(q),linearImageTexel(q+vec2<i32>(1,0)),linearImageTexel(q+vec2<i32>(0,1)),linearImageTexel(q+vec2<i32>(1,1)),grid.zw,u32(u(63).w),u32(u(63).z));
 }
