@@ -781,6 +781,49 @@ fn uses_figma_line_metrics(style: &TextStyle) -> bool {
         && matches!(style.line_box_baseline.as_str(), "figma-pixel-leading" | "figma-font-metrics")
 }
 
+/// Underline top offset and thickness for a Figma line box, in pixels below
+/// the snapped ink baseline. OpenType `post.underlinePosition` is the top of
+/// the stroke. Figma's derived decoration rect uses the PostScript center
+/// (that top minus half the thickness, y-up) as the filled rectangle's top.
+/// Poppins Bold 2.000 at 13px in `01有料素材.fig` ("U"): position -125,
+/// thickness 50, snapped baseline 14, rect y 15.95, h 0.65.
+fn figma_post_underline(face: &ttf_parser::Face<'_>, size: f64) -> Option<(f64, f64)> {
+    let metrics = face.underline_metrics()?;
+    let units = f64::from(face.units_per_em());
+    if units <= 0. || metrics.thickness <= 0 || !size.is_finite() || size <= 0. {
+        return None;
+    }
+    let scale = size / units;
+    let thickness = f64::from(metrics.thickness) * scale;
+    let top = (f64::from(-metrics.position) + f64::from(metrics.thickness) * 0.5) * scale;
+    (thickness.is_finite() && top.is_finite() && thickness > 0. && thickness < 4096.)
+        .then_some((top, thickness))
+}
+
+fn figma_underline_for(
+    fonts: &Fonts,
+    glyph: &Glyph,
+    cache: &mut Option<(String, u32, u64, f64, f64)>,
+) -> Option<(f64, f64)> {
+    let weight = glyph.weight.to_bits();
+    let size = glyph.size.to_bits();
+    if glyph.vars.is_empty() {
+        if let Some((id, cached_weight, cached_size, top, thickness)) = cache {
+            if id == &glyph.font_id && *cached_weight == weight && *cached_size == size {
+                return Some((*top, *thickness));
+            }
+        }
+    }
+    let parsed = fonts
+        .face_with(&glyph.font_id, glyph.weight, &glyph.vars)
+        .ok()?;
+    let got = figma_post_underline(parsed.borrow_face(), glyph.size)?;
+    if glyph.vars.is_empty() {
+        *cache = Some((glyph.font_id.clone(), weight, size, got.0, got.1));
+    }
+    Some(got)
+}
+
 const SKETCH_SYSTEM_TEXT_ASCENT: f64 = 15.46875 / 16.;
 const SKETCH_HAN_DISPLAY_ASCENT: f64 = 17.1990966796875 / 20.;
 
@@ -2418,6 +2461,8 @@ impl Fonts {
         }
         let mut path = Path::default();
         let mut spans: Vec<TextSpan> = Vec::new();
+        let figma_decoration = uses_figma_line_metrics(style);
+        let mut underline_cache: Option<(String, u32, u64, f64, f64)> = None;
         for glyph in glyphs.iter_mut().filter(|_| !matches!(output, OutlineOutput::None | OutlineOutput::Measurement)) {
             let run = runs
                 .iter()
@@ -2469,27 +2514,40 @@ impl Fonts {
                     1., 0., -shear, 1., shear * glyph.y, 0.,
                 ]));
             }
-            for (enabled, offset) in [
-                (run.is_some_and(|r| r.underline), glyph.size * 0.1),
-                (run.is_some_and(|r| r.strikethrough), -glyph.size * 0.3),
+            for (underline, enabled) in [
+                (true, run.is_some_and(|r| r.underline)),
+                (false, run.is_some_and(|r| r.strikethrough)),
             ] {
-                if enabled {
-                    let x = glyph.x;
-                    let y = glyph.y + offset;
-                    let h = (glyph.size / 16.).max(0.5);
-                    outline.commands.extend(
-                        Path::polygon(
-                            &[
-                                Point::new(x, y),
-                                Point::new(x + glyph.advance, y),
-                                Point::new(x + glyph.advance, y + h),
-                                Point::new(x, y + h),
-                            ],
-                            true,
-                        )
-                        .commands,
-                    );
+                if !enabled {
+                    continue;
                 }
+                let legacy_h = (glyph.size / 16.).max(0.5);
+                let (y, h) = if underline {
+                    let legacy_y = glyph.y + glyph.size * 0.1;
+                    if figma_decoration && glyph.width_scale == 1. && glyph.height_scale == 1. {
+                        match figma_underline_for(self, glyph, &mut underline_cache) {
+                            Some((top, thickness)) => (glyph.y + glyph.ink_offset.y + top, thickness),
+                            None => (legacy_y, legacy_h),
+                        }
+                    } else {
+                        (legacy_y, legacy_h)
+                    }
+                } else {
+                    (glyph.y - glyph.size * 0.3, legacy_h)
+                };
+                let x = glyph.x;
+                outline.commands.extend(
+                    Path::polygon(
+                        &[
+                            Point::new(x, y),
+                            Point::new(x + glyph.advance, y),
+                            Point::new(x + glyph.advance, y + h),
+                            Point::new(x, y + h),
+                        ],
+                        true,
+                    )
+                    .commands,
+                );
             }
             if let (Some(baseline), Some(binding)) = (&baseline, text_path) {
                 let along = glyph.x + glyph.advance / 2. + binding.offset;
@@ -3733,5 +3791,331 @@ mod persistent_font_cache_tests {
             assert_eq!(sha(&before), expect_before, "zoom {zoom} uncentered");
             assert_eq!(sha(&after), expect_after, "zoom {zoom} half-leading");
         }
+    }
+}
+
+#[cfg(test)]
+mod figma_typography_fidelity {
+    use super::*;
+
+    fn noto() -> Fonts {
+        let mut fonts = Fonts::new();
+        fonts
+            .load(
+                &std::fs::read(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../../frontend/design-client/public/fonts/NotoSansSC.ttf"
+                ))
+                .unwrap(),
+            )
+            .unwrap();
+        fonts
+    }
+    fn poppins_bold() -> Vec<u8> {
+        std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../frontend/design-client/public/fonts/poppins/v2.000/Poppins-Bold.ttf"
+        ))
+        .unwrap()
+    }
+    fn sha256(bytes: &[u8]) -> String {
+        use sha2::{Digest, Sha256};
+        Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+    fn cases() -> Vec<serde_json::Value> {
+        serde_json::from_str(
+            &std::fs::read_to_string(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../frontend/design-client/public/fidelity/text-2026-10-09/cases.json"
+            ))
+            .unwrap(),
+        )
+        .unwrap()
+    }
+    /// Axis-aligned filled rectangles added as Move/Line/Line/Line/Close.
+    /// Glyph outlines for these faces are curves, so a thin quad is a decoration.
+    fn rule_rects(path: &Path) -> Vec<(f64, f64, f64, f64)> {
+        let mut rects = Vec::new();
+        let commands = &path.commands;
+        for index in 0..commands.len() {
+            let Command::Move(a) = commands[index] else { continue };
+            let Some(Command::Line(b)) = commands.get(index + 1) else { continue };
+            let Some(Command::Line(c)) = commands.get(index + 2) else { continue };
+            let Some(Command::Line(d)) = commands.get(index + 3) else { continue };
+            if !matches!(commands.get(index + 4), Some(Command::Close)) {
+                continue;
+            }
+            let xs = [a.x, b.x, c.x, d.x];
+            let ys = [a.y, b.y, c.y, d.y];
+            let (min_x, max_x) = xs.into_iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| (lo.min(v), hi.max(v)));
+            let (min_y, max_y) = ys.into_iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| (lo.min(v), hi.max(v)));
+            let on_box = xs.iter().all(|x| (*x - min_x).abs() < 1e-6 || (*x - max_x).abs() < 1e-6)
+                && ys.iter().all(|y| (*y - min_y).abs() < 1e-6 || (*y - max_y).abs() < 1e-6);
+            if on_box && max_x > min_x && max_y > min_y {
+                rects.push((min_x, min_y, max_x - min_x, max_y - min_y));
+            }
+        }
+        rects
+    }
+    fn line_box(fonts: &Fonts, size: f64) -> (f64, f64) {
+        let parsed = fonts.face("default", 400.).unwrap();
+        let face = parsed.borrow_face();
+        let units = f64::from(face.units_per_em());
+        let natural = (f64::from(face.ascender()) - f64::from(face.descender()) + f64::from(face.line_gap()))
+            * size
+            / units;
+        let ascent = f64::from(face.ascender()) * size / units;
+        (natural, ascent)
+    }
+
+    #[test]
+    fn text_2026_10_09_keeps_figma_tracking_leading_and_runs() {
+        let fonts = noto();
+        let cases = cases();
+        assert_eq!(cases.len(), 7);
+        let loaded: Vec<_> = cases
+            .iter()
+            .map(|case| {
+                let doc: crate::scene::Document = serde_json::from_value(case["document"].clone()).unwrap();
+                (case["id"].as_str().unwrap().to_owned(), doc)
+            })
+            .collect();
+        for (id, doc) in &loaded {
+            let valid = doc.validate();
+            for node in doc.nodes.values().filter(|node| node.kind == "text") {
+                let layout = fonts.node_layout(node, Some(node.width)).unwrap();
+                let style = node.text_style.as_deref();
+                eprintln!(
+                    "case={id} node={} font={} lineHeight={:?} auto={:?} lineBox={:?} letterSpacing={:?} runs={} line0h={} line0y={} glyph0y={} glyph0size={} width={} validate={}",
+                    node.id,
+                    node.font_size,
+                    style.map(|s| s.line_height),
+                    style.map(|s| s.line_height_auto),
+                    style.map(|s| s.line_box_baseline.as_str()),
+                    style.map(|s| s.letter_spacing),
+                    node.text_runs.len(),
+                    layout.lines[0].height,
+                    layout.lines[0].y,
+                    layout.glyphs[0].y,
+                    layout.glyphs[0].size,
+                    layout.width,
+                    valid.as_ref().map(|_| "ok").unwrap_or("err"),
+                );
+            }
+        }
+        for (id, doc) in &loaded {
+            let valid = doc.validate();
+            assert!(valid.is_ok(), "{id} validate {}", valid.unwrap_err());
+            let text = |name: &str| doc.nodes.get(name).unwrap().clone();
+            match id.as_str() {
+                "text-multiline" => {
+                    let node = text("m1");
+                    let style = node.text_style.as_deref().expect("140% line box");
+                    assert!((style.line_height - 1.4).abs() < 1e-9, "{}", style.line_height);
+                    assert_eq!(style.line_box_baseline, "figma-pixel-leading");
+                    assert!(!style.line_height_auto);
+                    let layout = fonts.node_layout(&node, Some(node.width)).unwrap();
+                    assert!(layout.lines.iter().all(|line| (line.height - node.font_size * 1.4).abs() < 1e-6));
+                    let mut bare = node.clone();
+                    bare.text_style.as_mut().unwrap().line_box_baseline.clear();
+                    let bare_y = fonts.node_layout(&bare, Some(bare.width)).unwrap().glyphs[0].y;
+                    let (natural, _) = line_box(&fonts, node.font_size);
+                    let shift = (node.font_size * 1.4 - natural) / 2.;
+                    assert!(
+                        (layout.glyphs[0].y - bare_y - shift).abs() < 1e-6,
+                        "percent line box baseline {} uncentered {} shift {}",
+                        layout.glyphs[0].y, bare_y, shift
+                    );
+                    assert!(shift.abs() > 0.2, "half-leading {shift}");
+                }
+                "text-letter-spacing" => {
+                    for (name, spacing) in [("l1", 2.5), ("l2", -0.75)] {
+                        let node = text(name);
+                        let style = node.text_style.as_deref().expect("letter spacing");
+                        assert!((style.letter_spacing - spacing).abs() < 1e-9, "{name}");
+                        assert!(style.line_height_auto, "{name} still uses Figma Auto");
+                        assert_eq!(style.line_box_baseline, "figma-font-metrics");
+                        let laid = fonts.node_layout(&node, Some(node.width)).unwrap();
+                        let mut bare = node.clone();
+                        bare.text_style.as_mut().unwrap().letter_spacing = 0.;
+                        let bare_w = fonts.node_layout(&bare, Some(bare.width)).unwrap().width;
+                        let gaps = laid.glyphs.len().saturating_sub(1) as f64;
+                        assert!(
+                            (laid.width - bare_w - spacing * gaps).abs() < 1e-6,
+                            "{name} width {} bare {bare_w} gaps {gaps}",
+                            laid.width
+                        );
+                    }
+                }
+                "text-styled-runs" => {
+                    assert!(doc.schema_version >= 4, "run color requires schema 4");
+                    let node = text("r1");
+                    assert_eq!(node.text_runs.len(), 2);
+                    assert_eq!((node.text_runs[0].start, node.text_runs[0].end), (0, 6));
+                    assert_eq!(node.text_runs[0].font_size, Some(30.));
+                    assert_eq!(node.text_runs[0].color.as_deref(), Some("#c0392b"));
+                    assert_eq!((node.text_runs[1].start, node.text_runs[1].end), (6, 17));
+                    assert_eq!(node.text_runs[1].font_size, Some(18.));
+                    let style = node.text_style.as_deref().unwrap();
+                    assert!(style.line_height_auto);
+                    assert_eq!(style.line_box_baseline, "figma-font-metrics");
+                    let laid = fonts.node_layout(&node, Some(node.width)).unwrap();
+                    assert!(laid.glyphs.iter().take(6).all(|glyph| glyph.size == 30.));
+                    assert!(laid.glyphs.iter().skip(6).all(|glyph| glyph.size == 18.));
+                    assert!(laid.spans.iter().any(|span| span.color.as_deref() == Some("#c0392b")));
+                }
+                _ => {
+                    for node in doc.nodes.values().filter(|node| node.kind == "text") {
+                        let style = node.text_style.as_deref().expect("Figma Auto line box");
+                        assert!(style.line_height_auto, "{}", node.id);
+                        assert_eq!(style.line_box_baseline, "figma-font-metrics");
+                        assert_eq!(style.letter_spacing, 0.);
+                        let laid = fonts.node_layout(node, Some(node.width)).unwrap();
+                        let (natural, ascent) = line_box(&fonts, node.font_size);
+                        let height = natural.round();
+                        assert!((laid.lines[0].height - height).abs() < 1e-6, "{} height {} expected {height}", node.id, laid.lines[0].height);
+                        assert!((height - node.font_size * 1.35).abs() > 0.5, "{} auto collapsed to 1.35", node.id);
+                        let shift = (height - natural) / 2.;
+                        assert!((laid.glyphs[0].y - (ascent + shift)).abs() < 1e-6, "{}", node.id);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn historical_underline_stays_on_the_em_fraction() {
+        let fonts = noto();
+        let mut node: Node = serde_json::from_value(serde_json::json!({
+            "id":"t","kind":"text","text":"H","fontSize":16,"width":40,"height":40,
+            "fills":[{"kind":"solid","color":"#112233"}],
+            "textRuns":[{"start":0,"end":1,"underline":true}]
+        }))
+        .unwrap();
+        node.text_style = Some(Box::new(TextStyle::default()));
+        let layout = fonts.node_layout(&node, Some(node.width)).unwrap();
+        let rects = rule_rects(&layout.path);
+        assert_eq!(rects.len(), 1, "{rects:?}");
+        let (x, y, w, h) = rects[0];
+        assert!((x - layout.glyphs[0].x).abs() < 1e-9);
+        assert!((y - (layout.glyphs[0].y + 16. * 0.1)).abs() < 1e-9, "y {y} baseline {}", layout.glyphs[0].y);
+        assert!((h - 1.).abs() < 1e-9, "h {h}");
+        assert!((w - layout.glyphs[0].advance).abs() < 1e-9);
+    }
+
+    #[test]
+    fn youliao_underline_matches_fig_decoration_rect() {
+        let fonts_for_perf = noto();
+        let text = "Handgloves ".repeat(16);
+        let mut plain: Node = serde_json::from_value(serde_json::json!({
+            "id":"t","kind":"text","text":text,"fontSize":28,"width":4000,"height":80,
+            "textStyle":{"lineHeight":1.4,"lineBoxBaseline":"figma-pixel-leading"},
+            "fills":[{"kind":"solid","color":"#112233"}]
+        }))
+        .unwrap();
+        let mut underlined = plain.clone();
+        underlined.text_runs.push(TextRun {
+            start: 0,
+            end: text.encode_utf16().count(),
+            underline: true,
+            ..TextRun::default()
+        });
+        let time = |sample: &Node| {
+            for _ in 0..2 {
+                fonts_for_perf.node_layout(sample, Some(sample.width)).unwrap();
+            }
+            let start = std::time::Instant::now();
+            for _ in 0..20 {
+                fonts_for_perf.node_layout(sample, Some(sample.width)).unwrap();
+            }
+            start.elapsed().as_micros()
+        };
+        // Same constructed nodes on both binaries. Underline is the only branch
+        // that reads font post metrics; plain text must stay on the old path.
+        eprintln!(
+            "perf plain_us={} underline_us={} iters=20 chars={}",
+            time(&plain),
+            time(&underlined),
+            text.len()
+        );
+        let _ = plain;
+
+        let bytes = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../testing/fixtures/user-regression-20261109/01有料素材.fig"
+        ))
+        .unwrap();
+        assert!(
+            !bytes.starts_with(b"version https://git-lfs"),
+            "01有料素材.fig is a Git LFS pointer"
+        );
+        assert_eq!(sha256(&bytes), "90eb4dc4d09b67cbcc7afa790bb373c28560f97e2111e8adfcfa269bc2afb82c");
+        let doc = crate::interop::import_fig(&bytes).unwrap();
+        let hits: Vec<_> = doc
+            .nodes
+            .values()
+            .filter(|node| node.text == "U" && node.text_runs.iter().any(|run| run.underline))
+            .collect();
+        assert_eq!(hits.len(), 1, "underlined U nodes");
+        let node = hits[0];
+        let style = node.text_style.as_deref().unwrap();
+        eprintln!(
+            "imported U font={} weight={} lineHeight={} auto={} lineBox={} runs={:?}",
+            node.font_size, style.weight, style.line_height, style.line_height_auto, style.line_box_baseline, node.text_runs
+        );
+        assert!((node.font_size - 13.).abs() < 1e-9);
+        assert!((style.weight - 700.).abs() < 1e-6);
+        assert!((style.line_height - 20. / 13.).abs() < 1e-9, "{}", style.line_height);
+        assert!(!style.line_height_auto);
+        assert_eq!(style.line_box_baseline, "figma-pixel-leading");
+        assert_eq!(style.font_id, "default");
+        let mut fonts = Fonts::new();
+        fonts.load(&poppins_bold()).unwrap();
+        let layout = fonts.node_layout(node, Some(node.width)).unwrap();
+        assert_eq!(layout.glyphs.len(), 1);
+        let glyph = &layout.glyphs[0];
+        let rects = rule_rects(&layout.path);
+        eprintln!(
+            "underline baseline={} ink_y={} advance={} rects={rects:?}",
+            glyph.y,
+            glyph.y + glyph.ink_offset.y,
+            glyph.advance
+        );
+        assert_eq!(rects.len(), 1, "{rects:?}");
+        let (x, y, w, h) = rects[0];
+        let mut placed = node.clone();
+        placed.id = "t".into();
+        placed.transform = crate::math::Transform([1., 0., 0., 1., 4., 2.]);
+        let scene = serde_json::json!({
+            "schemaVersion": doc.schema_version.max(4),
+            "id": "d",
+            "name": "underline",
+            "rasterProfile": "figma",
+            "pages": [{"id":"p","name":"p","background":"#ffffff","children":["t"]}],
+            "nodes": {"t": placed}
+        });
+        let mut engine = crate::Engine::new();
+        engine.load_font(&poppins_bold()).unwrap();
+        engine.load_document(&scene.to_string()).unwrap();
+        let options = serde_json::from_value(serde_json::json!({
+            "pageId": "p", "width": 32, "height": 28,
+            "view": {"x": 0, "y": 0, "zoom": 1},
+            "transparent": false, "grid": false, "rasterProfile": "figma"
+        }))
+        .unwrap();
+        let pixels = engine.render(&options).unwrap();
+        eprintln!("underline-raster sha256={} bytes={}", sha256(&pixels), pixels.len());
+        // 01有料素材.fig derivedTextData for this node: baseline position.y
+        // 13.835, decoration rect {x:0, y:15.95, w:9.503, h:0.65}. Width follows
+        // the shaped advance (0.731em). Height is post.underlineThickness.
+        assert!((glyph.y - 13.835).abs() < 1e-4, "baseline {}", glyph.y);
+        assert!((glyph.advance / 13. - 0.731).abs() <= 0.001, "em {}", glyph.advance / 13.);
+        assert!(x.abs() < 1e-6, "x {x}");
+        assert!((w - glyph.advance).abs() < 1e-9, "w {w} advance {}", glyph.advance);
+        assert!((y - 15.95).abs() < 1e-6, "top {y}");
+        assert!((h - 0.65).abs() < 1e-6, "thickness {h}");
     }
 }
