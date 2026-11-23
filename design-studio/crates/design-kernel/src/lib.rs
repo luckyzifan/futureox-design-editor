@@ -28,6 +28,7 @@ pub mod shape_builder;
 mod curve_boolean_cache;
 pub mod design_system;
 pub mod dirty_region;
+pub mod drag_profile;
 pub mod editing;
 pub mod effects;
 pub mod spatial_blur;

@@ -1266,3 +1266,80 @@ fn cancelled_clipped_board_move_publishes_only_the_release_pose() {
     undone.install_document(doc).unwrap();
     assert_eq!(undone.render(&options).unwrap(), before);
 }
+
+fn stroked_union() -> Document {
+    serde_json::from_value(json!({"schemaVersion":16,"id":"bool-drag","name":"Boolean drag",
+        "pages":[{"id":"p","name":"p","children":["frame"],"background":"#ffffff"}],
+        "nodes":{
+            "frame":{"id":"frame","kind":"frame","width":220,"height":140,"children":["union"],
+                "fills":[{"kind":"solid","color":"#f7f4ee"}]},
+            "union":{"id":"union","kind":"vector","width":160,"height":80,
+                "transform":[1,0,0,1,18,16],"booleanOperation":"union","children":["a","b"],
+                "fills":[{"kind":"solid","color":"#cc4466"}],
+                "strokes":[{"width":3.5,"cap":"round","join":"round","paint":{"kind":"solid","color":"#221100"}}]},
+            "a":{"id":"a","kind":"vector","width":90,"height":50,"vectorGeometry":{"fillRule":"nonzero","fill":[
+                {"move":[0,8]},{"cubic":[10,40,70,-12,88,18]},{"line":[80,46]},{"line":[4,44]},"close"]}},
+            "b":{"id":"b","kind":"rectangle","width":70,"height":36,"transform":[1,0,0,1,36,18],
+                "fills":[{"kind":"solid","color":"#3366aa"}]}
+        }})).unwrap()
+}
+
+#[test]
+fn translating_a_boolean_group_keeps_its_outline_and_stroke_owner() {
+    let options: RenderOptions = serde_json::from_value(json!({"pageId":"p","width":240,"height":160,
+        "view":{"x":0.0,"y":0.0,"zoom":1.0},"transparent":false,"grid":false,"rasterProfile":"figmaSubpixel"})).unwrap();
+    let mut engine = Engine::new();
+    engine.install_document(stroked_union()).unwrap();
+    engine.compile_gpu(&options).unwrap();
+    let owner = engine.paths["union"].clone();
+    let resolved = &engine.doc.as_ref().unwrap().nodes["union"];
+    let outline = (resolved.network.clone(), resolved.vector_geometry.clone());
+    assert!(outline.0.is_some() || outline.1.is_some());
+    let builds = engine.gpu_compile_cache_stats()["residentStrokes"]["builds"].as_u64().unwrap();
+    let bytes = engine.gpu_compile_cache_stats()["residentStrokes"]["bytes"].as_u64().unwrap();
+    for step in 1..=4 {
+        let pose = std::collections::BTreeMap::from([("union".into(), Transform([1., 0., 0., 1., 18. + step as f64 * 0.5, 16.25]))]);
+        let damage = engine.interaction_pose_damage(&pose).unwrap().expect("boolean group pose has finite damage");
+        assert!(!damage.full);
+        assert_eq!(damage.translation_only, Some(true));
+        assert!(engine.apply_interaction_transforms(&pose).unwrap());
+        assert!(std::sync::Arc::ptr_eq(&owner, &engine.paths["union"]));
+        let resolved = &engine.doc.as_ref().unwrap().nodes["union"];
+        assert_eq!((resolved.network.clone(), resolved.vector_geometry.clone()), outline);
+        assert!(!engine.layout_dirty);
+        let mut fresh = Engine::new();
+        fresh.install_document(engine.source_doc.as_ref().unwrap().clone()).unwrap();
+        assert_eq!(engine.compile_gpu(&options).unwrap().into_packet().unwrap(), fresh.compile_gpu(&options).unwrap().into_packet().unwrap());
+        assert_eq!(engine.render(&options).unwrap(), fresh.render(&options).unwrap());
+    }
+    let stats = engine.gpu_compile_cache_stats();
+    assert_eq!(stats["residentStrokes"]["builds"].as_u64().unwrap(), builds);
+    assert_eq!(stats["residentStrokes"]["bytes"].as_u64().unwrap(), bytes);
+    assert!(stats["residentStrokes"]["hits"].as_u64().unwrap() >= 4);
+    let scale = std::collections::BTreeMap::from([("union".into(), Transform([1.25, 0., 0., 1.25, 30., 18.]))]);
+    assert!(engine.apply_interaction_transforms(&scale).unwrap());
+    let mut fresh = Engine::new();
+    fresh.install_document(engine.source_doc.as_ref().unwrap().clone()).unwrap();
+    assert_eq!(engine.compile_gpu(&options).unwrap().into_packet().unwrap(), fresh.compile_gpu(&options).unwrap().into_packet().unwrap());
+    assert_eq!(engine.render(&options).unwrap(), fresh.render(&options).unwrap());
+}
+
+#[test]
+fn a_nested_boolean_or_a_moved_operand_does_not_keep_the_group_pose() {
+    let mut nested = stroked_union();
+    let outer = serde_json::from_value(json!({"id":"outer","kind":"vector","width":220,"height":140,
+        "booleanOperation":"union","children":["union","extra"],
+        "fills":[{"kind":"solid","color":"#8899aa"}]})).unwrap();
+    nested.nodes.insert("outer".into(), outer);
+    nested.nodes.insert("extra".into(), serde_json::from_value(json!({"id":"extra","kind":"rectangle","width":30,"height":20,
+        "transform":[1,0,0,1,150,90]})).unwrap());
+    nested.pages[0].children = vec!["outer".into()];
+    nested.nodes.remove("frame");
+    let mut engine = Engine::new();
+    engine.install_document(nested).unwrap();
+    engine.compile_gpu(&options()).unwrap();
+    let pose = std::collections::BTreeMap::from([("union".into(), Transform([1., 0., 0., 1., 40., 20.]))]);
+    assert!(!engine.apply_interaction_transforms(&pose).unwrap());
+    let operand = std::collections::BTreeMap::from([("b".into(), Transform([1., 0., 0., 1., 120., 40.]))]);
+    assert!(!engine.apply_interaction_transforms(&operand).unwrap());
+}

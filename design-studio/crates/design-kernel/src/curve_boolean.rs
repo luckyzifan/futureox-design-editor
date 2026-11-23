@@ -532,6 +532,7 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
                 if doc.schema_version<16{return Err("Compound paths require schema 16".into());}
                 let key=crate::curve_boolean_cache::Cache::key(&inputs,op);
                 let geometry=if let Some(value)=memoize.then(||cache.get_geometry(&key)).flatten(){value}else{
+                    let _span = crate::drag_profile::Span::boolean_solve();
                     let mut path=Path::default();
                     for (input,matrix,_) in &inputs {
                         for (start,segments) in curves(input,*matrix)? {
@@ -554,6 +555,7 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
                 if doc.schema_version < 16 { return Err("Dense Boolean render geometry requires schema 16".into()); }
                 let key=crate::curve_boolean_cache::Cache::key(&inputs,op);
                 let geometry=if let Some(value)=memoize.then(||cache.get_geometry(&key)).flatten(){value}else{
+                    let _span = crate::drag_profile::Span::boolean_solve();
                     let value=combine_dense(&inputs,op).map_err(|e|format!("Boolean node {id}: {e}"))?;
                     if memoize{cache.insert_geometry(key,&value);}value
                 };
@@ -576,6 +578,7 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
             } else {
                 let key = crate::curve_boolean_cache::Cache::key(&inputs, op);
                 if let Some(cached) = memoize.then(|| cache.get(&key)).flatten() { cached } else {
+                    let _span = crate::drag_profile::Span::boolean_solve();
                     let result = combine(&inputs, op).map_err(|e| format!("Boolean node {id}: {e}"))?;
                     if memoize { cache.insert(key, &result); } result
                 }

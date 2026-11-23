@@ -1140,9 +1140,15 @@ impl Engine {
             if translated != *next { return false; }
             for id in std::iter::once(id.as_str()).chain(parents.ancestors(id)) {
                 let node = &source.nodes[id];
+                // A boolean group's resolved outline lives in its local space and
+                // its children are not painted separately. Translating that group
+                // keeps the outline and the stroke-owner cache. An ancestor
+                // boolean still has to be solved again, and checked_boolean is
+                // the separate operand-outline proof.
+                let ancestor_boolean = id != old.id.as_str() && node.boolean_operation.is_some();
                 if !node.bindings.is_empty() || !node.variable_modes.is_empty() || node.component.is_some()
                     || node.component_set || node.instance.is_some() || node.instance_origin.is_some()
-                    || node.component_key.is_some() || (!checked_boolean && node.boolean_operation.is_some()) { return false; }
+                    || node.component_key.is_some() || (!checked_boolean && ancestor_boolean) { return false; }
                 // Descendant local layout survives rigid movement. An ancestor
                 // flow/hug layout can reposition siblings and must resolve normally.
                 if id != old.id && (node.layout.as_ref().is_some_and(|l| l.mode != crate::layout::Flow::None)
