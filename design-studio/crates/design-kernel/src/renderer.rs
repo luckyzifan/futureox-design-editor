@@ -2475,6 +2475,7 @@ impl Engine {
                 }).flatten(),
             compact_export_groups: required.is_some(),
             sample: None,
+            post_byte_opacity: None,
             raster_workspace: RasterWorkspace::default(),
             pose_prefix: self.pose_prefix.as_mut().filter(|_| use_pose_prefix && !self.display_degrade && !synchronized),
             settled_cuts: Arc::clone(&self.settled_cuts),
@@ -3422,6 +3423,9 @@ struct Painter<'a> {
     flush_backdrop_frame: Option<&'a Node>,
     compact_export_groups: bool,
     sample: Option<usize>,
+    /// Group opacity applied after the measured gradient's RGBA8 stage.
+    /// Paint opacity stays inside the gradient sample when this is absent.
+    post_byte_opacity: Option<f32>,
     raster_workspace: RasterWorkspace,
     pose_prefix: Option<&'a mut PosePrefix>,
     settled_cuts: Arc<Mutex<SettledCuts>>,
@@ -3805,6 +3809,52 @@ impl Painter<'_> {
                         |x, y| clip.map_or(1., |mask| mask.at(sample, x, y)),
                     )?;
                 }
+            }
+            self.sample = None;
+            return Ok(());
+        }
+        // An isolating frame around an opaque measured gradient has its own
+        // RGBA8 stage before opacity. Scaling the quantized sample, then
+        // source-over, is the Chrome export. Isolating the leaf and blending
+        // with the rational byte weight moves that export by one code.
+        if mask_id.is_none() && self.direct_isolated_gradient_opacity(n) {
+            let child_id = n.render_children()[0].clone();
+            let child_prepared = &self.prepared[&child_id];
+            let child_fill_path = Arc::clone(&child_prepared.fill);
+            let child_matrix = child_prepared.matrix;
+            let child_bounds = child_prepared.bounds.intersect(self.extent);
+            let group_fill_path = n.clip.then(|| Arc::clone(&self.prepared[id].fill));
+            let opacity = n.opacity as f32;
+            let child = self.doc.nodes[&child_id].clone();
+            let paint = child
+                .fills
+                .iter()
+                .find(|paint| paint.visible && paint.opacity > 0.)
+                .expect("opaque measured gradient")
+                .clone();
+            let child_fill = self.rasterize_bundle(&child_fill_path, child_bounds, false)?;
+            let group_fill = group_fill_path
+                .as_ref()
+                .map(|path| self.rasterize_bundle(path, r, false))
+                .transpose()?;
+            for sample in 0..4 {
+                self.sample = Some(sample);
+                self.post_byte_opacity = Some(opacity);
+                let painted = self.paint(
+                    &child,
+                    &paint,
+                    child_matrix,
+                    &child_fill.plane(sample),
+                    &mut targets[sample],
+                    false,
+                    |x, y| {
+                        let parent = clip.map_or(1., |mask| mask.at(sample, x, y));
+                        let group = group_fill.as_ref().map_or(1., |mask| mask.at(sample, x, y));
+                        parent * group
+                    },
+                );
+                self.post_byte_opacity = None;
+                painted?;
             }
             self.sample = None;
             return Ok(());
@@ -4577,7 +4627,12 @@ impl Painter<'_> {
                         if color[3] == 1. {
                             source[3] = 1.;
                         }
-                        let source = source.map(|v| v * alpha);
+                        let source = if let Some(opacity) = self.post_byte_opacity {
+                            let encoded = source.map(crate::figma_sampling::encode_unorm8);
+                            encoded.map(|byte| f32::from(byte) / 255. * opacity * alpha)
+                        } else {
+                            source.map(|v| v * alpha)
+                        };
                         let i = layer.rect.index(x, y).expect("gradient paint");
                         if self.profile.is_software() {
                             layer.pixels[i] =
@@ -5043,6 +5098,53 @@ impl Painter<'_> {
     /// Rectangle leaf whose only visible paint is a partial-opacity measured
     /// linear gradient. Group opacity, software export, and opaque gradients
     /// keep the isolated path.
+    /// Isolating opacity around one opaque measured linear gradient.
+    /// The Chrome phase control quantizes that gradient, then scales the bytes.
+    fn direct_isolated_gradient_opacity(&self, n: &Node) -> bool {
+        if !self.compatible || self.profile != crate::fidelity::RasterProfile::Figma {
+            return false;
+        }
+        if !(n.opacity > 0. && n.opacity < 1.)
+            || n.blend != "normal"
+            || n.mask
+            || n.boolean_operation.is_some()
+            || n.effects.iter().any(|effect| effect.visible)
+            || n.strokes.iter().any(|stroke| stroke.visible && stroke.width > 0.)
+            || n.fills.iter().any(|paint| paint.visible && paint.opacity > 0.)
+        {
+            return false;
+        }
+        let children = n.render_children();
+        if children.len() != 1 {
+            return false;
+        }
+        let child_id = &children[0];
+        let Some(child) = self.doc.nodes.get(child_id) else {
+            return false;
+        };
+        let Some(prepared) = self.prepared.get(child_id) else {
+            return false;
+        };
+        if child.kind != "rectangle"
+            || child.opacity != 1.
+            || child.blend != "normal"
+            || child.mask
+            || child.boolean_operation.is_some()
+            || !child.children.is_empty()
+            || child.effects.iter().any(|effect| effect.visible)
+            || child.strokes.iter().any(|stroke| stroke.visible && stroke.width > 0.)
+        {
+            return false;
+        }
+        let mut visible = child.fills.iter().filter(|paint| paint.visible && paint.opacity > 0.);
+        let Some(paint) = visible.next() else {
+            return false;
+        };
+        visible.next().is_none()
+            && paint.blend == "normal"
+            && paint.opacity == 1.
+            && crate::figma_gradient::supported(paint, prepared.matrix)
+    }
     fn direct_partial_gradient(&self, n: &Node, matrix: Transform) -> bool {
         if !self.compatible || self.profile != crate::fidelity::RasterProfile::Figma {
             return false;
