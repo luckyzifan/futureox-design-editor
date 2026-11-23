@@ -688,6 +688,10 @@ export class WebGpuDriver implements Driver {
   private timingRows: { mode: number; radius: number; width: number; height: number; blend?: number; paint?: number; integerCentres?: boolean; stage?: string; channel?: number }[] = []
   private timingSkipped = 0
   private encoder!: GPUCommandEncoder
+  /** Textures the open command encoder already samples or attaches.
+   * `queue.writeTexture` is not ordered with those commands; a later atlas
+   * slot write has to submit them before it can touch the same page. */
+  private unsubmittedTextures = new Set<GPUTexture>()
   private activeOver?: GPURenderPassEncoder
   private activeTarget?: Texture
   private blank!: Texture
@@ -1997,6 +2001,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
   private abandonByteTentEncoder() {
     this.discardByteTentEncoder(this.encoder)
     this.encoder = this.device.createCommandEncoder()
+    this.unsubmittedTextures?.clear()
     this.offset = 0; this.uploadedOffset = 0
   }
   /** Every current-encoder submit, including finish(), shares lease ownership.
@@ -2018,6 +2023,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
         lease.markSubmitted(); entry.submitted = true
       }
     }
+    this.unsubmittedTextures?.clear()
   }
   private disposeByteTentLeases() {
     for (const lease of this.byteTentLeases?.keys() || []) lease.disposeAfterDeviceLoss()
@@ -2275,6 +2281,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       this.sampleOnlyPrograms.bind(programs.words, programs.offsets, this.scenePrograms!, this.curves, this.resourceEpoch)
     else this.sampleOnlyPrograms.reset()
     this.encoder = this.device.createCommandEncoder()
+    this.unsubmittedTextures?.clear()
     this.byteTentRecordingFailed = false
     this.prefix?.resetCounters(this.encoder)
     this.trackCapacityDemand(vertices.byteLength, this.vertexCapacity, this.vertexShrink, 256)
@@ -2669,8 +2676,11 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     height: number,
     values: Float32Array,
   ) {
-    this.invalidateTextureCertificates(texture)
     if (values.length !== width * height * 4) throw new Error('无效的浮点纹理写入')
+    // A new slot on a page this encoder already samples is unordered with
+    // those draws. Submit them first so the write cannot blank the page.
+    this.flushUnsubmittedTextureWrite(texture)
+    this.invalidateTextureCertificates(texture)
     this.device.queue.writeTexture(
       { texture: texture.resource as GPUTexture, origin: { x, y } },
       values,
@@ -2686,7 +2696,6 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     height: number,
     bytes: Uint8Array,
   ) {
-    this.invalidateTextureCertificates(texture)
     if (this.managed) {
       this.uploadAtlasLinear(
         texture,
@@ -2699,6 +2708,8 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       return
     }
     if (bytes.length !== width * height * 4) throw new Error('无效的 RGBA8 数据纹理写入')
+    this.flushUnsubmittedTextureWrite(texture)
+    this.invalidateTextureCertificates(texture)
     this.device.queue.writeTexture(
       { texture: texture.resource as GPUTexture, origin: { x, y } },
       new Uint8Array(bytes),
@@ -2742,6 +2753,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.drawWork?.clear()
     this.invalidateTextureCertificates(t)
     this.closeOver()
+    this.noteUnsubmittedTexture(t.resource as GPUTexture)
     const pass = this.encoder.beginRenderPass({
       colorAttachments: [
         {
@@ -2819,6 +2831,8 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.invalidateTextureCertificates(target)
     delete target.uniformColor
     delete target.transparentZero
+    this.noteUnsubmittedTexture(source.resource as GPUTexture)
+    this.noteUnsubmittedTexture(target.resource as GPUTexture)
     this.encoder.copyTextureToTexture(
       { texture: from, origin: [sourceRegion.x, sourceRegion.y] },
       { texture: to, origin: targetOrigin },
@@ -2839,6 +2853,8 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       throw Error('Invalid native painter color copy')
     this.closeOver();this.invalidateTextureCertificates(target)
     delete target.uniformColor;delete target.transparentZero
+    this.noteUnsubmittedTexture(from)
+    this.noteUnsubmittedTexture(to)
     this.encoder.copyTextureToTexture({texture:from,origin:[sourceRegion.x,sourceRegion.y]},
       {texture:to,origin:targetOrigin},[sourceRegion.w,sourceRegion.h])
   }
@@ -3219,12 +3235,15 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
         down[16] = density === 2 ? 19 : 0
         const single = target.width <= 512 && target.height <= 512
         this.pass(single ? target : low, down, [high])
-        if (!single)
+        if (!single) {
+          this.noteUnsubmittedTexture(low.resource as GPUTexture)
+          this.noteUnsubmittedTexture(target.resource as GPUTexture)
           this.encoder.copyTextureToTexture(
             { texture: low.resource as GPUTexture },
             { texture: target.resource as GPUTexture, origin: [x, y] },
             [w, h],
           )
+        }
       }
   }
   private bind(u: Float32Array, inputs: Texture[]) {
@@ -3243,6 +3262,8 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     u[255] = 19 // Exact sampler limb count; keep compiler loops bounded.
     const uniform = this.uniform(u), textures = [0, 1, 2, 3].map(i => (routed.inputs[i] || this.blank).resource as GPUTexture)
     const byteResource = byteImage ? byteImage.resource as GPUTexture : undefined
+    for (const resource of textures) this.noteUnsubmittedTexture(resource)
+    this.noteUnsubmittedTexture(byteResource)
     const offset = this.dynamicUniformBindings ? 0 : uniform.offset
     const create = () => this.device.createBindGroup({
       layout: this.layout,
@@ -4204,7 +4225,18 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.timingRows = []
     this.softwareRaster = false
     this.activeTarget = undefined
+    this.unsubmittedTextures?.clear()
     if (recreateEncoder && this.device && !this.lost) this.encoder = this.device.createCommandEncoder()
+  }
+  private noteUnsubmittedTexture(resource: GPUTexture | undefined) {
+    if (resource) this.unsubmittedTextures?.add(resource)
+  }
+  /** Submit reads already recorded against this texture. A fresh page has no
+   * such reads, so row uploads and the first slot stay on `writeTexture`.
+   * Prototype fixtures used by certificate tests have no encoder set. */
+  private flushUnsubmittedTextureWrite(texture: Texture) {
+    const resource = texture.resource as GPUTexture | undefined
+    if (resource && this.unsubmittedTextures?.has(resource)) this.submitCommands()
   }
   /** device.lost handler body: reclaim immediately instead of waiting for the
    * next request to dispose. */
