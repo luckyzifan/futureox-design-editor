@@ -901,6 +901,8 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
         if (hasFigAutomaticLineHeight(r, n.fontSize)) {
           n.textStyle.lineHeightAuto = true
           n.textStyle.lineBoxBaseline = 'figma-font-metrics'
+        } else {
+          n.textStyle.lineBoxBaseline = 'figma-pixel-leading'
         }
       }
       if (r.letterSpacing?.units === 'PIXELS') n.textStyle.letterSpacing = r.letterSpacing.value

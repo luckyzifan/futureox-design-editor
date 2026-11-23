@@ -217,6 +217,7 @@ test('a measured FIG Auto line box survives import without changing literal 100%
   const explicitHeight = { ...layer, derivedTextData: { ...layer.derivedTextData, layoutSize: { x: 69, y: 60 } } }
   expect(subject(explicitHeight).node.textStyle?.lineHeight).toBe(1)
   expect(subject(explicitHeight).node.textStyle?.lineHeightAuto).toBeFalsy()
+  expect(subject(explicitHeight).node.textStyle?.lineBoxBaseline).toBe('figma-pixel-leading')
 })
 
 test.each(['GRADIENT_LINEAR', 'GRADIENT_RADIAL', 'GRADIENT_ANGULAR', 'GRADIENT_DIAMOND'])(
