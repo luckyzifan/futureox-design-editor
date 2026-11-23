@@ -1221,16 +1221,44 @@ impl Network {
                     h.1 = !h.1;
                 }
             }
+            let mut contour = Path::default();
             for (i, h) in walk.iter().enumerate() {
                 emit(&mut stroke, h.0, h.1, i == 0);
+                emit(&mut contour, h.0, h.1, i == 0);
             }
             if closed {
                 stroke.commands.push(Command::Close);
+            } else if contour_meets_itself(&contour) {
+                // Sketch stores some filled outlines with isClosed false and a
+                // repeated final anchor. The chain is not a graph cycle, so the
+                // face walk emits no fill, but the outline still encloses ink.
+                contour.commands.push(Command::Close);
+                fill.commands.extend(contour.commands);
             }
         }
         Ok((fill, stroke))
     }
 }
+
+fn contour_meets_itself(path: &Path) -> bool {
+    let mut start = None;
+    let mut end = None;
+    for command in &path.commands {
+        match *command {
+            Command::Move(point) => {
+                start = Some(point);
+                end = Some(point);
+            }
+            Command::Line(point) | Command::Quad(_, point) | Command::Cubic(_, _, point) => {
+                end = Some(point);
+            }
+            Command::Close | Command::Arc { .. } | Command::SmoothCorner(_) => {}
+        }
+    }
+    start.zip(end).is_some_and(|(start, end)| (start - end).length() <= 1e-6)
+        && path.commands.len() > 2
+}
+
 impl Node {
     pub fn paths(&self) -> Result<(Path, Path), String> {
         if let Some(brush) = &self.vector_brush {
