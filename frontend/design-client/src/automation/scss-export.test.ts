@@ -2,29 +2,74 @@ import { describe, expect, it } from 'vitest'
 import { stampKeys, insertInstance } from '../components'
 import { emptySystem } from '../design-system'
 import { Editor } from '../engine'
-import { blank, defaultTextStyle, effect, node, paint, stroke, type DesignDocument } from '../model'
+import { blank, defaultLayout, defaultTextStyle, effect, node, paint, stroke, type DesignDocument } from '../model'
 import { createDesignAutomation } from './core'
 import { exportDesignCode, exportExtensions, type CodeExportOptions } from './export'
 
-function compileScssSubset(scss: string): string {
-  const vars = new Map<string, string>()
-  const body: string[] = []
-  for (const line of scss.split('\n')) {
-    const declaration = line.match(/^\$([A-Za-z_][A-Za-z0-9_-]*): (.+);$/)
-    if (declaration && body.length === 0) {
-      const value = declaration[2].replaceAll(/\$([A-Za-z_][A-Za-z0-9_-]*)/g, (_match, name: string) => {
-        const resolved = vars.get(name)
-        if (resolved === undefined) throw new Error(`Undefined Sass variable $${name}`)
-        return resolved
-      })
-      vars.set(declaration[1], value)
-    } else body.push(line)
-  }
-  return body.join('\n').replaceAll(/\$([A-Za-z_][A-Za-z0-9_-]*)/g, (_match, name: string) => {
+function resolveExpr(text: string, vars: Map<string, string>): string {
+  const lookup = (name: string) => {
     const resolved = vars.get(name)
     if (resolved === undefined) throw new Error(`Undefined Sass variable $${name}`)
     return resolved
-  })
+  }
+  const interpolated = text
+    .replaceAll(/#\{\$([A-Za-z_][A-Za-z0-9_-]*) \* 100%\}/g, (_match, name: string) => {
+      const value = Number(lookup(name))
+      if (!Number.isFinite(value)) throw new Error(`Sass number expected for $${name}`)
+      return String(Math.round(value * 100 * 1e6) / 1e6) + '%'
+    })
+    .replaceAll(/#\{\$([A-Za-z_][A-Za-z0-9_-]*)\}/g, (_match, name: string) => lookup(name))
+  return interpolated.replaceAll(/\$([A-Za-z_][A-Za-z0-9_-]*)/g, (_match, name: string) => lookup(name))
+    .replaceAll(/calc\((-?[0-9.]+)px \/ 2\)/g, (_match, width: string) => String(Number(width) / 2) + 'px')
+}
+
+function splitDepth0(body: string): string[] {
+  const parts: string[] = []
+  let start = 0, depth = 0
+  for (let i = 0; i < body.length; i++) {
+    const char = body[i]
+    if (char === '{') depth++
+    else if (char === '}') depth--
+    else if (char === ';' && depth === 0) {
+      parts.push(body.slice(start, i))
+      start = i + 1
+    }
+  }
+  if (start < body.length) parts.push(body.slice(start))
+  return parts.map(part => part.trim()).filter(Boolean)
+}
+
+/** Expand the Sass subset this exporter emits: variables, mixins, and @at-root. */
+function compileScssSubset(scss: string): string {
+  const vars = new Map<string, string>()
+  const mixins = new Map<string, string>()
+  const expandRule = (rule: string): string[] => {
+    const open = rule.indexOf('{')
+    if (open < 0 || !rule.endsWith('}')) throw new Error(`Bad rule: ${rule.slice(0, 80)}`)
+    const selector = rule.slice(0, open)
+    const own: string[] = []
+    const lifted: string[] = []
+    for (const part of splitDepth0(rule.slice(open + 1, -1))) {
+      if (part.startsWith('@at-root ')) lifted.push(...expandRule(part.slice('@at-root '.length)))
+      else if (part.startsWith('@include ')) {
+        const name = part.slice('@include '.length).trim()
+        const body = mixins.get(name)
+        if (body === undefined) throw new Error(`Missing mixin ${name}`)
+        for (const decl of splitDepth0(body)) own.push(resolveExpr(decl, vars))
+      } else own.push(resolveExpr(part, vars))
+    }
+    return [`${selector}{${own.join(';')}}`, ...lifted]
+  }
+  const rules: string[] = []
+  for (const line of scss.split('\n')) {
+    if (!line) continue
+    const declaration = line.match(/^\$([A-Za-z_][A-Za-z0-9_-]*): (.+);$/)
+    const mixin = line.match(/^@mixin ([A-Za-z_][A-Za-z0-9_-]*)\{(.*)\}$/)
+    if (declaration) vars.set(declaration[1], resolveExpr(declaration[2], vars))
+    else if (mixin) mixins.set(mixin[1], mixin[2])
+    else rules.push(...expandRule(line))
+  }
+  return `${rules.join('\n')}\n`
 }
 
 function themed(modes = ['light'], active = 'light') {
@@ -100,7 +145,9 @@ describe('selection SCSS color variables', () => {
     expect(rule).toContain('border:2px solid #222222')
     expect(rule).toContain('outline:2px solid #222222')
     expect(rule).not.toContain('solid $Accent')
-    expect(selected.warnings).toContainEqual(expect.objectContaining({ code: 'SCSS_INACTIVE_MODES_OMITTED' }))
+    expect(selected.scss).toContain('$Colors-Brand-day: #111111;')
+    expect(selected.scss).toContain('$Accent-day: $Colors-Brand-day;')
+    expect(selected.warnings.some(warning => warning.code === 'SCSS_INACTIVE_MODES_OMITTED')).toBe(false)
     expect(selected.warnings.some(warning => warning.code === 'SCSS_NESTING_OMITTED')).toBe(false)
     expectCompiles(selected)
 
@@ -159,12 +206,13 @@ describe('selection SCSS color variables', () => {
     expectCompiles(instance)
   })
 
-  it('reports the SCSS mappings it does not emit', () => {
+  it('emits numbers, booleans, shared styles, nesting and unused modes that compile to the same css', () => {
     const { document, system } = themed(['light', 'dark'])
     system.variables.brand = { name: 'Brand', kind: 'color', collection: 'theme', values: { light: '#123456', dark: '#654321' } }
     system.variables.size = { name: 'Size', kind: 'number', collection: 'theme', values: { light: 22, dark: 30 } }
     system.variables.show = { name: 'Show', kind: 'boolean', collection: 'theme', values: { light: false, dark: true } }
     system.variables.label = { name: 'Label', kind: 'string', collection: 'theme', values: { light: '$Injected: red;', dark: 'Dark' } }
+    system.variables.paragraph = { name: 'Paragraph', kind: 'number', collection: 'theme', values: { light: 8, dark: 12 } }
     system.styles.heading = { name: 'Heading', kind: 'text', value: { ...defaultTextStyle(), weight: 700 } }
     system.styles.card = { name: 'Card', kind: 'paint', value: [paint('#abcdef')] }
     system.styles.shadow = { name: 'Card Shadow', kind: 'effect', value: [effect('shadow')] }
@@ -172,7 +220,7 @@ describe('selection SCSS color variables', () => {
     const text = node('text', 8, 8, 80, 24)
     text.text = 'Before'
     text.fills = [paint('#ffffff')]
-    text.bindings = { 'fills.0.color': 'brand', fontSize: 'size', text: 'label' }
+    text.bindings = { 'fills.0.color': 'brand', fontSize: 'size', text: 'label', 'textStyle.paragraphSpacing': 'paragraph' }
     text.styleRefs = { textStyle: 'heading' }
     const box = node('rectangle', 8, 40, 40, 20)
     box.fills = [paint('#000000')]
@@ -182,29 +230,108 @@ describe('selection SCSS color variables', () => {
     document.nodes[text.id] = text
     document.nodes[box.id] = box
     frame.children = [text.id, box.id]
+    const plain = exportDesignCode(document)
     const result = exportDesignCode(document, { syntax: 'scss' })
+    expect(result.css).toBe(plain.css)
+    expect(result.html).toBe(plain.html)
     expect(result.css).toContain('font-size:22px')
     expect(result.css).toContain('font-weight:700')
     expect(result.css).toContain('#abcdef')
     expect(result.css).toContain('box-shadow:')
     expect(result.css).toContain('display:none')
+    expect(result.css).not.toContain('#654321')
     expect(result.html).toContain('$Injected: red;')
     expect(result.scss).toContain('$Brand: #123456;')
-    expect(result.scss).not.toContain('$Size')
-    expect(result.scss).not.toContain('$Show')
+    expect(result.scss).toContain('$Brand-dark: #654321;')
+    expect(result.scss).toContain('$Size: 22;')
+    expect(result.scss).toContain('$Size-dark: 30;')
+    expect(result.scss).toContain('font-size:#{$Size}px')
+    expect(result.scss).not.toContain('$Size: 22px')
+    expect(result.scss).toContain('$Show: false;')
+    expect(result.scss).toContain('$Show-dark: true;')
+    expect(result.scss).toContain('$Card: #abcdef;')
+    expect(result.scss).toContain('linear-gradient($Card,$Card)')
+    expect(result.scss).toContain('@mixin Heading{')
+    expect(result.scss).toContain('font-weight:700')
+    expect(result.scss).toContain('@include Heading')
+    expect(result.scss).toContain('@mixin Card-Shadow{')
+    expect(result.scss).toContain('@include Card-Shadow')
+    expect(result.scss).toContain(`@at-root ${result.nodeIdMap[text.id].selector}{`)
+    expect(result.scss).toContain(`@at-root ${result.nodeIdMap[box.id].selector}{`)
     expect(result.scss).not.toContain('$Injected')
-    expect(result.scss).not.toContain('$Heading')
-    expect(result.scss).not.toContain('$Card')
-    expect(result.scss).not.toContain('@mixin')
-    expect(result.scss).not.toContain('@include')
-    const textRule = result.scss!.split('\n').find(line => line.startsWith(`${result.nodeIdMap[text.id].selector}{`))
-    expect(textRule).toBeTruthy()
-    expect(result.scss!.split('\n').find(line => line.startsWith(`${result.nodeIdMap[frame.id].selector}{`))).not.toContain(result.nodeIdMap[text.id].selector)
+    expect(result.scss).not.toContain('$Paragraph')
+    expect(result.scss).not.toContain('$Label')
+    expect(result.scss).not.toContain('@if')
+    expect(result.scss).not.toContain(`${result.nodeIdMap[frame.id].selector} ${result.nodeIdMap[text.id].selector}`)
     for (const code of ['SCSS_NUMBER_BINDINGS_OMITTED', 'SCSS_BOOLEAN_BINDINGS_OMITTED', 'SCSS_TEXT_STYLE_OMITTED', 'SCSS_EFFECT_STYLE_OMITTED', 'SCSS_PAINT_STYLE_OMITTED', 'SCSS_NESTING_OMITTED', 'SCSS_INACTIVE_MODES_OMITTED'])
-      expect(result.warnings).toContainEqual(expect.objectContaining({ code }))
+      expect(result.warnings.some(warning => warning.code === code)).toBe(false)
     expect(result.warnings.some(warning => warning.code.includes('STRING'))).toBe(false)
     expectCompiles(result)
     expect(() => exportDesignCode(document, { syntax: 'less' } as unknown as CodeExportOptions)).toThrow(/syntax/)
+  })
+
+  it('keeps one unitless number across px and unitless uses, and does not collapse a gradient style', () => {
+    const { document, system } = themed(['light', 'dark'])
+    system.variables.one = { name: 'One', kind: 'number', collection: 'theme', values: { light: 1, dark: 2 } }
+    system.variables.fade = { name: 'Fade', kind: 'number', collection: 'theme', values: { light: 0.5, dark: 0.25 } }
+    system.variables.border = { name: 'Border', kind: 'number', collection: 'theme', values: { light: 3, dark: 6 } }
+    system.variables.radius = { name: 'Radius', kind: 'number', collection: 'theme', values: { light: 6, dark: 1 } }
+    system.variables.gap = { name: 'Gap', kind: 'number', collection: 'theme', values: { light: 12, dark: 20 } }
+    system.variables.pad = { name: 'Pad', kind: 'number', collection: 'theme', values: { light: 8, dark: 10 } }
+    system.variables.weight = { name: 'Weight', kind: 'number', collection: 'theme', values: { light: 500, dark: 700 } }
+    system.variables.leading = { name: 'Leading', kind: 'number', collection: 'theme', values: { light: 1.2, dark: 1.5 } }
+    system.variables.track = { name: 'Track', kind: 'number', collection: 'theme', values: { light: 1, dark: 2 } }
+    system.styles.heading = { name: 'Heading;}@mixin x{color:red', kind: 'text', value: { ...defaultTextStyle(), weight: 400 } }
+    const gradient = paint('#ff0000', 'linear')
+    gradient.stops = [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#00ff00' }]
+    system.styles.wash = { name: 'Wash', kind: 'paint', value: [gradient] }
+    const frame = add(document, node('frame', 0, 0, 200, 120))
+    frame.layout = { ...defaultLayout(), gap: 12, lineGap: 4, padding: [8, 8, 8, 8] }
+    frame.bindings = { 'layout.gap': 'gap', 'layout.padding.0': 'pad' }
+    const text = node('text', 8, 8, 80, 24)
+    text.text = 'Size'
+    text.opacity = 1
+    text.fontSize = 1
+    text.fills = [paint('#111111')]
+    text.fills[0].opacity = 0.5
+    text.strokes = [stroke('#112233', 3)]
+    text.radii = [6, 0, 0, 0]
+    text.bindings = {
+      opacity: 'one', fontSize: 'one', 'fills.0.opacity': 'fade', 'strokes.0.width': 'border', 'radii.0': 'radius',
+      'textStyle.weight': 'weight', 'textStyle.lineHeight': 'leading', 'textStyle.letterSpacing': 'track',
+    }
+    text.styleRefs = { textStyle: 'heading' }
+    const swatch = node('rectangle', 8, 40, 40, 20)
+    swatch.fills = [paint('#000000')]
+    swatch.styleRefs = { fills: 'wash' }
+    document.nodes[text.id] = text
+    document.nodes[swatch.id] = swatch
+    frame.children = [text.id, swatch.id]
+    const plain = exportDesignCode(document)
+    const result = exportDesignCode(document, { syntax: 'scss' })
+    expect(result.css).toBe(plain.css)
+    expect(result.scss).toContain('$One: 1;')
+    expect(result.scss).not.toContain('$One: 1px')
+    expect(result.scss).toContain('opacity:$One')
+    expect(result.scss).toContain('font-size:#{$One}px')
+    expect(result.scss).toContain('$Fade: 0.5;')
+    expect(result.scss).toContain('#{$Fade * 100%}')
+    expect(result.css).toContain('border:1.5px solid #112233;outline:1.5px solid #112233')
+    expect(result.scss).toContain('border:calc(#{$Border}px / 2) solid #112233;outline:calc(#{$Border}px / 2) solid #112233')
+    expect(result.scss).toContain('border-radius:#{$Radius}px')
+    expect(result.scss).toContain('padding:#{$Pad}px')
+    expect(result.scss).toContain('#{$Gap}px')
+    expect(result.scss).toContain('font-weight:$Weight')
+    expect(result.scss).toContain('line-height:$Leading')
+    expect(result.scss).toContain('letter-spacing:#{$Track}px')
+    expect(result.scss).toContain('@include')
+    expect(result.scss).not.toContain('@mixin x')
+    expect(result.scss).not.toContain('color:red')
+    expect(result.scss).not.toContain('$Wash:')
+    expect(result.css).toContain('linear-gradient')
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'SCSS_PAINT_STYLE_OMITTED' }))
+    expect(result.scss).not.toContain('@if')
+    expectCompiles(result)
   })
 
   it('accepts syntax scss through the operation schema and rejects other syntaxes', () => {

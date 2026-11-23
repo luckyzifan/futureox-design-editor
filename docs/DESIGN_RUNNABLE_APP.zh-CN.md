@@ -2,7 +2,7 @@
 
 ## 实际能力与边界
 
-新增只读共享操作 `app.export`，对应 MCP 工具 `design_app_export`。它把**真实设计节点**与调用方显式提供的、版本化声明式行为配置编译成可以离线打开的 HTML/CSS/JavaScript 应用。现有 `code.export` 默认仍只输出静态 HTML/CSS，其 `script-src 'none'` 未放宽。显式 `syntax: "scss"` 额外返回选区填充色绑定的 Sass 变量，不改变 `css` 字段。
+新增只读共享操作 `app.export`，对应 MCP 工具 `design_app_export`。它把**真实设计节点**与调用方显式提供的、版本化声明式行为配置编译成可以离线打开的 HTML/CSS/JavaScript 应用。现有 `code.export` 默认仍只输出静态 HTML/CSS，其 `script-src 'none'` 未放宽。显式 `syntax: "scss"` 额外返回可编译回同一 `css` 的选区 Sass：绑定的颜色、数值和布尔变量、这些变量未使用的模式、纯色填充变量、文字与效果 mixin，以及不改变 id 选择器的 `@at-root` 嵌套。`css` 字段保持扁平样式表。
 
 可执行内容包括：
 
