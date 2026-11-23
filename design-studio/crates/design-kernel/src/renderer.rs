@@ -2342,7 +2342,12 @@ impl Engine {
             sketch_reduced_group,
             clipped_export_target: clipped_export_target.is_some(),
             png_region: self.rendering_png_region,
-            flush_backdrop_frame: (self.rendering_png_region && options.raster_profile.is_export() && compatible)
+            // PNG export already samples the flush frame's outside tap. The
+            // Figma profile's direct render used the clamped capture and kept
+            // that edge at alpha 255. Software export stays on its PNG gate.
+            flush_backdrop_frame: (compatible
+                && (options.raster_profile == crate::fidelity::RasterProfile::Figma
+                    || (self.rendering_png_region && options.raster_profile.is_export())))
                 .then(|| match page.children.as_slice() {
                     [id] => doc.nodes.get(id).filter(|n| n.kind == "frame" && !n.clip && !n.mask
                         && n.visible && n.opacity == 1. && n.blend == "normal"
@@ -3800,10 +3805,11 @@ impl Painter<'_> {
                                         && (bounds.height - frame.height).abs() <= 1e-8
                                 })
                         });
-                        // Native exports show a blurred edge tail and a separate
-                        // contribution at the last capture texel. The insets and
-                        // interpolation weights were fitted on the 2x lattice
-                        // against both Figma blur radii.
+                        // Native exports show a blurred edge tail. The right inset and
+                        // 1/64 mix are the 2x fit for both radii. The bottom guard is
+                        // 15/16 inside the edge and the last row mixes 3/256 of the
+                        // outside sample. 13/16 plus 7/256 left three radius-12 pixels
+                        // at alpha 248, one code under the measured floor of 249.
                         let bottom = origin.y + f64::from(capture.h);
                         let right_edge = dither_frame.and(flush).map(|_| right);
                         let bottom_edge = dither_frame
@@ -3817,7 +3823,7 @@ impl Painter<'_> {
                             )
                         }).transpose()?;
                         let bottom_guard = bottom_edge.map(|edge| {
-                            let y = edge - 13. / 16.;
+                            let y = edge - 15. / 16.;
                             let row = self.resolve_backdrop(Rect::new(0, 0, capture.w, 1),
                                 Point::new(origin.x, y), backdrop_inputs, None)?;
                             let corner = right_edge.map(|x| self.resolve_backdrop(Rect::new(0, 0, 1, 1),
@@ -3845,7 +3851,7 @@ impl Painter<'_> {
                                 for (pixel, sample) in filtered.pixels.rchunks_exact_mut(width).next()
                                     .expect("backdrop bottom row").iter_mut().zip(outside.pixels.iter())
                                 {
-                                    *pixel = pixel.interpolate(*sample, 7. / 256., true);
+                                    *pixel = pixel.interpolate(*sample, 3. / 256., true);
                                 }
                             }
                             // The complete frame and its crops share one 2x
