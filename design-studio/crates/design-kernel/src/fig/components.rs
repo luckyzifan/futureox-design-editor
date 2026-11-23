@@ -1,5 +1,5 @@
 //! Resolve native component GUIDs only after the complete template tree exists.
-use super::{Error, FigImporter, bool_of, f64_of, guid_string, str_of};
+use super::{Error, FigImporter, authored_miter_limit, bool_of, f64_of, guid_string, str_of};
 use crate::components::{Component, Instance, Overrides, Property, PropertyKind};
 use crate::math::Transform;
 use crate::scene::{Document, Node, Stroke};
@@ -158,6 +158,7 @@ const STROKE_INPUTS: &[&str] = &[
     "strokeAlign",
     "strokeCap",
     "strokeJoin",
+    "miterLimit",
     "dashPattern",
     "borderStrokeWeightsIndependent",
     "borderTopWeight",
@@ -752,6 +753,14 @@ fn apply_stroke_attrs(stroke: &mut Stroke, ov: &Value, unsupported: &mut BTreeSe
             }
         }
     }
+    if let Some(value) = ov.get("miterLimit") {
+        match authored_miter_limit(Some(value)) {
+            Ok(limit) => stroke.miter_limit = limit,
+            Err(note) => {
+                unsupported.insert(note);
+            }
+        }
+    }
 }
 
 fn strokes_from_paints(
@@ -792,6 +801,13 @@ fn strokes_from_paints(
     if ov.get("dashPattern").is_some() && dash_pattern(&ov["dashPattern"]).is_none() {
         unsupported.insert("dashPattern".into());
     }
+    let miter_limit = match authored_miter_limit(ov.get("miterLimit")) {
+        Ok(limit) => limit,
+        Err(note) => {
+            unsupported.insert(note);
+            4.
+        }
+    };
     let mut notes = Vec::new();
     let mut strokes = Vec::new();
     for paint in ov
@@ -810,6 +826,7 @@ fn strokes_from_paints(
                 align: align.into(),
                 cap: cap.0.into(),
                 join: join.into(),
+                miter_limit,
                 dash: dash.clone(),
                 dash_offset: 0.,
                 center_dashes: false,

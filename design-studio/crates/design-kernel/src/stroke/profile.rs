@@ -20,6 +20,8 @@ pub fn validate(s: &Stroke) -> Result<(), String> {
         || !["center", "inside", "outside"].contains(&s.align.as_str())
         || !["butt", "round", "square"].contains(&s.cap.as_str())
         || !["miter", "round", "bevel"].contains(&s.join.as_str())
+        || !s.miter_limit.is_finite()
+        || !(1. ..=MITER_LIMIT_MAX).contains(&s.miter_limit)
     {
         return Err("Invalid stroke parameters".into());
     }
@@ -93,6 +95,28 @@ fn validate_seam(ps: &[WidthPoint]) -> Result<(), String> {
         return Err("Closed stroke profile must have matching widths at 0 and 1".into());
     }
     Ok(())
+}
+
+/// FIG and SVG both use 4 when the file omits a miter limit.
+pub const MITER_LIMIT_MAX: f64 = 1000.;
+
+pub fn default_miter_limit() -> f64 {
+    4.
+}
+
+pub fn is_default_miter_limit(value: &f64) -> bool {
+    *value == 4.
+}
+
+/// Scale applied to [`maximum_width`] for bounds padding. Values at or below
+/// the historical cap of 4 keep that exact factor so existing culling stays
+/// bit-identical. A sharper authored miter needs the extra reach.
+pub fn allowance_scale(s: &Stroke) -> f64 {
+    if s.join == "miter" && s.miter_limit > 4. {
+        s.miter_limit
+    } else {
+        4.
+    }
 }
 
 pub fn maximum_width(s: &Stroke) -> f64 {
@@ -372,6 +396,7 @@ fn expand_geometry(
             width + dilation * 2.,
             &s.cap,
             &s.join,
+            s.miter_limit,
             tolerance,
             &mut budget.output,
         );
@@ -762,7 +787,7 @@ fn emit(
                 let cross = da.cross(db);
                 if cross.abs() > 1e-12 {
                     let m = left + da * ((right - left).cross(db) / cross);
-                    if m.finite() && (m - p.p).length() <= r * 4. {
+                    if m.finite() && (m - p.p).length() <= r * s.miter_limit {
                         poly.push(m);
                     }
                 }

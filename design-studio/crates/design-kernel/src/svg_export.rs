@@ -309,6 +309,9 @@ impl Writer {
             _ => "round",
         };
         let _ = write!(out, " stroke-linecap=\"{cap}\" stroke-linejoin=\"{join}\"");
+        if join == "miter" && stroke.miter_limit != 4. {
+            let _ = write!(out, " stroke-miterlimit=\"{}\"", g6(stroke.miter_limit));
+        }
         if !stroke.dash.trim().is_empty() {
             let _ = write!(out, " stroke-dasharray=\"{}\"", stroke.dash);
         }

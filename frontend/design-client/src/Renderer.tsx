@@ -269,7 +269,7 @@ const Surface = React.memo(function Surface({ n, fonts, textMode }: { n: DesignN
                 strokeWidth: s.width * (s.align === 'center' ? 1 : 2),
                 strokeLinecap: s.cap,
                 strokeLinejoin: s.join,
-                strokeMiterlimit: 4,
+                strokeMiterlimit: s.miterLimit ?? 4,
                 strokeDasharray: s.dash || undefined,
                 strokeDashoffset: s.dashOffset || undefined,
                 clipPath: s.align === 'inside' ? `url(#clip-${n.id})` : undefined,

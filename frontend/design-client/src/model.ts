@@ -125,6 +125,8 @@ export type Stroke = {
   align: 'inside' | 'center' | 'outside'
   cap: 'butt' | 'round' | 'square'
   join: 'miter' | 'round' | 'bevel'
+  /** FIG/SVG miter limit. Absent means 4, the historical renderer cap. */
+  miterLimit?: number
   dash: string
   dashOffset?: number
   /** Sketch borderOptions.centerDashes. Gaps change so each sharp corner sits on a dash center. */

@@ -189,7 +189,7 @@ impl Planner<'_> {
                     .strokes
                     .iter()
                     .filter(|s| s.visible)
-                    .map(|s| crate::stroke::maximum_width(s) * 4. * m.max_scale())
+                    .map(|s| crate::stroke::maximum_width(s) * crate::stroke::allowance_scale(s) * m.max_scale())
                     .fold(0., f64::max))
                 .ceil() as i32
                     + 4;

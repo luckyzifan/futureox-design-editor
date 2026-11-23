@@ -141,7 +141,7 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
         if let Some(bounds) = crate::geometry_support::leaf_control_bounds(n,matrix) {
             let halo = n.effect_outset(scale);
             let stroke = n.strokes.iter().filter(|s|s.visible)
-                .map(|s|stroke::maximum_width(s)*4.*scale).fold(0.,f64::max);
+                .map(|s|stroke::maximum_width(s)*stroke::allowance_scale(s)*scale).fold(0.,f64::max);
             if halo.is_finite() && halo.ceil() <= 16_000_000. && stroke.is_finite() {
                 let padding=(halo.ceil() as i32).saturating_add(stroke.ceil() as i32).saturating_add(2);
                 if bounds.expand(padding).intersect(guard).empty() {
@@ -162,7 +162,7 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
     {
         if let Some(bounds) = crate::geometry_support::primitive_device_box(n, matrix) {
             let stroke = n.strokes.iter().filter(|s| s.visible)
-                .map(|s| stroke::maximum_width(s) * 4. * scale).fold(0., f64::max);
+                .map(|s| stroke::maximum_width(s) * stroke::allowance_scale(s) * scale).fold(0., f64::max);
             if stroke.is_finite() {
                 let padding = (stroke.ceil() as i32).saturating_add(2);
                 // Descendant effects can extend past the clip by their own
@@ -188,7 +188,7 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
     {
         let (fill, stroke_path) = n.paths()?;
         let padding = (n.strokes.iter().filter(|s| s.visible)
-            .map(|s| stroke::maximum_width(s) * 4. * scale).fold(0., f64::max)).ceil() as i32;
+            .map(|s| stroke::maximum_width(s) * stroke::allowance_scale(s) * scale).fold(0., f64::max)).ceil() as i32;
         let bound = fill.control_bounds(matrix).union(stroke_path.control_bounds(matrix))
             .expand(padding.saturating_add(2));
         if bound.intersect(guard).empty() {
@@ -224,7 +224,7 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
             n.strokes
                 .iter()
                 .filter(|s| s.visible)
-                .map(|s| stroke::maximum_width(s) * 4. * scale)
+                .map(|s| stroke::maximum_width(s) * stroke::allowance_scale(s) * scale)
                 .fold(0., f64::max)
                 .ceil() as i32,
         )

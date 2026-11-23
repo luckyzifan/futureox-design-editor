@@ -1587,6 +1587,7 @@ impl<'a> Importer<'a> {
                 .into(),
                 cap: cap.into(),
                 join: join.into(),
+                miter_limit: 4.,
                 dash: dash.clone(),
                 dash_offset: 0.,
                 center_dashes: sketch_center_dashes(options),
