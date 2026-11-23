@@ -131,6 +131,30 @@ impl WorldSupport {
         // HashMap capacity stays resident. Keep the original conservative
         // charge (including removed key bytes) until this owner is retired.
     }
+    /// A pure translation moves a node and every descendant. Drop those
+    /// certificates and the ancestor unions. Untouched siblings keep the
+    /// bounds built for this page, so the next camera does not walk them
+    /// again. Missing entries are unknown and are prepared, never drawn from
+    /// the pre-move position.
+    pub(crate) fn invalidate_rigid_translation<'a>(
+        &mut self,
+        doc: &Document,
+        ids: impl Iterator<Item = &'a String>,
+        parents: &impl crate::render_index::ParentLookup,
+    ) {
+        for id in ids {
+            let mut stack = vec![id.clone()];
+            while let Some(current) = stack.pop() {
+                self.entries.remove(&current);
+                if let Some(node) = doc.nodes.get(&current) {
+                    stack.extend(node.children.iter().cloned());
+                }
+            }
+            parents.for_each_ancestor(id, |ancestor| {
+                self.entries.remove(ancestor);
+            });
+        }
+    }
     /// Remember a declined optional allocation for this exact revision/page.
     /// A new camera must not rebuild the same over-budget index on every tile.
     pub(crate) fn disabled()->Self{Self{entries:HashMap::new(),bytes:0}}
@@ -355,6 +379,56 @@ mod tests {
             let mut fresh=crate::Engine::new();fresh.load_document(&serde_json::to_string(&d).unwrap()).unwrap();
             assert_eq!(serde_json::to_value(actual.compile_gpu(&options).unwrap()).unwrap(),serde_json::to_value(fresh.compile_gpu(&options).unwrap()).unwrap());
         }
+    }
+    #[test]
+    fn rigid_parent_translation_keeps_sibling_certificates_and_matches_a_fresh_packet() {
+        let mut document = json!({"schemaVersion":5,"id":"pace","name":"pace",
+            "pages":[{"id":"p","name":"p","background":"#f4f5f7","children":["frame","sibling"]}],
+            "nodes":{
+                "frame":{"id":"frame","kind":"frame","width":80,"height":70,"clip":true,
+                    "transform":[1,0,0,1,12.5,8.25],"children":["child"],
+                    "fills":[{"kind":"solid","color":"#ffffff"}],
+                    "effects":[{"kind":"shadow","radius":3,"x":2,"y":1,"color":"#000000","opacity":0.4}]},
+                "child":{"id":"child","kind":"rectangle","width":18,"height":14,
+                    "transform":[1,0,0,1,6,5],"fills":[{"kind":"solid","color":"#2468ce"}],
+                    "strokes":[{"width":1,"paint":{"kind":"solid","color":"#142536"}}]},
+                "sibling":{"id":"sibling","kind":"ellipse","width":16,"height":16,
+                    "transform":[1,0,0,1,4000,20],"fills":[{"kind":"solid","color":"#d04a38"}]}
+            }});
+        let mut engine = crate::Engine::new();
+        engine.load_document(&document.to_string()).unwrap();
+        let options: crate::RenderOptions = serde_json::from_value(json!({"pageId":"p","width":96,"height":64,
+            "view":{"x":0.25,"y":0.5,"zoom":1.5},"rasterProfile":"figmaSubpixel"})).unwrap();
+        let _ = engine.compile_gpu(&options).unwrap();
+        let before = engine.world_support.as_ref().unwrap();
+        assert!(before.index.entries.contains_key("sibling"));
+        assert!(before.index.entries.contains_key("frame"));
+        assert!(before.index.entries.contains_key("child"));
+        let moved = Transform([1., 0., 0., 1., 28.5, 14.25]);
+        assert!(engine.apply_interaction_transforms(&[("frame".into(), moved)].into()).unwrap());
+        let after = engine.world_support.as_ref().unwrap();
+        assert_eq!(after.revision, engine.geo_revision);
+        assert!(after.index.entries.contains_key("sibling"), "untouched geometry must stay certified");
+        assert!(!after.index.entries.contains_key("frame"));
+        assert!(!after.index.entries.contains_key("child"));
+        document["nodes"]["frame"]["transform"] = json!(moved);
+        let mut fresh = crate::Engine::new();
+        fresh.load_document(&document.to_string()).unwrap();
+        assert_eq!(
+            serde_json::to_value(engine.compile_gpu(&options).unwrap()).unwrap(),
+            serde_json::to_value(fresh.compile_gpu(&options).unwrap()).unwrap()
+        );
+        // A second sample must not resurrect the moved subtree from the stale certificate.
+        let again = Transform([1., 0., 0., 1., 40.5, 18.25]);
+        assert!(engine.apply_interaction_transforms(&[("frame".into(), again)].into()).unwrap());
+        assert!(engine.world_support.as_ref().unwrap().index.entries.contains_key("sibling"));
+        assert!(!engine.world_support.as_ref().unwrap().index.entries.contains_key("child"));
+        document["nodes"]["frame"]["transform"] = json!(again);
+        fresh.load_document(&document.to_string()).unwrap();
+        assert_eq!(
+            serde_json::to_value(engine.compile_gpu(&options).unwrap()).unwrap(),
+            serde_json::to_value(fresh.compile_gpu(&options).unwrap()).unwrap()
+        );
     }
     #[test]
     fn chained_backdrop_compilation_matches_unculled_reference(){
