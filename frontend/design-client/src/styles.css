@@ -2649,6 +2649,22 @@ html[data-reduced-motion=true] .animation-modal * {
   flex: none;
   border-top: 1px solid var(--workspace-border);
 }
+/* Sketch 2025.1.3 AX search field is 29pt. The shared 7px input padding made this box 33.94px. */
+.editor-shell[data-ui-mode="sketch"] .sketch-layer-search {
+  height: 29px;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+.editor-shell[data-ui-mode="sketch"] .sketch-layer-search .layer-search {
+  height: 29px;
+  padding: 0 7px;
+  box-sizing: border-box;
+}
+.editor-shell[data-ui-mode="sketch"] .sketch-layer-search .layer-search input {
+  height: 27px;
+  padding: 0 4px;
+  box-sizing: border-box;
+}
 .sketch-layer-search .layer-search { flex: 1; min-width: 0; margin: 0; }
 .sketch-layer-search button {
   display: grid; place-items: center; flex: none; width: 26px; height: 26px;
