@@ -47,7 +47,7 @@ import {
   type RenderPolicy,
 } from './render-policy'
 import type { GpuRenderer } from './gpu/renderer'
-import { decodeScenePacket, scenePacketWitness, CompiledScenePacket, type ScenePacket } from './gpu/scene-packet'
+import { decodeScenePacket, scenePacketTransport, scenePacketWitness, CompiledScenePacket, type ScenePacket } from './gpu/scene-packet'
 import type {CompilationWitness} from './compilation-witness'
 import type { ColorSettings } from '../color'
 import { intersect, type BackendPreference, type Driver, type GpuScene, type Rect } from './gpu/types'
@@ -201,13 +201,9 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
         if (result instanceof CompiledScenePacket) {
           const scene=result.scene
           packet={...result.transport,width:scene.extent.w,height:scene.extent.h,count:Object.keys(scene.nodes).length}
-        } else if (result instanceof Uint8Array && result.byteLength >= 24) {
-          const header = new DataView(result.buffer, result.byteOffset, result.byteLength)
-          if (header.getUint32(0, true) === 0x43534746 && header.getUint32(4, true)===1)
-            packet = { scenePacketProtocol: 2, scenePacketVersion: header.getUint32(4, true), scenePacketBytes: result.byteLength,
-              scenePacketMetadataBytes: header.getUint32(8, true), scenePacketResourceBytes: header.getUint32(20, true) }
+        } else if (result instanceof Uint8Array && result.byteLength >= 8) {
           const scene=decodeScenePacket(result)
-          packet={...packet,width:scene.extent.w,height:scene.extent.h,count:Object.keys(scene.nodes).length}
+          packet={...scenePacketTransport(result),width:scene.extent.w,height:scene.extent.h,count:Object.keys(scene.nodes).length}
         }
         return result
       } finally { terminalDiagnostics.record('compile',{requestId,durationMs:performance.now()-started,...packet}) }
@@ -218,8 +214,11 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
   navigationJournal.record(4, { sequence })
   return work().finally(() => { if (generation === navigationCaptureGeneration) navigationJournal.record(5, { sequence }) })
 }
-function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal, curvePrograms=false) {
-  return journalCompile(async () => (await kernel.prepare_gpu_scene(options, signal, curvePrograms)).consume())
+function posePacketTransport(terminal: boolean): 'curves' | 'inline-lz4' {
+  return terminal ? 'inline-lz4' : 'curves'
+}
+function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal, transport: boolean | 'curves' | 'inline-lz4' = false) {
+  return journalCompile(async () => (await kernel.prepare_gpu_scene(options, signal, transport)).consume())
 }
 let reportedResidentAttachment = ''
 function prepareDisplay(capture = true) {
@@ -764,7 +763,7 @@ function schedulePose(){
               if(terminalPoseDisposition(pose,terminal)==='changed')superseded.abort()
             }
             try {
-              const compile=()=>compilePacket(kernel,session.options,signal,bitmapTerminal)
+              const compile=()=>compilePacket(kernel,session.options,signal,posePacketTransport(pose.terminal===true))
               packet=await (preparation ? preparation.withPoseTransport(compile) : compile())
             } catch(error) {
               // The next absolute pose still owns this lease and reapplies
@@ -847,7 +846,7 @@ function schedulePose(){
                   work.mutated=true
                   if(!await kernel.apply_interaction_transforms(JSON.stringify(terminal.transforms))){work.mutated=false;return {packet:undefined,compileMs:0}}
                   const at=performance.now()
-                  const packet=await journalCompile(()=>kernel.prepare_gpu_scene(session.options,session.controller.signal,bitmapTerminal))
+                  const packet=await journalCompile(()=>kernel.prepare_gpu_scene(session.options,session.controller.signal,'inline-lz4'))
                   return {packet,compileMs:performance.now()-at}
                 }
                 ahead.start(terminal.input.sequence,()=>preparation?preparation.withPoseTransport(prepare):prepare())

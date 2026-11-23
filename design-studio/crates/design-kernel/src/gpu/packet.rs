@@ -1,5 +1,7 @@
 //! Frame-scoped immutable resources and exact binary scene transport.
 //! Old FGPK JSON/image-table variants are replaced by one FGSC protocol.
+//! Pose requests may wrap that packet in an FGSZ LZ4 envelope. The decoded
+//! scene stays the FGSC payload; compression never changes geometry.
 use super::{frame_wire, GpuPath, GpuScene, Paint};
 use serde::Serialize;
 use std::{collections::{BTreeMap, HashMap, HashSet,hash_map::RandomState},hash::{BuildHasher,Hash,Hasher},sync::Arc};
@@ -89,6 +91,62 @@ fn curve_resources_requested(request: Option<&serde_json::Value>) -> bool {
         .and_then(|value| value.get("curvePrograms")).and_then(serde_json::Value::as_bool) == Some(true)
 }
 
+fn scene_lz4_requested(request: Option<&serde_json::Value>) -> bool {
+    request.and_then(|value| value.get("frameResources"))
+        .and_then(|value| value.get("sceneLz4")).and_then(serde_json::Value::as_bool) == Some(true)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn packet_clock() -> Option<std::time::Instant> { Some(std::time::Instant::now()) }
+#[cfg(target_arch = "wasm32")]
+fn packet_clock() -> Option<std::time::Instant> { None }
+fn packet_millis(start: Option<std::time::Instant>) -> f64 {
+    start.map(|start| start.elapsed().as_secs_f64() * 1000.).unwrap_or(0.)
+}
+
+struct FgscInfo { geometry_bytes: usize, inline_curve_bytes: usize, curve_sent_bytes: usize }
+
+fn inspect_fgsc(packet: &[u8]) -> Option<FgscInfo> {
+    if packet.len() < 24 || &packet[..4] != b"FGSC" { return None }
+    let meta = u32::from_le_bytes(packet[8..12].try_into().ok()?) as usize;
+    let nv = u32::from_le_bytes(packet[12..16].try_into().ok()?) as usize;
+    let nc = u32::from_le_bytes(packet[16..20].try_into().ok()?) as usize;
+    let payload = u32::from_le_bytes(packet[20..24].try_into().ok()?) as usize;
+    let start = 24usize.checked_add(meta)?.checked_add(3)? & !3;
+    let inline = nc.checked_mul(4)?;
+    let geometry = nv.checked_mul(4)?.checked_add(inline)?;
+    let mut at = start.checked_add(geometry)?;
+    if at.checked_add(payload)? != packet.len() { return None }
+    let mut curve_sent = 0usize;
+    while at < packet.len() {
+        if packet.len() - at < 9 { return None }
+        let kind = packet[at + 4];
+        let len = u32::from_le_bytes(packet[at + 5..at + 9].try_into().ok()?) as usize;
+        at = at.checked_add(9)?.checked_add(len)?;
+        if at > packet.len() { return None }
+        if kind == 4 { curve_sent = curve_sent.saturating_add(len); }
+    }
+    (at == packet.len()).then_some(FgscInfo { geometry_bytes: geometry, inline_curve_bytes: inline, curve_sent_bytes: curve_sent })
+}
+
+/// Lossless envelope around one FGSC packet. Kept only when the wire shrinks.
+/// The 8-byte header is `FGSZ`, little-endian version 1, then lz4_flex's
+/// size-prepended block. Callers that do not ask, and packets that do not
+/// shrink, stay plain FGSC.
+fn compress_scene_packet(packet: Vec<u8>) -> Result<Vec<u8>, String> {
+    const LIMIT: usize = 128 * 1024 * 1024;
+    if packet.len() < 64 || packet.len() > LIMIT || !packet.starts_with(b"FGSC") { return Ok(packet) }
+    crate::render_cancellation::checkpoint()?;
+    let compressed = lz4_flex::compress_prepend_size(&packet);
+    if compressed.len().saturating_add(8) >= packet.len() { return Ok(packet) }
+    let mut out = Vec::with_capacity(8 + compressed.len());
+    out.extend_from_slice(b"FGSZ");
+    out.extend_from_slice(&1u32.to_le_bytes());
+    out.extend_from_slice(&compressed);
+    crate::render_cancellation::checkpoint()?;
+    Ok(out)
+}
+
 fn append_resource(bytes: &mut Vec<u8>, id: u32, kind: u8, data: &[u8]) -> Result<(), String> {
     let length = u32::try_from(data.len()).map_err(|_| "Frame resource too large")?;
     bytes.extend_from_slice(&id.to_le_bytes());
@@ -152,6 +210,19 @@ pub(crate) struct FrameSceneContext {
     source_history:std::collections::VecDeque<EncodedFrame>,
     source_history_bytes:usize,
     source_history_hits:u64,
+    // Logical curve bytes of the scene that filled the static cache. Inline
+    // poses leave this in place so a later drag can still account for blocks
+    // the receiver has already confirmed.
+    curve_word_bytes: usize,
+    packet_compile_ms: f64,
+    packet_encode_ms: f64,
+    packet_scene_bytes: u64,
+    packet_wire_bytes: u64,
+    packet_geometry_bytes: u64,
+    packet_wire_geometry_bytes: u64,
+    packet_inline_curve_bytes: u64,
+    packet_curve_sent_bytes: u64,
+    packet_curve_omitted_bytes: u64,
     #[cfg(test)] limit_override:Option<usize>,
 }
 impl FrameSceneContext {
@@ -214,7 +285,10 @@ impl FrameSceneContext {
     pub(crate) fn stats(&self)->serde_json::Value{
         serde_json::json!({"compilations":self.compilations,"sameRequestHits":self.reuses,"semanticHits":self.semantic_hits,"semanticBytes":self.semantic_bytes,"bytes":self.bytes(),"limit":self.limit(),"limitSource":"trusted-host-memory",
             "imageAllocationHits":self.image_allocation_hits,"imageTransferHits":self.image_transfer_hits,
-            "sourceReplayHits":self.source_history_hits,"sourceReplayEntries":self.source_history.len(),"sourceReplayBytes":self.source_history_bytes})
+            "sourceReplayHits":self.source_history_hits,"sourceReplayEntries":self.source_history.len(),"sourceReplayBytes":self.source_history_bytes,
+            "packet":{"compileMs":self.packet_compile_ms,"encodeMs":self.packet_encode_ms,"sceneBytes":self.packet_scene_bytes,"wireBytes":self.packet_wire_bytes,
+                "geometryBytes":self.packet_geometry_bytes,"wireGeometryBytes":self.packet_wire_geometry_bytes,"inlineCurveBytes":self.packet_inline_curve_bytes,
+                "curveSentBytes":self.packet_curve_sent_bytes,"curveOmittedBytes":self.packet_curve_omitted_bytes}})
     }
     fn reuse(&mut self,key:&StaticRequest,request:&serde_json::Value)->Result<Option<Vec<u8>>,String>{
         let Some(frame)=self.cached.as_ref().filter(|frame|&frame.key==key)else{return Ok(None)};
@@ -381,6 +455,7 @@ impl FrameSceneContext {
         // allocations the encoder still owns, including when encoding fails.
         let vertices=super::scratch::RecycledF32::vertices(std::mem::take(&mut scene.vertices));
         let curves=super::scratch::RecycledF32::curves(std::mem::take(&mut scene.curves));
+        self.curve_word_bytes = curves.len().saturating_mul(4);
         let mut nodes=std::mem::take(&mut scene.nodes);
         #[derive(Serialize)]
         #[serde(rename_all="camelCase")]
@@ -398,13 +473,17 @@ impl FrameSceneContext {
             Some(CurveResources { words: curves.len(), ids })
         } else { None };
         // Encoded replies own their bytes. The producer only needs to retain
-        // programs from the current pose for a later acknowledgement.
-        let active_curves: HashSet<_> = curve_ids.values().copied().collect();
-        let obsolete: Vec<_> = self.curve_transfer_keys.iter()
-            .filter(|(id, _)| !active_curves.contains(id)).map(|(_, key)| key.clone()).collect();
-        for key in obsolete {
-            if let Some(entry) = self.entries.get(&key) { self.ages.remove(&entry.age); }
-            self.evict_transfer(&key);
+        // programs from the current pose for a later acknowledgement. An inline
+        // release does not register blocks and must not drop programs the next
+        // drag can still reuse.
+        if curve_resources.is_some() {
+            let active_curves: HashSet<_> = curve_ids.values().copied().collect();
+            let obsolete: Vec<_> = self.curve_transfer_keys.iter()
+                .filter(|(id, _)| !active_curves.contains(id)).map(|(_, key)| key.clone()).collect();
+            for key in obsolete {
+                if let Some(entry) = self.entries.get(&key) { self.ages.remove(&entry.age); }
+                self.evict_transfer(&key);
+            }
         }
         // Admitted image identities already own and compare the complete URI.
         // Only an over-budget image needs a second, packet-local content table.
@@ -546,6 +625,26 @@ impl crate::Engine {
     pub fn compile_gpu_packet_request(&mut self,options:&str)->Result<Vec<u8>,String>{
         self.compile_gpu_packet_request_checked(options, |_|Ok(()))
     }
+    fn deliver_scene_packet(&mut self, fields:&serde_json::Value, raw:Vec<u8>, compile_ms:f64, encode_ms:f64)->Result<Vec<u8>,String>{
+        let scene_bytes = raw.len() as u64;
+        let info = inspect_fgsc(&raw);
+        let compress_started = packet_clock();
+        let bytes = if scene_lz4_requested(Some(fields)) { compress_scene_packet(raw)? } else { raw };
+        let encode_ms = encode_ms + packet_millis(compress_started);
+        let info = info.unwrap_or(FgscInfo { geometry_bytes: 0, inline_curve_bytes: 0, curve_sent_bytes: 0 });
+        let logical = if self.frame_scene.curve_word_bytes == 0 { info.inline_curve_bytes } else { self.frame_scene.curve_word_bytes };
+        let vertex = info.geometry_bytes.saturating_sub(info.inline_curve_bytes);
+        self.frame_scene.packet_compile_ms = compile_ms;
+        self.frame_scene.packet_encode_ms = encode_ms;
+        self.frame_scene.packet_scene_bytes = scene_bytes;
+        self.frame_scene.packet_wire_bytes = bytes.len() as u64;
+        self.frame_scene.packet_geometry_bytes = vertex.saturating_add(logical) as u64;
+        self.frame_scene.packet_wire_geometry_bytes = vertex.saturating_add(info.inline_curve_bytes).saturating_add(info.curve_sent_bytes) as u64;
+        self.frame_scene.packet_inline_curve_bytes = info.inline_curve_bytes as u64;
+        self.frame_scene.packet_curve_sent_bytes = info.curve_sent_bytes as u64;
+        self.frame_scene.packet_curve_omitted_bytes = logical.saturating_sub(info.inline_curve_bytes).saturating_sub(info.curve_sent_bytes) as u64;
+        Ok(bytes)
+    }
     pub(crate) fn compile_gpu_packet_request_checked(&mut self,options:&str,mut accept:impl FnMut(&GpuScene)->Result<(),String>)->Result<Vec<u8>,String>{
         crate::render_cancellation::checkpoint()?;
         let fields:serde_json::Value=serde_json::from_str(options).map_err(|e|e.to_string())?;
@@ -557,7 +656,9 @@ impl crate::Engine {
             (key.len()<=65536).then_some(key)
         }else{None};
         if let (Some(revision),Some(key))=(self.static_scene_revision(),request_key.as_ref()) {
-            if let Some(bytes)=self.frame_scene.reuse(&(revision,key.clone()),&fields)?{return Ok(bytes)}
+            if let Some(bytes)=self.frame_scene.reuse(&(revision,key.clone()),&fields)?{
+                return self.deliver_scene_packet(&fields, bytes, 0., 0.);
+            }
         }
         // Only the most recent successful exact request can short-circuit.
         // A different camera, invalidation or failure cannot revive an old
@@ -574,6 +675,7 @@ impl crate::Engine {
             _=>return Err("Invalid dense source paint option".into()),
         };
         let compiler_fields=serde_json::Value::Object(semantic.into_iter().filter(|(k,_)|k.as_str()!="gpuDensePaint").map(|(key,value)|(key.clone(),value.clone())).collect());
+        let compile_started = packet_clock();
         let mut scene=self.compile_gpu_request_value(compiler_fields)?;
         accept(&scene)?;
         if dense && scene.color_management.is_some_and(|s|s.document_space==crate::color::ColorSpace::Srgb)
@@ -581,10 +683,16 @@ impl crate::Engine {
             super::dense_coverage::pack(&mut scene)?;
             super::dense_paint::compile(&mut scene)?;
         }
-        if self.frame_scene.scope.is_empty() { return scene.into_packet(); }
+        let compile_ms = packet_millis(compile_started);
+        let encode_started = packet_clock();
+        if self.frame_scene.scope.is_empty() {
+            let raw = scene.into_packet()?;
+            return self.deliver_scene_packet(&fields, raw, compile_ms, packet_millis(encode_started));
+        }
         self.frame_scene.pending_request=request_key.and_then(|key|self.static_scene_revision().map(|revision|(revision,key)));
-        let result=self.frame_scene.encode_with_curves(scene,Some(&fields),self.geo_revision,&previous_curves);
-        self.reserve_render_cache_bytes();result
+        let raw=self.frame_scene.encode_with_curves(scene,Some(&fields),self.geo_revision,&previous_curves)?;
+        self.reserve_render_cache_bytes();
+        self.deliver_scene_packet(&fields, raw, compile_ms, packet_millis(encode_started))
     }
 }
 
@@ -827,6 +935,124 @@ impl crate::Engine {
         let (id,_)=context.intern(1,vec![0;limit+1]).unwrap();assert!(id>0);assert_eq!(context.bytes,0);
         for i in 0..8 {context.intern(1,vec![i;1024*1024]).unwrap();assert!(context.bytes()<=limit);}
         assert!(context.entries.len()<40);
+    }
+    fn open_packet(packet: &[u8]) -> Vec<u8> {
+        if packet.starts_with(b"FGSZ") {
+            assert_eq!(u32::from_le_bytes(packet[4..8].try_into().unwrap()), 1);
+            lz4_flex::decompress_size_prepended(&packet[8..]).unwrap()
+        } else { packet.to_vec() }
+    }
+    fn word_at(packet: &[u8], at: usize) -> usize { u32::from_le_bytes(packet[at..at+4].try_into().unwrap()) as usize }
+    fn geometry_section(packet: &[u8]) -> Vec<u8> {
+        let packet = open_packet(packet);
+        assert_eq!(&packet[..4], b"FGSC");
+        let start = (24 + word_at(&packet, 8) + 3) & !3;
+        let end = start + (word_at(&packet, 12) + word_at(&packet, 16)) * 4;
+        assert_eq!(end + word_at(&packet, 20), packet.len());
+        packet[start..end].to_vec()
+    }
+    fn curve_programs(packet: &[u8]) -> Vec<u8> {
+        let packet = open_packet(packet);
+        let mut at = (24 + word_at(&packet, 8) + 3) & !3;
+        at += (word_at(&packet, 12) + word_at(&packet, 16)) * 4;
+        let mut curves = Vec::new();
+        while at < packet.len() {
+            let kind = packet[at + 4];
+            let len = word_at(&packet, at + 5);
+            at += 9;
+            if kind == 4 { curves.extend_from_slice(&packet[at..at + len]); }
+            at += len;
+        }
+        curves
+    }
+    fn max_resource_id(packet: &[u8]) -> u32 {
+        let packet = open_packet(packet);
+        let mut at = (24 + word_at(&packet, 8) + 3) & !3;
+        at += (word_at(&packet, 12) + word_at(&packet, 16)) * 4;
+        let mut max = 0u32;
+        while at < packet.len() {
+            max = max.max(u32::from_le_bytes(packet[at..at + 4].try_into().unwrap()));
+            at += 9 + word_at(&packet, at + 5);
+        }
+        max
+    }
+    fn pose_request(options: &serde_json::Value, lz4: bool, curves: bool, ack: Option<u32>) -> String {
+        let mut request = options.clone();
+        let mut resources = json!({"scope":"pose-packet","ranges":[]});
+        if lz4 { resources["sceneLz4"] = json!(true); }
+        if curves { resources["curvePrograms"] = json!(true); }
+        if let Some(end) = ack { resources["ranges"] = json!([[1, end]]); }
+        request["frameResources"] = resources;
+        request.to_string()
+    }
+    #[test]
+    fn clipped_board_pose_reuses_confirmed_curves_and_lz4_keeps_exact_geometry() {
+        let mut nodes = serde_json::Map::new();
+        let mut boards = Vec::new();
+        for board_index in 0..3 {
+            let board = format!("board-{board_index}");
+            boards.push(board.clone());
+            let mut children = Vec::new();
+            for index in 0..16 {
+                let id = format!("shape-{board_index}-{index}");
+                children.push(id.clone());
+                nodes.insert(id.clone(), json!({"id":id,"kind":"ellipse","width":28,"height":16,
+                    "transform":[1,0,0,1,(index%4)*34,(index/4)*30],
+                    "fills":[{"kind":"solid","color":"#2244bb"}],
+                    "strokes":[{"width":1.25,"paint":{"kind":"solid","color":"#102030"}}]}));
+            }
+            nodes.insert(board.clone(), json!({"id":board,"kind":"frame","width":150,"height":140,"clip":true,
+                "blend":"pass-through","transform":[1,0,0,1,board_index*100,36],"children":children}));
+        }
+        let doc = json!({"schemaVersion":20,"id":"boards","name":"boards",
+            "pages":[{"id":"p","name":"p","background":"#ffffff","children":boards}],"nodes":nodes});
+        let options = json!({"pageId":"p","width":180,"height":120,"view":{"x":0.25,"y":0.125,"zoom":0.8},
+            "rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":180,"h":120}});
+        let mut engine = crate::Engine::new();
+        engine.load_document(&doc.to_string()).unwrap();
+        engine.bind_frame_scene_scope("pose-packet").unwrap();
+        let parsed = engine.parse_options(options.clone()).unwrap();
+        let png_before = engine.render_png(&parsed).unwrap();
+        let raw = engine.compile_gpu_packet_request(&pose_request(&options, false, false, None)).unwrap();
+        let compressed = engine.compile_gpu_packet_request(&pose_request(&options, true, false, None)).unwrap();
+        assert!(compressed.starts_with(b"FGSZ"), "inline pose should shrink, raw {}", raw.len());
+        assert!(compressed.len() < raw.len());
+        assert_eq!(open_packet(&compressed), raw);
+        assert_eq!(engine.frame_scene.compilations, 1, "lz4 is a transport of the cached scene");
+        let curves = engine.compile_gpu_packet_request(&pose_request(&options, true, true, None)).unwrap();
+        let curve_packet = open_packet(&curves);
+        assert_eq!(word_at(&curve_packet, 16), 0, "confirmed blocks replace inline curves");
+        let inline_geometry = geometry_section(&raw);
+        let curve_geometry = geometry_section(&curves);
+        let vertices = word_at(&curve_packet, 12) * 4;
+        assert_eq!(&curve_geometry[..vertices], &inline_geometry[..vertices]);
+        assert_eq!(curve_programs(&curves), &inline_geometry[vertices..]);
+        let ack = max_resource_id(&curves);
+        assert!(engine.apply_interaction_transforms(&[("board-0".into(), crate::math::Transform([1.,0.,0.,1.,0.4,36.35]))].into()).unwrap());
+        let png_hold = engine.render_png(&parsed).unwrap();
+        assert_ne!(png_hold, png_before, "fractional board drag must reach the pixels");
+        let mut baked = doc.clone();
+        baked["nodes"]["board-0"]["transform"] = json!([1.0,0.0,0.0,1.0,0.4,36.35]);
+        let mut fresh = crate::Engine::new();
+        fresh.load_document(&baked.to_string()).unwrap();
+        fresh.bind_frame_scene_scope("fresh-pose").unwrap();
+        assert_eq!(fresh.render_png(&fresh.parse_options(options.clone()).unwrap()).unwrap(), png_hold);
+        let posed = engine.compile_gpu_packet_request(&pose_request(&options, false, false, None)).unwrap();
+        assert_eq!(geometry_section(&posed), geometry_section(&fresh.compile_gpu_packet_request(&options.to_string()).unwrap()));
+        let release = engine.compile_gpu_packet_request(&pose_request(&options, true, false, None)).unwrap();
+        assert!(release.starts_with(b"FGSZ"));
+        assert_eq!(open_packet(&release), posed, "release compresses inline curves without changing them");
+        let dragged = engine.compile_gpu_packet_request(&pose_request(&options, true, true, Some(ack))).unwrap();
+        let packet = engine.gpu_compile_cache_stats()["frameScene"]["packet"].clone();
+        assert!(packet["curveOmittedBytes"].as_u64().unwrap() > 0, "{packet}");
+        assert!(packet["wireBytes"].as_u64().unwrap() < packet["sceneBytes"].as_u64().unwrap(), "{packet}");
+        assert!(dragged.len() * 2 < posed.len(), "acked drag {} should be well under inline {}", dragged.len(), posed.len());
+        assert_eq!(fresh.render_png(&fresh.parse_options(options.clone()).unwrap()).unwrap(), png_hold);
+        assert!(engine.apply_interaction_transforms(&[("board-0".into(), crate::math::Transform([1.,0.,0.,1.,0.,36.]))].into()).unwrap());
+        assert_eq!(engine.render_png(&parsed).unwrap(), png_before, "undo restores the held pixels");
+        eprintln!("pose-packet raw={} lz4={} curves={} release={} acked_drag={} omitted={} generated_geometry={}",
+            raw.len(), compressed.len(), curves.len(), release.len(), dragged.len(),
+            packet["curveOmittedBytes"], packet["geometryBytes"]);
     }
     #[test] fn host_memory_policy_replaces_the_fixed_32_mib_resource_ceiling(){
         let mut context=FrameSceneContext::default();context.bind("host-capacity");
