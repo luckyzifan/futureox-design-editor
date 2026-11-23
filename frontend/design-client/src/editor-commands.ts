@@ -427,11 +427,15 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       case 'remove-stroke': {
         const fills = command === 'remove-fill'
         const stack = fills ? 'fills' : 'strokes'
-        const selection = fills ? editor.state.selection : editor.topSelection()
-        const ids = selection.filter(id => nodeHasRemovablePaint(editor.state.doc.nodes[id], stack))
+        // Figma applies the shortcut to every selected layer. A locked or
+        // hidden layer chosen in the layer list stays editable, and a child
+        // stays editable when its parent is selected too. topSelection drops
+        // those layers; a strokeless parent would then make the whole chord a
+        // no-op with nothing to undo. Layers that already have no paint in
+        // this stack are omitted, so nothing is written when none remain.
+        const ids = editor.state.selection.filter(id => nodeHasRemovablePaint(editor.state.doc.nodes[id], stack))
         if (!ids.length) break
-        if (fills) editor.updateProperties(ids, node => clearStyleStack(node, stack), '去掉填充')
-        else editor.update(ids, node => clearStyleStack(node, stack), '去掉描边')
+        editor.updateProperties(ids, node => clearStyleStack(node, stack), fills ? '去掉填充' : '去掉描边')
         break
       }
       case 'flatten': await editor.flattenSelection(); break
