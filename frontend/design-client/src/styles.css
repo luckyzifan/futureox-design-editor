@@ -2138,7 +2138,10 @@ footer button {
 
 .local-window-control{position:relative;font-size:11px}.local-window-popover{position:absolute;right:0;top:32px;width:250px;padding:12px;background:white;border:1px solid #e5e5e5;border-radius:8px;box-shadow:0 6px 24px #0002;z-index:100}.local-window-popover button{display:block;width:100%;text-align:left;padding:8px}.local-window-popover p{font-size:11px;color:#777;line-height:1.5}
 .local-window-control{flex:none}.local-window-control>button{display:flex;align-items:center;gap:3px;height:32px;padding:4px;white-space:nowrap;font-size:10px}
-.editor-shell .header-right>.primary>svg:first-child{display:none}
+/* Wide export is the label plus the menu chevron. The download glyph is hidden
+   here and returns in the desk band, where the label is set to 0px. */
+.editor-shell .header-right>.primary>svg:first-child,
+.editor-shell .header-right>.primary>.header-export-icon{display:none}
 
 .color-input{display:inline-flex;align-items:center;gap:3px;min-width:0}.color-input>input{min-width:0;flex:1}.color-input>button{display:inline-flex;align-items:center;justify-content:center;width:23px;height:24px;padding:3px}.color-input>[role=alert]{font-size:10px;color:#b42318}
 
@@ -2473,6 +2476,18 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
   row-gap: 2px;
 }
 .editor-shell[data-density="desk"] .header-right > .primary { font-size: 0; padding: 6px; }
+/* The label is gone in this band. Keep the download glyph and the chevron,
+   with one 6px gap, and do not let a zero-size text node open the button up. */
+.editor-shell[data-density="desk"] .header-right > .primary { gap: 0; overflow: visible; min-width: 32px; min-height: 32px; }
+.editor-shell[data-density="desk"] .header-right > .primary > .header-export-label { display: none; }
+.editor-shell[data-density="desk"] .header-right > .primary > svg:first-child,
+.editor-shell[data-density="desk"] .header-right > .primary > .header-export-icon {
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-inline-end: 6px;
+}
 /* Same desk band as data-density, so the layout matches even before the attribute updates. */
 @media (min-width: 901px) and (max-width: 1180px) {
   .editor-shell { --workspace-panel-cap: min(241px, 28vw); }
@@ -2496,6 +2511,16 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
     row-gap: 2px;
   }
   .editor-shell .header-right > .primary { font-size: 0; padding: 6px; }
+  .editor-shell .header-right > .primary { gap: 0; overflow: visible; min-width: 32px; min-height: 32px; }
+  .editor-shell .header-right > .primary > .header-export-label { display: none; }
+  .editor-shell .header-right > .primary > svg:first-child,
+  .editor-shell .header-right > .primary > .header-export-icon {
+    display: block;
+    width: 14px;
+    height: 14px;
+    flex: none;
+    margin-inline-end: 6px;
+  }
 }
 
 /* Warm, quiet chrome. Accent stays #3459d4. Canvas pixels and selection stroke stay put. */
@@ -2982,7 +3007,16 @@ html[data-reduced-motion=true] .animation-modal * {
   .editor-shell[data-ui-mode="sketch"] .header-right .ui-mode-switch button { padding-inline: 5px; }
   .editor-shell[data-ui-mode="sketch"] .header-right .local-window-control > button { padding-inline: 4px; }
   .editor-shell[data-ui-mode="sketch"] .header-right > button { padding-inline: 4px; }
-  .editor-shell[data-ui-mode="sketch"] .header-right > .primary { font-size: 0; padding-inline: 4px; }
+  .editor-shell[data-ui-mode="sketch"] .header-right > .primary { font-size: 0; padding-inline: 4px; gap: 0; overflow: visible; min-width: 32px; min-height: 32px; }
+  .editor-shell[data-ui-mode="sketch"] .header-right > .primary > .header-export-label { display: none; }
+  .editor-shell[data-ui-mode="sketch"] .header-right > .primary > svg:first-child,
+  .editor-shell[data-ui-mode="sketch"] .header-right > .primary > .header-export-icon {
+    display: block;
+    width: 14px;
+    height: 14px;
+    flex: none;
+    margin-inline-end: 6px;
+  }
   .editor-shell[data-ui-mode="sketch"] .header-right .design-agent-toggle span,
   .editor-shell[data-ui-mode="sketch"] .header-right .app-settings-button span { display: none; }
 }

@@ -1685,8 +1685,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             aria-label={locale === 'en' ? 'Export' : '导出'}
             onClick={() => openExportPanel()}
           >
-            <Download size={14} />
-            {locale === 'en' ? 'Export' : '导出'}
+            <Download size={14} className="header-export-icon" />
+            <span className="header-export-label">{locale === 'en' ? 'Export' : '导出'}</span>
             <ChevronDown size={12} />
           </button>
           <button type="button" className="app-settings-button" aria-label={panelText.openSettings}
