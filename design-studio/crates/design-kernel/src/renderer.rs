@@ -2035,9 +2035,8 @@ impl Engine {
         }
     }
     /// Byte display. An integer camera on an exact zoom bucket reuses
-    /// world-anchored tiles; every other camera keeps the full viewport path.
-    /// Checkerboards are screen-anchored, and a fractional camera changes
-    /// coverage, so those frames never read residency.
+    /// world-anchored tiles in the display profiles. Export profiles and
+    /// screen-anchored checkerboards keep their exact viewport sampling.
     pub(crate) fn render_exact(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
         if self.integer_bucket_residency(options) {
             match self.render_tiled_frame(options, None) {
@@ -2070,7 +2069,6 @@ impl Engine {
         if !matches!(
             options.raster_profile,
             crate::fidelity::RasterProfile::Analytic
-                | crate::fidelity::RasterProfile::Figma
                 | crate::fidelity::RasterProfile::FigmaSubpixel
         ) {
             return false;
