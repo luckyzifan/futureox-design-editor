@@ -2146,7 +2146,23 @@ impl Engine {
             }
         }
         let epoch = self.degrade_frame.as_ref().map(|frame| frame.epoch);
-        for root in &page.children {
+        // Plain offscreen leaves match the early geometry reject. Skipping
+        // them avoids a map entry and a later paint lookup per hidden layer.
+        // Frame plans keep the established per-tile geometry cache.
+        let plain_roots = if geometry.is_none() {
+            crate::display_cull::classify(doc, &page.children)
+        } else {
+            Vec::new()
+        };
+        let mut draw_root = vec![true; page.children.len()];
+        for (index, root) in page.children.iter().enumerate() {
+            if plain_roots.get(index).and_then(|plain| plain.as_ref()).is_some_and(|plain| {
+                crate::display_cull::outside_guard(plain, camera, prepare_guard)
+            }) {
+                draw_root[index] = false;
+                self.stats.culled += 1;
+                continue;
+            }
             let context = (doc as &Document, &self.fonts, prepare_guard, coverage_compatible);
             if let Some(cache) = geometry.as_deref_mut() {
                 crate::geometry_snapshot::prepare_cpu_frame_geometry(root, camera, context, &mut self.paths,
@@ -2212,7 +2228,7 @@ impl Engine {
             && options.raster_profile == crate::fidelity::RasterProfile::Figma
             && options.transparent && !self.display_degrade
         {
-            clipped_opaque_frame(doc, &page.children).map(|frame| prepared[&frame.id].fill_program_bounds)
+            clipped_opaque_frame(doc, &page.children).and_then(|frame| prepared.get(&frame.id).map(|p| p.fill_program_bounds))
         } else { None };
         if extended_target
             && zoom_guard.is_none()
@@ -2392,19 +2408,30 @@ impl Engine {
                 }
                 return Ok(output);
             }
-            painter.paint_siblings(&page.children, &mut targets, None, false, None)?;
+            if draw_root.iter().all(|draw| *draw) {
+                painter.paint_siblings(&page.children, &mut targets, None, false, None)?;
+            } else {
+                let roots: Vec<String> = page.children.iter().enumerate().filter(|(index, _)| draw_root[*index]).map(|(_, id)| id.clone()).collect();
+                painter.paint_siblings(&roots, &mut targets, None, false, None)?;
+            }
             Ok(targets.into_iter().collect())
         } else {
             // Reverse paint order: earlier layers must retain every input read
             // by later backdrop consumers, not merely their own visible output.
+            // Hidden plain leaves were not prepared; they add no backdrop input.
             let mut needed = viewport;
             let mut outputs = Vec::with_capacity(page.children.len());
-            for root in page.children.iter().rev() {
+            for (index, root) in page.children.iter().enumerate().rev() {
+                if !draw_root[index] {
+                    outputs.push(Rect::default());
+                    continue;
+                }
                 let output = if regional && painter.bounded_node(root) { needed } else { extent };
                 if regional { needed = needed.union(painter.leaf_backdrop_input(root, output)?); }
                 outputs.push(output);
             }
-            for (root, output) in page.children.iter().zip(outputs.into_iter().rev()) {
+            for (index, (root, output)) in page.children.iter().zip(outputs.into_iter().rev()).enumerate() {
+                if !draw_root[index] { continue; }
                 painter.node_region(root, &mut target, None, regional.then_some(output), extent, false)?;
             }
             Ok(vec![target])
@@ -3600,7 +3627,7 @@ impl Painter<'_> {
         if !n.visible || n.opacity <= 0. {
             return Ok(());
         }
-        let prepared = &self.prepared[id];
+        let Some(prepared) = self.prepared.get(id) else { return Ok(()) };
         if prepared.bounds.intersect(targets[0].rect).empty() && prepared.bounds.intersect(self.viewport).empty() {
             self.stats.culled += 1;
             return Ok(());
@@ -4965,7 +4992,7 @@ impl Painter<'_> {
         let n = &self.doc.nodes[id];
         if !n.visible || n.opacity <= 0. { return Ok(output); }
         if !self.bounded_node(id) { return Ok(self.extent); }
-        let p = &self.prepared[id];
+        let Some(p) = self.prepared.get(id) else { return Ok(Rect::default()) };
         let basis = p.bounds.intersect(self.extent);
         let output = output.intersect(basis);
         if output.empty() { return Ok(output); }
@@ -5213,7 +5240,7 @@ impl Painter<'_> {
         if !n.visible {
             return Ok(None);
         }
-        let prepared = &self.prepared[id];
+        let Some(prepared) = self.prepared.get(id) else { return Ok(None) };
         // Nonlocal effects read their source/geometry before ancestor clipping.
         // Cropping first creates artificial blur edges AND glass distance-field
         // boundaries, especially when a deep or dispersed lens crosses a frame.
@@ -5695,6 +5722,10 @@ mod linear_tile_residency_tests;
 #[cfg(test)]
 #[path = "renderer_tests/cpu_frame.rs"]
 mod cpu_frame_tests;
+
+#[cfg(test)]
+#[path = "renderer_tests/plain_root_cull.rs"]
+mod plain_root_cull_tests;
 
 #[cfg(test)]
 mod image_payload_owner_tests {
