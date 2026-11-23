@@ -1205,3 +1205,64 @@ fn long_child_list_restores_a_settled_cut_on_the_first_tiled_rotation() {
     let tiled = engine.render_tiled_frame(&options, None).unwrap();
     assert_eq!(tiled.rgba, settled);
 }
+
+#[test]
+fn cancelled_clipped_board_move_publishes_only_the_release_pose() {
+    use std::sync::{atomic::{AtomicUsize, Ordering}, Arc};
+    let mut nodes = serde_json::Map::new();
+    let mut children = Vec::new();
+    for i in 0..24 {
+        let id = format!("cell-{i}");
+        children.push(id.clone());
+        nodes.insert(id.clone(), json!({"id": id, "kind": "rectangle", "width": 18, "height": 12,
+            "transform": [1, 0, 0, 1, 8. + (i % 8) as f64 * 24., 8. + (i / 8) as f64 * 20.],
+            "fills": [{"kind": "solid", "color": "#dbe8ef"}]}));
+    }
+    nodes.insert("board".into(), json!({"id": "board", "kind": "frame", "width": 220, "height": 140, "clip": true,
+        "fills": [{"kind": "solid", "color": "#c5d5df"}], "children": children}));
+    nodes.insert("other".into(), json!({"id": "other", "kind": "frame", "width": 40, "height": 30, "clip": true,
+        "transform": [1, 0, 0, 1, 400, 0], "fills": [{"kind": "solid", "color": "#886644"}]}));
+    let doc: Document = serde_json::from_value(json!({"schemaVersion": 16, "id": "clip", "name": "clip",
+        "pages": [{"id": "p", "name": "p", "children": ["board", "other"], "background": "#ffffff"}],
+        "nodes": nodes})).unwrap();
+    // 64/0.8 = 80 world px across the 220 board, so the viewport clips it.
+    let options = serde_json::from_value(json!({"pageId": "p", "width": 64, "height": 48,
+        "view": {"x": 0.25, "y": 0.25, "zoom": 0.8}, "rasterProfile": "figma"})).unwrap();
+    let mut cold = Engine::new();
+    cold.install_document(doc.clone()).unwrap();
+    let before = cold.render(&options).unwrap();
+    let mut engine = Engine::new();
+    engine.install_document(doc.clone()).unwrap();
+    engine.compile_gpu(&options).unwrap();
+    let held = std::collections::BTreeMap::from([("board".into(), Transform([1., 0., 0., 1., 12.5, 4.]))]);
+    let release_transform = Transform([1., 0., 0., 1., 13.25, 4.5]);
+    let release = std::collections::BTreeMap::from([("board".into(), release_transform)]);
+    assert!(engine.apply_interaction_transforms(&held).unwrap());
+    let hits = Arc::new(AtomicUsize::new(0));
+    let probe_hits = hits.clone();
+    let cancelled = crate::render_cancellation::with_probe(
+        move || probe_hits.fetch_add(1, Ordering::Relaxed) > 30,
+        || engine.compile_gpu(&options),
+    );
+    match cancelled {
+        Err(error) => assert_eq!(error, "PREVIEW_CANCELLED"),
+        Ok(_) => panic!("in-flight clipped compile ignored cancellation"),
+    }
+    assert!(hits.load(Ordering::Relaxed) > 30);
+    assert!(engine.apply_interaction_transforms(&release).unwrap());
+    let packet = engine.compile_gpu(&options).unwrap().into_packet().unwrap();
+    let pixels = engine.render(&options).unwrap();
+    let mut released = doc.clone();
+    released.nodes.get_mut("board").unwrap().transform = release_transform;
+    let mut fresh = Engine::new();
+    fresh.install_document(released).unwrap();
+    assert_eq!(packet, fresh.compile_gpu(&options).unwrap().into_packet().unwrap());
+    assert_eq!(pixels, fresh.render(&options).unwrap());
+    assert_ne!(pixels, before);
+    assert_eq!(engine.source_doc.as_ref().unwrap().nodes["board"].transform, release_transform);
+    assert_eq!(engine.source_doc.as_ref().unwrap().nodes["other"].transform.0[4], 400.);
+    // Undo/Escape restores the pre-drag document. The cancelled pose is not a commit.
+    let mut undone = Engine::new();
+    undone.install_document(doc).unwrap();
+    assert_eq!(undone.render(&options).unwrap(), before);
+}

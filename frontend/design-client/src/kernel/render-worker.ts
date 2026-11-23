@@ -753,7 +753,12 @@ function schedulePose(){
             }
             if(!current())continue
             const compileStarted=performance.now()
-            const superseded = bitmapTerminal && !pose.terminal ? new AbortController() : undefined
+            // A distinct release pose can own this absolute translation while
+            // its compile is still walking nodes. Same-transform release keeps
+            // the in-flight packet. The native channel stays ordered: cancel
+            // drains, then the terminal pose is applied and compiled once.
+            const absoluteTranslation = !affine && (fullNativePose || viewportPatch)
+            const superseded = !pose.terminal && (bitmapTerminal || absoluteTranslation) ? new AbortController() : undefined
             const signal = superseded ? AbortSignal.any([session.controller.signal, superseded.signal]) : session.controller.signal
             if (superseded) beginTerminalPreparation = terminal => {
               if(terminalPoseDisposition(pose,terminal)==='changed')superseded.abort()
