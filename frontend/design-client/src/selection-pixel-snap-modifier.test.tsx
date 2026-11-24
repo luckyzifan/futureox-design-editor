@@ -106,6 +106,45 @@ test('Control keeps pixel-grid snap while moving a layer', async () => {
   expect(editor.state.doc.nodes[moved.id].transform[5]).toBeCloseTo(8, 6)
 })
 
+test('a frame follows the pixel-grid preference while moving', async () => {
+  const board = node('frame', 8.125, 8.125, 80, 60)
+  await render([board], { snapPixels: false })
+  await act(async () => editor.select([board.id]))
+  const drag = async () => {
+    await act(async () => pointer('pointerdown', 48.125, 38.125))
+    await act(async () => pointer('pointermove', 53.125, 38.125))
+    await act(async () => pointer('pointerup', 53.125, 38.125))
+  }
+  await drag()
+  expect(editor.state.doc.nodes[board.id].transform[4]).toBeCloseTo(13.125, 6)
+  expect(editor.state.doc.nodes[board.id].transform[5]).toBeCloseTo(8.125, 6)
+  await act(async () => editor.undo())
+  expect(editor.state.doc.nodes[board.id].transform[4]).toBeCloseTo(8.125, 6)
+  await act(async () => editor.set({ snapPixels: true }))
+  await act(async () => editor.select([board.id]))
+  await drag()
+  expect(editor.state.doc.nodes[board.id].transform[4]).toBeCloseTo(13, 6)
+  expect(editor.state.doc.nodes[board.id].transform[5]).toBeCloseTo(8, 6)
+})
+
+test('a frame follows the pixel-grid preference while resizing', async () => {
+  const board = node('frame', 0, 0, 100, 80)
+  await render([board], { snapPixels: false })
+  await act(async () => editor.select([board.id]))
+  const edge = () => mount.querySelector('[data-testid="resize-edge-1"]')!
+  expect(edge()).not.toBeNull()
+  await act(async () => pointer('pointerdown', 100, 40, {}, edge()))
+  await act(async () => pointer('pointerup', 130.4, 40))
+  expect(editor.state.doc.nodes[board.id].width).toBeCloseTo(130.4, 6)
+  await act(async () => editor.undo())
+  expect(editor.state.doc.nodes[board.id].width).toBeCloseTo(100, 6)
+  await act(async () => editor.set({ snapPixels: true }))
+  await act(async () => editor.select([board.id]))
+  await act(async () => pointer('pointerdown', 100, 40, {}, edge()))
+  await act(async () => pointer('pointerup', 130.4, 40))
+  expect(editor.state.doc.nodes[board.id].width).toBeCloseTo(kernelSnapPoint({ x: 130.4, y: 80 }).x, 6)
+})
+
 test('dragging a handle past the opposite edge flips the layer and undo restores it', async () => {
   const shape = node('rectangle', 0, 0, 100, 50)
   await render([shape], { snap: false, snapPixels: false })

@@ -11,6 +11,7 @@ import {
   rotateNode,
   parentBounds,
   rotationDegrees,
+  vectorPointSnaps,
 } from './canvas-view'
 import { createSmartGuidesIndex } from './canvas-smart-guides'
 import { figmaFixture } from './figma-fixtures'
@@ -165,4 +166,16 @@ test('measuring a mutable draft does not retain stale bounds after resize or und
   expect(localBounds(editor.snapshot().doc.nodes[id]).width).toBeCloseTo(100, 10)
   expect(parentBounds(editor.snapshot().doc.nodes[id]).y).toBeCloseTo(-4.980013, 4)
   expect(parentBounds(editor.snapshot().doc.nodes[id]).width).not.toBeCloseTo(resizedBox.width, 1)
+})
+
+test('Control suspends vector point snapping only once the pixel grid is drawn', () => {
+  // The preference off never snaps, with or without Control.
+  for (const zoom of [1, 4, 8]) for (const ctrlKey of [false, true]) expect(vectorPointSnaps(false, ctrlKey, zoom)).toBe(false)
+  // Below the grid's zoom, Control keeps the point on the pixel grid.
+  for (const zoom of [0.5, 1, 3.99]) for (const ctrlKey of [false, true]) expect(vectorPointSnaps(true, ctrlKey, zoom)).toBe(true)
+  // At and above the grid's zoom, Control is the temporary exception.
+  expect(vectorPointSnaps(true, false, 4)).toBe(true)
+  for (const zoom of [4, 8, 32]) expect(vectorPointSnaps(true, true, zoom)).toBe(false)
+  // An unknown zoom is not a drawn grid.
+  expect(vectorPointSnaps(true, true, Number.NaN)).toBe(true)
 })

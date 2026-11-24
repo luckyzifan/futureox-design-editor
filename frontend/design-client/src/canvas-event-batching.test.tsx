@@ -101,8 +101,9 @@ function vector() {
   return n
 }
 type EditKind = 'vertex' | 'handle' | 'width'
-async function begin(kind: EditKind, withPages = false) {
+async function begin(kind: EditKind, withPages = false, zoom = 1) {
   const n = vector(), before = await render([n], [n.id], [], withPages)
+  if (zoom !== 1) { await act(async () => editor.set({ view: { x: 0, y: 0, zoom } })); await flushFrames() }
   await act(async () => { editor.select([n.id]); editor.set({ tool: kind === 'width' ? 'width' : 'vector' }) })
   const target = kind === 'vertex' ? mount.querySelector('[data-testid="vector-anchor"]')! :
     kind === 'width' ? mount.querySelector('[data-testid^="width-"]')! :
@@ -182,15 +183,40 @@ test.each(['pointercancel', 'lostpointercapture', 'escape', 'blur'] as const)('q
   expect(editor.state.doc.nodes['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'].network!.vertices[0]).toEqual({ id: 'a', x: .125, y: .25 })
 })
 
-test('a queued first vertex input uses current Control modifiers and cannot replay stale snapping afterward', async () => {
+test('Control keeps a vertex on the pixel grid while the grid is not drawn at this zoom', async () => {
   const { start } = await begin('vertex')
   await act(async () => editor.set({ snapPixels: true }))
   await act(async () => pointer('pointermove', start.x + 8.125, start.y + 6.25))
   await act(async () => key('Control', { ctrlKey: true }))
-  if (!baseline) expect(editor.state.doc.nodes['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'].network!.vertices[0]).toEqual({ id: 'a', x: 8.125, y: 6.25 })
+  // 100% does not draw the pixel grid, so Control leaves the point snapped.
+  if (!baseline) expect(editor.state.doc.nodes['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'].network!.vertices[0]).toEqual({ id: 'a', x: 8, y: 6 })
   await flushFrames()
   await act(async () => pointer('pointerup', start.x + 8.125, start.y + 6.25, { ctrlKey: true }))
-  expect(editor.state.doc.nodes['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'].network!.vertices[0]).toEqual({ id: 'a', x: 8.125, y: 6.25 })
+  expect(editor.state.doc.nodes['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'].network!.vertices[0]).toEqual({ id: 'a', x: 8, y: 6 })
+})
+
+test('a vertex stays on the pixel grid at 400% without Control', async () => {
+  const { start } = await begin('vertex', false, 4)
+  const vertex = () => editor.state.doc.nodes['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'].network!.vertices[0]
+  await act(async () => editor.set({ snapPixels: true }))
+  await act(async () => pointer('pointermove', start.x + 8.125, start.y + 6.25))
+  await flushFrames()
+  if (!baseline) expect(vertex()).toEqual({ id: 'a', x: 2, y: 2 })
+  await act(async () => pointer('pointerup', start.x + 8.125, start.y + 6.25))
+  expect(vertex()).toEqual({ id: 'a', x: 2, y: 2 })
+})
+
+test('a queued first vertex input uses current Control modifiers and cannot replay stale snapping afterward', async () => {
+  // 400% draws the pixel grid, so Control suspends vector point snapping.
+  const { start } = await begin('vertex', false, 4)
+  const vertex = () => editor.state.doc.nodes['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'].network!.vertices[0]
+  await act(async () => editor.set({ snapPixels: true }))
+  await act(async () => pointer('pointermove', start.x + 8.125, start.y + 6.25))
+  await act(async () => key('Control', { ctrlKey: true }))
+  if (!baseline) expect(vertex()).toEqual({ id: 'a', x: 2.03125, y: 1.5625 })
+  await flushFrames()
+  await act(async () => pointer('pointerup', start.x + 8.125, start.y + 6.25, { ctrlKey: true }))
+  expect(vertex()).toEqual({ id: 'a', x: 2.03125, y: 1.5625 })
 })
 
 test('returning an existing vertex to its start preserves its original geometry exactly', async () => {
