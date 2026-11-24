@@ -2,7 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import net from 'node:net'
 import { once } from 'node:events'
-import { stat, access } from 'node:fs/promises'
+import { stat, access, mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { LocalAutomationBridge, registerAutomationBridge, MAX_AUTOMATION_FRAME_BYTES } from '../src/automation-bridge.mjs'
 import { assertSender, APP_URL } from '../src/security.mjs'
 
@@ -63,6 +65,23 @@ test('off by default; explicit session enable creates a private local endpoint a
   const closed = once(client.socket, 'close')
   await bridge.close(); await closed
   if (process.platform !== 'win32') await assert.rejects(access(config.endpoint))
+})
+
+test('a long Unicode temporary directory still permits a private socket and revocation', { skip: process.platform === 'win32' }, async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'bridge-path-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const temporaryRoot = path.join(directory, '工作'.repeat(35))
+  await mkdir(temporaryRoot)
+  const { bridge } = await fixture(t, { temporaryRoot })
+  const config = await bridge.enable('read')
+  assert.equal((await stat(bridge.active.directory)).mode & 0o777, 0o700)
+  assert.equal((await stat(config.endpoint)).mode & 0o777, 0o600)
+  const client = await connect(config)
+  assert.equal((await client.auth()).result.documentId, editor.documentId)
+  const closed = once(client.socket, 'close')
+  await bridge.close()
+  await closed
+  await assert.rejects(access(config.endpoint))
 })
 
 test('rejects unauthenticated and incorrect capabilities without dispatching to the editor', async t => {

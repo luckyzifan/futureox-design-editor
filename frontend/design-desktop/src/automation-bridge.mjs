@@ -15,6 +15,7 @@ const LARGE_OUTPUT_METHODS = new Set(['document.export', 'sketch.export', 'clipb
 const REQUEST_TIMEOUT_MS = 15_000
 const MAX_PENDING = 8
 const MAX_CONNECTIONS = 4
+const UNIX_SOCKET_PATH_CAPACITY = process.platform === 'linux' ? 108 : 104
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype
 const ownKeys = (value, allowed) => plain(value) && Object.keys(value).every(key => allowed.includes(key))
 const fail = (code, message) => Object.assign(new Error(message), { code })
@@ -101,13 +102,18 @@ export class LocalAutomationBridge {
     let endpoint
     if (process.platform === 'win32') endpoint = `\\\\.\\pipe\\futureox-design-${sessionId}`
     else {
-      directory = await mkdtemp(path.join(await realpath(this.temporaryRoot), 'design-automation-'))
-      await chmod(directory, 0o700)
+      const root = await realpath(this.temporaryRoot)
+      const estimated = path.join(root, 'design-automation-XXXXXX', 'bridge.sock')
+      // Unix domain socket bounds include the terminator and count bytes.
+      // A deeply nested TMPDIR can fit a private directory but not its socket.
+      const parent = Buffer.byteLength(estimated) < UNIX_SOCKET_PATH_CAPACITY ? root : await realpath('/tmp')
+      directory = await mkdtemp(path.join(parent, 'design-automation-'))
       endpoint = path.join(directory, 'bridge.sock')
     }
     const state = { sessionId, token, scope, grants: { ...grants }, endpoint, directory, editor: expectedEditor, sockets: new Set(), pending: new Set(), server: null }
     state.server = net.createServer(socket => this.accept(state, socket))
     try {
+      if (directory) await chmod(directory, 0o700)
       if (Object.keys(grants).length) await this.workspaceHost.grant(sessionId, grants)
       await new Promise((resolve, reject) => {
         state.server.once('error', reject)
