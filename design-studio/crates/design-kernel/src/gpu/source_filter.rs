@@ -405,6 +405,7 @@ impl Compiler<'_> {
         // A separate geometry/program cache keeps the two lattices disjoint.
         let mut small = Compiler {
             analytic_regions: None, wide_image_gaussians: Default::default(),
+            analytic_foreground_tile: false,
             doc: self.doc,
             fonts: self.fonts,
             paths: self.paths,

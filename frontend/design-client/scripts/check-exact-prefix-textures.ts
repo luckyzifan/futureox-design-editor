@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   initSync,
+  rational_box_kernel_rgba,
+  certified_box_kernel_rgba,
   rational_tent_kernel_rgba,
   certified_tent_kernel_rgba,
 } from '../src/generated/design-kernel/design_kernel.js'
@@ -35,7 +37,8 @@ await runProof('forma-prefix-textures', [], async (proof) => {
       w,
       h,
       r,
-      origin: r % 2 ? [1048576, -1048576] : [-17, 39],
+      // The addressing proof covers the whole source and both tap endpoints.
+      origin: r % 2 ? [1048576 - w - r - 1, -1048576 + r + 1] : [-17, 39],
       channels: 15,
       values,
     })
@@ -107,9 +110,16 @@ await runProof('forma-prefix-textures', [], async (proof) => {
       return ((127 << 23) | ((i * 13171) & 0x7fffff)) >>> 0
     }),
   })
+  // The wide analytic shadow uses these boxes at native DPR. Include full
+  // kernels, transparent padding, a partial scan block and alpha-only writes.
+  for (const [w,h,r,channels] of [[1031,13,479,8], [13,997,480,8], [367,17,147,15]]) {
+    const rgba = Float32Array.from({length:w*h*4}, (_,i) => channels === 15 || i % 4 === 3 ? ((i * 19) % 113) / 112 : 0)
+    fixtures.push({name:`${channels===8?'shadow':'backdrop'}-box-${w}x${h}`,kind:'box',w,h,r,origin:[31949,25297],channels,
+      values:Array.from(new Uint32Array(rgba.buffer))})
+  }
   for (const f of fixtures) {
-    f.kernel = Array.from(rational_tent_kernel_rgba(f.r))
-    f.certified = Array.from(certified_tent_kernel_rgba(f.r))
+    f.kernel = Array.from(f.kind === 'box' ? rational_box_kernel_rgba(f.r) : rational_tent_kernel_rgba(f.r))
+    f.certified = Array.from(f.kind === 'box' ? certified_box_kernel_rgba(f.r) : certified_tent_kernel_rgba(f.r))
   }
 
   const prepared = {
@@ -212,11 +222,11 @@ await runProof('forma-prefix-textures', [], async (proof) => {
                 GPUTextureUsage.COPY_SRC |
                 GPUTextureUsage.COPY_DST,
             })
-          const params = (f: any, axis: number) => {
+          const params = (f: any, axis: number, direct = false) => {
             const u = new Float32Array(256)
             u.set([...f.origin, f.w, f.h], 0)
             u.set([...f.origin, f.w, f.h], 4)
-            u.set([f.r, axis, 0, 1], 36)
+            u.set([f.r, axis, 0, f.kind === 'box' && !direct ? 3 : 1], 36)
             return u
           }
           const refEncode = (
@@ -339,13 +349,13 @@ await runProof('forma-prefix-textures', [], async (proof) => {
                 [source, kernel, certifiedKernel],
                 params(f, 0),
                 f.r,
-                'tent',
+                f.kind ?? 'tent',
                 rect,
                 f.channels,
                 f.maxBandLines ?? 2,
               )
             )
-              throw new Error('eligible horizontal unexpectedly declined')
+              throw new Error(`eligible horizontal unexpectedly declined for ${f.name}`)
             if (
               !prefix.encode(
                 () => activeEncoder!,
@@ -353,15 +363,19 @@ await runProof('forma-prefix-textures', [], async (proof) => {
                 [horizontal, kernel, certifiedKernel],
                 params(f, 1),
                 f.r,
-                'tent',
+                f.kind ?? 'tent',
                 rect,
                 f.channels,
                 f.maxBandLines ?? 2,
               )
             )
-              throw new Error('eligible vertical unexpectedly declined')
-            refEncode(refH, source, kernel, certifiedKernel, params(f, 0), f.channels)
-            refEncode(refV, refH, kernel, certifiedKernel, params(f, 1), f.channels)
+              throw new Error(`eligible vertical unexpectedly declined for ${f.name}`)
+            refEncode(refH, source, kernel, certifiedKernel, params(f, 0, true), f.channels)
+            refEncode(refV, refH, kernel, certifiedKernel, params(f, 1, true), f.channels)
+            const outside = params(f, 0)
+            outside[0] = outside[4] = 1048576
+            if (prefix.canEncode(horizontal, [source,kernel,certifiedKernel], outside, f.r,
+              f.kind ?? 'tent', {...rect,x:1048576}, f.channels)) protocolFailures++
             // Admission rejects original f64 values that happen to round to an integer.
             for (const [radius, kind, mutate] of [
               [1.0000000000000002, 'tent', false],
@@ -369,6 +383,7 @@ await runProof('forma-prefix-textures', [], async (proof) => {
               [f.r, 'tent', true],
             ] as [number, 'tent' | 'box', boolean][]) {
               const u = params(f, 0)
+              if (kind === 'box') u[39] = 1 // A box cannot borrow a tent request's marker.
               if (mutate) u[38] = 1
               if (
                 prefix.encode(

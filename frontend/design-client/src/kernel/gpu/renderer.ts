@@ -9,6 +9,7 @@ import {sourceSolidLayerDisplay,sourceSolidLayer} from './source-solid-layers'
 import {denseBatch} from './dense-batch'
 import {gaussianRegionRects} from './gaussian-region'
 import {boxPrefixBandLines} from './box-prefix'
+import { PREFIX_MIN_RADIUS } from './prefix-band'
 import {copySourceWindow, linearSrgbWindow, magnifiedImageWindow, sourceImageWindow} from './source-image-window'
 import {sourceBitmapDimensions} from '../image-row-source'
 import { canvasBlurSceneEligible } from './canvas-blur-filter'
@@ -837,6 +838,7 @@ export class GpuRenderer {
   private byteClass: ResourceClass = 'scratch'
   private constantTargets = new Map<string, Surface>()
   private prefixAllowed = true
+  private analyticDisplayBoxes = false
   private get bytes() { return this.ledger.bytes }
   private set bytes(value: number) {
     this.ledger.applyDelta(value - this.ledger.bytes, this.byteClass)
@@ -7712,12 +7714,13 @@ export class GpuRenderer {
       }
     }
     let current = input
+    const displayBox = this.analyticDisplayBoxes && this.prefixAllowed && sigma >= PREFIX_MIN_RADIUS
     for (const r of gaussianRadii(sigma)) {
       if (r <= 0) continue
       const kernel = this.filterKernel('rational-box', r, () => rational_box_kernel_rgba(r))
       const certified = this.certifiedKernel(r, true)
       for (const axis of [0, 1]) {
-        const next = this.run(22, input.rect, [current, kernel, ...(certified ? [certified] : [])], (u) => u.set([r, axis, Number(clampEdges && forceGaussian), forceGaussian ? 2 : 1], 36), channels)
+        const next = this.run(22, input.rect, [current, kernel, ...(certified ? [certified] : [])], (u) => u.set([r, axis, Number(clampEdges && forceGaussian), forceGaussian ? 2 : displayBox ? 3 : 1], 36), channels)
         if (current !== input) this.release(current)
         current = next
       }
@@ -8896,10 +8899,17 @@ export class GpuRenderer {
     // Scene policy is installed synchronously before its async pipeline work.
     // Filter programs and image uploads can then prepare independently.
     const preparation = [this.prepareWithFailureOrigin(1, () => this.driver.prepareScene?.(scene, !readback && present, this.gradientFusionActive))]
+    // Magnified analytic blurs and shadows still use three uniform boxes.
+    // Sum the same full-density RGBA or alpha samples with the exact prefix.
+    this.analyticDisplayBoxes = index.hasFilters && managedDisplay && this.optimized && !!scene.output && scene.coherentSamples === false &&
+      !scene.colorManagement && !scene.integratedBlur && !scene.interactionRetained && !scene.resolve && !scene.presentation &&
+      !scene.softwareRaster && scene.view.zoom >= 8 && Object.values(scene.nodes).some(node => node.effects.some(effect => effect.visible &&
+        (effect.kind === 'blur' || effect.kind === 'background-blur' || effect.kind === 'shadow' || effect.kind === 'inner-shadow') &&
+        effect.radius * scale(node.matrix) >= 2 * PREFIX_MIN_RADIUS))
     if (index.hasFilters) {
       const regionalBoxes = scene.view.zoom >= 32 && Object.values(scene.nodes).some(n => n.analyticRegion)
       preparation.push(this.prepareWithFailureOrigin(2, () => this.driver.prepareFilters?.(Boolean(this.prefixAllowed && this.optimized &&
-        this.driver.managed && (scene.integratedBlur && index.hasPrefixFilter || regionalBoxes)))))
+        this.driver.managed && (scene.integratedBlur && index.hasPrefixFilter || regionalBoxes || this.analyticDisplayBoxes)))))
     }
     preparation.push(this.loadImages(scene))
     const prepared = await Promise.allSettled(preparation)
