@@ -301,8 +301,11 @@ async fn autosave_recovery_killed_process_reopens_last_commit() {
     let root = f.0.clone();
     let db = f.db();
     let edited = document("must-not-commit");
+    let sidecar = std::env::var_os("FUTUREOX_TEST_PACKAGED_AUTOSAVE_SIDECAR")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_futureox-design-desktop-backend").into());
+    let crash_sidecar = sidecar.clone();
     let outcome = tokio::task::spawn_blocking(move || {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_futureox-design-desktop-backend"))
+        let mut child = Command::new(crash_sidecar)
             .args([
                 "--recovery-dir",
                 root.join("recovery").to_str().unwrap(),
@@ -385,7 +388,7 @@ async fn autosave_recovery_killed_process_reopens_last_commit() {
         "killed backend should not exit cleanly: {}",
         outcome.1
     );
-    let mut child = Command::new(env!("CARGO_BIN_EXE_futureox-design-desktop-backend"))
+    let mut child = Command::new(sidecar)
         .args([
             "--recovery-dir",
             f.0.join("recovery").to_str().unwrap(),

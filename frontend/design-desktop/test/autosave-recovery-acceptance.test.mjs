@@ -44,3 +44,23 @@ test('an ignored recovery case does not certify a pass', () => {
   assert.deepEqual(report.cargo.missingTests, [ignored])
   assert.equal(report.faults.some(item => item.scope === 'simulated_backend' && item.status === 'passed'), false)
 })
+
+test('a published sidecar crash and reopen is reported separately with its verified identity', () => {
+  const observation = { version: '0.0.0.1', sidecarSha256: 'e'.repeat(64) }
+  const report = buildReport({
+    cargo: { status: 0, stdout: completed(EXPECTED_RECOVERY_TESTS) },
+    packagedCrash: {
+      identity: observation,
+      cargo: { status: 0, stdout: completed(['autosave_recovery_killed_process_reopens_last_commit']) },
+    },
+  })
+  assert.deepEqual(report.packagedCrash.identity, observation)
+  assert.equal(report.faults.find(item => item.id === 'packaged_exit_during_save').status, 'passed')
+  assert.equal(report.faults.find(item => item.id === 'install_release_package').status, 'not_run')
+  assert.equal(report.releaseAcceptance, 'not_closed')
+})
+
+test('zero selected packaged crash tests cannot pass merely by exiting successfully', () => {
+  const report = buildReport({ packagedCrash: { identity: {}, cargo: { status: 0, stdout: 'running 0 tests' } } })
+  assert.equal(report.faults.find(item => item.id === 'packaged_exit_during_save').status, 'not_run')
+})
