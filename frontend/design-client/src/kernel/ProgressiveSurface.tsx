@@ -24,7 +24,7 @@ import { pageHasFilteredContent } from './canvas-effect-sampling'
 import { frameTransform, presentationMatches, useDevicePixelRatio, useDisplayCapability } from './presentation'
 import { LodSnapshotCache } from './lod-snapshot-cache'
 import { viewportPreviewRole } from './frame-handoff'
-import { acceptFrameClarity } from './frame-acceptance'
+import { acceptFrameClarity, motionPartialSharpAllowed } from './frame-acceptance'
 import { previewCameraScaleWithinLimit, tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
 import { canvasStatusLabel } from '../canvas-status-label'
 import { fitBounds, type CanvasCamera } from '../canvas-camera'
@@ -1508,6 +1508,12 @@ export function ProgressiveSurfaceImpl(
         },
         viewport,
         budget: tileFrameBudgetOptionsFromHost(),
+        // #61 latest-viewport preemption (default off): yield the budget-exempt
+        // on-screen queue tile by tile so a superseding plan cancels the stale
+        // chunk after one in-flight tile. The CSS camera reprojection and the
+        // navigation backing keep bridging the viewport while the newest tiles
+        // compile; per-tile yielding shortens that handoff to the latest input.
+        preemptOnScreen: import.meta.env.VITE_DESIGN_ZOOM_NAV_PREEMPT === '1',
         onCutoff: (reason, counters) => {
           scheduleCounters.current = { ...counters, cutoffs: { ...counters.cutoffs } }
           // TODO(telemetry): no centralized telemetry sink exists on this
@@ -2734,7 +2740,16 @@ export function ProgressiveSurfaceImpl(
   const canRefine = !displayed || reusableFrame || fullPlanReady
   const startupPreview = !displayed && visible.some(tile => tile.viewportPreview &&
     tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key))
-  const partialDetail=progressiveNativeRepair&&residentDisplay&&reusableFrame&&currentPlan&&
+  // #59 motion partial-sharp (default off): during an active camera gesture a
+  // ready tile at the exact requested native density and phase replaces the
+  // stretched preview in its region immediately, without waiting for the whole
+  // viewport plan to commit (coverage=full). partialFrame below still refuses
+  // any tile that is not on the current camera's native lattice, so this only
+  // publishes genuinely sharp regions early; the stopped screen-ready receipt
+  // (complete / clarity.screenReady) is independent and unchanged.
+  const motionPartialSharp = import.meta.env.VITE_DESIGN_MOTION_PARTIAL_SHARP === '1'
+  const partialDetail=progressiveNativeRepair&&residentDisplay&&reusableFrame&&
+    motionPartialSharpAllowed({currentPlan,planExists:!!plan,moving:cameraMoving||zooming,enabled:motionPartialSharp})&&
     !hdrCompositing&&!cameraDependent&&!props.grid&&!props.checkerboard&&!props.pixelPreview&&!props.interaction?.active&&syncedDoc.current===doc
   const partialFrame = (tile: PaintedTile, nativeDensity: boolean) => acceptFrameClarity({
     sampleRevision: tile.document === doc ? tile.revision : undefined,

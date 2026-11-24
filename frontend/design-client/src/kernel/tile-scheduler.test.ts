@@ -415,3 +415,96 @@ describe('prefetch rim scheduling', () => {
     expect(scheduler.counters.offScreenSubmitted).toBe(0)
   })
 })
+
+describe('#61 latest-viewport preemption (opt-in preemptOnScreen)', () => {
+  const onScreen = [tile(0, 0), tile(500, 0), tile(0, 500)]
+  const offScreen = [tile(2000, 0), tile(3000, 0), tile(4000, 0)]
+  // Center-out order shared with the historical whole-chunk path.
+  const centerOut = [onScreen[1].key, onScreen[2].key, onScreen[0].key]
+
+  test('default off keeps the whole budget-exempt on-screen chunk in one submit', async () => {
+    const manual = manualDriver()
+    const c = clock()
+    const chunks: string[][] = []
+    const scheduler = new TileFillScheduler({
+      submit: batch => { chunks.push(batch.map(t => t.key)) },
+      viewport, driver: manual.driver, budget: { now: c.now },
+    })
+    const done = scheduler.fill([...offScreen, ...onScreen])
+    // The entire visible plan is handed to submit at once, exactly as HEAD.
+    expect(chunks).toEqual([centerOut])
+    scheduler.cancel()
+    await settleMicrotasks()
+    await done
+    // Cancellation after the whole-chunk await cannot retract the block.
+    expect(scheduler.counters.onScreenSubmitted).toBe(3)
+  })
+
+  test('preemptOnScreen yields tile by tile and a superseding cancel abandons the stale remainder', async () => {
+    const manual = manualDriver()
+    const c = clock()
+    const chunks: string[][] = []
+    const scheduler = new TileFillScheduler({
+      submit: batch => { chunks.push(batch.map(t => t.key)) },
+      viewport, driver: manual.driver, budget: { now: c.now },
+      preemptOnScreen: true,
+    })
+    const done = scheduler.fill([...offScreen, ...onScreen])
+    // Only the first center-out tile has been submitted before the first await.
+    expect(chunks).toEqual([[centerOut[0]]])
+    expect(scheduler.counters.onScreenSubmitted).toBe(1)
+    // The newest viewport supersedes this plan mid on-screen queue.
+    scheduler.cancel()
+    await settleMicrotasks()
+    manual.flush()
+    await settleMicrotasks()
+    await done
+    // The stale remainder is abandoned at tile granularity: one tile, not three.
+    expect(chunks).toEqual([[centerOut[0]]])
+    expect(scheduler.counters.onScreenSubmitted).toBe(1)
+    expect(scheduler.counters.offScreenSubmitted).toBe(0)
+  })
+
+  test('preemptOnScreen still completes every visible tile and paces the rim under the unchanged budget', async () => {
+    const manual = manualDriver()
+    const c = clock()
+    const chunks: string[][] = []
+    const cutoffs: TileBudgetCutoffReason[] = []
+    const scheduler = new TileFillScheduler({
+      submit: batch => { chunks.push(batch.map(t => t.key)) },
+      viewport, driver: manual.driver, budget: { now: c.now },
+      onCutoff: reason => cutoffs.push(reason),
+      preemptOnScreen: true,
+    })
+    const done = scheduler.fill([...offScreen, ...onScreen])
+    expect(chunks).toEqual([[centerOut[0]]])
+    await settleMicrotasks()
+    // Each visible tile is its own submit; none is dropped or budget-raised.
+    expect(chunks).toEqual([[centerOut[0]], [centerOut[1]], [centerOut[2]]])
+    expect(scheduler.counters.onScreenSubmitted).toBe(3)
+    expect(cutoffs).toEqual(['offscreenHitBudget_'])
+    expect(scheduler.counters.deferredTiles).toBe(3)
+    manual.flush()
+    await settleMicrotasks()
+    expect(chunks[3]).toEqual([offScreen[0].key])
+    expect(chunks[4]).toEqual([offScreen[1].key])
+    manual.flush()
+    await settleMicrotasks()
+    expect(chunks[5]).toEqual([offScreen[2].key])
+    expect(cutoffs.at(-1)).toBe('completedScreenTiles_')
+    await done
+    expect(chunks.flat().sort()).toEqual([...onScreen, ...offScreen].map(t => t.key).sort())
+    expect(scheduler.counters.offScreenSubmitted).toBe(3)
+  })
+
+  test('a rejected per-tile submission still aborts the fill with the worker error', async () => {
+    const manual = manualDriver()
+    const c = clock()
+    const scheduler = new TileFillScheduler({
+      submit: () => { throw new Error('GPU surface budget exceeded') },
+      viewport, driver: manual.driver, budget: { now: c.now },
+      preemptOnScreen: true,
+    })
+    await expect(scheduler.fill([tile(0, 0)])).rejects.toThrow('GPU surface budget exceeded')
+  })
+})

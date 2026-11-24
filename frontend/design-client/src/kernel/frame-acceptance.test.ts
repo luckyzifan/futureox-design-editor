@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { frameHandoff } from './frame-handoff'
-import { acceptFrameClarity, classifyFrameArrival } from './frame-acceptance'
+import { acceptFrameClarity, classifyFrameArrival, motionPartialSharpAllowed } from './frame-acceptance'
 
 const camera = { x: -12.5, y: 4, zoom: 2 }
 const live = {
@@ -67,4 +67,37 @@ test('the editor lattice and the source cache share one receipt for the same fac
   const settled = acceptFrameClarity({ ...facts, coverage: 'full' })
   expect(settled.screenReady).toBe(true)
   expect(settled.partialSharp).toBe(false)
+})
+
+test('#59 motion partial-sharp gate is byte-equivalent to currentPlan when default off', () => {
+  for (const currentPlan of [true, false])
+    for (const planExists of [true, false])
+      for (const moving of [true, false])
+        expect(motionPartialSharpAllowed({ currentPlan, planExists, moving, enabled: false })).toBe(currentPlan)
+})
+
+test('#59 motion partial-sharp replaces the stretched preview early only while moving with a plan', () => {
+  // Stale plan currency during an active gesture: a ready sharp region may
+  // replace the stretched preview without waiting for the whole viewport plan.
+  expect(motionPartialSharpAllowed({ currentPlan: false, planExists: true, moving: true, enabled: true })).toBe(true)
+  // A current plan still qualifies with the flag off or on.
+  expect(motionPartialSharpAllowed({ currentPlan: true, planExists: true, moving: true, enabled: true })).toBe(true)
+  // No plan, nothing to publish early.
+  expect(motionPartialSharpAllowed({ currentPlan: false, planExists: false, moving: true, enabled: true })).toBe(false)
+})
+
+test('#59 stopped input never takes the early-replacement path (G3 exactness preserved)', () => {
+  // Once the camera settles (moving=false) the gate collapses to currentPlan,
+  // so the stopped frame is governed by the full-coverage screen-ready receipt.
+  for (const currentPlan of [true, false])
+    expect(motionPartialSharpAllowed({ currentPlan, planExists: true, moving: false, enabled: true })).toBe(currentPlan)
+  // The receipt the early path relies on is partial-sharp, never screen-ready:
+  // publishing it during motion can never certify the stopped exact frame.
+  const sharpRegion = acceptFrameClarity({ ...live, coverage: 'partial' })
+  expect(sharpRegion.partialSharp).toBe(true)
+  expect(sharpRegion.screenReady).toBe(false)
+  // A region missing native density or phase is not even partial-sharp, so the
+  // gate only ever publishes genuinely sharp pixels, never a stretched sample.
+  expect(acceptFrameClarity({ ...live, coverage: 'partial', nativeDensity: false }).partialSharp).toBe(false)
+  expect(acceptFrameClarity({ ...live, coverage: 'partial', nativePhase: false }).partialSharp).toBe(false)
 })
