@@ -6,7 +6,7 @@ export const fastPathKeys=['fastSampleOnlyPasses','fastSampleOnlyPixels','fastPa
  'fastCoverageConstant','fastCoverageShared','fastCoverageRejected','fastCoverageCacheHits','fastCoverageCacheMissKeys','fastCoverageCacheMissWords','fastCoverageCacheOversize','fastCoverageCachePinned',
  'fastGradientFused','fastGradientPaintReject','fastGradientLatticeReject','fastGradientCoverageReject','fastGradientColorReject',
  'fastRegionalUsed','fastRegionalSharedReject','fastRegionalFeedbackReject','fastRegionalLatticeReject','fastRegionalLargeReject',
- 'fastRegionalPixels','fastRegionalFullPixels','fastGradientSavedPixels','fastCoverageSavedPixels',
+ 'fastRegionalPixels','fastRegionalFullPixels','textureBackups','stagedTextureBackups','fastGradientSavedPixels','fastCoverageSavedPixels',
  'backdropCapturePixels','glassCapturePixels','glassFieldTexelsSaved','densePaintBatches','densePaintRoots','densePaintEffects','sourceLayerNodes','sourceLayerBatches','sourceShadowPaintsSaved','sourceProgramPixelsSaved','denseGradientBuildPixels','gradientWindowBuildPixels',
  'analyticSolidBatches','analyticSolidNodes','analyticGradientBatches','analyticGradientNodes']
 export const drawWorkLimits={drawWorkVersion:2,drawWorkCapped:1,clearPasses:1e9,drawPixelsMeasuredDraws:1e9,drawPixelsUnmeasuredDraws:1e9,...Object.fromEntries(groups.map(name=>['draw'+name,1e9])),

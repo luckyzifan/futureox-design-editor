@@ -2837,15 +2837,27 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
   /** Bit-preserving copy for completed, privately owned filter intermediates.
    * It introduces no sampler, float arithmetic, readback or completion claim. */
   copyRegion(target: Texture, source: Texture, sourceRegion: Rect, targetOrigin: [number, number]) {
+    if (this.regionCopyRejected(target, source, sourceRegion, targetOrigin)) throw Error('Invalid exact filter texture copy')
+    this.encodeRegionCopy(target, source, sourceRegion, targetOrigin)
+  }
+  /** The same copy for renderer-owned sample backups. It declines instead of
+   * throwing, so an ineligible surface keeps its render-pass backup. */
+  copyTexture(target: Texture, source: Texture, sourceRegion: Rect, targetOrigin: [number, number]) {
+    if (this.regionCopyRejected(target, source, sourceRegion, targetOrigin)) return false
+    this.encodeRegionCopy(target, source, sourceRegion, targetOrigin)
+    return true
+  }
+  private regionCopyRejected(target: Texture, source: Texture, sourceRegion: Rect, targetOrigin: [number, number]) {
     const from = source.resource as GPUTexture, to = target.resource as GPUTexture
-    if (!this.managed || !this.textures.has(source) || !this.textures.has(target) ||
-        from === to || from.format !== 'rgba32float' || to.format !== 'rgba32float' ||
-        ![sourceRegion.x, sourceRegion.y, sourceRegion.w, sourceRegion.h, ...targetOrigin].every(Number.isSafeInteger) ||
-        sourceRegion.x < 0 || sourceRegion.y < 0 || sourceRegion.w <= 0 || sourceRegion.h <= 0 ||
-        sourceRegion.x + sourceRegion.w > source.width || sourceRegion.y + sourceRegion.h > source.height ||
-        targetOrigin.length !== 2 || targetOrigin[0] < 0 || targetOrigin[1] < 0 ||
-        targetOrigin[0] + sourceRegion.w > target.width || targetOrigin[1] + sourceRegion.h > target.height)
-      throw Error('Invalid exact filter texture copy')
+    return !this.managed || !this.textures.has(source) || !this.textures.has(target) ||
+      from === to || from.format !== 'rgba32float' || to.format !== 'rgba32float' ||
+      ![sourceRegion.x, sourceRegion.y, sourceRegion.w, sourceRegion.h, ...targetOrigin].every(Number.isSafeInteger) ||
+      sourceRegion.x < 0 || sourceRegion.y < 0 || sourceRegion.w <= 0 || sourceRegion.h <= 0 ||
+      sourceRegion.x + sourceRegion.w > source.width || sourceRegion.y + sourceRegion.h > source.height ||
+      targetOrigin.length !== 2 || targetOrigin[0] < 0 || targetOrigin[1] < 0 ||
+      targetOrigin[0] + sourceRegion.w > target.width || targetOrigin[1] + sourceRegion.h > target.height
+  }
+  private encodeRegionCopy(target: Texture, source: Texture, sourceRegion: Rect, targetOrigin: [number, number]) {
     this.closeOver()
     this.invalidateTextureCertificates(target)
     delete target.uniformColor
@@ -2853,8 +2865,8 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.noteUnsubmittedTexture(source.resource as GPUTexture)
     this.noteUnsubmittedTexture(target.resource as GPUTexture)
     this.encoder.copyTextureToTexture(
-      { texture: from, origin: [sourceRegion.x, sourceRegion.y] },
-      { texture: to, origin: targetOrigin },
+      { texture: source.resource as GPUTexture, origin: [sourceRegion.x, sourceRegion.y] },
+      { texture: target.resource as GPUTexture, origin: targetOrigin },
       [sourceRegion.w, sourceRegion.h],
     )
   }

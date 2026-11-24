@@ -174,6 +174,7 @@ function materialFieldKey(inputs: unknown[]): string {
 }
 const containsRect = (outer: Rect | undefined, inner: Rect) => !!outer &&
   outer.x <= inner.x && outer.y <= inner.y && outer.x + outer.w >= inner.x + inner.w && outer.y + outer.h >= inner.y + inner.h
+const sameRect = (a: Rect, b: Rect) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h
 const sameSurface = (a: Surface | undefined, b: Surface | undefined) => a === b || !!a && !!b &&
   a.texture === b.texture && a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h &&
   (a.logicalBounds === b.logicalBounds || !!a.logicalBounds && !!b.logicalBounds &&
@@ -413,6 +414,11 @@ export class GpuRenderer {
   private get interactionBudget() {
     return this.driver.captureDisplay ? 512 * 1024 * 1024 : 64 * 1024 * 1024
   }
+  /** Opt-in: the backup of a regional paint's destination becomes a texture
+   * copy instead of a render pass. Default off until the joint gates pass. */
+  private textureBackups = import.meta.env.VITE_DESIGN_TEXTURE_BACKUPS === '1'
+  /** Backups of one upcoming four-sample solid paint, by destination surface. */
+  private stagedBackups?: Map<Surface, { rect: Rect; surface: Surface }>
   private coherentSubtreeEnabled=true
   private coherentSubtreePressure=false
   private coherentSubtrees=new Map<GpuNode,{lease:object;policy:string;planes:Surface[];sources:{id:string;node:GpuNode|undefined}[]}>()
@@ -1892,7 +1898,12 @@ export class GpuRenderer {
     if (!plan) return
     const { region } = plan
     if (!plan.before) return dst
-    const before = this.run(0, plan.before, [dst])
+    // A staged backup was copied before any sample of this node drew. Either
+    // way the in-place pass reads the destination's own bits.
+    const staged = this.stagedBackups?.get(dst)
+    const before = staged && sameRect(staged.rect, plan.before) ? staged.surface
+      : this.backupRegion(dst, plan.before) ?? this.run(0, plan.before, [dst])
+    if (staged) { this.stagedBackups!.delete(dst); if (before !== staged.surface) this.release(staged.surface) }
     this.fastWork.add('fastRegionalUsed');this.fastWork.add('fastRegionalPixels',region.w*region.h+plan.before.w*plan.before.h)
     this.fastWork.add('fastRegionalFullPixels',dst.rect.w*dst.rect.h)
     const u = parameters(dst.rect, before.rect, sources[0]?.rect, sources[1]?.rect)
@@ -1903,6 +1914,44 @@ export class GpuRenderer {
     this.passPixels += region.w * region.h
     this.release(before)
     return dst
+  }
+  /** The destination's own bits of one rectangle, through a texture copy. Every
+   * other surface keeps its render-pass copy: a compact or constant target has
+   * a logical domain, and an interaction-scissored copy is not this rectangle. */
+  private backupRegion(dst: Surface, before: Rect): Surface | undefined {
+    const copy = this.driver.copyTexture
+    if (!this.textureBackups || !copy || !this.driver.managed || dst.logicalBounds || this.drawRegion(before)) return
+    const { texture } = dst, { x, y, w, h } = dst.rect
+    if (texture.uniformColor || texture.binaryCoverage || texture.scalarCoverage || texture.width !== w || texture.height !== h) return
+    // Admit without evicting; the render-pass copy keeps its own admission path.
+    if (this.workingBytes + before.w * before.h * 16 > this.frameBudget) return
+    const out = this.acquire(before, false, false, SurfaceAllocationSite.passOutput, 0)
+    if (copy.call(this.driver, out.texture, texture, rect(before.x - x, before.y - y, before.w, before.h), [0, 0])) {
+      this.fastWork.add('textureBackups')
+      return out
+    }
+    this.release(out)
+  }
+  /** Copy every sample's backup of one upcoming four-sample solid paint before
+   * the first sample draws, so the copies share one queue stretch. No sample
+   * plane is written between this and that sample's own paint. A prediction the
+   * paint does not use only leaves an unused backup, which is then released. */
+  private stageSampleBackups(n: GpuNode, paint: GpuPaint, targets: Surface[], clip?: Surface[]) {
+    this.clearStagedBackups()
+    if (!this.textureBackups || !this.driver.copyTexture || !this.driver.exactSolidPaintOver || paint.kind !== 'solid' ||
+        paint.blend !== 'normal' || clip?.some(Boolean)) return
+    for (const dst of targets) {
+      const region = intersect(n.rect, dst.rect)
+      if (!region.w || !region.h) continue
+      const plan = this.regionalOverPlan(region, dst, [])
+      if (!plan?.before) continue
+      const surface = this.backupRegion(dst, plan.before)
+      if (surface) { this.fastWork.add('stagedTextureBackups'); (this.stagedBackups ??= new Map()).set(dst, { rect: plan.before, surface }) }
+    }
+  }
+  private clearStagedBackups() {
+    for (const { surface } of this.stagedBackups?.values() ?? []) this.release(surface)
+    this.stagedBackups = undefined
   }
   private constantPaintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip?: Surface) {
     const constantColor = paint.constantColor ?? (paint.kind === 'solid' ? paint.color : undefined)
@@ -5040,6 +5089,7 @@ export class GpuRenderer {
           (this.driver.managed || !n.fills[0].figmaGradient)) {
         const invariantCoverage = this.compactSolidNode(n) && identicalSampleCoverage(n.fill, this.scene.curves)
         const sharedPaints: { dst: Surface; mask: Surface; clip?: Surface; out: Surface }[] = []
+        this.stageSampleBackups(n, n.fills[0], targets, clip)
         for (let i = 0; i < 4; i++) {
           await this.reclaimScratch()
           // Only the certified binary-solid lane is sample-invariant. Image
@@ -5065,6 +5115,7 @@ export class GpuRenderer {
           if (invariantCoverage) sharedPaints.push({ dst, mask, clip: boundary, out: targets[i] })
           else this.retireLeafMasks(n, undefined, clip, targets)
         }
+        this.clearStagedBackups()
         if (invariantCoverage) this.retireLeafMasks(n, undefined, clip, targets)
         continue
       }
@@ -9173,6 +9224,7 @@ export class GpuRenderer {
       throw error
     } finally {
       if(retainedSamples){this.release(...retainedSamples);retainedSamples=undefined}
+      this.clearStagedBackups()
       this.release(this.pendingFocusPrefix?.surface)
       this.pendingFocusPrefix = undefined
       this.focusCompositeOutput = undefined

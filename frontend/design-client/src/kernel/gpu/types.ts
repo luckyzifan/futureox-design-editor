@@ -505,6 +505,9 @@ export interface Driver {
   /** Bit-preserving physical RGBA32F copy. Coordinates are texture-local;
    * this enqueues a copy, without proving GPU completion. */
   copyRegion?(target: Texture, source: Texture, sourceRegion: Rect, targetOrigin: [number, number]): void
+  /** The same copy for renderer-owned sample backups. Returns false instead
+   * of throwing when the pair is not an owned physical RGBA32F region. */
+  copyTexture?(target: Texture, source: Texture, sourceRegion: Rect, targetOrigin: [number, number]): boolean
   /** Bit-preserving owned RGBA8/RGBA32F color crop for a certified painter
    * stage. No sampler, arithmetic conversion or completion claim. */
   copyColorRegion?(target: Texture, source: Texture, sourceRegion: Rect, targetOrigin: [number, number]): void
