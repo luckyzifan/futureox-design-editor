@@ -88,3 +88,29 @@ export function residentOverlayAffines(scene: GpuScene, transforms: Record<strin
   }
   return result
 }
+
+/** Motion-preview content affine in display viewport (screen) coordinates. It
+ * maps the already compiled resident texture (base pose) onto the authored
+ * current pose, so a cached artboard quad can follow the object on the GPU
+ * without a fresh kernel raster. Unlike the chrome delta (world space, camera
+ * cancelled), this keeps the camera because the presenter places content quads
+ * in viewport coordinates. Transient preview only; the settled exact frame still
+ * comes from the native terminal render. */
+export function residentContentAffines(scene: GpuScene, transforms: Record<string, Matrix>): Record<string, Matrix> {
+  const parents = sceneIndex(scene).parents, result: Record<string, Matrix> = {}
+  const camera: Matrix = [scene.view.zoom, 0, 0, scene.view.zoom, scene.view.x, scene.view.y]
+  if (!camera.every(Number.isFinite) || camera[0] <= 0) return result
+  for (const [id, transform] of Object.entries(transforms)) {
+    const node = scene.nodes[id], parentId = parents.get(id), parent = parentId ? scene.nodes[parentId]?.matrix : camera
+    if (!node || !parent || !transform.every(Number.isFinite)) continue
+    // node.matrix and the parent matrix already include the capture camera, so
+    // both operands are screen-space; no inverse-camera factor is applied.
+    const compiled = node.matrix
+    if (Math.abs(compiled[0] * compiled[3] - compiled[1] * compiled[2]) < 1e-12) continue
+    const authored = multiply(parent, transform)
+    if (Math.abs(authored[0] * authored[3] - authored[1] * authored[2]) < 1e-12) continue
+    const delta = multiply(authored, inverse(compiled))
+    if (delta.every(Number.isFinite)) result[id] = delta
+  }
+  return result
+}
