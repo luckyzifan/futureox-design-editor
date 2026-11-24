@@ -838,7 +838,7 @@ export class GpuRenderer {
   private byteClass: ResourceClass = 'scratch'
   private constantTargets = new Map<string, Surface>()
   private prefixAllowed = true
-  private analyticDisplayBoxes = false
+  private analyticDisplayShadowBoxes = false
   private get bytes() { return this.ledger.bytes }
   private set bytes(value: number) {
     this.ledger.applyDelta(value - this.ledger.bytes, this.byteClass)
@@ -7714,7 +7714,7 @@ export class GpuRenderer {
       }
     }
     let current = input
-    const displayBox = this.analyticDisplayBoxes && this.prefixAllowed && sigma >= PREFIX_MIN_RADIUS
+    const displayBox = alphaOnly && this.analyticDisplayShadowBoxes && this.prefixAllowed && sigma >= PREFIX_MIN_RADIUS
     for (const r of gaussianRadii(sigma)) {
       if (r <= 0) continue
       const kernel = this.filterKernel('rational-box', r, () => rational_box_kernel_rgba(r))
@@ -8899,17 +8899,16 @@ export class GpuRenderer {
     // Scene policy is installed synchronously before its async pipeline work.
     // Filter programs and image uploads can then prepare independently.
     const preparation = [this.prepareWithFailureOrigin(1, () => this.driver.prepareScene?.(scene, !readback && present, this.gradientFusionActive))]
-    // Magnified analytic blurs and shadows still use three uniform boxes.
-    // Sum the same full-density RGBA or alpha samples with the exact prefix.
-    this.analyticDisplayBoxes = index.hasFilters && managedDisplay && this.optimized && !!scene.output && scene.coherentSamples === false &&
+    // At high density, sum the outer shadow's three alpha boxes on the
+    // full device lattice. Ordinary zoom and color filters keep their box path.
+    this.analyticDisplayShadowBoxes = index.hasFilters && managedDisplay && this.optimized && !!scene.output && scene.coherentSamples === false &&
       !scene.colorManagement && !scene.integratedBlur && !scene.interactionRetained && !scene.resolve && !scene.presentation &&
-      !scene.softwareRaster && scene.view.zoom >= 8 && Object.values(scene.nodes).some(node => node.effects.some(effect => effect.visible &&
-        (effect.kind === 'blur' || effect.kind === 'background-blur' || effect.kind === 'shadow' || effect.kind === 'inner-shadow') &&
-        effect.radius * scale(node.matrix) >= 2 * PREFIX_MIN_RADIUS))
+      !scene.softwareRaster && scene.view.zoom >= 32 && Object.values(scene.nodes).some(node => node.effects.some(effect =>
+        effect.visible && effect.kind === 'shadow' && effect.radius * scale(node.matrix) >= 2 * PREFIX_MIN_RADIUS))
     if (index.hasFilters) {
       const regionalBoxes = scene.view.zoom >= 32 && Object.values(scene.nodes).some(n => n.analyticRegion)
       preparation.push(this.prepareWithFailureOrigin(2, () => this.driver.prepareFilters?.(Boolean(this.prefixAllowed && this.optimized &&
-        this.driver.managed && (scene.integratedBlur && index.hasPrefixFilter || regionalBoxes || this.analyticDisplayBoxes)))))
+        this.driver.managed && (scene.integratedBlur && index.hasPrefixFilter || regionalBoxes || this.analyticDisplayShadowBoxes)))))
     }
     preparation.push(this.loadImages(scene))
     const prepared = await Promise.allSettled(preparation)
