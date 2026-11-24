@@ -204,6 +204,31 @@ export function alignSnapWorld(
   return dragSnap(moving, parent, siblings, threshold)
 }
 
+/** Add spacing snapping to the edge/centre snap a gesture index already
+ * computed. The smaller correction wins per axis. An edge target span is kept
+ * only while its own guide is the one chosen, so that guide keeps its extent. */
+export function withSpacingSnap(
+  edge: SmartSnapResult,
+  moving: Bounds,
+  siblings: Bounds[],
+  threshold: number,
+): SmartSnapResult {
+  const spaced = spacingSnap(moving, siblings, threshold)
+  const pick = (slot: 0 | 1): [number, SmartGuideSegment | null] => {
+    const edgeGuide = edge.guides[slot], spaceGuide = spaced.guides[slot]
+    const edgeDelta = slot === 0 ? edge.dx : edge.dy, spaceDelta = slot === 0 ? spaced.dx : spaced.dy
+    if (edgeGuide && spaceGuide) return Math.abs(spaceDelta) < Math.abs(edgeDelta) ? [spaceDelta, spaceGuide] : [edgeDelta, edgeGuide]
+    if (spaceGuide) return [spaceDelta, spaceGuide]
+    return [edgeGuide ? edgeDelta : 0, edgeGuide]
+  }
+  const [dx, gx] = pick(0), [dy, gy] = pick(1)
+  const spans = edge.targetSpans
+  return {
+    dx, dy, guides: [gx, gy],
+    ...(spans ? { targetSpans: [gx === edge.guides[0] ? spans[0] : null, gy === edge.guides[1] ? spans[1] : null] } : {}),
+  }
+}
+
 /** World-space transform patches for one arrange command over live selection
  * ids. Returns null when the command does not apply (too few layers, no
  * parent container for a single-layer align, nothing movable). */

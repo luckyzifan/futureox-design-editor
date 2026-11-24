@@ -8,6 +8,7 @@ import {
   dragSnap,
   spacingSnap,
   tidyOffsets,
+  withSpacingSnap,
   type AlignCommand,
 } from './align-engine'
 import { blank, node } from './model'
@@ -264,4 +265,38 @@ test('arrangePatches: nested parent transforms keep world-space alignment', () =
   const entries = scene(doc, doc.pages[0].id)
   expect(entries.find((e) => e.id === child.id)!.bounds.x).toBe(60)
   expect(worldMatrix(doc, child.id)).toEqual([1, 0, 0, 1, 60, 75])
+})
+
+test('withSpacingSnap: a move repeats an existing gap when no edge or centre snaps', () => {
+  // A 0..10, B 20..30 (gap 10). Drag a 5-wide rect to x 37: candidate 40 (gap 10), delta +3.
+  const siblings = [rect(0, 0, 10, 10), rect(20, 0, 10, 10)]
+  const snap = withSpacingSnap(NO_SNAP, rect(37, 0, 5, 10), siblings, 5)
+  expect(snap.dx).toBe(3)
+  expect(snap.dy).toBe(0)
+  expect(snap.guides[0]).toEqual({ axis: 'x', position: 30, start: 0, end: 10 })
+  expect(snap.guides[1]).toBeNull()
+  expect(snap.targetSpans).toBeUndefined()
+})
+
+test('withSpacingSnap: the smaller correction wins and keeps only its own target span', () => {
+  const siblings = [rect(0, 0, 10, 10)]
+    .concat(rect(20, 0, 10, 10))
+  const moving = rect(37, 0, 5, 10)
+  const edge = (dx: number): SmartSnapResult =>
+    ({ dx, dy: 0, guides: [{ axis: 'x', position: 30, start: 0, end: 10 }, null], targetSpans: [[0, 40], null] })
+  const closer = withSpacingSnap(edge(1), moving, siblings, 5)
+  expect(closer.dx).toBe(1)
+  expect(closer.guides[0]).toEqual({ axis: 'x', position: 30, start: 0, end: 10 })
+  expect(closer.targetSpans?.[0]).toEqual([0, 40])
+  const farther = withSpacingSnap(edge(4), moving, siblings, 5)
+  expect(farther.dx).toBe(3)
+  expect(farther.guides[0]).toEqual({ axis: 'x', position: 30, start: 0, end: 10 })
+  expect(farther.targetSpans?.[0]).toBeNull()
+})
+
+test('withSpacingSnap: no candidate and no siblings leave an edge snap untouched', () => {
+  const edge: SmartSnapResult = { dx: -2, dy: 0, guides: [{ axis: 'x', position: 30, start: 0, end: 10 }, null], targetSpans: [[0, 40], null] }
+  expect(withSpacingSnap(edge, rect(28, 0, 5, 10), [], 5)).toEqual(edge)
+  // |delta| == threshold never snaps, so an existing result passes through.
+  expect(withSpacingSnap(NO_SNAP, rect(35, 0, 5, 10), [rect(0, 0, 10, 10), rect(20, 0, 10, 10)], 5)).toEqual(NO_SNAP)
 })

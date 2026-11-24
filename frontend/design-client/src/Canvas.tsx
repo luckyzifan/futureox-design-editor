@@ -49,6 +49,7 @@ import {CanvasGuides, type GuideMeasureState} from './CanvasGuides'
 import { cancelComponentPlacement, takeComponentPlacement } from './component-placement'
 import {worldGuides} from './ruler-guides'
 import {createSmartGuidesIndex, placedSmartGuides, type SmartGuideSegment, type SmartSnapResult} from './canvas-smart-guides'
+import {withSpacingSnap} from './align-engine'
 import {useCanvasColorPicker} from './canvas-color-picker'
 import { captureContentPlane } from './kernel/content-plane'
 import { useUtilityTools, translateVertices } from './utility-tools'
@@ -713,7 +714,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const [gradientKeyboardTarget, setGradientKeyboardTarget] = useState<GradientStopKeyboardTarget | null>(null)
   const handleTap = useRef<CanvasHandleTap | null>(null)
   const guideIndex = useRef<{ drag: Drag; rulers: boolean | undefined; ids: string;
-    index: ReturnType<typeof createSmartGuidesIndex> } | null>(null)
+    index: ReturnType<typeof createSmartGuidesIndex>; siblings: Bounds[] } | null>(null)
   const releaseGuideIndex = () => { guideIndex.current?.index?.free(); guideIndex.current = null }
   useEffect(() => releaseGuideIndex, [])
   useEffect(() => { if (!editor.interactionActive) releaseGuideIndex() }, [editor.interactionActive, editor.sessionGeneration, state.page])
@@ -2739,7 +2740,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           if (Math.abs(guide.to.y - guide.from.y) < 1e-9) siblings.push({ x: Math.min(guide.from.x, guide.to.x), y: guide.from.y, width: Math.abs(guide.to.x - guide.from.x), height: 0 })
         }
       }
-      guideIndex.current = { drag: d, rulers: editor.state.rulers, ids: targetKey, index: createSmartGuidesIndex(parent, siblings) }
+      guideIndex.current = { drag: d, rulers: editor.state.rulers, ids: targetKey, index: createSmartGuidesIndex(parent, siblings), siblings }
     }
     return guideIndex.current?.index
   }
@@ -2816,9 +2817,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     let snapResult: SmartSnapResult | undefined
     if (editor.state.snap && !e.ctrlKey) {
       const index = ensureGuideIndex(d)
-      const snap: SmartSnapResult = index?.snap(
-        { x: d.box.x + dx, y: d.box.y + dy, width: d.box.width, height: d.box.height }, 6 / d.view.zoom,
-      ) ?? { dx: 0, dy: 0, guides: [null, null] }
+      const box = { x: d.box.x + dx, y: d.box.y + dy, width: d.box.width, height: d.box.height }
+      const edge: SmartSnapResult = index?.snap(box, 6 / d.view.zoom) ?? { dx: 0, dy: 0, guides: [null, null] }
+      // A move also repeats a gap that already exists between the other
+      // objects. Control above suspended both kinds of object snap.
+      const snap = withSpacingSnap(edge, box, guideIndex.current?.siblings ?? [], 6 / d.view.zoom)
       snapResult = snap
       const gx = moveAxes.x ? snap.guides[0] : null, gy = moveAxes.y ? snap.guides[1] : null
       if (gx) dx += snap.dx

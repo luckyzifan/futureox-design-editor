@@ -188,3 +188,31 @@ test('Control still suspends object snap while pixel snap is off', async () => {
   expect(editor.state.doc.nodes[moving.id].transform[4]).toBeCloseTo(46, 6)
   expect(editor.state.doc.nodes[target.id].transform[4]).toBeCloseTo(100, 6)
 })
+
+test('a move repeats an existing gap and draws the guide on the sibling edge', async () => {
+  const a = node('rectangle', 0, 0, 10, 40), b = node('rectangle', 20, 0, 10, 40), moving = node('rectangle', 80, 0, 5, 40)
+  const frames: FrameRequestCallback[] = []
+  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { frames.push(fn); return frames.length })
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  await render([a, b, moving], { snap: true, snapPixels: false })
+  await act(async () => editor.select([moving.id]))
+  const before = editor.state.doc
+  await act(async () => pointer('pointerdown', 82.5, 20))
+  await act(async () => pointer('pointermove', 39.5, 20))
+  for (let i = 0; i < 8 && frames.length; i++) await act(async () => { for (const fn of frames.splice(0)) fn(0) })
+  const guides = [...mount.querySelectorAll('[data-testid="canvas-alignment-guide"]')]
+  const gap = guides.find(element => element.getAttribute('data-axis') === 'x')
+  expect(gap).toBeDefined()
+  expect(Number(gap?.getAttribute('data-position'))).toBeCloseTo(30, 6)
+  await act(async () => pointer('pointerup', 39.5, 20))
+  // A 0..10 and B 20..30 leave a gap of 10, so x 37 commits at x 40.
+  expect(editor.state.doc.nodes[moving.id].transform[4]).toBeCloseTo(40, 6)
+  expect(mount.querySelector('[data-testid="canvas-alignment-guide"]')).toBeNull()
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+  // Control suspends the gap snap like every other object snap.
+  await act(async () => pointer('pointerdown', 82.5, 20, { ctrlKey: true }))
+  await act(async () => pointer('pointermove', 39.5, 20, { ctrlKey: true }))
+  await act(async () => pointer('pointerup', 39.5, 20, { ctrlKey: true }))
+  expect(editor.state.doc.nodes[moving.id].transform[4]).toBeCloseTo(37, 6)
+})
