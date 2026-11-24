@@ -1205,6 +1205,24 @@ fn constant_contours(contours:&[crate::path::Contour], even_odd:bool, region:Rec
     Some(if even_odd {winding%2!=0} else {winding!=0})
 }
 
+/// A closed fill has binary area coverage if every boundary near the crop
+/// lies on a device-pixel edge. This includes a transition from one fully
+/// covered row to an empty row, which is not a constant-coverage crop.
+fn pixel_aligned_fill(contours: &[crate::path::Contour], region: Rect) -> bool {
+    let guarded = region.expand(2);
+    if contours.is_empty() || [guarded.x, guarded.y, guarded.right(), guarded.bottom()]
+        .iter().any(|&v| i64::from(v).abs() > 1_048_576) { return false; }
+    contours.iter().all(|contour| {
+        contour.closed && contour.points.len() >= 3 && contour.points.iter().enumerate().all(|(i, a)| {
+            let b = contour.points[(i + 1) % contour.points.len()];
+            if !a.finite() || !b.finite() { return false; }
+            a.x.max(b.x) < f64::from(guarded.x) || a.x.min(b.x) > f64::from(guarded.right()) ||
+            a.y.max(b.y) < f64::from(guarded.y) || a.y.min(b.y) > f64::from(guarded.bottom()) ||
+            (a.x == b.x && a.x.fract() == 0.) || (a.y == b.y && a.y.fract() == 0.) || a == &b
+        })
+    })
+}
+
 /// Prove empty source support or an identity filter over the complete
 /// dependency neighbourhood. Colour, sharp strokes and the original
 /// effect remain authored; only this tile can use the proof.
@@ -1243,7 +1261,7 @@ fn constant_gaussian(n:&Node,p:&crate::geometry_snapshot::Prepared,region:Rect)-
     constant_fill_coverage(n,p,plan.source)
 }
 
-fn irrelevant_backdrop(n: &Node, p: &crate::geometry_snapshot::Prepared, region: Rect, coherent: bool) -> bool {
+fn irrelevant_backdrop(n: &Node, p: &crate::geometry_snapshot::Prepared, region: Rect, coherent: bool, analytic_edges: bool) -> bool {
     if !n.render_children().is_empty() || n.passes_backdrop() || n.opacity != 1. || n.blend != "normal" || n.mask ||
         n.effects.iter().any(|e| e.visible && e.kind != "background-blur") ||
         n.fills.iter().any(|paint| paint.visible && paint.blend != "normal") ||
@@ -1259,7 +1277,10 @@ fn irrelevant_backdrop(n: &Node, p: &crate::geometry_snapshot::Prepared, region:
     match constant_fill_coverage(n, p, region) {
         Some(false) => true,
         Some(true) => opaque_fill,
-        None => false,
+        // A backdrop is masked by this same fill. At coverage zero it is
+        // masked out, at coverage one the opaque normal paint replaces it.
+        None => analytic_edges && opaque_fill && n.effects.iter().any(|fx| fx.visible && fx.kind == "background-blur" &&
+            fx.blur_radius() * p.matrix.max_scale() >= 512.) && pixel_aligned_fill(&p.fill, region),
     }
 }
 
@@ -1277,11 +1298,12 @@ fn foreground_region_supported(
     gaussian_region: bool,
     large_gaussian: bool,
     soft_fields:bool,
+    analytic_edges:bool,
 ) -> bool {
     let n = &doc.nodes[id];
     let Some(p) = prepared.get(id) else { return true; };
     if !n.visible || n.opacity <= 0. || backdrop_output_bounds(n, p).intersect(region).empty() { return true; }
-    if irrelevant_backdrop(n, p, region, coherent) { return true; }
+    if irrelevant_backdrop(n, p, region, coherent, analytic_edges) { return true; }
     if large_gaussian && source_filter_constant(n,p,region).is_some() || soft_fields&&(source_filter::eligible(n,p.matrix,region)||source_filter::group_supported(doc,n,p.matrix,region)){return true;}
     let gaussian_supported = gaussian_region && n.effects.iter().filter(|e| e.visible && e.kind=="gaussian-blur").all(|e| {
         // Gaussian is also a foreground convolution. Keep its full existing
@@ -1306,7 +1328,7 @@ fn foreground_region_supported(
         return false;
     }
     let source = region.expand(crate::geometry_snapshot::effect_read_halo(doc, n, p.matrix).saturating_add(2));
-    n.render_children().iter().all(|child| foreground_region_supported(doc, child, source, prepared, coherent,gaussian_region,large_gaussian,soft_fields))
+    n.render_children().iter().all(|child| foreground_region_supported(doc, child, source, prepared, coherent,gaussian_region,large_gaussian,soft_fields,analytic_edges))
 }
 
 /// A bounded dependency certificate for managed, ordinary tent filters and
@@ -1952,6 +1974,7 @@ struct Compiler<'a> {
     stages: Option<PainterStages>,
     analytic_regions: Option<HashMap<String, analytic_regions::NodeRegion>>,
     wide_image_gaussians: HashMap<String, crate::wide_image_gaussian::Plan>,
+    analytic_foreground_tile: bool,
     curves: Vec<f32>,
     area_paths: HashMap<ProgramIdentity, AreaPath>,
     /// Integer device translation that maps programs retained from the
@@ -2123,7 +2146,7 @@ impl Compiler<'_> {
         // effects and remains unchanged for those paths. Limit this reduction
         // to foreground blur leaves with no other sampling stages.
         let omit_backdrop = requested.is_some_and(|region| prepared.is_some_and(|p|
-            irrelevant_backdrop(n, p, region, self.compatible && !self.interactive_effects)));
+            irrelevant_backdrop(n, p, region, self.compatible && !self.interactive_effects, self.analytic_foreground_tile)));
         let filter_constant=if self.gaussian_regions {requested.and_then(|region|prepared.and_then(|p|
             source_filter_constant(n,p,region).or_else(||constant_gaussian(n,p,region))))}else{None};
         if filter_constant==Some(false){return Ok(Rect::default())}
@@ -2167,6 +2190,15 @@ impl Compiler<'_> {
         let source_region = requested.map(|r| r.expand(own_halo.saturating_add(2)));
         let wide_image_gaussian = self.wide_image_gaussians.get(id).copied()
             .filter(|_| !geometric && !has_inactive_gaussian);
+        let local_shadow = if self.analytic_foreground_tile && analytic_region.is_none() && !omit_filter {
+            match (requested, source_region, prepared) {
+                (Some(output), Some(source), Some(p)) =>
+                    analytic_regions::solid_shadow(self.doc, n, &prepared_owner, output, p.bounds.intersect(source)),
+                _ => None,
+            }
+        } else { None };
+        let source_region = local_shadow.as_ref().map(|region| region.input).or(source_region);
+        let analytic_region = analytic_region.or(local_shadow);
         let extent = wide_image_gaussian.as_ref().map(|plan| plan.output)
             .or(analytic_region.as_ref().map(|region| region.input))
             .or(staged_region).unwrap_or_else(|| source_region.unwrap_or(self.extent));
@@ -2941,7 +2973,7 @@ impl Engine {
         if has_region && !regional_foreground && doc.color_management.is_some() && metadata.noise_guard.is_none() {
             regional_foreground = page.children.iter().all(|id|
                 foreground_region_supported(doc, id, viewport, &prepared, crate::fidelity::coherent_samples(doc, options),
-                    options.raster_profile==crate::fidelity::RasterProfile::FigmaSubpixel,gaussian_regions,source_filter_fields));
+                    options.raster_profile==crate::fidelity::RasterProfile::FigmaSubpixel,gaussian_regions,source_filter_fields,false));
         }
         let backdrop_chain = metadata.backdrop_chain;
         let extent = {
@@ -3121,27 +3153,28 @@ impl Engine {
         if unmanaged_tile {
             gaussian_regions = true;
         }
-        let analytic = (analytic_regions && has_region && options.view.zoom >= 32. && extent.pixels() > 16_777_216
+        let analytic_tile = analytic_regions && has_region && options.view.zoom >= 32.
             && options.raster_profile == crate::fidelity::RasterProfile::Analytic
             && doc.color_management.is_none() && options.pixel_preview.is_none() && options.animation.is_none()
-            && !properties.has_zoom && metadata.noise_guard.is_none())
-            .then(|| analytic_regions::plan(doc, &page.children, viewport, extent, &prepared)).flatten();
+            && !properties.has_zoom && metadata.noise_guard.is_none();
+        let analytic_repair = analytic_tile && extent.pixels() > 16_777_216;
+        let analytic = analytic_repair.then(|| analytic_regions::plan(doc, &page.children, viewport, extent, &prepared)).flatten();
         if let Some(plan) = &analytic {
             extent = plan.root;
             painter_support = None;
             regional_foreground = false;
-        } else if unmanaged_tile && !regional_foreground && (extent.pixels() > 16_777_216
+        } else if !regional_foreground && (analytic_repair || unmanaged_tile && (extent.pixels() > 16_777_216
             || analytic_regions && !compatible && !properties.has_zoom && prepared.iter().any(|(id, p)| {
                 let n = &doc.nodes[id];
                 n.visible && n.opacity > 0.
                     && gaussian_region_plan(n, p.matrix, viewport.intersect(p.bounds)).is_some()
-            }))
+            })))
         {
             // A small focus crop can fit the whole-surface pixel budget while
             // still requiring the regional operator's wider sigma domain.
             let coherent = options.raster_profile != crate::fidelity::RasterProfile::Analytic;
             let proved = page.children.iter().all(|id| foreground_region_supported(
-                doc, id, viewport, &prepared, coherent, true, true, false));
+                doc, id, viewport, &prepared, coherent, true, unmanaged_tile, false, analytic_tile));
             if proved {
                 regional_foreground = true;
                 extent = viewport.expand(2);
@@ -3172,7 +3205,8 @@ impl Engine {
         let retain_fragments=(self.camera_prepare.as_ref().is_some_and(|cache|cache.incremental)||self.interaction_transform_revision.as_ref().is_some_and(|(_,next,_)|*next==self.geo_revision))
             && options.animation.is_none() && analytic.is_none() && stages.is_none() && backdrop_outputs.is_empty() && shadow_outputs.is_empty();
         let mut fragments=self.camera_prepare.as_mut().map(|c|std::mem::take(&mut c.fragments)).unwrap_or_default();
-        let policy=serde_json::to_string(&(options,viewport,extent,regional_foreground,backdrop_chain,gaussian_regions,gaussian_reduction,source_filter_fields)).map_err(|e|e.to_string())?;
+        let analytic_foreground_tile = analytic_tile && regional_foreground;
+        let policy=serde_json::to_string(&(options,viewport,extent,regional_foreground,backdrop_chain,gaussian_regions,gaussian_reduction,source_filter_fields,analytic_foreground_tile)).map_err(|e|e.to_string())?;
         if !retain_fragments||fragments.policy!=policy {fragments.clear();}
         fragments.policy=policy;
         let fragment_targets=if retain_fragments {page.children.iter().flat_map(|id|{
@@ -3193,6 +3227,7 @@ impl Engine {
         let mut compiler = Compiler {
             analytic_regions: analytic.map(|plan| plan.nodes),
             wide_image_gaussians,
+            analytic_foreground_tile,
             doc,
             fonts: &self.fonts,
             paths: &mut self.paths,
@@ -4290,6 +4325,47 @@ mod integrated_leaf_culling_tests {
             fill:Arc::new(Vec::new()),fill_program_bounds:fill,strokes:Vec::new(),stroke_program_bounds:Vec::new(),
             bounds:fill.expand(6080),halo:6080,segments:0};
         (node,prepared)
+    }
+    #[test]
+    fn opaque_backdrop_across_a_device_pixel_edge_keeps_partial_and_exposed_samples() {
+        let (mut n, mut p) = fixture();
+        n.effects[0].kind = "background-blur".into();
+        n.fills[0].color = "#051227".into();
+        let trapezoid = |bottom| crate::path::Contour { closed: true, points: vec![
+            Point::new(-120., -80.), Point::new(120., -80.),
+            Point::new(100.25, bottom), Point::new(-100.25, bottom),
+        ] };
+        let tile = Rect::new(-16, 20, 32, 16);
+        p.fill = Arc::new(vec![trapezoid(32.)]);
+        assert_eq!(constant_fill_coverage(&n, &p, tile), None);
+        assert!(irrelevant_backdrop(&n, &p, tile, false, true));
+        assert!(!irrelevant_backdrop(&n, &p, tile, false, false));
+        assert!(!irrelevant_backdrop(&n, &p, Rect::new(98, 20, 16, 16), false, true));
+        n.fills[0].opacity = 0.5;
+        assert!(!irrelevant_backdrop(&n, &p, tile, false, true));
+        n.fills[0].opacity = 1.;
+        p.fill = Arc::new(vec![trapezoid(32.25)]);
+        assert!(!irrelevant_backdrop(&n, &p, tile, false, true));
+    }
+    #[test]
+    fn high_zoom_tile_straddling_an_opaque_backdrop_keeps_the_exposed_background() {
+        let document = json!({"schemaVersion":18,"id":"d","name":"backdrop edge",
+            "pages":[{"id":"p","name":"p","background":"#ffffff","children":["picture","band"]}],"nodes":{
+            "picture":{"id":"picture","kind":"rectangle","width":800,"height":400,"blend":"normal",
+                "fills":[{"kind":"linear","color":"#3688ff","stops":[{"offset":0,"color":"#ffffff"},{"offset":1,"color":"#3688ff"}]}]},
+            "band":{"id":"band","kind":"rectangle","width":600,"height":128,"blend":"normal",
+                "fills":[{"kind":"solid","color":"#051227"}],
+                "effects":[{"kind":"background-blur","radius":18.4,"color":"#000000"}]}}});
+        let mut engine = Engine::new();
+        engine.load_document(&document.to_string()).unwrap();
+        let region = Rect::new(6380, 8000, 514, 514);
+        let options = json!({"pageId":"p","width":514,"height":514,"view":{"x":0,"y":0,"zoom":64},
+            "rasterProfile":"analytic","gpuViewport":region,"gpuAnalyticRegions":true});
+        let scene = engine.compile_gpu_request(&options.to_string()).unwrap();
+        assert_eq!(scene.output, Some(region));
+        assert!(scene.nodes["band"].effects.is_empty());
+        assert!(!scene.nodes["picture"].fills.is_empty());
+        assert_eq!(engine.doc.as_ref().unwrap().nodes["band"].effects.len(), 1);
     }
     #[test]
     fn topology_3200_offscreen_shadow_does_not_reach_the_tile() {

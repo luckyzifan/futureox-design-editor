@@ -115,6 +115,48 @@ fn bounded_paint(paint: &crate::scene::Paint) -> bool {
     }
 }
 
+/// Local demand for a single outer shadow in a foreground-only tile. Styled
+/// text is a group of filled outlines in the prepared document. Its coverage
+/// is known without treating the whole effect halo as painted glyphs.
+pub(super) fn solid_shadow(
+    doc: &Document, node: &Node, prepared: &HashMap<String, Prepared>, requested: Rect, domain: Rect,
+) -> Option<NodeRegion> {
+    let mut effects = node.effects.iter().filter(|effect| effect.visible);
+    let effect = effects.next()?;
+    if effect.kind != "shadow" || effects.next().is_some() || effect.spread != 0. ||
+        effect.x != 0. || effect.y != 0. || effect.gradient_blur.is_some() || !bounded_color(&effect.color) ||
+        node.render_children().len() > 64 || doc.mask_child(node).is_some() { return None; }
+    let p = prepared.get(&node.id)?;
+    let sigma = effect.radius * p.matrix.max_scale() / 2.;
+    if !(32. ..=512.).contains(&sigma) { return None; }
+    let support = |n: &Node| -> Option<Rect> {
+        if n.mask || n.clip || n.passes_backdrop() || n.composite_blend() != "normal" ||
+            n.strokes.iter().any(|stroke| stroke.visible && stroke.width > 0.) ||
+            n.fills.iter().any(|paint| paint.visible && (paint.kind != "solid" || !bounded_paint(paint))) { return None; }
+        if n.fills.iter().any(|paint| paint.visible) {
+            Some(prepared.get(&n.id)?.fill_program_bounds)
+        } else { Some(Rect::default()) }
+    };
+    let mut sharp = support(node)?;
+    for id in node.render_children() {
+        let child = doc.nodes.get(id)?;
+        if !child.visible { continue; }
+        if !child.render_children().is_empty() || child.effects.iter().any(|effect| effect.visible) { return None; }
+        sharp = sharp.union(support(child)?);
+    }
+    if sharp.empty() { return None; }
+    // All six existing H/V rounding boundaries and the original logical
+    // transparent boundary survive each crop. Retain bilinear neighbours
+    // for the final sharp/shadow composite as well as each filter read.
+    let output = requested.expand(2).intersect(domain);
+    let sharp = sharp.expand(2).intersect(domain);
+    if output.empty() || sharp.empty() { return None; }
+    let filter = box_region(effects::gaussian_box_radii(sigma).ok()?, sharp, output.expand(2).intersect(domain), domain)?;
+    let input = output.union(filter.input);
+    if !bounded(input) { return None; }
+    Some(NodeRegion { input, output, effects: vec![EffectRegion {output, filter, small_gaussian_sigma: None}], backdrop: None, omit_shadow: false })
+}
+
 struct Walk<'a> {
     doc: &'a Document,
     prepared: &'a HashMap<String, Prepared>,
@@ -222,6 +264,37 @@ pub(super) fn plan(doc: &Document, roots: &[String], viewport: Rect, legacy: Rec
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn foreground_shadow_limits_the_six_full_density_boxes_to_the_consumed_tile() {
+        let source = json!({"schemaVersion":18,"id":"d","name":"shadow","pages":[{"id":"p","name":"p",
+            "background":"#ffffff","children":["title"]}],"nodes":{
+            "title":{"id":"title","kind":"group","width":160,"height":64,"blend":"normal","children":["ink"],
+                "effects":[{"kind":"shadow","radius":15,"color":"#3264ff","x":0,"y":0,"opacity":0.8}]},
+            "ink":{"id":"ink","kind":"ellipse","width":130,"height":25,"blend":"normal",
+                "fills":[{"kind":"solid","color":"#ffffff"}]}}});
+        let mut engine = crate::Engine::new();
+        engine.load_document(&source.to_string()).unwrap();
+        let options = json!({"pageId":"p","width":514,"height":514,"rasterProfile":"analytic",
+            "view":{"x":0,"y":0,"zoom":64},"gpuViewport":{"x":3200,"y":1550,"w":514,"h":514}});
+        assert_eq!(engine.compile_gpu_request(&options.to_string()).err().as_deref(), Some("GPU surface budget exceeded"));
+        let mut requested = options.clone();
+        requested["gpuAnalyticRegions"] = json!(true);
+        let scene = engine.compile_gpu_request(&requested.to_string()).unwrap();
+        let plan = scene.nodes["title"].analytic_region.as_ref().unwrap();
+        assert_eq!(plan.effects[0].filter.axes.len(), 6);
+        let weights = effects::gaussian_box_radii(480.).unwrap();
+        for (step, axis) in plan.effects[0].filter.axes.iter().enumerate() {
+            assert_eq!((axis.axis, axis.radius), (step % 2, weights[step/2]));
+        }
+        assert!(plan.input.pixels() < MAX_SURFACE_PIXELS);
+        assert!(plan.effects[0].filter.axes.iter().all(|s| s.output.pixels() < MAX_SURFACE_PIXELS));
+        assert_eq!(scene.output, Some(Rect::new(3200,1550,514,514)));
+        let mut shifted = source;
+        shifted["nodes"]["title"]["effects"][0]["x"] = json!(0.25);
+        engine.load_document(&shifted.to_string()).unwrap();
+        assert!(engine.compile_gpu_request(&requested.to_string()).unwrap().nodes["title"].analytic_region.is_none());
+    }
 
     #[test]
     fn regional_boxes_preserve_transparent_edges_and_all_six_dependencies() {

@@ -11,6 +11,7 @@ Markdown 结论记录一次实际运行能够支持的范围。复现入口见[�
 
 ## 记录
 
+- [2026-11-24 117.sketch 高倍缩放和画板交互](117_HIGH_ZOOM_20261124.zh-CN.md)
 - [2026-11-23 测试清理与复跑](TESTING_CLEANUP_20261123.zh-CN.md)
 - [2026-10 早期桌面与渲染验证](HISTORICAL_ACCEPTANCE_202610.zh-CN.md)
 - [2026-11-10 八个 PR 的复核](../PR_REVIEW_20261110.zh-CN.md)

@@ -3,7 +3,7 @@ import { setGpuDiagnosticSink } from '../../../../design-desktop/src/render-term
 import { expect, test, vi } from 'vitest'
 import { GpuRenderer } from './renderer'
 import type { Driver, GpuScene, GpuPaint, Texture, Rect } from './types'
-import { paint } from '../../model'
+import { effect, paint } from '../../model'
 
 test('resident working admission depends on physical surfaces, not arithmetic simplification',async()=>{
   const scene={version:0,width:2000,height:1280,extent:{x:0,y:0,w:2000,h:1280},
@@ -667,6 +667,32 @@ function textureReplayDriver(failUploadAt = Infinity, reusable = false) {
     replayAllocations: () => replayAllocations,
   }
 }
+
+test.each([
+  {zoom:64, kind:'shadow', retained:false, readback:false, mode:3},
+  {zoom:16, kind:'shadow', retained:false, readback:false, mode:1},
+  {zoom:64, kind:'blur', retained:false, readback:false, mode:1},
+  {zoom:64, kind:'background-blur', retained:false, readback:false, mode:1},
+  {zoom:1, kind:'shadow', retained:false, readback:false, mode:1},
+  {zoom:64, kind:'shadow', retained:true, readback:false, mode:1},
+  {zoom:64, kind:'shadow', retained:false, readback:true, mode:1},
+] as const)('analytic $kind box selection preserves all six axes at zoom $zoom, retained $retained, readback $readback', async ({zoom,kind,retained,readback,mode}) => {
+  const mock = textureReplayDriver(), prepareFilters = vi.fn(async () => {})
+  const driver = {...mock.driver, managed:true, prepareFilters,
+    uploadRgba8: (_: Uint8Array, w: number, h: number) => mock.driver.create(w,h)}
+  const renderer = new GpuRenderer(driver)
+  const base = textureReplayScene(), frame = base.nodes.frame
+  const scene: GpuScene = {...base, output:base.extent, floatCompositing:true, coherentSamples:false, integratedBlur:false,
+    interactionRetained:retained, view:{x:0,y:0,zoom}, nodes:{frame:{...frame, clip:false, children:[],
+      matrix:[zoom,0,0,zoom,0,0], inverse:[1/zoom,0,0,1/zoom,0,0], effects:[{...effect(kind), radius:15}]}}}
+  try {
+    await renderer.render(scene, readback, !readback)
+    const passes = mock.passes.filter(pass => pass.mode === 22)
+    expect(prepareFilters).toHaveBeenCalledWith(mode === 3)
+    expect(passes.map(pass => pass.uniforms[37])).toEqual([0,1,0,1,0,1])
+    expect(passes.map(pass => pass.uniforms[39])).toEqual(Array(6).fill(mode))
+  } finally { renderer.dispose() }
+})
 
 function textureReplayScene(radius = 2, clipped = false): GpuScene {
   const parent = { x: 0, y: 0, w: 640, h: 320 }
