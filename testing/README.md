@@ -66,4 +66,18 @@ node scripts/run-test.mjs -- node frontend/design-desktop/scripts/check-high-zoo
 
 临时调试时可另加 `--output="$PWD/test-results/high-zoom"`。私有对照通过参数或环境传入输入。`DESIGN_FIGMA_REFERENCES` 指向含 `cases.json` 的参考目录，`DESIGN_CACHE_FIXTURE` 指向缓存回归所需的本地作者文档 JSON。源码与历史构建有固定哈希的用例需要与之匹配的输入。
 
+### Figma 文字像素对照
+
+在 Figma 校准文件中运行生成脚本，用已配置的 sRGB 设置导出选中画板。保留 `KernelTextQA-*.png` 和 `KernelTextQA-*@2x.png` 文件名。准备脚本按七组 1×、2× 画板核对尺寸，并为原像素文件计算 SHA-256。[画板生成脚本](../frontend/design-client/public/fidelity/text-2026-10-09/create-in-figma.js)
+
+```sh
+node scripts/run-test.mjs -- sh -c '
+  pack="$FUTUREOX_TEST_RUN_DIR/text-references"
+  node frontend/design-client/scripts/prepare-figma-text-references.mjs "$1" "$pack" &&
+    (cd frontend/design-client && DESIGN_FIGMA_REFERENCES="$pack" bun run test:figma-software)
+' sh /absolute/path/to/figma-pngs
+```
+
+为 `test:figma-software` 加 `--prepare-only` 可检查清单、尺寸和哈希。像素验收需要原始 Figma 导出图和相应的渲染后端。
+
 将需要长期引用的实际结论写成 Markdown。可复跑的断言、脚本、必要金图和小型固定夹具保留在代码与夹具目录。复核完成后删除本轮临时日志、截图、profile、数据库副本与构建副本。结论格式和已有记录见[验证结论](../docs/verification/README.md)。
