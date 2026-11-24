@@ -302,6 +302,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     return parts
   }
   let right = 1, bottom = 1
+  const strokeRules: { css: string; scss: string }[] = []
   for (const [index, { node, parentId }] of entries.entries()) {
     const n = node, selector = nodeIdMap[n.id].selector, declarations: string[] = [], scssDeclarations: string[] = []
     const decl = (...css: string[]) => { declarations.push(...css); if (scssSession) scssDeclarations.push(...css) }
@@ -389,13 +390,16 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
         const token = color.scss ?? color.css
         if (stroke.align === 'outside') {
           declPair(`outline:${widthCss} solid ${color.css}`, `outline:${widthScss} solid ${token}`)
-        } else if (stroke.align === 'center') {
-          const halfCss = px(stroke.width / 2)
-          const halfScss = widthScss === widthCss ? halfCss : `calc(${widthScss} / 2)`
-          for (const kind of ['border', 'outline']) {
-            declPair(`${kind}:${halfCss} solid ${color.css}`, `${kind}:${halfScss} solid ${token}`)
-          }
-        } else declPair(`border:${widthCss} solid ${color.css}`, `border:${widthScss} solid ${token}`)
+        } else {
+          const centered = stroke.align === 'center'
+          const innerCss = centered ? px(stroke.width / 2) : widthCss
+          const innerScss = centered ? widthScss === widthCss ? innerCss : `calc(${widthScss} / 2)` : widthScss
+          if (centered) declPair(`outline:${innerCss} solid ${color.css}`, `outline:${innerScss} solid ${token}`)
+          // A border on the layer itself shifts its children and shrinks its
+          // flex content box. Paint the inner stroke on a separate box.
+          const pseudo = `${selector}::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none`
+          strokeRules.push({ css: `${pseudo};border:${innerCss} solid ${color.css}}`, scss: `${pseudo};border:${innerScss} solid ${token}}` })
+        }
       }
     }
     if (strokes.length) warn('STROKE_APPROXIMATION', 'CSS border approximates strokes; alignment, multiple strokes, dashes, joins, markers and width profiles may differ.', n.id)
@@ -458,6 +462,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     }
     pushRule(`${selector}{${declarations.join(';')}}`, scssSession ? `${selector}{${scssDeclarations.join(';')}}` : undefined, n.id)
   }
+  for (const rule of strokeRules) pushRule(rule.css, rule.scss)
   pushRule(`.design-scene{width:${px(right)};height:${px(bottom)};background:${cssColor(page.background) ?? 'transparent'}}`)
   const renderText = (n: DesignNode) => {
     if (!n.textRuns?.length) return htmlEscape(n.text)
