@@ -184,19 +184,19 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     colorMismatch: () => warn('SCSS_COLOR_MISMATCH', 'A bound fill color did not match its resolved variable, so that declaration stayed a CSS literal.'),
     numberMismatch: () => warn('SCSS_NUMBER_MISMATCH', 'A bound number did not match its resolved variable, so that declaration stayed a CSS literal.'),
   }, number) : undefined
-  const opacityPercent = (nodeId: string, opacityPath: string | undefined, opacity: number) => {
+  const opacityPercent = (nodeId: string, opacityPath: string | undefined, opacity: number, inverse = false) => {
     const alpha = Math.max(0, Math.min(1, opacity))
     if (!scssSession || !opacityPath || alpha === 1) return undefined
-    const literal = `${number(alpha * 100)}%`
-    const token = scssSession.number(resolved.nodes[nodeId], opacityPath, opacity, 'percent', literal)
+    const literal = `${number((inverse ? 1 - alpha : alpha) * 100)}%`
+    const token = scssSession.number(resolved.nodes[nodeId], opacityPath, opacity, inverse ? 'inverse-percent' : 'percent', literal)
     return token === literal ? undefined : token
   }
-  const paintCss = (paint: Paint, nodeId: string, width: number, height: number, colorPath?: string): { css?: string; scss?: string; prefixed?: string } => {
+  const paintCss = (paint: Paint, nodeId: string, width: number, height: number, colorPath?: string): { css?: string; scss?: string; prefixed?: string; prefixedScss?: string } => {
     if (paint.blend !== 'normal' || paint.opacity !== 1) warn('PAINT_COMPOSITING', 'Per-paint blend and opacity may differ from the native compositor.', nodeId)
-    const pair = (css?: string, scss = css, prefixed?: string) => ({ css, scss, prefixed })
-    const opacityPath = paint.kind !== 'image' && colorPath?.endsWith('.color') ? `${colorPath.slice(0, -'color'.length)}opacity` : undefined
+    const pair = (css?: string, scss = css) => ({ css, scss })
+    const opacityPath = colorPath?.endsWith('.color') ? `${colorPath.slice(0, -'color'.length)}opacity` : undefined
     const fillIndex = colorPath?.startsWith('fills.') ? Number(colorPath.split('.')[1]) : undefined
-    const percent = opacityPercent(nodeId, opacityPath, paint.opacity)
+    const percent = paint.kind === 'image' ? undefined : opacityPercent(nodeId, opacityPath, paint.opacity)
     if (paint.kind === 'solid') {
       const color = safeColor(paint.color, nodeId)
       if (!color) return {}
@@ -217,9 +217,17 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
       if (alpha === 1) return pair(url)
       // Use a transparent partner without intrinsic dimensions so fading the
       // image preserves its aspect ratio for contain and cover.
-      const keep = number(alpha * 100)
-      const toward = number((1 - alpha) * 100)
-      return pair(`cross-fade(${url} ${keep}%,transparent)`, undefined, `-webkit-cross-fade(${url},${TRANSPARENT_GRADIENT},${toward}%)`)
+      const keep = `${number(alpha * 100)}%`
+      const toward = `${number((1 - alpha) * 100)}%`
+      const modern = (weight: string) => `cross-fade(${url} ${weight},transparent)`
+      // The prefixed form weights the transparent partner.
+      const prefixed = (weight: string) => `-webkit-cross-fade(${url},${TRANSPARENT_GRADIENT},${weight})`
+      const scssKeep = opacityPercent(nodeId, opacityPath, paint.opacity)
+      const scssToward = opacityPercent(nodeId, opacityPath, paint.opacity, true)
+      return {
+        css: modern(keep), scss: scssKeep && modern(scssKeep),
+        prefixed: prefixed(toward), prefixedScss: scssToward && prefixed(scssToward),
+      }
     }
     if (paint.kind === 'linear' || paint.kind === 'radial') {
       if (paint.stops.length > 64) { warn('GRADIENT_LIMIT', 'Gradient with more than 64 stops was omitted.', nodeId); return {} }
@@ -370,11 +378,11 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
         const size = item.paint.kind === 'image'
           ? item.paint.fit === 'stretch' ? '100% 100%' : item.paint.fit
           : 'auto'
-        return [{ css: wrap(value.css), scss: wrap(value.scss ?? value.css), size, ...(value.prefixed ? { prefixed: value.prefixed } : {}) }]
+        return [{ css: wrap(value.css), scss: wrap(value.scss ?? value.css), size, prefixed: value.prefixed, prefixedScss: value.prefixedScss }]
       })
       if (layers.length) {
         layers.reverse()
-        if (layers.some(item => item.prefixed)) declPair(`background-image:${layers.map(item => item.prefixed ?? item.css).join(',')}`, `background-image:${layers.map(item => item.prefixed ?? item.scss).join(',')}`)
+        if (layers.some(item => item.prefixed)) declPair(`background-image:${layers.map(item => item.prefixed ?? item.css).join(',')}`, `background-image:${layers.map(item => item.prefixedScss ?? item.prefixed ?? item.scss).join(',')}`)
         declPair(`background-image:${layers.map(item => item.css).join(',')}`, `background-image:${layers.map(item => item.scss).join(',')}`)
       }
       if (layers.some(layer => layer.size !== 'auto')) {

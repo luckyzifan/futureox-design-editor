@@ -137,7 +137,7 @@ export function createScssColorSession(
       markReferenced(key)
       return `${MARKER}c:${key}${MARKER}`
     },
-    number(node: DesignNode, path: string, value: number, unit: 'px' | 'none' | 'percent', cssLiteral: string): string {
+    number(node: DesignNode, path: string, value: number, unit: NumberUnit, cssLiteral: string): string {
       const id = node.bindings?.[path]
       if (!system || !id || system.variables[id]?.kind !== 'number') return cssLiteral
       const modes = modesFor(node.id)
@@ -151,7 +151,7 @@ export function createScssColorSession(
       const key = ensure(id, modes, 'number')
       if (!key) return cssLiteral
       markReferenced(key)
-      const prefix = unit === 'px' ? 'p' : unit === 'percent' ? 'r' : 'u'
+      const prefix = { px: 'p', none: 'u', percent: 'r', 'inverse-percent': 'i' }[unit]
       return `${MARKER}${prefix}:${key}${MARKER}`
     },
     boolean(node: DesignNode, path: string) {
@@ -242,6 +242,7 @@ export function createScssColorSession(
           replacements.set(`p:${key}`, `#{$${ident}}px`)
           replacements.set(`u:${key}`, `$${ident}`)
           replacements.set(`r:${key}`, `#{$${ident} * 100%}`)
+          replacements.set(`i:${key}`, `#{(1 - $${ident}) * 100%}`)
         }
       }
       for (const [key, ident] of paintIdents) replacements.set(`s:${key}`, `$${ident}`)
@@ -261,10 +262,12 @@ function literalOf(kind: TokenKind, raw: VariableValue | undefined, normalizeCol
   return undefined
 }
 
-function expectedLiteral(value: number, unit: 'px' | 'none' | 'percent', formatNumber: (value: number) => string): string {
+type NumberUnit = 'px' | 'none' | 'percent' | 'inverse-percent'
+function expectedLiteral(value: number, unit: NumberUnit, formatNumber: (value: number) => string): string {
   if (unit === 'px') return `${formatNumber(value)}px`
   if (unit === 'none') return formatNumber(value)
-  return `${formatNumber(Math.max(0, Math.min(1, value)) * 100)}%`
+  const ratio = Math.max(0, Math.min(1, value))
+  return `${formatNumber((unit === 'inverse-percent' ? 1 - ratio : ratio) * 100)}%`
 }
 
 function plainSolidPaints(style: DesignSystem['styles'][string]): boolean {
