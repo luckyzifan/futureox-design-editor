@@ -8,6 +8,7 @@ import { ImageAssetRetirement } from './image-asset-retirement'
 import {sourceSolidLayerDisplay,sourceSolidLayer} from './source-solid-layers'
 import {denseBatch} from './dense-batch'
 import {gaussianRegionRects} from './gaussian-region'
+import {multiresBlurLevels} from './gaussian-multires'
 import {boxPrefixBandLines} from './box-prefix'
 import { PREFIX_MIN_RADIUS } from './prefix-band'
 import {copySourceWindow, linearSrgbWindow, magnifiedImageWindow, sourceImageWindow} from './source-image-window'
@@ -380,6 +381,8 @@ export class GpuRenderer {
   private wholeFilterAxes = 0
   private displayTentRadiusPasses = 0
   private gestureBlurPixels = 0
+  private multiresBlurPasses = 0
+  private multiresBlurReducedPixels = 0
   private gestureFilterPadding = 0
   private displayTentRadiusPixels = 0
   private displayBackdropDestinations = new WeakMap<Surface, { source: Surface; radius: number; axis: number; clamp: boolean; epoch: number;
@@ -6701,6 +6704,41 @@ export class GpuRenderer {
           region.x === 0 && region.y === 0 && region.w === input.rect.w && region.h === input.rect.h)
         return this.halfResolutionBlur(input, sigma, alphaOnly, forceGaussian)
     }
+    // Default-off display-only multiresolution Gaussian prototype. The input is
+    // already a resolved device-density RGBA surface (children and fills are
+    // composited before effects run), so the reduced work lattice is a pure
+    // pixel operation: prefilter downsample -> box blur at sigma/factor ->
+    if (import.meta.env.VITE_DESIGN_MULTIRES_BLUR === '1' && import.meta.env.VITE_DESIGN_MULTIRES_DEBUG === '1') {
+      console.warn('MULTIRES_DBG', JSON.stringify({ sigma, alphaOnly, present: this.outputFrame?.present, readback: this.outputFrame?.readback,
+        name: this.driver.name, managed: this.driver.managed, hdr: this.driver.hdr, displayMath: this.driver.displayMath,
+        software: this.scene.softwareRaster, capturing: this.interactionCapturing, logical: input.logicalBounds,
+        blend: n.blend, gradient: !!fx.gradientBlur, zoom: !!fx.zoomBlur,
+        tw: input.texture.width, rw: input.rect.w, th: input.texture.height, rh: input.rect.h, bytes: input.texture.bytes,
+        uniform: input.texture.uniformColor, transparent: input.texture.transparentZero, scalar: input.texture.scalarCoverage, binary: input.texture.binaryCoverage,
+        area: input.rect.w * input.rect.h, levels: multiresBlurLevels(sigma) }))
+    }
+    // bilinear reconstruct. The authored sigma, halo and composition lattice
+    // are unchanged. A readback/non-present frame, HDR, displayMath, software
+    // raster, scalar/binary/constant source or fractional lattice fails this
+    // gate and keeps the original full-density rational operator below.
+    if (import.meta.env.VITE_DESIGN_MULTIRES_BLUR === '1' &&
+        this.outputFrame?.present === true && this.outputFrame.readback !== true &&
+        this.driver.name === 'webgpu' && this.driver.managed === true && !this.driver.hdr && !this.driver.displayMath &&
+        !this.scene.softwareRaster && !this.interactionCapturing && !alphaOnly &&
+        !input.logicalBounds && !fx.gradientBlur && !fx.zoomBlur && n.blend === 'normal' &&
+        input.texture.width === input.rect.w && input.texture.height === input.rect.h &&
+        input.texture.bytes === input.rect.w * input.rect.h * 16 &&
+        !input.texture.uniformColor && !input.texture.transparentZero &&
+        !input.texture.scalarCoverage && !input.texture.binaryCoverage &&
+        exactBlendLattice([input.rect]) && input.rect.w * input.rect.h >= 65536) {
+      const levels = multiresBlurLevels(sigma)
+      if (levels !== undefined) {
+        const factor = 2 ** levels
+        this.multiresBlurPasses++
+        this.multiresBlurReducedPixels += Math.ceil(input.rect.w / factor) * Math.ceil(input.rect.h / factor)
+        return this.halfResolutionBlur(input, sigma, alphaOnly, forceGaussian, levels)
+      }
+    }
     return this.blur(input, sigma, false, alphaOnly, false, true, true, forceGaussian)
   }
   private async sampleSourceFilter(n:GpuNode,plan:NonNullable<GpuNode['sourceFilterField']>):Promise<Surface>{
@@ -9102,6 +9140,8 @@ export class GpuRenderer {
         imageXTablePrograms: this.imageXTablePrograms, imageXTableDuplicateBytesSaved: this.imageXTableDuplicateBytesSaved,
         wholeFilterAxes: this.wholeFilterAxes,
         gestureBlurPixels: this.gestureBlurPixels,
+        multiresBlurPasses: this.multiresBlurPasses,
+        multiresBlurReducedPixels: this.multiresBlurReducedPixels,
         displayTentRadiusPasses: this.displayTentRadiusPasses, displayTentRadiusPixels: this.displayTentRadiusPixels,
         horizontalFilterHits: this.horizontalFilterHits,
         horizontalFilterPixels: this.horizontalFilterPixels,

@@ -31,6 +31,7 @@ import { exactFilterPacketLayout, exactFilterPacketTexels } from './exact-filter
 import { managedBackgroundEntryPoint, managedBackgroundWgsl } from './managed-background'
 import { baseCompositorModes, compositorModes, SOLID_BIN_DRAW_MODE } from './compositor-modes'
 import { gaussianReductionWgsl } from './gaussian-reduction'
+import { multiresDisplayBlurEligible } from './gaussian-multires'
 import { linearRetainedCaptureWgsl } from './linear-retained-capture'
 import { emptyManagedComposeScene } from './empty-scene-compose'
 import { TexturePrefix, PREFIX_SCRATCH_BYTES } from './texture-prefix'
@@ -1545,7 +1546,13 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       hasSoftEffects
     this.sourceImageSampling=import.meta.env.VITE_DESIGN_SOURCE_IMAGE_MATH!=='0' && displayOnly && this.managed &&
       !this.hdr && !this.displayMath && !scene.softwareRaster && scene.sourceDetailTile===true && scene.colorManagement?.documentSpace==='srgb'
-    if (this.gestureSoftEffects||this.sourceSoftEffects) { modes.add(74); modes.add(75) }
+    // Default-off display-only multiresolution Gaussian prototype. It prepares
+    // the same mode-74/75 resampling pipelines as the source-detail LOD; the
+    // renderer admits the reduced work lattice only on a present, non-readback
+    // SDR frame. Exact/export/readback frames never prepare or take this lane.
+    const multiresDisplayBlur = multiresDisplayBlurEligible(import.meta.env.VITE_DESIGN_MULTIRES_BLUR === '1',
+      scene, this, !displayOnly, displayOnly) && hasSoftEffects
+    if (this.gestureSoftEffects||this.sourceSoftEffects||multiresDisplayBlur) { modes.add(74); modes.add(75) }
     if(displayOnly && this.canvasBlurRequested && scene.sourceDetailTile && hasSourceFilters)modes.add(74)
     if(displayOnly&&scene.sourceDetailTile||sourceSolidLayerDisplay(scene,this,displayOnly))await this.prepareSourceLayers()
     if (displayOnly && scene.densePaint) {
