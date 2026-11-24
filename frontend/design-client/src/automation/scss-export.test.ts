@@ -364,7 +364,7 @@ describe('selection SCSS color variables', () => {
     } finally { api.dispose(); editor.dispose() }
   })
 
-  it('uses a unitless image opacity token for both cross-fade syntaxes and exports its idle mode', () => {
+  it('uses a unitless image opacity token for both the cross-fade weight and the fallback box, and exports its idle mode', () => {
     const { document, system } = themed(['light', 'dark'], 'light')
     system.variables.fade = { kind: 'number', name: 'Image Opacity', collection: 'theme', values: { light: 0.25, dark: 0.6 } }
     const box = add(document, node('rectangle'))
@@ -374,11 +374,23 @@ describe('selection SCSS color variables', () => {
     box.bindings = { 'fills.0.opacity': 'fade' }
     const output = exportDesignCode(document, { syntax: 'scss' })
     expect(output.css).toContain(',linear-gradient(transparent,transparent),75%)')
-    expect(output.css).toContain(' 25%,transparent)')
+    expect(output.css).toContain(';opacity:25%}')
+    expect(output.css).not.toContain(' 25%,transparent)')
     expect(output.scss).toContain('$Image-Opacity: 0.25;')
     expect(output.scss).toContain('$Image-Opacity-dark: 0.6;')
     expect(output.scss).toContain('#{$Image-Opacity * 100%}')
     expect(output.scss).toContain('#{(1 - $Image-Opacity) * 100%}')
+    // The feature-tested rules are plain rules to the Sass pass: nothing nests into them.
+    expect(output.scss).toContain('@supports (background-image:-webkit-cross-fade(url(a.png),url(b.png),0%)){#design-node-1{')
+    expect(output.scss).toContain('@supports not (background-image:-webkit-cross-fade(url(a.png),url(b.png),0%)){#design-node-1::after{')
     expectCompiles(output)
+    // A faded image below another fill splits over two boxes in the fallback.
+    const veil = paint('#ff0000')
+    veil.opacity = 0.5
+    box.fills = [fill, veil]
+    const split = exportDesignCode(document, { syntax: 'scss' })
+    expect(split.css).toContain('::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;')
+    expect(split.css).toContain(';opacity:25%}#design-node-1::after{')
+    expectCompiles(split)
   })
 })
