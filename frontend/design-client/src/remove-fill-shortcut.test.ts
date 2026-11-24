@@ -49,8 +49,9 @@ test('Figma layout binds official Remove fill keys and leaves Shift+/ as remove 
     expect(resolveShortcut(key('≤', { code: 'Comma', altKey: true }), figma(platform))?.command).toBe('remove-fill')
     expect(resolveShortcut(key('/', { code: 'Slash', altKey: true }), figma(platform))).toBeNull()
     expect(resolveShortcut(optionSlash(), figma(platform))).toBeNull()
-    expect(resolveShortcut(altComma({ shiftKey: true }), figma(platform))).toBeNull()
-    expect(resolveShortcut(altComma({ ctrlKey: true }), figma(platform))).toBeNull()
+    // Shift or Ctrl turns Alt+, into an official text chord, not Remove fill.
+    expect(resolveShortcut(altComma({ shiftKey: true }), figma(platform))?.command).toBe('decrease-line-height')
+    expect(resolveShortcut(altComma({ ctrlKey: true }), figma(platform))?.command).toBe('decrease-font-weight')
     expect(resolveShortcut(shiftSlash(), figma(platform))?.command).toBe('remove-stroke')
     expect(resolveShortcut(key(',', { code: 'Comma', shiftKey: true }), figma(platform))?.command).not.toBe('remove-stroke')
   }
