@@ -1042,6 +1042,7 @@ export function ProgressiveSurfaceImpl(
       if (!repairScope) c.cancelTileFill()
       fillOwner.current = { contract, key: fillKey }
     }
+    if (activePlanKey.current !== frameKey) incompleteFillRetry.current = undefined
     activePlanKey.current = frameKey
     if (rasterOwner.current !== contract) {
       c.cancelPreview()
@@ -1380,6 +1381,14 @@ export function ProgressiveSurfaceImpl(
         return
       }
       if (!missing.length) commitRef.current()
+      const retryIncompleteFrame = () => {
+        if (!sameContent() || latestContext.current.visible === false || latestContext.current.interaction?.active) return
+        const live = activePlan.current
+        if (live?.key !== frameKey || live.document !== doc || live.revision !== contract.revision ||
+            incompleteFillRetry.current === live.key || [...live.ids].every(key => ready.current.has(key))) return
+        incompleteFillRetry.current = live.key
+        setDisplayRetry(value => value + 1)
+      }
       const submitChunk = async (chunk: RasterTile[]) => {
         // A prefetch-only chunk is best-effort cache warming, like the coarse
         // LOD layer: a failed off-screen raster must not fail the canvas
@@ -1437,6 +1446,10 @@ export function ProgressiveSurfaceImpl(
             console.debug('[tile-scheduler] prefetch chunk dropped', error)
             return
           }
+          // A cancelled required batch can leave the current camera without
+          // a completion or any input to wake its exact scheduler.
+          if (current() && !latestNavigationZoom.current.active && String(error).includes('PREVIEW_CANCELLED'))
+            retryIncompleteFrame()
           throw error
         } finally {
           if (repair && sequentialRepair.current === repair && repair.owner === repairOwner) {
@@ -1448,19 +1461,8 @@ export function ProgressiveSurfaceImpl(
             }
           }
         }
-        if (result && !prefetchOnly && !current() && sameContent() && !latestContext.current.interaction?.active) {
-          // Cancellation can replace the scheduler without replacing the
-          // document or camera. The late batch has finished; if the live
-          // exact plan is still missing a tile, give its scheduler one
-          // recheck instead of leaving the last preview displayed forever.
-          const live = activePlan.current
-          if (live?.key === frameKey && live.document === doc && live.revision === contract.revision
-              && incompleteFillRetry.current !== live.key
-              && [...live.ids].some(key => !ready.current.has(key))) {
-            incompleteFillRetry.current = live.key
-            setDisplayRetry(value => value + 1)
-          }
-        }
+        // A late batch may have finished after the same camera was rescheduled.
+        if (result && !prefetchOnly && !current()) retryIncompleteFrame()
         if (current() && result) {
           syncedDoc.current = doc
           commitRef.current()

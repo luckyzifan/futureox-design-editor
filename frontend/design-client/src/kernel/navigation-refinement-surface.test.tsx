@@ -104,6 +104,28 @@ test('idle interaction readiness updates do not restart the unchanged viewport p
  }finally{await act(async()=>f.root.unmount());enqueue.mockRestore()}
 })
 
+test('an interrupted exact tile batch retries the same camera once without a new input', async () => {
+  state.active = false
+  state.real = true
+  vi.stubEnv('VITE_DESIGN_NATIVE_VISIBLE_TILES', '1')
+  const f = await fixture(32)
+  const tileBatches = () => state.pending.filter(job => job.options.tileViewport?.length && job.options.renderIntent === 'canvas')
+  try {
+    if (!tileBatches().length) await f.complete(0)
+    await vi.waitFor(() => expect(tileBatches()).toHaveLength(1))
+    const first = tileBatches()[0]
+    await act(async () => first.reject(Error('PREVIEW_CANCELLED')))
+    await vi.waitFor(() => expect(tileBatches()).toHaveLength(2))
+    const second = tileBatches()[1]
+    expect(second.options.view).toEqual(first.options.view)
+    expect(second.options.tileViewport.map((tile: { key: string }) => tile.key))
+      .toEqual(first.options.tileViewport.map((tile: { key: string }) => tile.key))
+    await act(async () => second.reject(Error('PREVIEW_CANCELLED')))
+    expect(tileBatches()).toHaveLength(2)
+    expect(f.props.onFallback).not.toHaveBeenCalled()
+  } finally { await act(async () => f.root.unmount()) }
+})
+
 test('continuous DPR2 navigation gives one real native tile a bounded turn', async () => {
   const f = await fixture()
   try {
