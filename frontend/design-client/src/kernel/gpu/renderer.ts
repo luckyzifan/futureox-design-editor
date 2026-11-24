@@ -882,6 +882,17 @@ export class GpuRenderer {
       containsRect(clip.rect,bounds)&&containsRect(clip.opaqueInterior,bounds)&&
       exactBlendLattice([clip.rect,clip.opaqueInterior!,bounds])
   }
+  private canFlattenWithClip(clip: Surface | undefined, bounds: Rect): boolean {
+    if (!clip) return true
+    // An isolated group gets the inherited clip once, after its children
+    // composite. Distributing a fractional mask across those draws changes
+    // coverage wherever two children paint the same pixel.
+    if (clip.logicalBounds) return false
+    const binaryMask = clip.texture.binaryCoverage === true &&
+      clip.texture.width === clip.rect.w && clip.texture.height === clip.rect.h &&
+      exactBlendLattice([clip.rect, bounds])
+    return binaryMask || this.identityClip(clip, bounds)
+  }
   private equivalentClips(a:Surface|undefined,b:Surface|undefined,bounds:Rect):boolean{
     return sameSurface(a,b)||!!a&&!!b&&this.identityClip(a,bounds)&&this.identityClip(b,bounds)
   }
@@ -3859,14 +3870,16 @@ export class GpuRenderer {
     return surface
   }
   private async drawList(ids: string[], target: Surface, clip?: Surface, skip?: string, scope?: GpuNode): Promise<Surface> {
-    if(import.meta.env.VITE_DESIGN_SOURCE_GROUPS!=='0'&&this.sourceTileOcclusion&&target.texture.transparentZero&&!skip&&!this.interactionCapturing&&!this.painterStagesEnabled())
+    if(import.meta.env.VITE_DESIGN_SOURCE_GROUPS!=='0'&&this.sourceTileOcclusion&&target.texture.transparentZero&&!skip&&!this.interactionCapturing&&
+        !this.painterStagesEnabled()&&this.canFlattenWithClip(clip,target.rect))
       ids=sourcePainterOrder(this.scene,ids,target.rect)
     if(this.opaqueBatchEnabled()&&!clip&&!skip&&this.sampleIndex!==undefined){
       const batched=await this.drawOpaqueGroup(ids,[target],[this.sampleIndex]);if(batched)return batched[0]
     }
     let pendingSurfaceAdmission: Surface | Promise<Surface>
     let children = skip ? ids.filter((id) => id !== skip) : ids
-    if(this.analyticSolidBatchEnabled()&&this.analyticSolidTarget(target)&&!skip&&!this.interactionCapturing&&!this.painterStagesEnabled())
+    if(this.analyticSolidBatchEnabled()&&this.analyticSolidTarget(target)&&!skip&&!this.interactionCapturing&&
+        !this.painterStagesEnabled()&&this.canFlattenWithClip(clip,target.rect))
       children=sourcePainterOrder(this.scene,children,target.rect,262144)
     const focus = skip ? undefined : this.focusPrefixPlan(scope,children,target)
     if (focus) {
@@ -4751,7 +4764,8 @@ export class GpuRenderer {
   ): Promise<Surface[]> {
     if(this.sourceTileOcclusion&&clip?.length===4&&clip.every((mask,i)=>this.identityClip(mask,targets[i].rect)))clip=undefined
     if(import.meta.env.VITE_DESIGN_SOURCE_GROUPS!=='0'&&this.sourceTileOcclusion&&targets.every(t=>t.texture.transparentZero)&&!prefix&&!compactSource&&!this.interactionCapturing&&
-        !this.painterStagesEnabled()&&targets[0])ids=sourcePainterOrder(this.scene,ids,targets[0].rect)
+        !this.painterStagesEnabled()&&targets[0]&&(!clip||clip.length===targets.length&&clip.every((mask,i)=>this.canFlattenWithClip(mask,targets[i].rect))))
+      ids=sourcePainterOrder(this.scene,ids,targets[0].rect)
     if(this.opaqueBatchEnabled()&&!clip&&!prefix&&!compactSource&&targets.length===4){
       const batched=await this.drawOpaqueGroup(ids,targets,[0,1,2,3]);if(batched)return batched
     }
