@@ -6,7 +6,9 @@ import {
   arrangePatches,
   distributeOffsets,
   dragSnap,
+  createSpacingIndex,
   spacingSnap,
+  spacingSnapIndexed,
   tidyOffsets,
   type AlignCommand,
 } from './align-engine'
@@ -264,4 +266,115 @@ test('arrangePatches: nested parent transforms keep world-space alignment', () =
   const entries = scene(doc, doc.pages[0].id)
   expect(entries.find((e) => e.id === child.id)!.bounds.x).toBe(60)
   expect(worldMatrix(doc, child.id)).toEqual([1, 0, 0, 1, 60, 75])
+})
+
+// The rule the indexed query replaced: every target against every gap, then
+// every pair of targets. It is quadratic, so it stays here only as the oracle.
+function referenceSpacingSnap(moving: Bounds, siblings: Bounds[], threshold: number): SmartSnapResult {
+  const EPS = 1e-9
+  type Interval = { start: number; end: number; crossStart: number; crossEnd: number }
+  const interval = (b: Bounds, axis: 'x' | 'y'): Interval => axis === 'x'
+    ? { start: b.x, end: b.x + b.width, crossStart: b.y, crossEnd: b.y + b.height }
+    : { start: b.y, end: b.y + b.height, crossStart: b.x, crossEnd: b.x + b.width }
+  const axis = (name: 'x' | 'y') => {
+    const m = interval(moving, name), size = m.end - m.start
+    const near = (a: Interval, b: Interval) => a.crossStart <= b.crossEnd + threshold && b.crossStart <= a.crossEnd + threshold
+    const list = siblings.filter((s) => s.width > 0 && s.height > 0).map((s) => interval(s, name))
+      .filter((s) => near(s, m)).sort((a, b) => a.start - b.start)
+    const gaps: number[] = []
+    for (let i = 1; i < list.length; i++) {
+      if (!near(list[i - 1]!, list[i]!)) continue
+      const g = list[i]!.start - list[i - 1]!.end
+      if (g >= 0 && !gaps.some((v) => Math.abs(v - g) < 1e-6)) gaps.push(g)
+    }
+    const candidate: { best?: { delta: number; position: number; start: number; end: number } } = {}
+    const consider = (delta: number, position: number, others: Interval[]) => {
+      if (!Number.isFinite(delta) || Math.abs(delta) < EPS || Math.abs(delta) >= threshold) return
+      if (candidate.best && Math.abs(delta) >= Math.abs(candidate.best.delta)) return
+      candidate.best = { delta, position,
+        start: Math.min(m.crossStart, ...others.map((o) => o.crossStart)),
+        end: Math.max(m.crossEnd, ...others.map((o) => o.crossEnd)) }
+    }
+    for (const s of list) for (const g of gaps) {
+      consider(s.end + g - m.start, s.end, [s])
+      consider(s.start - g - size - m.start, s.start, [s])
+    }
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = list[i]!, b = list[j]!, span = b.start - a.end
+      if (span < size - EPS || m.start < a.end - EPS || m.end > b.start + EPS) continue
+      consider(a.end + (span - size) / 2 - m.start, a.end, [a, b])
+    }
+    const best = candidate.best
+    return best ? { delta: best.delta, guide: { axis: name, position: best.position, start: best.start, end: best.end } } : null
+  }
+  const x = axis('x'), y = axis('y')
+  return { dx: x?.delta ?? 0, dy: y?.delta ?? 0, guides: [x?.guide ?? null, y?.guide ?? null] }
+}
+
+function seeded(seed: number) {
+  let state = seed >>> 0
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0
+    return state / 4294967296
+  }
+}
+
+test('spacingSnapIndexed matches the quadratic rule on structured and random targets', () => {
+  const random = seeded(20261124)
+  const pick = <T,>(list: T[]) => list[Math.floor(random() * list.length)]!
+  for (let trial = 0; trial < 4000; trial++) {
+    const count = 1 + Math.floor(random() * 36)
+    const siblings: Bounds[] = []
+    for (let i = 0; i < count; i++) {
+      const structured = trial % 2 === 0
+      const width = structured ? pick([10, 20, 30]) : 5 + random() * 40
+      const height = structured ? pick([10, 20]) : 5 + random() * 40
+      const gap = structured ? pick([0, 5, 10, 20]) : random() * 25
+      const previous = siblings.at(-1)
+      // Structured rows share a few exact gaps and aligned cross extents, which
+      // is where equal corrections and tie-breaking order matter.
+      const x = previous && random() < 0.7 ? previous.x + previous.width + gap : random() * 200
+      const y = structured ? pick([0, 0, 100]) : random() * 150
+      siblings.push({ x, y, width, height })
+    }
+    // Ruler guides never contribute spacing.
+    if (trial % 7 === 0) siblings.push({ x: random() * 200, y: 0, width: 0, height: 200 })
+    const anchor = pick(siblings)
+    const moving = {
+      x: trial % 3 === 0 ? anchor.x + pick([10, 15, 20, 25]) : random() * 220,
+      y: trial % 3 === 0 ? anchor.y : random() * 180,
+      width: pick([5, 10, 12.5, 30]), height: pick([10, 20]),
+    }
+    const threshold = pick([2, 5, 8])
+    expect(spacingSnapIndexed(createSpacingIndex(siblings), moving, threshold)).toEqual(referenceSpacingSnap(moving, siblings, threshold))
+  }
+})
+
+test('spacingSnapIndexed keeps the issue 1005 shape fast and identical to the rule', () => {
+  // A row of positive-area rectangles with increasing, distinct gaps.
+  const row = (count: number) => {
+    let x = 0
+    return Array.from({ length: count }, (_, i) => {
+      x += 11 + i / 1000
+      return { x, y: 0, width: 10, height: 20 }
+    })
+  }
+  const targets = row(1500), index = createSpacingIndex(targets)
+  for (let i = 0; i < 12; i++) {
+    const moving = { x: 1500 * 6.25 + i * 0.173, y: 1, width: 10, height: 20 }
+    expect(spacingSnapIndexed(index, moving, 8)).toEqual(referenceSpacingSnap(moving, targets, 8))
+  }
+  // The reported sizes must not grow like the quadratic rule did.
+  const large = createSpacingIndex(row(20000))
+  const samples: number[] = []
+  for (let i = 0; i < 7; i++) {
+    const moving = { x: 20000 * 6.25 + i * 0.173, y: 1, width: 10, height: 20 }
+    const started = performance.now()
+    const result = spacingSnapIndexed(large, moving, 8)
+    samples.push(performance.now() - started)
+    expect(Number.isFinite(result.dx) && Number.isFinite(result.dy)).toBe(true)
+  }
+  const median = samples.sort((a, b) => a - b)[3]!
+  // A loose ceiling: the quadratic rule took about eight seconds for 6000 targets.
+  expect(median).toBeLessThan(150)
 })
