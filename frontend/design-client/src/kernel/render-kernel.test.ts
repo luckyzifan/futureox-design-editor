@@ -330,3 +330,64 @@ test('mixed scene/transport consumers share compilation but retain private progr
   expect(ownedB).toEqual(before);expect(()=>a.consume()).toThrow('PREPARED_PACKET_CONSUMED')
  }finally{channel.close();ports.port2.close();assets.free();remote.free()}
 })
+
+test('a terminal pose reuses only curve programs confirmed by its current receiver', async () => {
+  const remote = new VectorEngine(), assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'interaction', channel)
+  const doc = blank()
+  const moving = node('ellipse', 0.3, 2.1, 35, 28)
+  const stationary = node('ellipse', 48.1, 7.25, 46, 35)
+  for (const shape of [moving, stationary]) {
+    shape.fills = [paint('#2244bb')]
+    doc.nodes[shape.id] = shape
+    doc.pages[0].children.push(shape.id)
+  }
+  const options = JSON.stringify({
+    pageId: doc.pages[0].id, width: 140, height: 90, view: { x: .25, y: .125, zoom: 1.13 },
+    rasterProfile: 'figmaSubpixel',
+  })
+  const requests: { sceneLz4?: boolean; curvePrograms?: boolean; ranges: unknown[] }[] = []
+  let scope = 0
+  ports.port2.onmessage = ({ data: { id, method, args } }) => {
+    if (method === 'load_document') {
+      remote.load_document(args[0])
+      remote.bind_frame_scene_scope(`release-curve-${++scope}`)
+      ports.port2.postMessage({ id })
+    } else if (method === 'apply_interaction_transforms') {
+      ports.port2.postMessage({ id, value: remote.apply_interaction_transforms(args[0]) })
+    } else {
+      requests.push(JSON.parse(args[0]).frameResources)
+      const value = remote.compile_gpu_packet(args[0])
+      ports.port2.postMessage({ id, value }, [value.buffer])
+    }
+  }
+  const geometryBytes = (words: unknown) => {
+    if (!(words instanceof Float32Array)) throw Error('Expected materialized scene geometry')
+    return new Uint8Array(words.buffer, words.byteOffset, words.byteLength)
+  }
+  try {
+    await kernel.load_document(JSON.stringify(doc))
+    const cold = (await kernel.prepare_gpu_scene(options, undefined, 'confirmed-curves')).consume()
+    expect(requests[0]).toMatchObject({ sceneLz4: true, ranges: [] })
+    expect(requests[0].curvePrograms).toBeUndefined()
+    expect(cold.scene.curves?.length).toBeGreaterThan(0)
+
+    const motion = await kernel.prepare_gpu_scene(options, undefined, 'curves')
+    motion.consume()
+    expect(await kernel.apply_interaction_transforms(JSON.stringify({ [moving.id]: [1, 0, 0, 1, 6.25, 3.5] }))).toBe(true)
+    const release = (await kernel.prepare_gpu_scene(options, undefined, 'confirmed-curves')).consume()
+    expect(requests[2]).toMatchObject({ sceneLz4: true, curvePrograms: true })
+    expect(requests[2].ranges.length).toBeGreaterThan(0)
+
+    const reference = decodeScenePacket(remote.compile_gpu_packet(options))
+    for (const key of ['vertices', 'curves'] as const)
+      expect(geometryBytes(release.scene[key])).toEqual(geometryBytes(reference[key]))
+    expect(release.scene.nodes[moving.id].matrix).toEqual(reference.nodes[moving.id].matrix)
+
+    await kernel.load_document(JSON.stringify(doc))
+    const reloaded = await kernel.prepare_gpu_scene(options, undefined, 'confirmed-curves')
+    reloaded.consume()
+    expect(requests[3]).toMatchObject({ sceneLz4: true, ranges: [] })
+    expect(requests[3].curvePrograms).toBeUndefined()
+  } finally { channel.close(); ports.port2.close(); assets.free(); remote.free() }
+})

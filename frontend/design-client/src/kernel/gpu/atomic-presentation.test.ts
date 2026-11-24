@@ -50,15 +50,21 @@ test('only a pose waiting to submit its display copy holds the next raster', asy
  current.bitmap.close()
  f.presenter.acceptPresentation(current.presented.presentationToken)
 })
-test('a queued exact snapshot waits for the browser to hand off the previous frame', async () => {
+test.each([false,true])('a queued exact pose waits for the previous handoff (reflected frame=%s)', async reflected => {
  const f = fixture()
- const previous = {...f.frame(0), interaction:true, input:{sequence:4,at:1}}
- const exact = {...f.frame(0), interaction:true, input:{sequence:5,at:2}}
+ const presentationId = 'viewport'
+ const previous = {...f.frame(0), presentationId, interaction:true, input:{sequence:4,at:1,owner:'drag'}}
+ const exact = {...f.frame(0), presentationId, interaction:true, input:{sequence:5,at:2,owner:'drag'}}
  f.presenter.draw(previous)
  const previousEpoch = f.queue.epoch
  f.presenter.draw(exact)
  let resumed = false
- const pending = f.presenter.waitForQueuedFrame(exact)?.then(() => { resumed = true })
+ expect(f.presenter.waitForQueuedFrame({...exact,input:{...exact.input,owner:'other-drag'}})).toBeUndefined()
+ expect(f.presenter.waitForQueuedFrame({...exact,input:{...exact.input,sequence:6}})).toBeUndefined()
+ expect(f.presenter.waitForQueuedFrame({...exact,presentationId:'other-viewport'})).toBeUndefined()
+ expect(f.presenter.waitForQueuedFrame({...exact,view:{...exact.view,x:1}})).toBeUndefined()
+ const commitFrame = reflected ? {...exact,view:{...exact.view}} : exact
+ const pending = f.presenter.waitForQueuedFrame(commitFrame)?.then(() => { resumed = true })
  expect(pending).toBeDefined()
  f.queue.completeThrough(previousEpoch)
  await flush()
