@@ -517,6 +517,63 @@ fn wireframe_current_page_and_fixed_page_names_round_trip() {
     assert!(authored.iter().all(|page| page["nameIsFixed"] == json!(true)));
 }
 
+fn two_page_archive(index: i64) -> Vec<u8> {
+    let root = json!({
+        "_class": "document", "do_objectID": "PAGE-PREFERENCE", "currentPageIndex": index,
+        "pages": [{"_ref": format!("pages/{PAGE_A}")}, {"_ref": format!("pages/{PAGE_B}")}]
+    });
+    let pages = [
+        (PAGE_A, json!({"_class": "page", "name": "A", "do_objectID": PAGE_A, "layers": []})),
+        (PAGE_B, json!({"_class": "page", "name": "B", "do_objectID": PAGE_B, "layers": [],
+            "userInfo": {"com.futureox.design-kernel": {"originalId": "internal-page-b"}}})),
+    ];
+    archive(root, b"{}", &pages)
+}
+
+#[test]
+fn sketch_current_page_follows_its_identity_when_pages_reorder() {
+    for index in [0, 1] {
+        let mut document = interop::import_sketch_report(&two_page_archive(index)).unwrap().document;
+        let expected = document.pages[index as usize].id.clone();
+        document.pages.swap(0, 1);
+        let bytes = interop::export_sketch(&document).unwrap();
+        assert_eq!(json_files(&bytes)["document.json"]["currentPageIndex"], json!(1 - index));
+        let reopened = interop::import_sketch_report(&bytes).unwrap().document;
+        assert_eq!(reopened.pages[(1 - index) as usize].id, expected);
+    }
+}
+
+#[test]
+fn sketch_current_page_falls_back_when_removed_or_invalid() {
+    let mut document = interop::import_sketch_report(&two_page_archive(1)).unwrap().document;
+    let removed = document.pages.pop().unwrap();
+    document.nodes.remove(&removed.id);
+    let exported = json_files(&interop::export_sketch(&document).unwrap());
+    assert_eq!(exported["document.json"]["currentPageIndex"], json!(0));
+    for invalid in [-1, 5] {
+        let document = interop::import_sketch_report(&two_page_archive(invalid)).unwrap().document;
+        let exported = json_files(&interop::export_sketch(&document).unwrap());
+        assert_eq!(exported["document.json"]["currentPageIndex"], json!(0));
+    }
+}
+
+#[test]
+fn projected_sketch_page_lists_resolve_the_original_archive_index_first() {
+    let source = two_page_archive(1);
+    let root = source_json(&source, "document.json");
+    let meta = source_json(&source, "meta.json");
+    for file in [PAGE_A, PAGE_B] {
+        let pages = BTreeMap::from([(file.to_owned(), source_json(&source, &format!("pages/{file}.json")))]);
+        let projection = json!([{"_ref": format!("pages/{file}")}]);
+        let report = interop::import_sketch_source_parts_with_pages(&BTreeMap::new(), &meta, &root, &pages, &projection).unwrap();
+        let exported = json_files(&interop::export_sketch(&report.document).unwrap());
+        assert_eq!(exported["document.json"]["currentPageIndex"], json!(0));
+        let selected = report.document.design_system.as_ref()
+            .and_then(|system| system.sketch_containers.get("sketchCurrentPageId"));
+        assert_eq!(selected.and_then(Value::as_str), (file == PAGE_B).then_some("internal-page-b"));
+    }
+}
+
 #[test]
 fn semantic_interaction_flags_and_zero_instance_scale_round_trip() {
     let bytes = fixture("../../../testing/fixtures/sketch-public-20261105/semantic-ui-kit-for-sketch/semantic-ui-kit.sketch");

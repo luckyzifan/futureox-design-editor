@@ -1,8 +1,9 @@
 import { expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { strToU8, zipSync } from 'fflate'
+import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { import_sketch_json, export_sketch_json } from './generated/design-kernel/design_kernel'
 import { uid, validateDocument } from './model'
+import { Editor } from './engine'
 
 function archive() {
   const page = '10000000-0000-0000-0000-000000000001'
@@ -44,6 +45,30 @@ test('a shared Sketch compatibility archive reopens as the same editable layer c
   const document = validateDocument(reopened.document)
   expect(Object.keys(document.nodes)).toHaveLength(2)
   expect(Object.values(document.nodes).find(node => node.kind === 'text')?.text).toBe('Local text')
+})
+
+test.each([false, true])('the editor keeps the archived Sketch page through reorder with a legacy index %s', legacy => {
+  const pages = ['20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000002']
+  const source = zipSync({
+    'meta.json': strToU8(JSON.stringify({ version: 146 })),
+    'document.json': strToU8(JSON.stringify({ _class: 'document', currentPageIndex: 1, pages: pages.map(id => ({ _ref: `pages/${id}` })) })),
+    ...Object.fromEntries(pages.map(id => [`pages/${id}.json`, strToU8(JSON.stringify({ _class: 'page', name: id, layers: [] }))])),
+  })
+  const imported = JSON.parse(import_sketch_json(source)).document
+  imported.id = uid()
+  if (legacy) delete imported.designSystem.sketchContainers.sketchCurrentPageId
+  const editor = new Editor()
+  try {
+    expect(editor.load(imported)).toBe(true)
+    expect(editor.state.page).toBe(pages[1])
+    editor.reorderPage(pages[1], pages[0])
+    expect(editor.state.page).toBe(pages[1])
+    const bytes = export_sketch_json(JSON.stringify(editor.authoredDocument))
+    const exported = JSON.parse(strFromU8(unzipSync(bytes)['document.json']))
+    expect(exported.currentPageIndex).toBe(0)
+    const reopened = JSON.parse(import_sketch_json(bytes)).document
+    expect(reopened.pages[0].id).toBe(pages[1])
+  } finally { editor.dispose() }
 })
 
 function official(path: string) {

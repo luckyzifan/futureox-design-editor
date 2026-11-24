@@ -1417,13 +1417,20 @@ export class Editor {
         if (oldest !== undefined) this.sketchTabViews.delete(oldest)
       }
     }
+    const visiblePages = userPages(doc)
+    const visiblePage = (id: unknown) =>
+      typeof id === 'string' && visiblePages.some(page => page.id === id) ? id : undefined
     const tabView = restoreSketchTab && !preserveView ? this.sketchTabViews.get(doc.id) : undefined
-    const tabPage = tabView && userPages(doc).some(p => p.id === tabView.page) ? tabView.page : undefined
+    const tabPage = visiblePage(tabView?.page)
     const tabParents = tabPage && tabView!.selection.length ? allParents(doc) : undefined
     const tabSelection = tabPage && tabParents
       ? tabView!.selection.filter(id => interactivePath(doc, tabPage, id, true, tabParents).length) : []
     const saved = !preserveView && interfacePreference.getSnapshot().rememberViewport
       ? this.cameraState.recall(doc.id, doc.pages.map(p => p.id)) : undefined
+    const sketch = doc.designSystem?.sketchContainers
+    const archivedIndex = sketch?.currentPageIndex
+    const archivedPage = typeof sketch?.sketchCurrentPageId === 'string' ? sketch.sketchCurrentPageId
+      : typeof archivedIndex === 'number' && Number.isSafeInteger(archivedIndex) ? doc.pages[archivedIndex]?.id : undefined
     this.restoredCamera = !!saved || !!tabView
     this.operationDiagnostics.endSession()
     this.diagnosticOperation = null
@@ -1440,7 +1447,8 @@ export class Editor {
     this.transaction = null
     this.set({
       doc,
-      page:tabPage ?? (saved?.pageId && userPages(doc).some(p=>p.id===saved.pageId) ? saved.pageId : (preserveView&&userPages(doc).some(p=>p.id===previous.page)?previous.page:(userPages(doc)[0]?.id || doc.pages[0].id))),
+      page: tabPage ?? visiblePage(saved?.pageId) ?? (preserveView ? visiblePage(previous.page) : undefined)
+        ?? visiblePage(archivedPage) ?? visiblePages[0]?.id ?? doc.pages[0].id,
       selection:preserveView?previous.selection.filter(id=>!!doc.nodes[id]):tabSelection,
       alignmentReference: undefined,
       frameCrop: null,
