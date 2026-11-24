@@ -21,6 +21,15 @@ pub struct RecoveryEntry {
     pub document_id: String,
     pub name: String,
     pub updated_at: u64,
+    /// Monotonic per-recovery write counter. Wall-clock `updated_at` only has
+    /// millisecond resolution, so two writes in the same millisecond tie and a
+    /// crash-after-sync-before-rename temp could be mistaken for an older
+    /// leftover. A single recovery id has one sequential writer, so this
+    /// counter orders a genuine newer temp above the published snapshot even
+    /// when their timestamps tie. Legacy records default to 0 and fall back to
+    /// `updated_at` ordering.
+    #[serde(default)]
+    pub sequence: u64,
     pub hash: String,
     pub source_path: Option<String>,
     pub source_hash: Option<String>,
@@ -150,8 +159,20 @@ impl RecoveryStore {
             };
             let dest = self.path(&record.entry.recovery_id)?;
             match self.read(&record.entry.recovery_id) {
-                Ok(existing) if existing.entry.updated_at >= record.entry.updated_at => continue,
-                Ok(_) => {}
+                Ok(existing) => {
+                    // Prefer the monotonic write counter; it stays correct when
+                    // two writes share a millisecond. Equal counters (legacy
+                    // records, or a stale leftover) fall back to wall-clock time
+                    // so an older temp never replaces a newer published snapshot.
+                    let newer = if record.entry.sequence != existing.entry.sequence {
+                        record.entry.sequence > existing.entry.sequence
+                    } else {
+                        record.entry.updated_at > existing.entry.updated_at
+                    };
+                    if !newer {
+                        continue;
+                    }
+                }
                 Err(error) if error.code == "NOT_FOUND" || error.code == "INVALID_RECOVERY" => {}
                 Err(_) => continue,
             }
@@ -227,15 +248,18 @@ impl RecoveryStore {
         }
         let bytes = document_bytes(document)?;
         let old = storage::file_hash(&path, recovery_byte_limit())?;
-        if old.is_some() {
+        let prior_sequence = if old.is_some() {
             // Do not silently overwrite a corrupt recovery copy with new data.
-            self.read(id)?;
-        } else if self.files()?.len() >= MAX_RECOVERIES {
-            return Err(BackendError::new(
-                "RECOVERY_LIMIT",
-                "16 recovery snapshots are retained. Explicitly restore or discard one before creating another.",
-            ));
-        }
+            self.read(id)?.entry.sequence
+        } else {
+            if self.files()?.len() >= MAX_RECOVERIES {
+                return Err(BackendError::new(
+                    "RECOVERY_LIMIT",
+                    "16 recovery snapshots are retained. Explicitly restore or discard one before creating another.",
+                ));
+            }
+            0
+        };
         let mut entry = RecoveryEntry {
             recovery_id: id.to_owned(),
             document_id: document["id"].as_str().unwrap_or_default().to_owned(),
@@ -246,6 +270,7 @@ impl RecoveryStore {
                 .as_millis()
                 .try_into()
                 .map_err(|_| BackendError::new("IO_ERROR", "System clock is out of range"))?,
+            sequence: prior_sequence.saturating_add(1),
             hash: hash(&bytes),
             source_path: source_path.map(str::to_owned),
             source_hash: source_hash.map(str::to_owned),

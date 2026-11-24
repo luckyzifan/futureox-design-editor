@@ -29,6 +29,10 @@ export const EXPECTED_RECOVERY_TESTS = [
   'autosave_recovery_sqlite_readonly_is_not_saved',
   'autosave_recovery_readonly_directory_is_not_corrupt',
   'autosave_recovery_synced_temp_reopens_without_touching_import',
+  'autosave_recovery_same_millisecond_synced_temp_reopens_last_edit',
+  'autosave_recovery_stale_temp_with_newer_clock_does_not_roll_back_published',
+  'autosave_recovery_legacy_record_without_sequence_upgrades_and_recovers',
+  'autosave_recovery_legacy_synced_temp_still_adopts_by_timestamp',
   packagedCrashTest,
 ]
 
@@ -60,7 +64,7 @@ export function buildReport({ cargo, releasePackagePresent = false, packagedCras
   const faults = [
     {
       id: 'exit_during_save',
-      evidence: 'autosave_recovery_uncommitted_exit_reopens_last_commit, autosave_recovery_interrupted_journal_next_is_not_saved, autosave_recovery_synced_journal_next_reopens_edit, autosave_recovery_killed_process_reopens_last_commit, and autosave_recovery_unpublished_crash_copy_is_discarded',
+      evidence: 'autosave_recovery_uncommitted_exit_reopens_last_commit, autosave_recovery_interrupted_journal_next_is_not_saved, autosave_recovery_synced_journal_next_reopens_edit, autosave_recovery_killed_process_reopens_last_commit, autosave_recovery_same_millisecond_synced_temp_reopens_last_edit, and autosave_recovery_unpublished_crash_copy_is_discarded',
       status: unitStatus,
       scope: 'simulated_backend',
     },
@@ -72,13 +76,13 @@ export function buildReport({ cargo, releasePackagePresent = false, packagedCras
     },
     {
       id: 'reopen_last_consistent_version',
-      evidence: 'recovery_read after a rejected save; workspace reopen after a dropped transaction and after SIGKILL; autosave_recovery_synced_temp_reopens_without_touching_import; autosave_recovery_reopen_skips_second_copy_when_allocation_is_blocked',
+      evidence: 'recovery_read after a rejected save; workspace reopen after a dropped transaction and after SIGKILL; autosave_recovery_synced_temp_reopens_without_touching_import; autosave_recovery_same_millisecond_synced_temp_reopens_last_edit; autosave_recovery_stale_temp_with_newer_clock_does_not_roll_back_published; autosave_recovery_reopen_skips_second_copy_when_allocation_is_blocked',
       status: unitStatus,
       scope: 'simulated_backend',
     },
     {
       id: 'upgrade_migration',
-      evidence: 'autosave_recovery_failed_upgrade_keeps_prior_schema_then_retries',
+      evidence: 'autosave_recovery_failed_upgrade_keeps_prior_schema_then_retries and autosave_recovery_legacy_record_without_sequence_upgrades_and_recovers',
       status: unitStatus,
       scope: 'simulated_backend',
     },
