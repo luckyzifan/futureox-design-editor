@@ -68,7 +68,7 @@ import { lockedSelectionIds } from './canvas-menu-model'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { ViewControls } from './ViewControls'
 import { CanvasTextEditor } from './TextEditor'
-import { createBox, forcedPixelSnap, localClockwiseAfter, resizeInBasis, resizeSnapEnd, snapLocalClockwise, snapMove, selectionLocalBounds } from './canvas-view'
+import { createBox, localClockwiseAfter, resizeInBasis, resizeSnapEnd, snapLocalClockwise, snapMove, selectionLocalBounds, vectorPointSnaps } from './canvas-view'
 import { fitBounds, fitSelectedBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
 import { WheelCameraGesture } from './wheel-camera-gesture'
 import { desktopBridge,type LocalPeer } from './desktop'
@@ -2415,7 +2415,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (!draft && penEditable && editor.topSelection().includes(selectedNode.id)) {
         try {
           const network = selectedNode.network ? structuredClone(selectedNode.network) : editableNetwork(selectedNode)
-          const probe = apply(inverse(worldMatrix(s.doc, selectedNode.id)), s.snapPixels && !e.ctrlKey ? kernelSnapPoint(p) : p)
+          const probe = apply(inverse(worldMatrix(s.doc, selectedNode.id)), vectorPointSnaps(s.snapPixels, e.ctrlKey, s.view.zoom) ? kernelSnapPoint(p) : p)
           const shown = displayedSnapshot?.document.nodes[selectedNode.id]
           const shownVertex = shown?.network && displayedSnapshot
             ? presentedPenVertex(network, shown.network, worldMatrix(displayedSnapshot.document, selectedNode.id), p, zoom) : undefined
@@ -2430,7 +2430,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (e.shiftKey && draft.last) {
         const from = draft.network.vertices.find(vertex => vertex.id === draft.last)
         if (from) worldPoint = constrainToAngles(apply(liveMatrix, from), p)
-      } else if (s.snapPixels && !e.ctrlKey) worldPoint = kernelSnapPoint(p)
+      } else if (vectorPointSnaps(s.snapPixels, e.ctrlKey, s.view.zoom)) worldPoint = kernelSnapPoint(p)
       let local = draft.id ? apply(inverse(liveMatrix), worldPoint) : worldPoint
       if (!continuingDraft && draft.id && displayedSnapshot?.document.nodes[draft.id]?.network) {
         const shownVertex = presentedPenVertex(draft.network, displayedSnapshot.document.nodes[draft.id].network!, worldMatrix(displayedSnapshot.document, draft.id), worldPoint, zoom)
@@ -2692,10 +2692,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         d.kind === 'scale' || (!e.ctrlKey && ((d.ids.length === 1 && !!n.constrainProportions) || e.shiftKey)),
         e.altKey,
         // Control suspends object snap and the aspect lock. Pixel-grid snap
-        // stays on for a layer resize. Figma suspends it only in vector edit
-        // once the pixel grid is visible. A shared-rotation multi-selection
-        // uses the oriented basis without taking the first layer's lock.
-        d.kind !== 'scale' && ((d.ids.length === 1 && forcedPixelSnap(n)) || editor.state.snapPixels)]
+        // follows the preference for every layer, frames included. Figma
+        // suspends it under Control only in vector edit once the pixel grid
+        // is visible. A shared-rotation multi-selection uses the oriented
+        // basis without taking the first layer's lock.
+        d.kind !== 'scale' && editor.state.snapPixels]
     }
     return [[1, 0, 0, 1, d.box.x, d.box.y], { x: 0, y: 0, width: d.box.width, height: d.box.height },
       d.start, p, d.handle || 0,
@@ -2754,16 +2755,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const snapped = resizeSnapEnd(args[0], args[1], args[2], args[3], args[4], args[5], args[6], 6 / d.view.zoom,
       (moving, threshold) => index.snap(moving, threshold))
     if (!snapped.snapped.x && !snapped.snapped.y) return unchanged
-    const forced = d.ids.some(id => {
-      const node = (d.sourceDocument || editor.state.doc).nodes[id]
-      return !!node && forcedPixelSnap(node)
-    })
-    const showX = snapped.snapped.x && !forced, showY = snapped.snapped.y && !forced
+    // An axis that met another object keeps that exact coordinate; the pixel
+    // grid does not pull it away again.
+    const showX = snapped.snapped.x, showY = snapped.snapped.y
     const final = resizeInBasis(args[0], args[1], args[2], snapped.end, args[4], args[5], args[6], false)
     const finalBounds = bounds(boxPoints(args[1]).map(point => apply(final, apply(args[0], point))))
     return {
       args: [args[0], args[1], args[2], snapped.end, args[4], args[5], args[6], args[7], {
-        x: !snapped.snapped.x || forced, y: !snapped.snapped.y || forced,
+        x: !snapped.snapped.x, y: !snapped.snapped.y,
       }],
       guides: placedSmartGuides({
         dx: snapped.end.x - args[3].x, dy: snapped.end.y - args[3].y,
@@ -2826,10 +2825,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       guidedX = !!gx
       guidedY = !!gy
     }
-    const force = d.ids.some(id => forcedPixelSnap(editor.state.doc.nodes[id]))
-    // Control already skipped object snap above. Pixel-grid snap still applies.
-    const snapped = snapMove(d.box, { x: dx, y: dy }, force || editor.state.snapPixels,
-      { x: moveAxes.x && (force || !guidedX), y: moveAxes.y && (force || !guidedY) })
+    // Control already skipped object snap above. Pixel-grid snap follows the
+    // preference for every layer, frames included.
+    const snapped = snapMove(d.box, { x: dx, y: dy }, editor.state.snapPixels,
+      { x: moveAxes.x && !guidedX, y: moveAxes.y && !guidedY })
     return {
       matrix: translate(snapped.x, snapped.y),
       guides: placedSmartGuides(snapResult, { x: d.box.x + snapped.x, y: d.box.y + snapped.y, width: d.box.width, height: d.box.height },
@@ -3203,7 +3202,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const n = d.node,
         network = structuredClone(n.network)!
       const pointer =
-        d.kind === 'vertex' && editor.state.snapPixels && !e.ctrlKey ? kernelSnapPoint(p) : p
+        d.kind === 'vertex' && vectorPointSnaps(editor.state.snapPixels, e.ctrlKey, editor.state.view.zoom) ? kernelSnapPoint(p) : p
       const local = apply(inverse(worldMatrix(editor.state.doc, n.id)), pointer),
         start = apply(inverse(worldMatrix(editor.state.doc, n.id)), d.start),
         delta = { x: local.x - start.x, y: local.y - start.y }
