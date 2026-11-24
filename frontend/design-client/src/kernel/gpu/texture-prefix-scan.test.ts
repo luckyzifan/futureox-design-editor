@@ -7,7 +7,9 @@ const wrap=(value:bigint)=>value&mask128
 // Execute the production WGSL scan statements, yielding every invocation at
 // each real workgroup barrier. Only WGSL scalar syntax is translated; the scan
 // schedule and shared-memory accesses are not reimplemented in this test.
-const begin=shader.indexOf('  scanSums[lane]=value;')
+// Anchor on the tent scan: the box helper above it also starts a lane chunk
+// with `scanSums[lane]=value;` but publishes sums only, without moments.
+const begin=shader.indexOf('  scanSums[lane]=value;let moment=prefix_mul_u32(value,j);')
 const end=shader.indexOf('  let total=PrefixPair(',begin)
 if(begin<0||end<begin)throw Error('Production prefix scan block not found')
 const source=shader.slice(begin,end)

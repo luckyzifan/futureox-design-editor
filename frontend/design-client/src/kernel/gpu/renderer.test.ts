@@ -719,6 +719,30 @@ test.each([
   } finally { renderer.dispose(); vi.unstubAllEnvs() }
 })
 
+test.each([
+  {zoom:64, kind:'gaussian-blur', radius:4, flag:false, prepare:false, mode:2},
+  {zoom:64, kind:'gaussian-blur', radius:4, flag:true, prepare:true, mode:2},
+  {zoom:16, kind:'gaussian-blur', radius:8, flag:true, prepare:true, mode:2},
+  {zoom:8, kind:'background-blur', radius:8, flag:true, prepare:true, mode:1},
+  {zoom:4, kind:'gaussian-blur', radius:8, flag:true, prepare:false, mode:2},
+] as const)('optional Gaussian box prefix prepares only the flagged $kind scene at zoom $zoom', async ({zoom,kind,radius,flag,prepare,mode}) => {
+  vi.stubEnv('VITE_DESIGN_EXACT_GAUSSIAN_BOX_PREFIX', flag ? '1' : '0')
+  const mock = textureReplayDriver(), prepareFilters = vi.fn(async () => {})
+  const driver = {...mock.driver, managed:true, prepareFilters,
+    uploadRgba8: (_: Uint8Array, w: number, h: number) => mock.driver.create(w,h)}
+  const renderer = new GpuRenderer(driver)
+  const base = textureReplayScene(), frame = base.nodes.frame
+  const scene: GpuScene = {...base, output:base.extent, floatCompositing:true, coherentSamples:false, integratedBlur:false,
+    interactionRetained:false, view:{x:0,y:0,zoom}, nodes:{frame:{...frame, clip:false, children:[],
+      matrix:[zoom,0,0,zoom,0,0], inverse:[1/zoom,0,0,1/zoom,0,0], effects:[{...effect(kind), radius}]}}}
+  try {
+    await renderer.render(scene, false, true)
+    expect(prepareFilters).toHaveBeenCalledWith(prepare)
+    const passes = mock.passes.filter(pass => pass.mode === 22)
+    expect(passes.map(pass => pass.uniforms[39])).toEqual(Array(6).fill(mode))
+  } finally { renderer.dispose(); vi.unstubAllEnvs() }
+})
+
 function textureReplayScene(radius = 2, clipped = false): GpuScene {
   const parent = { x: 0, y: 0, w: 640, h: 320 }
   const leaf = { x: 456, y: 36, w: 148, h: 162 }

@@ -80,6 +80,30 @@ test('unknown physical resource, fractional phase, HDR, exact and small work ret
   ]){const f=fixture();mutate(f);f.driver.prepareCanvasBoxPass(f.target,f.u,[f.source,f.kernel],15,BOX_PREFIX_BYTES);expect(f.reserve).not.toHaveBeenCalled()}
 })
 
+test('optional Gaussian box prefix admits policy-1/2 uniform boxes only behind the flag with zero-support edges',()=>{
+  const make=()=>{const f=fixture();Object.assign(f.raw,{prefix:{scratchBytes:0},managed:true,hdr:false,displayMath:false});return f}
+  const eligible=(f:any)=>f.raw.exactRegionalBoxPrefix(f.target,f.u,[f.source,f.kernel],15)
+  // Default off keeps the policy-3-only admission; policy 2 stays per-tap.
+  let f=make()
+  expect(eligible(f)).toBeUndefined()
+  f.u[39]=3
+  expect(eligible(f)).toBe(f.raw.prefix)
+  vi.stubEnv('VITE_DESIGN_EXACT_GAUSSIAN_BOX_PREFIX','1')
+  f=make();f.u[39]=2
+  expect(eligible(f)).toBe(f.raw.prefix)
+  f.u[39]=1
+  expect(eligible(f)).toBe(f.raw.prefix)
+  // Clamp-edge passes keep the original per-tap reducer even with the flag.
+  f.u[38]=1
+  expect(eligible(f)).toBeUndefined()
+  // The non-uniform small-Gaussian marker is never a box prefix candidate.
+  f.u[38]=0;f.u[39]=4
+  expect(eligible(f)).toBeUndefined()
+  // A missing live uniform-box proof rejects the widened admission.
+  f.u[39]=2;f.raw.boxKernels.delete(f.kernel)
+  expect(eligible(f)).toBeUndefined()
+})
+
 test('automatic box execution does not enable regional or reduced geometry policies',()=>{
   const f=fixture();expect(f.driver.supportsGaussianRegions()).toBe(false);expect(f.driver.supportsGaussianReduction()).toBe(false)
   vi.stubEnv('VITE_DESIGN_GAUSSIAN_PREFIX','1');expect(f.driver.supportsGaussianRegions()).toBe(true)

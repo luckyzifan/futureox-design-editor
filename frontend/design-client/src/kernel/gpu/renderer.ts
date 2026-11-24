@@ -849,6 +849,7 @@ export class GpuRenderer {
   private prefixAllowed = true
   private analyticDisplayColorBoxes = false
   private analyticDisplayShadowBoxes = false
+  private analyticDisplayGaussianBoxes = false
   private get bytes() { return this.ledger.bytes }
   private set bytes(value: number) {
     this.ledger.applyDelta(value - this.ledger.bytes, this.byteClass)
@@ -9000,10 +9001,21 @@ export class GpuRenderer {
         effect.radius * scale(node.matrix) >= 2 * PREFIX_MIN_RADIUS))
     this.analyticDisplayColorBoxes = analyticBoxes && highZoom
     this.analyticDisplayShadowBoxes = analyticBoxes && !highZoom
+    // The policy-2 Gaussian/background-blur boxes are the same uniform-box
+    // packets; the optional flag admits them to the byte-exact integer prefix.
+    // This only prepares the shared prefix scratch — per-pass kernel, geometry,
+    // zero-support boundary and rounding guards still decide every hit.
+    this.analyticDisplayGaussianBoxes = import.meta.env.VITE_DESIGN_EXACT_GAUSSIAN_BOX_PREFIX === '1' &&
+      index.hasFilters && managedDisplay && this.optimized && !!scene.output && scene.coherentSamples === false &&
+      !scene.colorManagement && !scene.integratedBlur && !scene.interactionRetained && !scene.resolve && !scene.presentation &&
+      !scene.softwareRaster && zoom >= 8 && Object.values(scene.nodes).some(node => node.effects.some(effect =>
+        effect.visible && (effect.kind === 'gaussian-blur' || effect.kind === 'background-blur') &&
+        effect.radius * scale(node.matrix) >= 2 * PREFIX_MIN_RADIUS))
     if (index.hasFilters) {
       const regionalBoxes = highZoom && Object.values(scene.nodes).some(n => n.analyticRegion)
       preparation.push(this.prepareWithFailureOrigin(2, () => this.driver.prepareFilters?.(Boolean(this.prefixAllowed && this.optimized &&
-        this.driver.managed && (scene.integratedBlur && index.hasPrefixFilter || regionalBoxes || analyticBoxes)))))
+        this.driver.managed && (scene.integratedBlur && index.hasPrefixFilter || regionalBoxes || analyticBoxes ||
+          this.analyticDisplayGaussianBoxes)))))
     }
     preparation.push(this.loadImages(scene))
     const prepared = await Promise.allSettled(preparation)

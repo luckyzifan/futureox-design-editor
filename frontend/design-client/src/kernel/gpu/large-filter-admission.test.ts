@@ -30,6 +30,26 @@ test('clamped and unsupported kernels keep the established exact fallback', () =
   expect(prefix.canEncode(texture(64, 64), inputs, u, NaN, 'tent', r)).toBe(false)
 })
 
+test('optional Gaussian box markers widen only the flag-on uniform-box admission', () => {
+  const r = { x: 0, y: 0, w: 64, h: 64 }, u = parameters(r, r)
+  u[16] = 22; u.set([64, 0, 0, 2], 36)
+  const inputs = [texture(64, 64), texture(1, 1), texture(1, 1)]
+  const eligible = () => prefix.canEncode(texture(64, 64), inputs, u, 64, 'box', r)
+  // Default off keeps the policy-3-only admission; policy 2 and 1 stay per-tap.
+  expect(eligible()).toBe(false)
+  vi.stubEnv('VITE_DESIGN_EXACT_GAUSSIAN_BOX_PREFIX', '1')
+  expect(eligible()).toBe(true)
+  u[39] = 1
+  expect(eligible()).toBe(true)
+  // The non-uniform small-Gaussian marker and an unknown marker are never
+  // admitted by the optional box widening. The driver keeps the clamp-edge
+  // (u[38]) and live-kernel guards before it reaches this admission.
+  u[39] = 4
+  expect(eligible()).toBe(false)
+  u[39] = 0
+  expect(eligible()).toBe(false)
+})
+
 test('a fractional large blur prepares its accelerated filter before drawing', () => {
   const node = { id: 'blur', matrix: [128, 0, 0, 128, 0, 0], children: [], fills: [], strokes: [],
     effects: [{ kind: 'blur', visible: true, radius: 9.564871788024902 }] }

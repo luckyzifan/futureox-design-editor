@@ -2113,7 +2113,13 @@ this.queuedNativeInteractionPresentation = this.interactionPresentation && this.
       source.width === u[6] && source.height === u[7] && target.width === u[2] && target.height === u[3]
   }
   private exactRegionalBoxPrefix(target: Texture, u: Float32Array, inputs: Texture[], channels: number) {
-    if (!this.prefix || !this.managed || this.hdr || this.displayMath || u[16] !== 22 || u[39] !== 3 ||
+    // The policy-2/1 Gaussian and background-blur boxes are the same verified
+    // uniform-box packets as the policy-3 shadow boxes; the integer prefix is
+    // byte-exact for any of them. The optional flag only widens admission to the
+    // zero-support (u[38]===0) Gaussian markers; clamp-edge passes keep per-tap.
+    const gaussianBox = import.meta.env.VITE_DESIGN_EXACT_GAUSSIAN_BOX_PREFIX === '1' &&
+      (u[39] === 1 || u[39] === 2) && u[38] === 0
+    if (!this.prefix || !this.managed || this.hdr || this.displayMath || u[16] !== 22 || !(u[39] === 3 || gaussianBox) ||
         u[36] < 32 || (channels !== 8 && channels !== 15)) return
     const [source, kernel] = inputs, proof = kernel && this.boxKernels.get(kernel)
     if (proof?.radius === u[36] &&
