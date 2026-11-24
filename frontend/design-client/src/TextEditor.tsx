@@ -17,8 +17,8 @@ import { ImportOwner, importStep, type ImportRequest } from './import-ownership'
 import { equalValue } from './document-patch'
 import { interfacePreference } from './interface-preference'
 import { matchesTypefaceShortcut, openTypefaceSelect } from './typeface-shortcut'
-import { shortcutPlatform, shortcutProfileForUiMode } from './shortcut-profiles'
-import { commitFigmaTextCommand, commitListIndent, figmaTextCommandFromEvent, figmaTextCommandRepeats, textSelectionIsList } from './figma-text-shortcuts'
+import { resolveShortcut, shortcutPlatform, shortcutProfileForUiMode } from './shortcut-profiles'
+import { commitFigmaTextCommand, commitListIndent, figmaTextCommandRepeats, isFigmaTextCommand, textSelectionIsList } from './figma-text-shortcuts'
 
 function comparableRuns(runs: DesignNode['textRuns']) {
   // Native layout may reorder fields and omit defaults when it returns runs.
@@ -773,22 +773,22 @@ export function CanvasTextEditor({
             }
             return
           }
-          const textCommand = figmaTextCommandFromEvent(e.nativeEvent, {
+          const shortcut = resolveShortcut(e.nativeEvent, {
             profile: shortcutProfileForUiMode(snapshot.uiMode), platform: shortcutPlatform(),
             uiMode: snapshot.uiMode, keyboardLayout: snapshot.figmaKeyboardLayout,
-          })
-          if (textCommand) {
+          })?.command
+          if (shortcut && isFigmaTextCommand(shortcut)) {
             e.preventDefault()
-            if ((e.repeat && !figmaTextCommandRepeats(textCommand)) || done.current || (isCurrent && !isCurrent())) return
+            if ((e.repeat && !figmaTextCommandRepeats(shortcut)) || done.current || (isCurrent && !isCurrent())) return
             const range: [number, number] = [e.currentTarget.selectionStart, e.currentTarget.selectionEnd]
-            if (flushDraft() && commitFigmaTextCommand(editor, node.id, textCommand, range)) adopt(range)
+            if (flushDraft() && commitFigmaTextCommand(editor, node.id, shortcut, range)) adopt(range)
             return
           }
-          if (!sketch && primary && !e.altKey && !e.shiftKey && (e.code === 'BracketLeft' || e.code === 'BracketRight')) {
+          if (!sketch && (shortcut === 'bring-forward' || shortcut === 'send-backward')) {
             e.preventDefault()
             if (e.repeat || done.current || (isCurrent && !isCurrent())) return
             const range: [number, number] = [e.currentTarget.selectionStart, e.currentTarget.selectionEnd]
-            const direction = e.code === 'BracketRight' ? 1 : -1
+            const direction = shortcut === 'bring-forward' ? 1 : -1
             if (!flushDraft()) return
             const current = editor.state.doc.nodes[node.id]
             if (current && textSelectionIsList(current, range)) {

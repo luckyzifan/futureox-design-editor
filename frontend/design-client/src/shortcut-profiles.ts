@@ -179,20 +179,25 @@ export function shortcutBindings(context: ShortcutContext): readonly ShortcutBin
   if (profile === 'figma-like' && desktop) bindings.push({ command: 'open-layer-find', combo: 'Mod+F' })
   if (profile === 'figma-like' && platform === 'mac') bindings.push({ command: 'set-tool-eyedropper', combo: 'Ctrl+C' })
   if (profile === 'figma-like') bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })
-  // US/Generic keyboard-layout table: comma decreases and period increases.
-  // Explore text properties reverses that direction and uses Option for letter
-  // spacing; that chord stays free. Underline is only documented there:
-  // Mac Option+U, Windows/Linux Ctrl+U. German QWERTZ keeps its comma chords.
-  if (profile === 'figma-like' && keyboardLayout !== 'de-qwertz') {
+  // Figma's layout table uses comma/period for Generic and ß/´ for German.
+  // Underline is documented separately and uses the same letter in both.
+  if (profile === 'figma-like') {
+    const german = keyboardLayout === 'de-qwertz'
+    const [less, more] = german ? ['ß', '´'] : [',', '.']
+    const [lessCode, moreCode] = german ? ['Minus', 'Equal'] : ['Comma', 'Period']
+    const size = german && platform !== 'mac' ? 'Mod' : 'Mod+Shift'
+    const tracking = german ? 'Alt' : 'Mod'
     const step = (command: ShortcutAction, combo: string, physicalCode: string): ShortcutBinding => ({ command, combo, physicalCode, repeat: true })
     bindings.push(
-      step('decrease-font-size', 'Mod+Shift+,', 'Comma'), step('increase-font-size', 'Mod+Shift+.', 'Period'),
-      step('decrease-font-weight', 'Mod+Alt+,', 'Comma'), step('increase-font-weight', 'Mod+Alt+.', 'Period'),
-      step('decrease-letter-spacing', 'Mod+,', 'Comma'), step('increase-letter-spacing', 'Mod+.', 'Period'),
-      step('decrease-line-height', 'Shift+Alt+,', 'Comma'), step('increase-line-height', 'Shift+Alt+.', 'Period'),
+      step('decrease-font-size', `${size}+${less}`, lessCode), step('increase-font-size', `${size}+${more}`, moreCode),
+      step('decrease-font-weight', `Mod+Alt+${less}`, lessCode), step('increase-font-weight', `Mod+Alt+${more}`, moreCode),
+      step('decrease-letter-spacing', `${tracking}+${less}`, lessCode), step('increase-letter-spacing', `${tracking}+${more}`, moreCode),
+      step('decrease-line-height', `Shift+Alt+${less}`, lessCode), step('increase-line-height', `Shift+Alt+${more}`, moreCode),
       platform === 'mac'
         ? { command: 'toggle-text-underline', combo: 'Alt+U', physicalCode: 'KeyU' }
         : { command: 'toggle-text-underline', combo: 'Mod+U', physicalCode: 'KeyU' },
+    )
+    if (!german) bindings.push(
       { command: 'text-bullet-list', combo: 'Mod+Shift+8', physicalCode: 'Digit8' },
       { command: 'text-numbered-list', combo: 'Mod+Shift+7', physicalCode: 'Digit7' },
     )
