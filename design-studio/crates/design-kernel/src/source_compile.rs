@@ -179,6 +179,10 @@ struct Plan {
 pub(crate) struct Runtime {
     identity: Option<(String, [u8;32], String, String, String)>,
     replay: bool,
+    /// Default-off incremental reuse of the resident projection for any
+    /// contained demand, including demands reached after a scope expansion.
+    /// Read once from CORE_SOURCE_INCREMENTAL_REUSE; tests may override it.
+    incremental_reuse: bool,
     time_fallbacks: bool,
     key: Option<(u64, bool, bool)>,
     plan: Option<Plan>,
@@ -191,6 +195,7 @@ pub(crate) struct Runtime {
     active: bool,
     rebuilds: u64,
     reuses: u64,
+    incremental_reuses: u64,
     margin_evaluations: u64,
     pub(crate) stats: Value,
 }
@@ -200,6 +205,7 @@ impl Default for Runtime {
             identity: None,
             time_fallbacks: std::env::var("CORE_SOURCE_COMPILE_TIMING").as_deref() == Ok("1"),
             replay: std::env::var("CORE_SOURCE_REPLAY").as_deref()!=Ok("0"),
+            incremental_reuse: std::env::var("CORE_SOURCE_INCREMENTAL_REUSE").as_deref() == Ok("1"),
             key: None,
             plan: None,
             declined: None,
@@ -211,6 +217,7 @@ impl Default for Runtime {
             active: false,
             rebuilds: 0,
             reuses: 0,
+            incremental_reuses: 0,
             margin_evaluations: 0,
             stats: Value::Null,
         }
@@ -487,9 +494,18 @@ impl Runtime {
             let units = demand.unit_key();
             // At most one prior demand is retained, never the union of every
             // visited viewport. Expansion replaces it with this exact set.
-            let reuse = expansions == 0
-                && self.base_units == base_units
-                && units.iter().all(|u| self.units.binary_search(u).is_ok());
+            let contained = units.iter().all(|u| self.units.binary_search(u).is_ok());
+            let base_match = self.base_units == base_units;
+            // The legacy key reuses only an identical initial base demand on the
+            // first pass. CORE_SOURCE_INCREMENTAL_REUSE (default off) admits any
+            // contained demand as a superset grant: every demanded unit is already
+            // resolved in the resident projection, extra roots are culled by the
+            // renderer exactly as on the complete compiler, and the published-extent
+            // gate below still re-queries the catalogue and replans whenever the
+            // compiled extent reaches a unit outside the resident set. This also
+            // covers demands reached after a scope expansion, which the legacy
+            // `expansions == 0` key always rebuilt even when contained.
+            let reuse = contained && ((expansions == 0 && base_match) || self.incremental_reuse);
             if self.compiler.is_none() || !reuse {
                 owner.share_resolved_source_nodes();
                 let nodes = demand.resolved_nodes(owner.doc.as_ref().unwrap())?;
@@ -519,6 +535,9 @@ impl Runtime {
                 owner.invalidate_frame_scene_request();
             } else {
                 self.reuses += 1;
+                if !(expansions == 0 && base_match) {
+                    self.incremental_reuses += 1;
+                }
                 projection_decision = "reuse";
             }
             if !self.active {
@@ -576,6 +595,7 @@ impl Runtime {
             if result.is_ok() && self.replay {owner.frame_scene.retain_source(key.unwrap(),self.authored_nodes);}
             self.stats = json!({"mode":"demand","sourceNodes":descriptor.nodes,"residentAuthoredNodes":self.authored_nodes,
                 "resolvedCompileNodes":compiler.doc.as_ref().unwrap().nodes.len(),"projectionRebuilds":self.rebuilds,"projectionReuses":self.reuses,
+                "incrementalProjectionReuses":self.incremental_reuses,
                 "projectionDecision":projection_decision,
                 "scopeExpansions":expansions,"excludedNodePayloadCopies":0,"residentAuthority":true,"globalPadding":padding,
                 "globalMarginEvaluations":self.margin_evaluations,"contextMarginBytes":margin.bytes(),"cache":cache,

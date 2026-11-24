@@ -856,6 +856,247 @@ fn a_known_miss_outside_the_stage_stays_out_of_the_tile_and_a_reaching_shadow_st
     assert!(runtime.compiler.as_ref().unwrap().doc.as_ref().unwrap().nodes.contains_key("c"));
 }
 
+/// Reproduce the published-extent closure bloat: a spread grid of roots plus a
+/// backdrop chain whose read domain reaches across the stage. Reports, per
+/// tile, the resolved node count and the inclusion breakdown so a shrink can be
+/// judged against the actual driver (region intersect vs extent-only vs unknown).
+#[test]
+#[ignore = "manual tile-context closure measurement; no GPU/GUI"]
+fn measure_tile_context_closure() {
+    let cols = env_usize("FUTUREOX_MEASURE_COLS", 10);
+    let rows = env_usize("FUTUREOX_MEASURE_ROWS", 8);
+    let children = env_usize("FUTUREOX_MEASURE_CHILDREN", 24);
+    let tiles = env_usize("FUTUREOX_MEASURE_TILES", 3);
+    let (mut doc, _far, _reach, _master) = spread_document(cols, rows, children);
+    // Give the first root a wide backdrop so its painter read domain grows the
+    // published extent across many neighbouring roots.
+    if std::env::var("FUTUREOX_MEASURE_BACKDROP").ok().as_deref() == Some("1") {
+        let first = doc.pages[0].children[0].clone();
+        let stage = doc.nodes[&first].clone();
+        let _ = stage;
+        let root_id = doc.nodes["stage"].children[0].clone();
+        doc.nodes.get_mut(&root_id).unwrap().effects = serde_json::from_value(
+            json!([{"kind":"background-blur","radius":600,"color":"#000000"}]),
+        ).unwrap();
+    }
+    let desc = descriptor(&doc);
+    let mut actual = owner(doc.clone(), "measure-live");
+    let mut expected = owner(doc, "measure-oracle");
+    let mut runtime = Runtime::default();
+    let pitch = 256i32;
+    let tile = 514i32;
+    let step = 512i32;
+    let prepare = json!({"x":-16,"y":-16,"w":(cols as i32*pitch+240),"h":(rows as i32*pitch+240)});
+    let mut sum = 0u64;
+    let mut max = 0u64;
+    for row in 0..tiles {
+        for col in 0..tiles {
+            let x = col as i32 * step;
+            let y = row as i32 * step;
+            let request = json!({
+                "pageId":"page","width":tile,"height":tile,
+                "view":{"x":0.0,"y":0.0,"zoom":1.0},
+                "rasterProfile":"figmaSubpixel","gpuPageBackground":true,
+                "gpuViewport":{"x":x,"y":y,"w":tile,"h":tile},
+                "prepareViewport":prepare,
+            });
+            let packet = crate::capacity::with_source_storage_scope(true, || {
+                runtime.compile(&mut actual, &desc, "stage", "page", &request.to_string())
+            }).unwrap();
+            let full = crate::capacity::with_source_storage_scope(true, || {
+                expected.compile_gpu_packet_request(&request.to_string())
+            }).unwrap();
+            assert_projection_equivalent(&packet, &full);
+            let stats = runtime.stats.clone();
+            let resolved = stats["resolvedCompileNodes"].as_u64().unwrap_or(0);
+            sum += resolved;
+            max = max.max(resolved);
+            let unit_sum: usize = runtime.units.iter().copied().sum();
+            eprintln!("MEASURE tile({x},{y}) mode={} resolved={} resident={} decision={} rebuilds={} reuses={} expansions={} units={} unitSum={}",
+                stats["mode"], resolved, stats["residentAuthoredNodes"], stats["projectionDecision"],
+                stats["projectionRebuilds"], stats["projectionReuses"], stats["scopeExpansions"],
+                runtime.units.len(), unit_sum);
+        }
+    }
+    eprintln!("MEASURE SUMMARY nodes={} sumResolved={} maxResolved={} rebuilds={} reuses={}",
+        desc.nodes, sum, max, runtime.stats["projectionRebuilds"], runtime.stats["projectionReuses"]);
+}
+
+/// A wide backdrop makes the published extent cover a stable producer superset.
+/// Panning inside that superset yields contained demands; the legacy key rebuilds
+/// each tile's initial pass because the base differs, while incremental reuse
+/// (default off) reuses the resident superset. Output must stay byte-identical.
+fn backdrop_superset_document() -> Document {
+    let (mut doc, _far, _reach, _master) = spread_document(10, 8, 24);
+    let root_id = doc.nodes["stage"].children[0].clone();
+    doc.nodes.get_mut(&root_id).unwrap().effects = serde_json::from_value(
+        json!([{"kind":"background-blur","radius":600,"color":"#000000"}]),
+    ).unwrap();
+    doc
+}
+fn run_tile_sequence(incremental: bool) -> (Vec<Vec<u8>>, u64, u64, Vec<String>) {
+    let doc = backdrop_superset_document();
+    let desc = descriptor(&doc);
+    let mut actual = owner(doc.clone(), "incr-live");
+    let mut expected = owner(doc, "incr-oracle");
+    let mut runtime = Runtime::default();
+    runtime.incremental_reuse = incremental;
+    let prepare = json!({"x":-16,"y":-16,"w":2800,"h":2280});
+    let mut packets = Vec::new();
+    let mut decisions = Vec::new();
+    for (x, y) in [(0, 0), (512, 0), (1024, 0), (0, 512), (512, 512), (0, 1024)] {
+        let request = json!({
+            "pageId":"page","width":514,"height":514,
+            "view":{"x":0.0,"y":0.0,"zoom":1.0},
+            "rasterProfile":"figmaSubpixel","gpuPageBackground":true,
+            "gpuViewport":{"x":x,"y":y,"w":514,"h":514},
+            "prepareViewport":prepare,
+        });
+        let packet = crate::capacity::with_source_storage_scope(true, || {
+            runtime.compile(&mut actual, &desc, "stage", "page", &request.to_string())
+        }).unwrap();
+        let full = crate::capacity::with_source_storage_scope(true, || {
+            expected.compile_gpu_packet_request(&request.to_string())
+        }).unwrap();
+        assert_projection_equivalent(&packet, &full);
+        decisions.push(runtime.stats["projectionDecision"].as_str().unwrap_or("complete").to_owned());
+        packets.push(packet);
+    }
+    (packets, runtime.rebuilds, runtime.incremental_reuses, decisions)
+}
+#[test]
+fn incremental_reuse_cuts_rebuilds_for_contained_demands_without_changing_pixels() {
+    let (off_packets, off_rebuilds, off_incr, _) = run_tile_sequence(false);
+    let (on_packets, on_rebuilds, on_incr, _) = run_tile_sequence(true);
+    // Default-off must not claim any incremental reuse.
+    assert_eq!(off_incr, 0, "default-off must behave exactly like the legacy key");
+    // The candidate reuses contained initial passes the legacy key rebuilt.
+    assert!(on_incr > 0, "incremental reuse must fire for contained demands");
+    assert!(on_rebuilds < off_rebuilds, "rebuilds must drop: off={off_rebuilds} on={on_rebuilds}");
+    // Pixel contract: every candidate packet stays projection-equivalent to the
+    // legacy packet (geometry words and scene fields). Raw bytes may differ only
+    // by the reissued frame sequence/resource IDs, never by drawable geometry.
+    assert_eq!(off_packets.len(), on_packets.len());
+    for (index, (a, b)) in off_packets.iter().zip(on_packets.iter()).enumerate() {
+        assert_projection_equivalent(a, b);
+        assert_eq!(wire::geometry_words(a), wire::geometry_words(b), "tile {index} geometry must match");
+    }
+}
+#[test]
+fn incremental_reuse_never_reuses_a_projection_missing_a_demanded_root() {
+    // Negative control: a demand that introduces a unit absent from the resident
+    // projection must rebuild and actually resolve the new root, never reuse a
+    // stale superset that would drop its pixels.
+    let d = document();
+    let desc = descriptor(&d);
+    let mut actual = owner(d.clone(), "incr-neg-live");
+    let mut expected = owner(d, "incr-neg-oracle");
+    let mut runtime = Runtime::default();
+    runtime.incremental_reuse = true;
+    // Seed a resident projection over root "a" only.
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &request(-480.25, -480.375, 1.));
+    assert!(runtime.compiler.as_ref().unwrap().doc.as_ref().unwrap().nodes.contains_key("a"));
+    assert!(!runtime.compiler.as_ref().unwrap().doc.as_ref().unwrap().nodes.contains_key("c"));
+    // Root "c" is outside the resident superset: this demand is not contained, so
+    // it must rebuild and resolve "c" rather than reuse the "a"-only projection.
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &request(-2480.25, -480.375, 1.));
+    assert_eq!(runtime.stats["projectionDecision"], "rebuild", "a non-contained demand must rebuild");
+    assert!(runtime.compiler.as_ref().unwrap().doc.as_ref().unwrap().nodes.contains_key("c"),
+        "the newly demanded root must be resolved, not dropped by a stale reuse");
+    assert_eq!(runtime.incremental_reuses, 0, "no contained reuse is possible for this sequence");
+}
+
+/// Real-fixture measurement: import 117.sketch through the production semantic
+/// codec, wrap its page root in a neutral source stage (as the host snapshot
+/// does), and compile a tile grid plus a high-zoom crop. Reports resolved nodes
+/// and rebuilds with incremental reuse off/on and asserts oracle equivalence.
+#[test]
+#[ignore = "manual real-fixture measurement; requires 117.sketch; no GPU/GUI"]
+fn measure_real_117_tile_context() {
+    let path = std::env::var("FUTUREOX_REAL_FIXTURE")
+        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"),
+            "/../../../testing/fixtures/user-regression-20261109/117.sketch").to_owned());
+    let bytes = std::fs::read(&path).expect("117.sketch fixture");
+    let mut doc = crate::interop::import_sketch(&bytes).unwrap();
+    // Wrap the first page's roots in a neutral stage so the source-compile
+    // catalogue admits a partial demand (mirrors host place_materials).
+    let roots = doc.pages[0].children.clone();
+    let mut bounds = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+    for id in &roots {
+        let n = &doc.nodes[id];
+        bounds[0] = bounds[0].min(n.transform.0[4]);
+        bounds[1] = bounds[1].min(n.transform.0[5]);
+        bounds[2] = bounds[2].max(n.transform.0[4] + n.width);
+        bounds[3] = bounds[3].max(n.transform.0[5] + n.height);
+    }
+    let stage_id = "neutral-stage".to_owned();
+    let mut stage: crate::scene::Node = serde_json::from_value(json!({
+        "id": stage_id, "kind": "frame", "blend": "pass-through",
+        "width": (bounds[2]-bounds[0]).max(1.), "height": (bounds[3]-bounds[1]).max(1.),
+    })).unwrap();
+    stage.children = roots;
+    doc.nodes.insert(stage_id.clone(), stage);
+    doc.pages[0].children = vec![stage_id.clone()];
+    let font = bundled_font();
+    let desc = descriptor(&doc);
+    // The faithful oracle needs every referenced font resource. 117.sketch
+    // references host-provided families (e.g. Alibaba PuHuiTi) that are not
+    // bundled in this repo; without them the measurement is BLOCKED, not faked
+    // with a substitute glyph set. Probe the authoritative install to detect it.
+    let mut probe = Engine::new();
+    probe.load_font(&font).unwrap();
+    if let Err(e) = crate::capacity::with_source_storage_scope(true, || probe.load_source_document(doc.clone())) {
+        if e.contains("Missing font resource") {
+            eprintln!("REAL117 BLOCKED {e}; supply the host font set to run this measurement");
+            return;
+        }
+        panic!("117.sketch source install failed: {e}");
+    }
+    let mut results = Vec::new();
+    for incremental in [false, true] {
+        let mut actual = owner(doc.clone(), "real117-live");
+        let mut expected = owner(doc.clone(), "real117-oracle");
+        actual.load_font(&font).unwrap();
+        expected.load_font(&font).unwrap();
+        let mut runtime = Runtime::default();
+        runtime.incremental_reuse = incremental;
+        let mut sum = 0u64;
+        let mut max = 0u64;
+        let mut tiles = 0u64;
+        // Preview tile grid at zoom 1 over the material, then a high-zoom crop.
+        let mut cameras = Vec::new();
+        for row in 0..2 { for col in 0..3 {
+            cameras.push((col as f64 * 512., row as f64 * 512., 1.0, 0i32, 0i32));
+        }}
+        cameras.push((-410. * 8. + 8.25, 358. * 8. + 16.375, 8.0, 0, 0));
+        for (vx, vy, zoom, gx, gy) in cameras {
+            let request = json!({
+                "pageId": doc.pages[0].id, "width": 514, "height": 514,
+                "view": {"x": -vx, "y": -vy, "zoom": zoom},
+                "rasterProfile": "figmaSubpixel", "gpuPageBackground": true,
+                "gpuViewport": {"x": gx, "y": gy, "w": 514, "h": 514},
+                "prepareViewport": {"x": gx-16, "y": gy-16, "w": 546, "h": 546},
+            });
+            let packet = crate::capacity::with_source_storage_scope(true, || {
+                runtime.compile(&mut actual, &desc, &stage_id, &doc.pages[0].id, &request.to_string())
+            }).unwrap();
+            let full = crate::capacity::with_source_storage_scope(true, || {
+                expected.compile_gpu_packet_request(&request.to_string())
+            }).unwrap();
+            assert_projection_equivalent(&packet, &full);
+            let resolved = runtime.stats["resolvedCompileNodes"].as_u64().unwrap_or(0);
+            sum += resolved; max = max.max(resolved); tiles += 1;
+        }
+        results.push(json!({
+            "incremental": incremental, "tiles": tiles,
+            "sumResolved": sum, "maxResolved": max,
+            "rebuilds": runtime.rebuilds, "reuses": runtime.reuses,
+            "incrementalReuses": runtime.incremental_reuses,
+        }));
+    }
+    eprintln!("REAL117 nodes={} {}", desc.nodes, json!({"off": results[0], "on": results[1]}));
+}
+
 fn env_usize(name: &str, default: usize) -> usize {
     std::env::var(name)
         .ok()

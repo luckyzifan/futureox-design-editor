@@ -377,6 +377,43 @@ fn complete_topology_viewport_and_dependency_acquisition_matches_source() {
 }
 
 #[test]
+fn compile_closure_keeps_reaching_non_contained_producers_and_drops_known_misses() {
+    // The compile closure admits a root exactly when its conservative output
+    // support can reach the guard (or is unknown). A non-contained root whose
+    // shadow paints into the tile MUST stay; a proved known-miss MUST stay out.
+    // This is why the non-contained inclusion cannot be shrunk further without
+    // dropping pixels: every admitted root is a potential painter producer.
+    let mut d = document();
+    // "c" sits at the stage edge (x=20000) and casts a shadow back to the origin.
+    d.nodes.get_mut("c").unwrap().effects = serde_json::from_value(
+        json!([{"kind":"shadow","radius":8,"x":-20000,"color":"#000000","opacity":0.8}]),
+    ).unwrap();
+    // "far" is a proved miss of the origin guard.
+    let mut far = d.nodes["a"].clone();
+    far.id = "far".into();
+    far.transform = Transform([1., 0., 0., 1., 40000., 0.]);
+    far.effects.clear();
+    d.nodes.insert("far".into(), far);
+    d.nodes.get_mut("stage").unwrap().children.push("far".into());
+    let f = Fixture::new(d);
+    let cancel = AtomicBool::new(false);
+    let guard = Rect::new(0, 0, 64, 64);
+    let demand = f.catalog.viewport_for_compile(Transform::default(), guard, &cancel).unwrap();
+    let units = demand.unit_key();
+    let reach = f.catalog.owners["c"];
+    let miss = f.catalog.owners["far"];
+    let near = f.catalog.owners["a"];
+    assert!(units.binary_search(&reach).is_ok(), "a reaching non-contained producer must stay in the closure");
+    assert!(units.binary_search(&near).is_ok(), "the intersecting near root must stay");
+    assert!(units.binary_search(&miss).is_err(), "a proved known-miss must stay out");
+    // The redundant non-contained loop adds nothing beyond plan(visible): every
+    // admitted non-contained root already intersects the guard via `viewport`.
+    let visible = f.catalog.viewport(Transform::default(), guard, &cancel).unwrap();
+    assert!(visible.visible.contains(&"c".to_owned()));
+    assert!(!visible.visible.contains(&"far".to_owned()));
+}
+
+#[test]
 fn pointwise_color_controls_do_not_require_offscreen_painter_inputs() {
     let mut d = document();
     d.nodes.get_mut("b").unwrap().effects=serde_json::from_value(json!([{"kind":"color-controls","radius":0,"color":"#000000","colorControls":{"brightness":0.2,"contrast":1.5,"saturation":0.5,"hue":0}}])).unwrap();
