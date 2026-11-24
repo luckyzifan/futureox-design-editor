@@ -44,7 +44,7 @@ import { figmaRotationDegrees, formatFigmaAngle } from './rotation-field'
 import {selectionScaleFrame} from './selection-scale'
 import {CanvasLayoutHandles} from './CanvasLayoutHandles'
 import {CanvasSmartSelection} from './CanvasSmartSelection'
-import {pixelGridPathData, pixelGridVisible} from './pixel-grid'
+import {pixelGridPathData} from './pixel-grid'
 import {CanvasGuides, type GuideMeasureState} from './CanvasGuides'
 import { cancelComponentPlacement, takeComponentPlacement } from './component-placement'
 import {worldGuides} from './ruler-guides'
@@ -401,6 +401,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const { locale, uiMode } = useInterfacePreferences()
   const devMode = useFigmaDevMode()
+  const devInspect = devMode && uiMode === 'figma'
   useEffect(() => {
     if (uiMode !== 'sketch' && editor.state.alignmentReference) editor.set({ alignmentReference: undefined })
   }, [editor, uiMode])
@@ -524,6 +525,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   })
   const displayViewRef = useRef(displayView)
   displayViewRef.current = displayView
+  const vectorPlacementPoint = (point: Point) => uiMode === 'figma' && editor.state.snapPixels ? kernelSnapPoint(point) : point
   // Coalesced camera writes live on the editor (see Editor.setViewCoalesced)
   // so every entry point — wheel, zoom buttons, commands — observes
   // one consistent pending camera. Gestures flush synchronously on completion.
@@ -1219,7 +1221,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     editor.hoverLayer(point && rect && point.x >= 0 && point.y >= 0 && point.x < rect.width && point.y < rect.height &&
       performance.now() >= navigationUntil.current && !textEdit && displayedSnapshot && !drag.current && !pencil.current && !space.current &&
       ['select', 'multiselect', 'scale', 'vector', 'width'].includes(editor.state.tool)
-      ? displayedHoverHit(screenToWorld(displayedSnapshot.view, point)) : null, 'canvas')
+      ? displayedHoverHit(screenToWorld(displayedSnapshot.view, point), measureKeys.deep || (devInspect && state.tool === 'select')) : null, 'canvas')
   }
   // Navigation changes the content below a stationary pointer. Suppress hover
   // through wheel momentum, then pick once; do not churn between leaf/frame
@@ -1230,7 +1232,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const previous = hoverView.current; hoverView.current = state.view
     if (previous.x !== state.view.x || previous.y !== state.view.y || previous.zoom !== state.view.zoom) suspendNavigationHover()
     else refreshHover.current()
-  }, [editor, state.view, presented, eagerDisplayedIndex, displayedSnapshot?.document, textEdit, state.tool, measureKeys.deep, figmaHandHoverSuspended])
+  }, [editor, state.view, presented, eagerDisplayedIndex, displayedSnapshot?.document, textEdit, state.tool, measureKeys.deep, figmaHandHoverSuspended, devInspect])
   const selection = useMemo(() => new Set(state.selection), [state.selection])
   const selectionFeedback = useMemo(() => canvasLayerFeedback(state.doc, state.page, state.selection, editor.parentMap(state.doc)),
     [editor, state.doc, state.version, state.page, state.selection])
@@ -1280,9 +1282,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const progressiveBlurWarm = useMemo(() => blurWarmNode && selectionBox.width > 0 && selectionBox.height > 0 ? {
     node: blurWarmNode, bounds: [selectionBox.x, selectionBox.y, selectionBox.width, selectionBox.height] as [number, number, number, number],
   } : undefined, [blurWarmNode,selectionBox.x,selectionBox.y,selectionBox.width,selectionBox.height])
-  const devInspect = devMode && uiMode === 'figma'
   const pointerHover = (measureKeys.alt || devInspect) && !spaceHeld && !drag.current && state.tool === 'select' && selected.length
-    ? (measureKeys.alt && cursor ? displayedHoverHit(cursor, measureKeys.deep) : state.hoverSource === 'canvas' ? state.hover : null)
+    ? (measureKeys.alt && cursor ? displayedHoverHit(cursor, measureKeys.deep || devInspect) : state.hoverSource === 'canvas' ? state.hover : null)
     : null
   const vectorId = state.tool === 'vector' && state.selection.length === 1 ? state.selection[0] : null
   const vectorNetwork = vectorId ? state.doc.nodes[vectorId]?.network : undefined
@@ -1298,7 +1299,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     selection: state.selection, hover: measureHover, pick: keyboardMark?.pick ?? null,
     guideHover: !!guideChrome.hover, guideMeasurable: !!guideChrome.hover?.axis, guidePair,
     vectorAnchor: !!(vectorFrom && vectorTo && vectorTo.id !== vectorFrom.id),
-    vectorPlace: !!(vectorFrom && !vectorAnchorHover && cursor),
+    vectorPlace: !!(vectorFrom && !vectorAnchorHover && cursor && !measureKeys.deep && !measureKeys.text),
   })
   const measurementTarget = interaction?.kind === 'layers' ? interaction.id : null
   let directMeasurement: { lines: Measurement[]; pills: SpacingPill[] } | null = null
@@ -1310,7 +1311,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const matrix = worldMatrix(state.doc, vectorId)
     directMeasurement = diagramFromLines(measureAnchors(apply(matrix, vectorFrom), apply(matrix, vectorTo)), zoom)
   } else if (interaction?.kind === 'anchor-place' && vectorFrom && cursor && vectorId) {
-    directMeasurement = anchorPlacementBox(apply(worldMatrix(state.doc, vectorId), vectorFrom), cursor)
+    directMeasurement = anchorPlacementBox(apply(worldMatrix(state.doc, vectorId), vectorFrom), vectorPlacementPoint(cursor))
   }
   const measurementEntry = measurementTarget && displayedSnapshot
     ? getDisplayedIndex()?.entries.find(e => e.id === measurementTarget) : undefined
@@ -1686,7 +1687,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         setFigmaDevMode(!figmaDevMode())
         return
       }
-      if ((e.key === ' ' || e.code === 'Space') && !e.repeat && !e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey && cursorPoint.current) {
+      if ((e.key === ' ' || e.code === 'Space') && !e.repeat && !e.metaKey && !e.ctrlKey && !e.shiftKey && cursorPoint.current) {
         const readout = measureReadoutRef.current
         const text = readoutAtPoint(readout.lines, readout.pills, cursorPoint.current, readout.zoom)
         if (text) {
@@ -2381,7 +2382,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const vertexId = s.editingVertex
       const from = nodeId && vertexId ? s.doc.nodes[nodeId]?.network?.vertices.find(vertex => vertex.id === vertexId) : undefined
       if (nodeId && vertexId && from) {
-        const local = apply(inverse(worldMatrix(s.doc, nodeId)), p)
+        const local = apply(inverse(worldMatrix(s.doc, nodeId)), vectorPlacementPoint(p))
         if (Math.hypot(local.x - from.x, local.y - from.y) > 1e-4) {
           const id = uid()
           editor.update([nodeId], draft => {
@@ -3027,9 +3028,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       editor.hoverLayer(performance.now() >= navigationUntil.current && !textEdit && !space.current && ['select', 'multiselect', 'scale', 'vector', 'width'].includes(editor.state.tool)
-        // The outline matches the click: group until entered, child paint in a
-        // frame, or the frame on empty area. Command/Ctrl shows the leaf.
-        ? displayedHoverHit(p, deep || editor.state.tool === 'vector') : null, 'canvas')
+        // Inspect and vector edit use the leaf. Design selection follows the
+        // click unless Command or Ctrl is held.
+        ? displayedHoverHit(p, deep || editor.state.tool === 'vector' || (devInspect && editor.state.tool === 'select')) : null, 'canvas')
       return
     }
     d.lastInput = e
@@ -3838,7 +3839,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         (measureKeys.alt && state.tool === 'select' && !spaceHeld && !ownedDrag?.moveFromAnywhere &&
           !(uiMode === 'sketch' && shortcutPlatform() === 'mac' && measureKeys.deep && selected.length))) ? ' canvas-alt-duplicate' : ''}${spaceHeld ? ' canvas-space-held' : ''}${panning ? ' canvas-panning' : ''}${ownedDrag?.kind==='move'&&ownedDrag.moved&&!ownedDrag.duplicating?' canvas-object-dragging':''}`}
       data-testid="canvas" data-pen-affordance={affordance || undefined} aria-busy={state.busy}
-      data-dev-mode={devMode && uiMode === 'figma' ? 'on' : 'off'}
+      data-dev-mode={devInspect ? 'on' : 'off'}
       data-creation-kind={shapePreview?.kind}
       data-frame-crop={cropFrame || undefined}
       data-transform-gesture={drag.current?.kind}
@@ -4090,7 +4091,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         })}
       <CanvasLayoutHandles editor={editor} view={displayView} size={size} visible={exactOverlayMatches && !hidePanChrome} uiMode={uiMode}/>
       <CanvasSmartSelection editor={editor} view={displayView} size={size} entries={entries} visible={exactOverlayMatches && !hidePanChrome}/>
-      <div className="sr-only" role="status" aria-live="polite" data-testid="measurement-announcement" key={announceNonce}>{measureAnnounce}</div>
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="measurement-announcement">
+        <span key={announceNonce}>{measureAnnounce}</span>
+      </div>
       <CanvasGuides editor={editor} view={displayView} size={size} entries={entries} guidesHidden={hidePanChrome} onGuideMeasure={onGuideMeasure} intercept={e=>{
         if(!showTransformHandles||e.button!==0)return false
         const p=world(e)
