@@ -125,6 +125,40 @@ await runProof('forma-prefix-textures', [], async (proof) => {
     fixtures.push({name:`low-zoom-shadow-chunk-${w}x${h}`,kind:'box',w,h,r,origin:[31949,25297],channels:8,maxBandLines:255,
       values:Array.from({length:w*h*4}, (_,i) => i % 4 === 3 ? ((i * 19) % 113) / 112 : 0)})
   }
+  // Policy-2 (forceGaussian) and policy-1 Gaussian/background-blur boxes are the
+  // same uniform-box packets. Verify the widened admission is byte-exact on RGBA
+  // and alpha at the 3200% (479/480) and 800% (119/120) hot-path radii, across
+  // multiple scan chunks, both axes, and a fractional-origin addressing proof.
+  for (const [w,h,r,channels,policy] of [
+    [367,17,147,15,2], [1031,13,479,15,2], [13,997,480,15,2],
+    [1031,13,119,8,2], [13,997,120,8,2], [367,17,147,15,1],
+    [769,3,120,15,2], [513,2,479,15,2],
+  ] as [number,number,number,number,number][]) {
+    const rgba = Float32Array.from({length:w*h*4}, (_,i) => channels === 15 || i % 4 === 3 ? ((i * 19) % 113) / 112 : 0)
+    fixtures.push({name:`gaussian-policy${policy}-box-${w}x${h}`,kind:'box',w,h,r,origin:[31949,25297],channels,policy,
+      maxBandLines:255, values:Array.from(new Uint32Array(rgba.buffer))})
+  }
+  // The production prefix binds a blank sourceC (the certified packet is dropped
+  // on the prefix lane), so declined rows fall back to rfChannel rather than the
+  // certified shortcut. Prove that fallback still matches the certified reference.
+  for (const [w,h,r,channels] of [[367,17,147,15], [13,997,480,8]]) {
+    const rgba = Float32Array.from({length:w*h*4}, (_,i) => channels === 15 || i % 4 === 3 ? ((i * 19) % 113) / 112 : 0)
+    fixtures.push({name:`gaussian-blank-certified-${w}x${h}`,kind:'box',w,h,r,origin:[31949,25297],channels,policy:2,
+      blankCertified:true, values:Array.from(new Uint32Array(rgba.buffer))})
+  }
+  // A wide finite exponent span on the Gaussian source must decline the row and
+  // keep the exact reducer, never approximate. Mixed signs and subnormals included.
+  fixtures.push({name:'gaussian-policy2-wide-span',kind:'box',w:769,h:3,r:120,origin:[31949,25297],channels:15,policy:2,
+    maxBandLines:255,
+    values:Array.from({length:769*3*4}, (_,i) => {
+      const coordinate = Math.floor(i / 4) % 769
+      const exponent = 100 + (coordinate % 7) * 14
+      return ((exponent << 23) | ((i * 13171) & 0x7fffff) | (i % 7 === 0 ? 0x80000000 : 0)) >>> 0
+    })})
+  // Declined rows (nonfinite taps) on the blank-sourceC prefix lane must fall back
+  // to the plain rational reducer and still match the certified reference exactly.
+  fixtures.push({name:'gaussian-policy2-blank-decline',kind:'box',w,h,r:2,origin:[-53,7],channels:15,policy:2,
+    blankCertified:true, values:mixed})
   for (const f of fixtures) {
     f.kernel = Array.from(f.kind === 'box' ? rational_box_kernel_rgba(f.r) : rational_tent_kernel_rgba(f.r))
     f.certified = Array.from(f.kind === 'box' ? certified_box_kernel_rgba(f.r) : certified_tent_kernel_rgba(f.r))
@@ -230,11 +264,15 @@ await runProof('forma-prefix-textures', [], async (proof) => {
                 GPUTextureUsage.COPY_SRC |
                 GPUTextureUsage.COPY_DST,
             })
+          // A zero sourceC is not a certified packet, so rfCertifiedChannel declines
+          // and the prefix fallback runs the plain rational reducer (production wiring).
+          const blank = createTexture(1, 1)
+          device.queue.writeTexture({ texture: blank }, new Float32Array(4), { bytesPerRow: 16 }, [1, 1])
           const params = (f: any, axis: number, direct = false) => {
             const u = new Float32Array(256)
             u.set([...f.origin, f.w, f.h], 0)
             u.set([...f.origin, f.w, f.h], 4)
-            u.set([f.r, axis, 0, f.kind === 'box' && !direct ? 3 : 1], 36)
+            u.set([f.r, axis, f.clamp ? 1 : 0, f.kind === 'box' && !direct ? (f.policy ?? 3) : 1], 36)
             return u
           }
           const refEncode = (
@@ -350,11 +388,14 @@ await runProof('forma-prefix-textures', [], async (proof) => {
             activeEncoder = device.createCommandEncoder()
             prefix.resetCounters(activeEncoder)
             const rect = { x: f.origin[0], y: f.origin[1], w: f.w, h: f.h }
+            // The production prefix lane binds a blank sourceC; mirror that here
+            // when requested so declined rows exercise the rfChannel fallback.
+            const prefixCertified = f.blankCertified ? blank : certifiedKernel
             if (
               !prefix.encode(
                 () => activeEncoder!,
                 horizontal,
-                [source, kernel, certifiedKernel],
+                [source, kernel, prefixCertified],
                 params(f, 0),
                 f.r,
                 f.kind ?? 'tent',
@@ -368,7 +409,7 @@ await runProof('forma-prefix-textures', [], async (proof) => {
               !prefix.encode(
                 () => activeEncoder!,
                 vertical,
-                [horizontal, kernel, certifiedKernel],
+                [horizontal, kernel, prefixCertified],
                 params(f, 1),
                 f.r,
                 f.kind ?? 'tent',
@@ -391,7 +432,7 @@ await runProof('forma-prefix-textures', [], async (proof) => {
               [f.r, 'tent', true],
             ] as [number, 'tent' | 'box', boolean][]) {
               const u = params(f, 0)
-              if (kind === 'box') u[39] = 1 // A box cannot borrow a tent request's marker.
+              if (kind === 'box') u[39] = 4 // A box cannot borrow the non-uniform small-Gaussian marker.
               if (mutate) u[38] = 1
               if (
                 prefix.encode(

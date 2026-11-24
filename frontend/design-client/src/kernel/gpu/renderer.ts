@@ -839,6 +839,7 @@ export class GpuRenderer {
   private constantTargets = new Map<string, Surface>()
   private prefixAllowed = true
   private analyticDisplayShadowBoxes = false
+  private analyticDisplayGaussianBoxes = false
   private get bytes() { return this.ledger.bytes }
   private set bytes(value: number) {
     this.ledger.applyDelta(value - this.ledger.bytes, this.byteClass)
@@ -8924,10 +8925,20 @@ export class GpuRenderer {
       !scene.colorManagement && !scene.integratedBlur && !scene.interactionRetained && !scene.resolve && !scene.presentation &&
       !scene.softwareRaster && (scene.view.zoom >= 32 || shadowBoxLowZoom) && Object.values(scene.nodes).some(node => node.effects.some(effect =>
         effect.visible && effect.kind === 'shadow' && effect.radius * scale(node.matrix) >= 2 * PREFIX_MIN_RADIUS))
+    // The policy-2 Gaussian/background-blur boxes are the same uniform-box
+    // packets; the optional flag admits them to the byte-exact integer prefix.
+    // This only prepares the shared prefix scratch — per-pass kernel, geometry,
+    // zero-support boundary and rounding guards still decide every hit.
+    this.analyticDisplayGaussianBoxes = import.meta.env.VITE_DESIGN_EXACT_GAUSSIAN_BOX_PREFIX === '1' &&
+      index.hasFilters && managedDisplay && this.optimized && !!scene.output && scene.coherentSamples === false &&
+      !scene.colorManagement && !scene.interactionRetained && !scene.resolve && !scene.presentation &&
+      !scene.softwareRaster && scene.view.zoom >= 8 && Object.values(scene.nodes).some(node => node.effects.some(effect =>
+        effect.visible && (effect.kind === 'gaussian-blur' || effect.kind === 'background-blur') &&
+        effect.radius * scale(node.matrix) >= 2 * PREFIX_MIN_RADIUS))
     if (index.hasFilters) {
       const regionalBoxes = scene.view.zoom >= 32 && Object.values(scene.nodes).some(n => n.analyticRegion)
       preparation.push(this.prepareWithFailureOrigin(2, () => this.driver.prepareFilters?.(Boolean(this.prefixAllowed && this.optimized &&
-        this.driver.managed && (scene.integratedBlur && index.hasPrefixFilter || regionalBoxes || this.analyticDisplayShadowBoxes)))))
+        this.driver.managed && (scene.integratedBlur && index.hasPrefixFilter || regionalBoxes || this.analyticDisplayShadowBoxes || this.analyticDisplayGaussianBoxes)))))
     }
     preparation.push(this.loadImages(scene))
     const prepared = await Promise.allSettled(preparation)

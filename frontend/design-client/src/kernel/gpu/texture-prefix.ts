@@ -197,7 +197,9 @@ export class TexturePrefix {
     if (sourceWindow !== undefined && (import.meta.env.VITE_DESIGN_FILTER_SOURCE_WINDOW !== '1' || !window)) return false
     if (
       (kind !== 'tent' && !box) ||
-      (box && (!Number.isInteger(originalRadius) || originalRadius > 1024 || base[39] !== 3 || !!sourceWindow)) ||
+      (box && (!Number.isInteger(originalRadius) || originalRadius > 1024 ||
+        !(base[39] === 3 || (import.meta.env.VITE_DESIGN_EXACT_GAUSSIAN_BOX_PREFIX === '1' && (base[39] === 1 || base[39] === 2))) ||
+        !!sourceWindow)) ||
       !Number.isFinite(originalRadius) ||
       originalRadius < 1 ||
       originalRadius > (import.meta.env.VITE_DESIGN_LARGE_SHADOW_TENT === '1' || shadow ? 4096 : 2048) ||
