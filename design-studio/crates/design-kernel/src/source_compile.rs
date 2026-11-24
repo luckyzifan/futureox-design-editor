@@ -179,6 +179,9 @@ struct Plan {
 pub(crate) struct Runtime {
     identity: Option<(String, [u8;32], String, String, String)>,
     replay: bool,
+    /// Default-off reuse of a resident projection for any contained demand.
+    /// Read once from CORE_SOURCE_SUBSET_REUSE; tests may override the field.
+    subset_reuse: bool,
     time_fallbacks: bool,
     key: Option<(u64, bool, bool)>,
     plan: Option<Plan>,
@@ -191,6 +194,7 @@ pub(crate) struct Runtime {
     active: bool,
     rebuilds: u64,
     reuses: u64,
+    subset_reuses: u64,
     margin_evaluations: u64,
     pub(crate) stats: Value,
 }
@@ -200,6 +204,7 @@ impl Default for Runtime {
             identity: None,
             time_fallbacks: std::env::var("CORE_SOURCE_COMPILE_TIMING").as_deref() == Ok("1"),
             replay: std::env::var("CORE_SOURCE_REPLAY").as_deref()!=Ok("0"),
+            subset_reuse: std::env::var("CORE_SOURCE_SUBSET_REUSE").as_deref() == Ok("1"),
             key: None,
             plan: None,
             declined: None,
@@ -211,6 +216,7 @@ impl Default for Runtime {
             active: false,
             rebuilds: 0,
             reuses: 0,
+            subset_reuses: 0,
             margin_evaluations: 0,
             stats: Value::Null,
         }
@@ -383,6 +389,7 @@ impl Runtime {
                 self.reuses+=1;
                 self.stats=json!({"mode":"demand-replay","sourceNodes":descriptor.nodes,
                     "projectionRebuilds":self.rebuilds,"projectionReuses":self.reuses,
+                    "subsetProjectionReuses":self.subset_reuses,
                     "globalMarginEvaluations":self.margin_evaluations,"scopeExpansions":0,"resolvedCompileNodes":nodes,"residentAuthoredNodes":authored,
                     "cache":{"frameScene":owner.frame_scene.stats()}});
                 return Ok(bytes);
@@ -487,9 +494,17 @@ impl Runtime {
             let units = demand.unit_key();
             // At most one prior demand is retained, never the union of every
             // visited viewport. Expansion replaces it with this exact set.
-            let reuse = expansions == 0
-                && self.base_units == base_units
-                && units.iter().all(|u| self.units.binary_search(u).is_ok());
+            let contained = units.iter().all(|u| self.units.binary_search(u).is_ok());
+            let base_match = self.base_units == base_units;
+            // The resident projection is a superset grant: every demanded unit
+            // is already resolved, and any extra root is culled by the renderer
+            // exactly as on the complete compiler (the published-extent gate
+            // below still re-queries the catalogue and replans if it grows).
+            // The legacy key additionally requires the initial base demand to
+            // match. CORE_SOURCE_SUBSET_REUSE (default off) admits any contained
+            // demand, so a tile that shrinks to or revisits a subset of the
+            // resident closure reuses it instead of re-resolving shared nodes.
+            let reuse = expansions == 0 && contained && (base_match || self.subset_reuse);
             if self.compiler.is_none() || !reuse {
                 owner.share_resolved_source_nodes();
                 let nodes = demand.resolved_nodes(owner.doc.as_ref().unwrap())?;
@@ -519,6 +534,9 @@ impl Runtime {
                 owner.invalidate_frame_scene_request();
             } else {
                 self.reuses += 1;
+                if !base_match {
+                    self.subset_reuses += 1;
+                }
                 projection_decision = "reuse";
             }
             if !self.active {
@@ -576,6 +594,7 @@ impl Runtime {
             if result.is_ok() && self.replay {owner.frame_scene.retain_source(key.unwrap(),self.authored_nodes);}
             self.stats = json!({"mode":"demand","sourceNodes":descriptor.nodes,"residentAuthoredNodes":self.authored_nodes,
                 "resolvedCompileNodes":compiler.doc.as_ref().unwrap().nodes.len(),"projectionRebuilds":self.rebuilds,"projectionReuses":self.reuses,
+                "subsetProjectionReuses":self.subset_reuses,
                 "projectionDecision":projection_decision,
                 "scopeExpansions":expansions,"excludedNodePayloadCopies":0,"residentAuthority":true,"globalPadding":padding,
                 "globalMarginEvaluations":self.margin_evaluations,"contextMarginBytes":margin.bytes(),"cache":cache,

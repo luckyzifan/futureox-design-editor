@@ -1077,3 +1077,142 @@ fn shared_prepare_window_does_not_repeat_distant_roots_on_every_tile() {
         desc.nodes
     );
 }
+
+/// Two separated groups (`a` at x=0, `b` at x=200) each owning a large subtree,
+/// with `c` kept far away so every tile stays a strict subset of the source.
+/// Groups derive known output bounds from their children. A 514px tile at
+/// view.x=0 sees both `a` and `b`; a 64px tile at the same camera sees only `a`
+/// (b's conservative support halo stays outside the narrow guard): a contained
+/// demand whose base unit set differs from the wide tile.
+fn adjacent_units_document(children: usize) -> Document {
+    let mut d = document();
+    for (id, x) in [("a", 0.0_f64), ("b", 200.0_f64)] {
+        let mut kids = Vec::with_capacity(children);
+        for i in 0..children {
+            let child = format!("{id}_{i}");
+            let rect: crate::scene::Node = serde_json::from_value(json!({
+                "id": child, "kind": "rectangle", "width": 2.0, "height": 2.0,
+                "transform": [1,0,0,1, (i % 10) as f64 * 3.0, (i / 10) as f64 * 3.0],
+                "fills": [{"kind":"solid","color":"#3777cc"}]
+            }))
+            .unwrap();
+            d.nodes.insert(child.clone(), rect);
+            kids.push(child);
+        }
+        let unit = d.nodes.get_mut(id).unwrap();
+        unit.kind = "group".into();
+        unit.width = 30.;
+        unit.height = 30.;
+        unit.fills = Vec::new();
+        unit.transform = Transform([1., 0., 0., 1., x, 500.]);
+        unit.children = kids;
+    }
+    d
+}
+
+/// A 514px tile that sees both `a` and `b`; the prepare window contains it.
+fn wide_request() -> Value {
+    json!({"pageId":"page","width":514,"height":514,"view":{"x":0.0,"y":-480.375,"zoom":1.0},
+        "rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":514,"h":514},
+        "prepareViewport":{"x":-64,"y":-64,"w":640,"h":640},"gpuPageBackground":true})
+}
+
+/// G6 regression: the same shrinking-tile input rebuilds the shared context on
+/// the legacy key (old behaviour) and reuses the resident superset under
+/// CORE_SOURCE_SUBSET_REUSE (candidate), while every packet stays equivalent to
+/// the complete compiler. A genuinely new unit still forces a rebuild.
+#[test]
+fn subset_projection_reuse_matches_oracle_and_skips_rebuild() {
+    let d = adjacent_units_document(64);
+    let desc = descriptor(&d);
+    let wide = wide_request(); // sees a and b
+    let narrow = request(0., -480.375, 1.); // 64px: sees only a, contained, different base
+    let distant = request(-2480.25, -480.375, 1.); // sees only c: not contained
+
+    // Legacy key (default off): the contained tile rebuilds the whole context.
+    let mut legacy = Runtime::default();
+    legacy.replay = false;
+    legacy.subset_reuse = false;
+    let mut legacy_actual = owner(d.clone(), "subset-legacy");
+    let mut legacy_oracle = owner(d.clone(), "subset-legacy-oracle");
+    compare(&mut legacy, &mut legacy_actual, &mut legacy_oracle, &desc, &wide);
+    assert_eq!(legacy.stats["projectionRebuilds"], 1);
+    compare(&mut legacy, &mut legacy_actual, &mut legacy_oracle, &desc, &narrow);
+    assert_eq!(legacy.stats["projectionRebuilds"], 2, "legacy key rebuilds a contained demand");
+    assert_eq!(legacy.stats["subsetProjectionReuses"], 0);
+
+    // Candidate key: the contained demand reuses the resident superset.
+    let mut candidate = Runtime::default();
+    candidate.replay = false;
+    candidate.subset_reuse = true;
+    let mut actual = owner(d.clone(), "subset-candidate");
+    let mut expected = owner(d.clone(), "subset-oracle");
+    compare(&mut candidate, &mut actual, &mut expected, &desc, &wide);
+    assert_eq!(candidate.stats["projectionRebuilds"], 1);
+    compare(&mut candidate, &mut actual, &mut expected, &desc, &narrow);
+    assert_eq!(candidate.stats["mode"], "demand");
+    assert_eq!(candidate.stats["projectionDecision"], "reuse");
+    assert_eq!(candidate.stats["projectionRebuilds"], 1, "contained demand must not rebuild");
+    assert_eq!(candidate.stats["subsetProjectionReuses"], 1);
+    // The resident projection keeps the wide superset; the narrow tile culls b.
+    assert!(candidate.compiler.as_ref().unwrap().doc.as_ref().unwrap().nodes.contains_key("b"));
+
+    // Negative control: a unit absent from the resident set still rebuilds.
+    compare(&mut candidate, &mut actual, &mut expected, &desc, &distant);
+    assert_eq!(candidate.stats["projectionDecision"], "rebuild");
+    assert_eq!(candidate.stats["projectionRebuilds"], 2);
+    assert_eq!(candidate.stats["subsetProjectionReuses"], 1, "non-contained demand is not a subset reuse");
+    assert!(!candidate.compiler.as_ref().unwrap().doc.as_ref().unwrap().nodes.contains_key("a"));
+}
+
+/// CPU-isolated measurement (not hardware GPU): a grow/shrink tile sequence over
+/// a large shared context. Reports projection rebuilds/reuses and demand-path
+/// wall time with the candidate key off vs on. The deterministic rebuild counter
+/// is the asserted evidence; wall time is logged for information only.
+#[test]
+fn subset_reuse_cpu_measurement_on_shrinking_tile_context() {
+    let children = env_usize("FUTUREOX_SUBSET_REUSE_CHILDREN", 400);
+    let d = adjacent_units_document(children);
+    let desc = descriptor(&d);
+    let wide = wide_request();
+    let narrow = request(0., -480.375, 1.);
+    let sequence = [wide.clone(), narrow.clone(), wide.clone(), narrow.clone()];
+
+    let mut measure = |subset: bool| -> (u64, u64, u64, f64, u64) {
+        let mut runtime = Runtime::default();
+        runtime.replay = false;
+        runtime.subset_reuse = subset;
+        let mut actual = owner(d.clone(), if subset { "subset-measure-on" } else { "subset-measure-off" });
+        let mut expected = owner(d.clone(), "subset-measure-oracle");
+        let mut demand_ms = 0.0_f64;
+        let mut sum_resolved = 0_u64;
+        for r in &sequence {
+            let started = std::time::Instant::now();
+            let packet = crate::capacity::with_source_storage_scope(true, || {
+                runtime.compile(&mut actual, &desc, "stage", "page", &r.to_string())
+            })
+            .unwrap();
+            demand_ms += started.elapsed().as_secs_f64() * 1000.;
+            let full = crate::capacity::with_source_storage_scope(true, || {
+                expected.compile_gpu_packet_request(&r.to_string())
+            })
+            .unwrap();
+            assert_projection_equivalent(&packet, &full);
+            sum_resolved += runtime.stats["resolvedCompileNodes"].as_u64().unwrap_or(0);
+        }
+        (runtime.rebuilds, runtime.reuses, runtime.subset_reuses, demand_ms, sum_resolved)
+    };
+
+    let off = measure(false);
+    let on = measure(true);
+    eprintln!(
+        "SUBSET_REUSE_CPU sourceNodes={} children={} seqLen={} off[rebuilds={} reuses={} subset={} demandMs={:.2} sumResolved={}] on[rebuilds={} reuses={} subset={} demandMs={:.2} sumResolved={}]",
+        desc.nodes, children, sequence.len(),
+        off.0, off.1, off.2, off.3, off.4,
+        on.0, on.1, on.2, on.3, on.4
+    );
+    let _ = std::io::Write::flush(&mut std::io::stderr());
+    assert!(on.0 < off.0, "subset reuse must reduce projection rebuilds: off={} on={}", off.0, on.0);
+    assert!(on.2 > 0, "the candidate must record subset reuses");
+    assert_eq!(off.2, 0, "the legacy key never records a subset reuse");
+}
