@@ -133,6 +133,22 @@ test('German Figma keyboard indents a list and still reorders plain text', async
   expect(editor.state.doc.nodes[layer.id].textStyle?.listLevel).toBe(1)
 })
 
+test.each([
+  { digit: '8', printable: '(', list: 'bullet' },
+  { digit: '7', printable: '/', list: 'ordered' },
+] as const)('German Figma keyboard applies the $list list and one undo clears it', async ({ digit, printable, list }) => {
+  interfacePreference.set({ uiMode: 'figma', figmaKeyboardLayout: 'de-qwertz' })
+  const layer = open('One\nTwo')
+  const input = await render()
+  input.setSelectionRange(0, layer.text.length)
+  await press(input, printable, `Digit${digit}`, { metaKey: true, shiftKey: true })
+  expect(editor.state.doc.nodes[layer.id].textStyle?.list).toBe(list)
+  expect(editor.state.doc.nodes[layer.id].text).toBe('One\nTwo')
+  await press(input, 'z', 'KeyZ', { metaKey: true })
+  expect(editor.state.doc.nodes[layer.id].textStyle?.list).toBeUndefined()
+  expect(editor.canUndo).toBe(false)
+})
+
 test('bracket chords reorder a layer that is not a list', async () => {
   const layer = open('Hello', true)
   const before = [...editor.state.doc.pages[0].children]

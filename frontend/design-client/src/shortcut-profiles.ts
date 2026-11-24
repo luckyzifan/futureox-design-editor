@@ -196,8 +196,6 @@ export function shortcutBindings(context: ShortcutContext): readonly ShortcutBin
       platform === 'mac'
         ? { command: 'toggle-text-underline', combo: 'Alt+U', physicalCode: 'KeyU' }
         : { command: 'toggle-text-underline', combo: 'Mod+U', physicalCode: 'KeyU' },
-    )
-    if (!german) bindings.push(
       { command: 'text-bullet-list', combo: 'Mod+Shift+8', physicalCode: 'Digit8' },
       { command: 'text-numbered-list', combo: 'Mod+Shift+7', physicalCode: 'Digit7' },
     )
