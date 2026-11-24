@@ -15,7 +15,7 @@ import {
 } from './canvas-view'
 import { createSmartGuidesIndex } from './canvas-smart-guides'
 import { figmaFixture } from './figma-fixtures'
-import { scene, apply, multiply, rotate } from './geometry'
+import { scene, apply, boxPoints, bounds, multiply, rotate } from './geometry'
 import { Editor } from './engine'
 import { localBounds } from './canvas-view'
 beforeAll(async () =>
@@ -128,11 +128,67 @@ test('resize snap moves the free edge, center, and anchored-center edge onto ano
   const offsetMatrix = resizeInBasis(basis, box, { x: 54, y: 20 }, offsetHit.end, 5, false, false, false)
   expect(apply(offsetMatrix, { x: 50, y: 20 }).x).toBeCloseTo(100, 5)
   offset.index.free()
+})
 
-  const turned = resizeSnapEnd(rotate(30), box, { x: 50, y: 20 }, { x: 96, y: 20 }, 5, false, false, 6,
-    () => { throw new Error('rotated resize does not query world snap') })
-  expect(turned.end).toEqual({ x: 96, y: 20 })
-  expect(turned.snapped).toEqual({ x: false, y: false })
+test('a rotated corner meets two world guides without moving its anchor', () => {
+  const basis = rotate(30)
+  const box = { x: 0, y: 0, width: 50, height: 40 }
+  const start = apply(basis, { x: 50, y: 40 })
+  const end = apply(basis, { x: 82, y: 62 })
+  const raw = bounds(boxPoints({ ...box, width: 82, height: 62 }).map(point => apply(basis, point)))
+  const target = { x: raw.x + raw.width + 2, y: raw.y + raw.height + 3, width: 20, height: 25 }
+  const index = createSmartGuidesIndex(undefined, [target])!
+  try {
+    const hit = resizeSnapEnd(basis, box, start, end, 2, false, false, 6, (moving, threshold) => index.snap(moving, threshold))
+    const matrix = resizeInBasis(basis, box, start, hit.end, 2, false, false, false)
+    const placed = bounds(boxPoints(box).map(point => apply(matrix, apply(basis, point))))
+    expect(hit.snapped).toEqual({ x: true, y: true })
+    expect(placed.x + placed.width).toBeCloseTo(target.x, 6)
+    expect(placed.y + placed.height).toBeCloseTo(target.y, 6)
+    const anchor = apply(matrix, { x: 0, y: 0 })
+    expect(anchor.x).toBeCloseTo(0, 6)
+    expect(anchor.y).toBeCloseTo(0, 6)
+  } finally { index.free() }
+})
+
+test('a rotated centered corner keeps its center and proportion while snapping', () => {
+  const basis = rotate(30)
+  const box = { x: 0, y: 0, width: 50, height: 40 }
+  const center = apply(basis, { x: 25, y: 20 })
+  const start = apply(basis, { x: 50, y: 40 })
+  const end = apply(basis, { x: 70, y: 56 })
+  const raw = resizeInBasis(basis, box, start, end, 2, true, true, false)
+  const extent = bounds(boxPoints(box).map(point => apply(raw, apply(basis, point))))
+  const target = { x: extent.x + extent.width + 2, y: 200, width: 20, height: 25 }
+  const index = createSmartGuidesIndex(undefined, [target])!
+  try {
+    const hit = resizeSnapEnd(basis, box, start, end, 2, true, true, 6, (moving, threshold) => index.snap(moving, threshold))
+    const matrix = resizeInBasis(basis, box, start, hit.end, 2, true, true, false)
+    const corners = boxPoints(box).map(point => apply(matrix, apply(basis, point)))
+    const placed = bounds(corners)
+    const currentCenter = apply(matrix, center)
+    expect(hit.snapped).toEqual({ x: true, y: false })
+    expect(placed.x + placed.width).toBeCloseTo(target.x, 6)
+    expect(currentCenter.x).toBeCloseTo(center.x, 6)
+    expect(currentCenter.y).toBeCloseTo(center.y, 6)
+    const width = Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y)
+    const height = Math.hypot(corners[3].x - corners[0].x, corners[3].y - corners[0].y)
+    expect(width / height).toBeCloseTo(50 / 40, 6)
+  } finally { index.free() }
+})
+
+test('a nearly perpendicular guide does not pull a rotated handle beyond its snap distance', () => {
+  const basis = rotate(89)
+  const box = { x: 0, y: 0, width: 50, height: 40 }
+  const start = apply(basis, { x: 50, y: 20 })
+  const end = apply(basis, { x: 82, y: 20 })
+  const target = { x: apply(basis, { x: 82, y: 0 }).x + 2, y: 200, width: 20, height: 25 }
+  const index = createSmartGuidesIndex(undefined, [target])!
+  try {
+    const hit = resizeSnapEnd(basis, box, start, end, 5, false, false, 6, (moving, threshold) => index.snap(moving, threshold))
+    expect(hit.end).toEqual(end)
+    expect(hit.snapped).toEqual({ x: false, y: false })
+  } finally { index.free() }
 })
 
 test('zoom changes preserve the document point under the chosen anchor', () => {

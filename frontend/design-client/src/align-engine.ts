@@ -192,9 +192,8 @@ export function dragSnap(
   return { dx, dy, guides: [gx, gy] }
 }
 
-/** Drag-time snap entry point used by the canvas: identical result shape to
- * the kernel smart guides, so guides render through the existing channel and
- * disappear on pointer release. */
+/** One-off edge and spacing snap. Interactive Canvas moves use a gesture-owned
+ * SmartGuidesIndex. */
 export function alignSnapWorld(
   moving: Bounds,
   parent: Bounds | undefined,

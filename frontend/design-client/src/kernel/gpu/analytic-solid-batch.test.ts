@@ -97,6 +97,25 @@ function harness(perGroup=8,groups=4){
   return {renderer,driver,draws,target,count:groups*perGroup}
 }
 
+test.each([
+  ['fractional', false, 0, 1, ['g0']],
+  ['binary on another lattice', true, .25, 1, ['g0']],
+  ['scaled binary', true, 0, 2, ['g0']],
+  ['native binary', true, 0, 1, ['n0-0', 'n0-1']],
+] as const)('source groups respect a %s inherited clip',async(_label,binary,x,scale,expected)=>{
+  const {renderer,target}=harness(2,1)
+  // The second child overwrites the first in the isolated group. Applying
+  // fractional coverage to each child would accumulate coverage twice.
+  renderer.scene.nodes['n0-1']=leaf('n0-1',0)
+  const clip=renderer.acquire({...target.rect,x,w:target.rect.w/scale})
+  if(scale!==1)clip.rect={...target.rect,x}
+  if(binary)clip.texture.binaryCoverage=true
+  renderer.drawAnalyticSolidRun=vi.fn(async()=>undefined)
+  renderer.drawNode=vi.fn(async(_id:string,surface:typeof target)=>surface)
+  await renderer.drawList(['g0'],target,clip)
+  expect(renderer.drawNode.mock.calls.map(([id]:[string])=>id)).toEqual(expected)
+})
+
 function stroked(id:string,x:number,align:'center'|'inside'|'outside'='center'){
   const node=leaf(id,x)
   node.rect={x,y:0,w:4,h:4}

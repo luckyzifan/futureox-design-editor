@@ -13,12 +13,12 @@ import { PreparedPacket, waitForPacket } from './prepared-packet'
 import { canRebuildImageDecoder } from './image-decode-recovery'
 import type { DocumentPatch } from '../document-patch'
 export type NativeSourceIdentity={documentId:string;pageId:string;stageId:string;nodes:number}
-/** Drag poses reuse receiver-confirmed curve blocks. A release keeps curves
- * inline and compresses that packet, skipping block registration. */
-export type ScenePacketTransport = 'exact' | 'curves' | 'inline-lz4'
+/** Motion registers curve blocks. Native translation releases can reuse
+ * blocks held by this receiver, with the inline route for a cold scope. */
+export type ScenePacketTransport = 'exact' | 'curves' | 'inline-lz4' | 'confirmed-curves'
 function sceneTransport(transport: boolean | ScenePacketTransport | undefined): ScenePacketTransport {
   if (transport === true || transport === 'curves') return 'curves'
-  if (transport === 'inline-lz4') return 'inline-lz4'
+  if (transport === 'inline-lz4' || transport === 'confirmed-curves') return transport
   return 'exact'
 }
 
@@ -253,11 +253,9 @@ export class RenderKernel {
     const lease=this.resources.capture(),owner=this.contentOwner
     try {
       const acknowledgement = lease.acknowledgement
-      const frameResources = transport === 'curves'
-        ? { ...acknowledgement, curvePrograms: true, sceneLz4: true }
-        : transport === 'inline-lz4'
-          ? { ...acknowledgement, sceneLz4: true }
-          : acknowledgement
+      const reuseCurves = transport === 'curves' || transport === 'confirmed-curves' && this.resources.hasCurvePrograms
+      const frameResources = transport === 'exact' ? acknowledgement
+        : { ...acknowledgement, sceneLz4: true, ...(reuseCurves ? { curvePrograms: true } : {}) }
       const request=JSON.stringify({...JSON.parse(options),frameResources})
       const bytes=await this.call<Uint8Array>('compile_gpu_packet',[request],signal)
       const scene=decodeScenePacket(bytes,revision===this.revision&&!this.pendingMutations?this.resources:undefined,lease)

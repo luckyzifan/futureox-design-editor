@@ -607,6 +607,28 @@ test('Dev Mode hover shows spacing without Option, and Shift D turns it off', as
   expect(mount.querySelector('[data-testid="canvas-measurement"]')).toBeNull()
 })
 
+test('Dev Mode measures a nested layer while the pointer stays over a selected group', async () => {
+  const group = node('group', 40, 40, 120, 100)
+  const child = node('rectangle', 10, 15, 50, 30)
+  const other = node('rectangle', 90, 60, 30, 30)
+  group.children = [child.id, other.id]
+  await render([group, child, other], [group.id])
+  await act(async () => editor.select([group.id]))
+  const before = editor.authoredDocument
+  await act(async () => pointer('pointermove', 65, 65))
+  await flush()
+  expect(editor.state.hover).toBe(group.id)
+  expect(measurePills()).toEqual([])
+  await act(async () => key('D', { shiftKey: true, code: 'KeyD' }))
+  expect(editor.state.hover).toBe(child.id)
+  expect(measurePills()).toEqual(expect.arrayContaining(['45', '60']))
+  expect(editor.state.selection).toEqual([group.id])
+  expect(editor.authoredDocument).toBe(before)
+  await act(async () => key('D', { shiftKey: true, code: 'KeyD' }))
+  expect(editor.state.hover).toBe(group.id)
+  expect(measurePills()).toEqual([])
+})
+
 test('keyboard pick keeps the original selection and Option measures to the highlight', async () => {
   const first = node('rectangle', 40, 40, 50, 40)
   const second = node('rectangle', 140, 40, 40, 40)
@@ -636,6 +658,33 @@ test('Space repeats the distance under the pointer', async () => {
   expect(host().classList.contains('canvas-space-held')).toBe(false)
 })
 
+test('Option Space repeats the keyboard pick measurement in the same live region', async () => {
+  const first = node('rectangle', 40, 40, 50, 40)
+  const second = node('rectangle', 140, 40, 40, 40)
+  await render([first, second])
+  await act(async () => editor.select([first.id]))
+  await act(async () => key(' ', { code: 'Space', altKey: true }))
+  await act(async () => key('Tab'))
+  await act(async () => key('Tab'))
+  await act(async () => pointer('pointermove', 115, 60, { altKey: true }))
+  await flush()
+  expect(measurePills()).toEqual(expect.arrayContaining(['50']))
+  const status = () => mount.querySelector('[data-testid="measurement-announcement"]')
+  const liveRegion = status()!
+  const repeat = () => act(async () => key('\u00a0', { code: 'Space', altKey: true }))
+  await repeat()
+  expect(liveRegion.textContent).toBe('50')
+  expect(status()).toBe(liveRegion)
+  expect(liveRegion.getAttribute('aria-atomic')).toBe('true')
+  const previous = liveRegion.firstChild
+  await repeat()
+  expect(status()).toBe(liveRegion)
+  expect(liveRegion.firstChild).not.toBe(previous)
+  expect(liveRegion.textContent).toBe('50')
+  expect(mount.querySelector('[data-testid="keyboard-pick-outline"]')).not.toBeNull()
+  expect(editor.state.selection).toEqual([first.id])
+})
+
 test('Option hover on a ruler guide measures from the selection, and a second guide shows positions', async () => {
   const layer = node('rectangle', 40, 40, 50, 40)
   await render([layer])
@@ -659,6 +708,23 @@ test('Option hover on a ruler guide measures from the selection, and a second gu
   expect(mount.querySelector('[data-testid="canvas-measurement"] line')).toBeNull()
 })
 
+test('a removed ruler guide stops contributing measurements beneath a stationary pointer', async () => {
+  const layer = node('rectangle', 40, 40, 50, 40)
+  await render([layer])
+  await act(async () => {
+    editor.change('添加参考线', design => { design.pages[0].guides = [{ id: 'removed', axis: 'x', position: 200 }] })
+    editor.set({ rulers: true })
+    editor.select([layer.id])
+  })
+  const guide = mount.querySelector('[data-guide-id="removed"] line[stroke="transparent"]')!
+  await act(async () => key('Alt', { altKey: true }))
+  await act(async () => pointer('pointerover', 200, 60, { altKey: true }, guide))
+  expect(measurePills()).toEqual(['110'])
+  await act(async () => editor.change('删除参考线', design => { design.pages[0].guides = [] }))
+  expect(mount.querySelector('[data-guide-id="removed"]')).toBeNull()
+  expect(measurePills()).toEqual([])
+})
+
 test('vector edit Option-hover measures between anchors', async () => {
   const shape = node('vector', 100, 100, 80, 40)
   shape.network = {
@@ -673,4 +739,36 @@ test('vector edit Option-hover measures between anchors', async () => {
   await act(async () => pointer('pointerover', 180, 140, {}, anchor))
   expect(measurePills()).toEqual(['40', '80'])
   expect(mount.querySelector('[data-testid="canvas-measurement"] [data-measure="gap"]')?.getAttribute('stroke')).toBe(SPACING_RED)
+})
+
+test.each([
+  { snapPixels: true, x: 29, y: 16, numbers: ['16', '29'] },
+  { snapPixels: false, x: 29.25, y: 15.625, numbers: ['15.63', '29.25'] },
+])('Option previews and places the same vector anchor with pixel snap $snapPixels', async ({ snapPixels, x, y, numbers }) => {
+  const shape = node('vector', 100, 100, 80, 40)
+  shape.network = {
+    vertices: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 80, y: 40 }],
+    edges: [{ id: 'e', from: 'a', to: 'b' }],
+    fillRule: 'nonzero',
+  }
+  await render([shape])
+  await act(async () => {
+    editor.select([shape.id])
+    editor.set({ tool: 'vector', editingVertex: 'a', editingVertices: ['a'], snapPixels })
+  })
+  const before = editor.authoredDocument
+  const position = [129.25, 115.625] as const
+  await act(async () => pointer('pointermove', ...position, { altKey: true }))
+  await flush()
+  expect(measurePills()).toEqual(numbers)
+  expect(mount.querySelector('[data-testid="canvas-measurement"] [data-dashed]')).not.toBeNull()
+  await act(async () => pointer('pointerdown', ...position, { altKey: true }))
+  await act(async () => pointer('pointerup', ...position, { altKey: true }))
+  const network = editor.state.doc.nodes[shape.id].network!
+  const id = editor.state.editingVertex
+  expect(network.vertices.find(vertex => vertex.id === id)).toEqual({ id, x, y })
+  expect(network.edges).toHaveLength(2)
+  expect(network.edges[1]).toMatchObject({ from: 'a', to: id })
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument).toEqual(before)
 })

@@ -122,6 +122,17 @@ export function poseReplyTransfers(reply) {
   if (!(buffer instanceof ArrayBuffer) || value.byteOffset !== 0 || value.byteLength !== buffer.byteLength) return []
   return [buffer]
 }
+
+function compactPoseReply(reply) {
+  const value = reply?.value
+  if (!(value instanceof Uint8Array || value instanceof Float32Array)) return reply
+  const buffer = value.buffer
+  if (buffer instanceof ArrayBuffer && value.byteOffset === 0 && value.byteLength === buffer.byteLength) return reply
+  // Structured cloning a subview also clones its backing store. Keep the
+  // owned pool in place and send an exact copy of the exposed bytes.
+  const copy = new Uint8Array(buffer, value.byteOffset, value.byteLength).slice()
+  return { ...reply, value: value instanceof Float32Array ? new Float32Array(copy.buffer) : copy }
+}
 /** The renderer owns its existing preparation process. Only real pose mutations
  * and packets cross this port, in the same physical queue as ordinary calls. */
 export function bindPosePreparationPort(port,worker,current,retire){
@@ -148,10 +159,11 @@ export function bindPosePreparationPort(port,worker,current,retire){
     ...(method==='compile_gpu_packet'&&cancellable?{cancellationId:id}:{})})
    if(!closed&&current()){
     const transfers=poseReplyTransfers(reply)
+    const outgoing=transfers.length?reply:compactPoseReply(reply)
     // MessagePortMain.postMessage throws "not a valid port" for an ArrayBuffer,
     // and that throw retires the session. EventTarget ports can move the buffer.
-    if(transfers.length&&typeof port.addEventListener==='function')port.postMessage({...reply,id},transfers)
-    else port.postMessage({...reply,id})
+    if(transfers.length&&typeof port.addEventListener==='function')port.postMessage({...outgoing,id},transfers)
+    else port.postMessage({...outgoing,id})
    }
   }catch(error){if(!closed&&current())fatal(error)}finally{active=0}
  })

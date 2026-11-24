@@ -1,10 +1,10 @@
 import { utilityAction, runUtilityAction, ActionSource, CanvasAction, ActionReason, type UtilityAction } from './canvas-utility-action'
 import {useEffect,useMemo,useRef,useState} from 'react'
-import type {SceneEntry} from './geometry'
+import {segmentDistance,type SceneEntry} from './geometry'
 import type {Editor} from './engine'
 import type {CanvasCamera,CanvasSize} from './canvas-camera'
 import {screenToWorld} from './canvas-camera'
-import {uid,type RulerGuide} from './model'
+import {uid,type Point,type RulerGuide} from './model'
 import {guideOwner,guidePosition,worldGuides,type WorldGuide} from './ruler-guides'
 import {NumberField} from './fields'
 import {useProfessionalDialogText} from './professional-dialog-messages'
@@ -12,33 +12,51 @@ import { ActionContextMenu } from './ActionContextMenu'
 import { useInterfacePreferences } from './interface-preference'
 import { commitPendingEdits } from './pending-edits'
 
-export type GuideMeasureHit = { owner: string; id: string; axis: 'x' | 'y' | null; position: number; label: number; at: { x: number; y: number } }
+type GuideRef = { owner: string; id: string }
+export type GuideMeasureHit = GuideRef & { axis: 'x' | 'y' | null; position: number; label: number; at: Point }
 export type GuideMeasureState = { selected: GuideMeasureHit | null; hover: GuideMeasureHit | null }
+const GUIDE_HIT_WIDTH = 8
+
 function guideAxis(guide: WorldGuide): { axis: 'x' | 'y'; position: number } | null {
   const dx = guide.to.x - guide.from.x, dy = guide.to.y - guide.from.y
   if (Math.abs(dx) <= 1e-6 && Math.abs(dy) > 1e-6) return { axis: 'x', position: guide.from.x }
   if (Math.abs(dy) <= 1e-6 && Math.abs(dx) > 1e-6) return { axis: 'y', position: guide.from.y }
   return null
 }
+function guideMeasureHit(guide: WorldGuide, at: Point): GuideMeasureHit {
+  const axis = guideAxis(guide)
+  return { owner: guide.owner, id: guide.guide.id, axis: axis?.axis ?? null,
+    position: axis?.position ?? guide.guide.position, label: guide.guide.position, at }
+}
 export function CanvasGuides({editor,view,size,entries,intercept,guidesHidden=false,onGuideMeasure}:{editor:Editor;view:CanvasCamera;size:CanvasSize;entries?:readonly SceneEntry[];intercept:(e:React.PointerEvent)=>boolean;guidesHidden?:boolean;onGuideMeasure?:(state:GuideMeasureState)=>void}){
   const {tr}=useProfessionalDialogText()
   const {uiMode}=useInterfacePreferences()
-  const host=useRef<HTMLDivElement>(null),[selected,setSelected]=useState<{owner:string;id:string}|null>(null)
+  const host=useRef<HTMLDivElement>(null),[selected,setSelected]=useState<GuideRef|null>(null)
   const [rulerMenu,setRulerMenu]=useState<{axis:'x'|'y';x:number;y:number;page:string;session:number}|null>(null)
-  const [hoverGuide,setHoverGuide]=useState<GuideMeasureHit|null>(null)
+  const [hoverGuide,setHoverGuide]=useState<(GuideRef & { screen: Point })|null>(null)
   const active=useRef<{action:UtilityAction;pointer:number;session:number;page:string;owner:string;id:string;axis:'x'|'y';view:CanvasCamera;created:boolean;start:{x:number;y:number};moved:boolean}|null>(null)
   const doc=editor.state.doc,page=editor.state.page,shown=!!editor.state.rulers
   const guides = useMemo(() => shown && !guidesHidden ? worldGuides(doc,page,entries) : [], [shown,guidesHidden,doc,page,entries])
   const selectedGuide=selected&&guideOwner(doc,selected.owner)?.guides?.find(g=>g.id===selected.id)
   const cancel=()=>{const d=active.current;active.current=null;if(d?.session===editor.sessionGeneration&&d.page===editor.state.page)editor.cancel();d?.action.cancel()}
-  useEffect(()=>{cancel();setSelected(null)},[editor.sessionGeneration,page,shown])
+  useEffect(()=>{cancel();setSelected(null);setHoverGuide(null)},[editor.sessionGeneration,page,shown])
   useEffect(()=>setRulerMenu(null),[editor.sessionGeneration,page,shown,guidesHidden,uiMode])
-  useEffect(()=>{if(!shown||guidesHidden)setHoverGuide(null)},[shown,guidesHidden])
+  useEffect(()=>{if(guidesHidden)setHoverGuide(null)},[guidesHidden])
   useEffect(()=>{
     if(!onGuideMeasure)return
-    const selectedHit=selected&&selectedGuide?(()=>{const world=guides.find(g=>g.owner===selected.owner&&g.guide.id===selected.id);const axis=world&&guideAxis(world);return {owner:selected.owner,id:selected.id,axis:axis?.axis??null,position:axis?.position??selectedGuide.position,label:selectedGuide.position,at:{x:0,y:0}}})():null
-    onGuideMeasure({selected:shown&&!guidesHidden?selectedHit:null,hover:shown&&!guidesHidden?hoverGuide:null})
-  },[onGuideMeasure,selected,selectedGuide,hoverGuide,guides,shown,guidesHidden])
+    const current=(ref:GuideRef|null)=>ref&&guides.find(g=>g.owner===ref.owner&&g.guide.id===ref.id)
+    const selectedWorld=current(selected)
+    const hoverWorld=current(hoverGuide)
+    let hover:GuideMeasureHit|null=null
+    if(hoverWorld&&hoverGuide){
+      const at=screenToWorld(view,hoverGuide.screen)
+      const distance=hoverWorld.page
+        ?Math.abs(at[hoverWorld.guide.axis]-hoverWorld.guide.position)
+        :segmentDistance(at,hoverWorld.from,hoverWorld.to)
+      if(distance*view.zoom<=GUIDE_HIT_WIDTH/2)hover=guideMeasureHit(hoverWorld,at)
+    }
+    onGuideMeasure({selected:selectedWorld?guideMeasureHit(selectedWorld,{x:0,y:0}):null,hover})
+  },[onGuideMeasure,selected,hoverGuide,guides,view])
   useEffect(()=>{
     const down=(e:PointerEvent)=>{if(!host.current?.contains(e.target as Node))setSelected(null)}
     const key=(e:KeyboardEvent)=>{
@@ -50,7 +68,15 @@ export function CanvasGuides({editor,view,size,entries,intercept,guidesHidden=fa
     return()=>{window.removeEventListener('keydown',key,true);window.removeEventListener('pointerdown',down,true);window.removeEventListener('blur',cancel)}
   },[editor,selected,shown,guidesHidden])
   if(!shown)return null
-  const location=(e:{clientX:number;clientY:number},camera=view)=>{const b=host.current!.getBoundingClientRect();return screenToWorld(camera,{x:e.clientX-b.left,y:e.clientY-b.top})}
+  const screenPoint=(e:{clientX:number;clientY:number})=>{const b=host.current!.getBoundingClientRect();return {x:e.clientX-b.left,y:e.clientY-b.top}}
+  const location=(e:{clientX:number;clientY:number},camera=view)=>screenToWorld(camera,screenPoint(e))
+  const measureHover=(e:React.PointerEvent,g:WorldGuide)=>{
+    if(active.current)return
+    const screen=screenPoint(e)
+    setHoverGuide(current=>current?.owner===g.owner&&current.id===g.guide.id&&
+      Math.abs(current.screen.x-screen.x)<0.5&&Math.abs(current.screen.y-screen.y)<0.5
+      ?current:{owner:g.owner,id:g.guide.id,screen})
+  }
   const start=(e:React.PointerEvent,axis:'x'|'y',owner:string,existing?:RulerGuide)=>{
     if(guidesHidden)return
     e.stopPropagation();if(existing&&intercept(e))return
@@ -108,7 +134,12 @@ export function CanvasGuides({editor,view,size,entries,intercept,guidesHidden=fa
         const key=g.owner+'/'+g.guide.id,isSelected=selected?.owner===g.owner&&selected.id===g.guide.id
         return <g key={key} data-testid="ruler-guide" data-owner-id={g.owner} data-guide-id={g.guide.id} onContextMenu={e=>{e.preventDefault();e.stopPropagation();if(g.editable){setSelected({owner:g.owner,id:g.guide.id});host.current?.focus()}}}>
           <line x1={a.x*view.zoom+view.x} y1={a.y*view.zoom+view.y} x2={b.x*view.zoom+view.x} y2={b.y*view.zoom+view.y} stroke={isSelected?'#0d99ff':'#f24822'} strokeWidth={1}/>
-          <line x1={a.x*view.zoom+view.x} y1={a.y*view.zoom+view.y} x2={b.x*view.zoom+view.x} y2={b.y*view.zoom+view.y} stroke="transparent" strokeWidth={8} pointerEvents={g.editable&&editor.state.tool==='select'?'stroke':'none'} style={{cursor:g.guide.axis==='x'?'ew-resize':'ns-resize'}} onPointerDown={e=>start(e,g.guide.axis,g.owner,g.guide)} onDoubleClick={e=>e.stopPropagation()} onPointerEnter={e=>{const axis=guideAxis(g);setHoverGuide({owner:g.owner,id:g.guide.id,axis:axis?.axis??null,position:axis?.position??g.guide.position,label:g.guide.position,at:location(e)})}} onPointerLeave={()=>setHoverGuide(current=>current?.owner===g.owner&&current.id===g.guide.id?null:current)} onPointerMove={e=>{if(active.current)return;const at=location(e);setHoverGuide(current=>{if(!current||current.owner!==g.owner||current.id!==g.guide.id)return current;if(Math.abs(current.at.x-at.x)<0.5&&Math.abs(current.at.y-at.y)<0.5)return current;return{...current,at}})}}/>
+          <line x1={a.x*view.zoom+view.x} y1={a.y*view.zoom+view.y} x2={b.x*view.zoom+view.x} y2={b.y*view.zoom+view.y}
+            stroke="transparent" strokeWidth={GUIDE_HIT_WIDTH} pointerEvents={g.editable&&editor.state.tool==='select'?'stroke':'none'}
+            style={{cursor:g.guide.axis==='x'?'ew-resize':'ns-resize'}} onPointerDown={e=>start(e,g.guide.axis,g.owner,g.guide)}
+            onDoubleClick={e=>e.stopPropagation()}
+            onPointerEnter={e=>measureHover(e,g)} onPointerMove={e=>measureHover(e,g)}
+            onPointerLeave={()=>setHoverGuide(current=>current?.owner===g.owner&&current.id===g.guide.id?null:current)}/>
         </g>})}
     </svg>
     <div className="canvas-ruler horizontal" data-testid="horizontal-ruler" onPointerDown={e=>start(e,'y',owner)} onContextMenu={e=>openRulerMenu(e,'y')}>{ticks('x').map(t=><span key={t.value} style={{left:t.at}}>{Number(t.value.toFixed(4))}</span>)}</div>

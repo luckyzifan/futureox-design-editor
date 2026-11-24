@@ -13,6 +13,11 @@ function resolveExpr(text: string, vars: Map<string, string>): string {
     return resolved
   }
   const interpolated = text
+    .replaceAll(/#\{\(1 - \$([A-Za-z_][A-Za-z0-9_-]*)\) \* 100%\}/g, (_match, name: string) => {
+      const value = Number(lookup(name))
+      if (!Number.isFinite(value)) throw new Error(`Sass number expected for $${name}`)
+      return String(Math.round((1 - value) * 100 * 1e6) / 1e6) + '%'
+    })
     .replaceAll(/#\{\$([A-Za-z_][A-Za-z0-9_-]*) \* 100%\}/g, (_match, name: string) => {
       const value = Number(lookup(name))
       if (!Number.isFinite(value)) throw new Error(`Sass number expected for $${name}`)
@@ -140,11 +145,15 @@ describe('selection SCSS color variables', () => {
     expect(selected.scss).toContain('$Colors-Brand: #222222;')
     expect(selected.scss).toContain('$Accent: $Colors-Brand;')
     expect(selected.scss!.indexOf('$Colors-Brand:')).toBeLessThan(selected.scss!.indexOf('$Accent:'))
-    const rule = selected.scss!.split('\n').find(line => line.startsWith(selected.nodeIdMap[child.id].selector))
+    const selector = selected.nodeIdMap[child.id].selector
+    const rules = selected.scss!.split('\n')
+    const rule = rules.find(line => line.startsWith(`${selector}{`))
+    const strokeRule = rules.find(line => line.startsWith(`${selector}::before{`))
     expect(rule).toContain('linear-gradient($Accent,$Accent)')
-    expect(rule).toContain('border:2px solid #222222')
+    expect(strokeRule).toContain('border:2px solid #222222')
     expect(rule).toContain('outline:2px solid #222222')
     expect(rule).not.toContain('solid $Accent')
+    expect(strokeRule).not.toContain('solid $Accent')
     expect(selected.scss).toContain('$Colors-Brand-day: #111111;')
     expect(selected.scss).toContain('$Accent-day: $Colors-Brand-day;')
     expect(selected.warnings.some(warning => warning.code === 'SCSS_INACTIVE_MODES_OMITTED')).toBe(false)
@@ -316,8 +325,10 @@ describe('selection SCSS color variables', () => {
     expect(result.scss).toContain('font-size:#{$One}px')
     expect(result.scss).toContain('$Fade: 0.5;')
     expect(result.scss).toContain('#{$Fade * 100%}')
-    expect(result.css).toContain('border:1.5px solid #112233;outline:1.5px solid #112233')
-    expect(result.scss).toContain('border:calc(#{$Border}px / 2) solid #112233;outline:calc(#{$Border}px / 2) solid #112233')
+    expect(result.css).toContain('border:1.5px solid #112233}')
+    expect(result.css).toContain('outline:1.5px solid #112233')
+    expect(result.scss).toContain('border:calc(#{$Border}px / 2) solid #112233}')
+    expect(result.scss).toContain('outline:calc(#{$Border}px / 2) solid #112233')
     expect(result.scss).toContain('border-radius:#{$Radius}px')
     expect(result.scss).toContain('padding:#{$Pad}px')
     expect(result.scss).toContain('#{$Gap}px')
@@ -351,5 +362,23 @@ describe('selection SCSS color variables', () => {
       expect(compileScssSubset(result.scss)).toBe(result.css)
       expect(api.execute({ method: 'code.export', params: { syntax: 'less' } }).ok).toBe(false)
     } finally { api.dispose(); editor.dispose() }
+  })
+
+  it('uses a unitless image opacity token for both cross-fade syntaxes and exports its idle mode', () => {
+    const { document, system } = themed(['light', 'dark'], 'light')
+    system.variables.fade = { kind: 'number', name: 'Image Opacity', collection: 'theme', values: { light: 0.25, dark: 0.6 } }
+    const box = add(document, node('rectangle'))
+    const fill = paint('#ffffff', 'image')
+    fill.image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP8z8Dwn4GBgQEADQUCAOAHawIAAAAASUVORK5CYII='
+    box.fills = [fill]
+    box.bindings = { 'fills.0.opacity': 'fade' }
+    const output = exportDesignCode(document, { syntax: 'scss' })
+    expect(output.css).toContain(',linear-gradient(transparent,transparent),75%)')
+    expect(output.css).toContain(' 25%,transparent)')
+    expect(output.scss).toContain('$Image-Opacity: 0.25;')
+    expect(output.scss).toContain('$Image-Opacity-dark: 0.6;')
+    expect(output.scss).toContain('#{$Image-Opacity * 100%}')
+    expect(output.scss).toContain('#{(1 - $Image-Opacity) * 100%}')
+    expectCompiles(output)
   })
 })

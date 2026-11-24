@@ -1,8 +1,8 @@
 // Creates the seven text comparison frames of text-2026-10-09 in Figma.
 // Run inside the Figma plugin console (or MCP) with the calibration file open.
-// Font: Noto Sans SC Regular (Figma cloud font). After creation, export every
-// "KernelTextQA-*" frame as PNG scale 1 with sRGB and save next to cases.json
-// using the case ids as file names.
+// Font: Noto Sans SC Regular (Figma cloud font). Export the selected frames
+// using their configured sRGB PNG settings. Keep the exported file names
+// for scripts/prepare-figma-text-references.mjs.
 const cases = [
   {id:'text-latin-basic', nodes:[
     {id:'t', kind:'text', x:24, y:24, w:270, h:60, size:28, characters:'Handgloves 0123 &?'}]},
@@ -25,6 +25,8 @@ const cases = [
      runs:[{start:0, end:6, size:30, color:'#c0392b'}, {start:6, end:17, size:18}]}]},
 ];
 const pageName = 'Kernel text comparison 2026-10-09';
+const pngScales = [1, 2];
+const suffixFor = scale => scale === 1 ? '' : '@2x';
 const hex = h => ({r:parseInt(h.slice(1,3),16)/255, g:parseInt(h.slice(3,5),16)/255, b:parseInt(h.slice(5,7),16)/255});
 let page = figma.root.children.find(p => p.name === pageName);
 const made = [];
@@ -57,7 +59,6 @@ for (const item of cases) {
     frame.clipsContent = true;
     frame.x = (result.length % 4) * 352 + 16;
     frame.y = Math.floor(result.length / 4) * 264 + 16;
-    frame.exportSettings = [{ format: 'PNG', constraint: { type: 'SCALE', value: 1 }, colorProfile: 'SRGB', contentsOnly: true }];
     made.push(frame.id);
     for (const spec of item.nodes) {
       const n = figma.createText();
@@ -83,7 +84,22 @@ for (const item of cases) {
       }
     }
   }
-  result.push({ case: item.id, nodeId: frame.id, name: frame.name, width: frame.width, height: frame.height });
+  if (frame.type !== 'FRAME' || frame.width !== 320 || frame.height !== 240)
+    throw new Error(`${name} must be a 320 × 240 frame`);
+  frame.exportSettings = pngScales.map(scale => ({
+    format: 'PNG',
+    constraint: { type: 'SCALE', value: scale },
+    colorProfile: 'SRGB',
+    contentsOnly: true,
+    useAbsoluteBounds: true,
+    suffix: suffixFor(scale),
+  }));
+  result.push({
+    case: item.id, nodeId: frame.id, name: frame.name, width: frame.width, height: frame.height,
+    references: pngScales.map(scale => ({
+      scale, name: `${name}${suffixFor(scale)}.png`, width: frame.width * scale, height: frame.height * scale,
+    })),
+  });
 }
 figma.currentPage.selection = board.children.slice();
 figma.viewport.scrollAndZoomIntoView([board]);

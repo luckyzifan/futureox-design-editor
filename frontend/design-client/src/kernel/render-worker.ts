@@ -79,7 +79,7 @@ import { canCommitResidentFrame, matchesResidentFrame } from './gpu/retained-com
 import { pageTranslationCommit } from './gpu/page-translation-commit'
 import { bindContentOwner, pixelSourceContract } from './gpu/page-background'
 import { PreparationChannel } from './preparation-channel'
-import { RenderKernel } from './render-kernel'
+import { RenderKernel, type ScenePacketTransport } from './render-kernel'
 import { sourceRenderSnapshot } from './source-render-snapshot'
 import { RenderLaneStates, type RenderLaneName } from './render-lane-state'
 import { loadKernelResources } from './kernel-resources'
@@ -214,10 +214,7 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
   navigationJournal.record(4, { sequence })
   return work().finally(() => { if (generation === navigationCaptureGeneration) navigationJournal.record(5, { sequence }) })
 }
-function posePacketTransport(terminal: boolean): 'curves' | 'inline-lz4' {
-  return terminal ? 'inline-lz4' : 'curves'
-}
-function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal, transport: boolean | 'curves' | 'inline-lz4' = false) {
+function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal, transport: boolean | ScenePacketTransport = false) {
   return journalCompile(async () => (await kernel.prepare_gpu_scene(options, signal, transport)).consume())
 }
 let reportedResidentAttachment = ''
@@ -656,6 +653,8 @@ function schedulePose(){
         const ownsSelection = ids.length===session.origins.size&&ids.every(id=>session.origins.has(id))
         const fullNativePose = session.native===true && coversDisplay && ownsSelection &&
           !session.scene.interactionLocalFootprint
+        const terminalTransport = session.native && !session.affine && ownsSelection && !session.scene.interactionLocalFootprint
+          ? 'confirmed-curves' : 'inline-lz4'
         const viewportPatch=session.native===true&&!session.patch&&(coversDisplay||session.scene.interactionFixedMask===true)&&
           !session.scene.interactionLocalFootprint&&ownsSelection
         const bitmapTerminal = (fullNativePose || viewportPatch && session.scene.interactionFixedMask) && session.affine && ids.length===1 &&
@@ -763,7 +762,7 @@ function schedulePose(){
               if(terminalPoseDisposition(pose,terminal)==='changed')superseded.abort()
             }
             try {
-              const compile=()=>compilePacket(kernel,session.options,signal,posePacketTransport(pose.terminal===true))
+              const compile=()=>compilePacket(kernel,session.options,signal,pose.terminal ? terminalTransport : 'curves')
               packet=await (preparation ? preparation.withPoseTransport(compile) : compile())
             } catch(error) {
               // The next absolute pose still owns this lease and reapplies
@@ -846,7 +845,7 @@ function schedulePose(){
                   work.mutated=true
                   if(!await kernel.apply_interaction_transforms(JSON.stringify(terminal.transforms))){work.mutated=false;return {packet:undefined,compileMs:0}}
                   const at=performance.now()
-                  const packet=await journalCompile(()=>kernel.prepare_gpu_scene(session.options,session.controller.signal,'inline-lz4'))
+                  const packet=await journalCompile(()=>kernel.prepare_gpu_scene(session.options,session.controller.signal,terminalTransport))
                   return {packet,compileMs:performance.now()-at}
                 }
                 ahead.start(terminal.input.sequence,()=>preparation?preparation.withPoseTransport(prepare):prepare())
@@ -1853,13 +1852,15 @@ self.onmessage = (e) => {
               }
               const composed = !!snapshot
               if (!snapshot) {
-                const waiting = settledPose.native && settledPose.affine &&
-                  driver.waitForQueuedFrame?.(frame, packetWait?.controller.signal)
+                // The terminal pose can be queued behind the previous atomic
+                // bitmap. Wait for its draw before validating the snapshot.
+                const waiting = settledPose.native &&
+                  driver.waitForQueuedFrame?.(frame, packetWait?.controller.signal ?? settledPose.controller.signal)
                 if (waiting) {
                   await waiting
                   if (admitAction(liveChoice(false)) === 'cancel') throw Error('PREVIEW_CANCELLED')
                 }
-                if (gpu?.driver === driver && poseSession === settledPose && settledPose.input === input) {
+                if (gpu?.driver === driver && poseSession === settledPose && !settledPose.stopped && settledPose.input === input) {
                   try { snapshot = driver.snapshotPresented?.() }
                   catch (error) { if (!isDisplayBudgetError(error)) throw error }
                 }

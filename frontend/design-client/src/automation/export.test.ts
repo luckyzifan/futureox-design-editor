@@ -151,6 +151,7 @@ describe('CSS export of paint, stroke, flow, text, and blur', () => {
     const under = paint('#00ff00')
     const image = paint('#fff', 'image')
     image.opacity = 0.25
+    image.fit = 'contain'
     image.image = 'data:image/png;base64,iVBORw0KGgo='
     frame.fills = [under, image]
     frame.strokes = [{ ...stroke('#ff0000', 4), align: 'inside' }]
@@ -161,17 +162,19 @@ describe('CSS export of paint, stroke, flow, text, and blur', () => {
     expect(rule).toContain('opacity:1')
     expect(rule).not.toContain('opacity:0.25')
     expect(rule).toContain('-webkit-cross-fade(')
-    expect(rule).toContain(',75%)')
+    expect(rule).toContain(',linear-gradient(transparent,transparent),75%)')
     expect(rule).toContain('cross-fade(')
-    expect(rule).toContain(',25%)')
+    expect(rule).toContain(' 25%,transparent)')
+    expect(rule).toContain('background-size:contain,auto')
     expect(rule).toContain('linear-gradient(#00ff00,#00ff00)')
     expect(rule).not.toContain('color-mix(in srgb, #00ff00')
-    expect(rule).toContain('border:4px solid #ff0000')
+    expect(rule).not.toContain('border:')
+    expect(ruleFor(result.css, '#design-node-1::before')).toContain('border:4px solid #ff0000')
     expect(result.warnings.some(warning => warning.code === 'PAINT_COMPOSITING' && warning.nodeId === frame.id)).toBe(true)
   })
 
   it('places inside, center, and outside strokes on different sides of the box', () => {
-    const rules = (['inside', 'center', 'outside'] as const).map(align => {
+    const styles = (['inside', 'center', 'outside'] as const).map(align => {
       const document = blank(align)
       document.schemaVersion = 31
       const rectangle = node('rectangle', 0, 0, 40, 40)
@@ -179,14 +182,16 @@ describe('CSS export of paint, stroke, flow, text, and blur', () => {
       rectangle.strokes = [{ ...stroke('#ff0000', 4), align }]
       document.nodes = { [rectangle.id]: rectangle }
       document.pages[0].children = [rectangle.id]
-      return ruleFor(exportDesignCode(document).css, '#design-node-1')
+      return exportDesignCode(document).css
     })
-    expect(rules[0]).toContain('border:4px solid #ff0000')
+    const rules = styles.map(css => ruleFor(css, '#design-node-1'))
+    expect(rules.every(rule => !rule.includes('border:'))).toBe(true)
+    expect(ruleFor(styles[0], '#design-node-1::before')).toContain('border:4px solid #ff0000')
     expect(rules[0]).not.toContain('outline:')
-    expect(rules[1]).toContain('border:2px solid #ff0000')
+    expect(ruleFor(styles[1], '#design-node-1::before')).toContain('border:2px solid #ff0000')
     expect(rules[1]).toContain('outline:2px solid #ff0000')
     expect(rules[2]).toContain('outline:4px solid #ff0000')
-    expect(rules[2]).not.toContain('border:')
+    expect(styles[2]).not.toContain('#design-node-1::before')
     expect(new Set(rules).size).toBe(3)
   })
 
@@ -203,8 +208,12 @@ describe('CSS export of paint, stroke, flow, text, and blur', () => {
       document.pages[0].children = [frame.id]
       return exportDesignCode(document).css
     }
-    expect(flow('horizontal', { reverseFlow: true })).toContain('flex-direction:row-reverse')
-    expect(flow('vertical', { reverseFlow: true })).toContain('flex-direction:column-reverse')
+    const horizontal = flow('horizontal', { reverseFlow: true })
+    expect(horizontal).toContain('flex-direction:row-reverse')
+    expect(horizontal).toContain('justify-content:start')
+    const vertical = flow('vertical', { reverseFlow: true, justify: 'end' })
+    expect(vertical).toContain('flex-direction:column-reverse')
+    expect(vertical).toContain('justify-content:safe end')
     expect(flow('horizontal', { stackingOrder: 'first-on-top' })).toContain('flex-direction:row-reverse')
     const overridden = flow('horizontal', { reverseFlow: true, stackingOrder: 'last-on-top' })
     expect(overridden).toContain('flex-direction:row;')
@@ -213,6 +222,13 @@ describe('CSS export of paint, stroke, flow, text, and blur', () => {
     expect(grid).toContain('display:grid')
     expect(grid).not.toContain('flex-direction')
     expect(grid).not.toContain('row-reverse')
+    const wrapped = flow('horizontal', { reverseFlow: true, wrap: true })
+    expect(ruleFor(wrapped, '#design-node-1')).toContain('align-content:start')
+    expect(ruleFor(wrapped, '#design-node-1')).toContain('flex-direction:row;flex-wrap:wrap')
+    expect(ruleFor(wrapped, '#design-node-2')).toContain('order:-1')
+    expect(ruleFor(wrapped, '#design-node-2')).toContain('z-index:1')
+    expect(ruleFor(wrapped, '#design-node-3')).toContain('order:-2')
+    expect(ruleFor(wrapped, '#design-node-3')).toContain('z-index:2')
   })
 
   it('writes italic, letter-spacing, and line-height on the text fragment', () => {

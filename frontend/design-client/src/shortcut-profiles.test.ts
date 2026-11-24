@@ -22,6 +22,19 @@ function key(key: string, overrides: Partial<ShortcutKey> & { target?: EventTarg
 }
 function mod(context: ShortcutContext) { return context.platform === 'mac' ? { metaKey: true } : { ctrlKey: true } }
 const contexts: ShortcutContext[] = ['figma-like', 'sketch-like'].flatMap(profile => ['mac', 'windows', 'linux'].flatMap(platform => [false, true].map(desktop => ({ profile, platform, desktop } as ShortcutContext))))
+
+test('German Windows type shortcuts use their own modifiers and reject AltGraph', () => {
+  const context: ShortcutContext = { profile: 'figma-like', platform: 'windows', uiMode: 'figma', keyboardLayout: 'de-qwertz' }
+  const resolve = (value: string, modifiers: Partial<ShortcutKey>) => resolveShortcut(key(value, modifiers), context)?.command
+  expect(resolve('ß', { code: 'Minus', ctrlKey: true })).toBe('decrease-font-size')
+  expect(resolve('Dead', { code: 'Equal', ctrlKey: true, altKey: true })).toBe('increase-font-weight')
+  expect(resolve('Dead', { code: 'Equal', altKey: true })).toBe('increase-letter-spacing')
+  expect(resolve('?', { code: 'Minus', altKey: true, shiftKey: true })).toBe('decrease-line-height')
+  expect(resolve('u', { code: 'KeyU', ctrlKey: true })).toBe('toggle-text-underline')
+  expect(resolve('Dead', { code: 'Equal', ctrlKey: true, altKey: true, getModifierState: name => name === 'AltGraph' })).toBeUndefined()
+  expect(resolve(',', { code: 'Comma', ctrlKey: true })).toBe('open-command-search')
+})
+
 describe('bounded keyboard presets', () => {
   test.each(contexts)('$profile $platform desktop=$desktop has unique chords and existing commands only', context => {
     const bindings = shortcutBindings(context)

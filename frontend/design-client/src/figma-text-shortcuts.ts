@@ -1,12 +1,10 @@
 import type { Editor } from './engine'
 import { defaultTextStyle, type DesignNode, type TextListStyle, type TextParagraph, type TextRun, type TextStyle } from './model'
 import { applyWholeTextStyle, styleTextRange } from './text'
-import { resolveShortcut, type ShortcutAction, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
+import type { ShortcutAction } from './shortcut-profiles'
 
-/** US/Generic chords from Figma's keyboard-layout table. `<` decreases and `>`
- * increases. Explore text properties reverses that direction and uses Option
- * for letter spacing; that chord is intentionally not bound. Underline is
- * documented only on Explore text properties: Mac Option+U, Windows Ctrl+U. */
+/** Text commands shared by canvas selection and the inline editor.
+ * Key mappings are defined in shortcut-profiles for each keyboard layout. */
 export const figmaTextCommands = [
   'decrease-font-size', 'increase-font-size',
   'decrease-font-weight', 'increase-font-weight',
@@ -31,11 +29,6 @@ const labels: Record<FigmaTextCommand, string> = {
   'decrease-line-height': '调整行高', 'increase-line-height': '调整行高',
   'toggle-text-underline': '下划线', 'text-bullet-list': '项目符号列表', 'text-numbered-list': '编号列表',
 }
-export function figmaTextCommandFromEvent(event: ShortcutKey, context: ShortcutContext): FigmaTextCommand | null {
-  const binding = resolveShortcut(event, context)
-  return binding && isFigmaTextCommand(binding.command) ? binding.command : null
-}
-
 const roundDesign = (value: number) => Math.round(value * 1e6) / 1e6
 function stepFontSize(size: number, delta: 1 | -1) {
   const next = size + delta

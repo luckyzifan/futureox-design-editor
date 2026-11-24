@@ -177,8 +177,18 @@ export class ResidentPresenter {
    * validates the actual snapshot, including on cancellation or timeout. */
   waitForQueuedFrame(frame: ResidentFrame, signal?: AbortSignal): Promise<void> | undefined {
     const pending = this.bitmapPending
-    if (this.disposed || !pending || pending.onReleased || this.latest !== frame ||
-        this.drawn === frame || signal?.aborted) return
+    if (this.disposed || !pending || pending.onReleased || signal?.aborted) return
+    // The UI can reflect the current pose with a new frame object while its
+    // draw remains queued. Match that presentation and still verify the
+    // actual texture after the handoff.
+    const input = frame.input
+    const samePresentation = (candidate: ResidentFrame | undefined) =>
+      candidate === frame || candidate?.interaction && frame.interaction &&
+      !!frame.presentationId && candidate.presentationId === frame.presentationId &&
+      !!input?.owner && candidate.input?.owner === input.owner && candidate.input.sequence === input.sequence &&
+      candidate.width === frame.width && candidate.height === frame.height && candidate.dpr === frame.dpr &&
+      candidate.view.x === frame.view.x && candidate.view.y === frame.view.y && candidate.view.zoom === frame.view.zoom
+    if (!samePresentation(this.latest) || samePresentation(this.drawn)) return
     return new Promise(resolve => {
       const finish = () => {
         clearTimeout(timer)

@@ -21,6 +21,7 @@ export class FrameResources {
   private charged=new WeakSet<FrameResource>()
   private leases=new WeakSet<ResourceLease>()
   bytes=0;hits=0
+  get hasCurvePrograms() { return this.curveEntries.size > 0 }
   constructor(readonly limit=documentCapacity().memoryBytes){
     if(!Number.isSafeInteger(limit)||limit<0)throw Error('Invalid trusted frame resource memory allowance')
   }

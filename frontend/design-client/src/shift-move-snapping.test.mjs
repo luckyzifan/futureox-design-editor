@@ -11,7 +11,7 @@ const canvas = read('./Canvas.tsx'), view = read('./canvas-view.ts')
 const canvasViewImport = canvas.match(/import \{([^}]+)\} from '\.\/canvas-view'/)
 assert.ok(canvasViewImport, 'canvas move uses the production canvas-view helpers')
 const canvasViewNames = new Set(canvasViewImport[1].split(',').map(name => name.trim()).filter(Boolean))
-for (const name of ['createBox', 'forcedPixelSnap', 'resizeInBasis', 'snapMove'])
+for (const name of ['createBox', 'resizeInBasis', 'snapMove'])
   assert.equal(canvasViewNames.has(name), true, name)
 function boundary(source, start, end) {
   assert.equal(source.split(start).length, 2, `unique start: ${start}`)
@@ -27,12 +27,12 @@ function boundary(source, start, end) {
 // rounding plus a JS twin of the kernel's smart_guides::snap contract
 // (integer-grid rects, smallest non-zero delta, one guide per axis, guide
 // extent spans the union of moving rect and matched target).
-const helpers = boundary(view, 'export const forcedPixelSnap =', 'export function createBox(')
+const helpers = boundary(view, 'export function snapMove(', 'export function createBox(')
   .replaceAll('export ', '')
 // Snapping lives in the production gesture helper. The move branch reaches it
 // only after the layout-reorder gate, so both slices stay the code under test.
-const gesture = boundary(canvas, 'function gestureVisualMatrix(', 'function placeGestureFollow(')
-const moveGate = boundary(canvas, 'const layoutPointer = d.layoutPointerOrigin', 'transform = visual.matrix')
+const gesture = boundary(canvas, 'function ensureGuideIndex(', 'function placeGestureFollow(')
+const moveGate = boundary(canvas, 'const remoteVisual = d.moveFromAnywhere', 'transform = visual.matrix')
 const script = stripTypeScriptTypes(`${helpers}
 ${gesture}
 function movePointer() {
@@ -92,7 +92,7 @@ function smartGuidesSnapWorld(moving, parent, siblings, threshold) {
   }
   return result
 }
-function drag({ delta = { x: 10, y: 2 }, shift = true, alt = false, snap = true,
+function drag({ delta = { x: 10, y: 2 }, shift = true, alt = false, ctrl = false, snap = true,
   pixels = false, kind = 'rectangle', box = { x: 100, y: 200, width: 20, height: 20 },
   entries = [], zoom = 1, reorder = false } = {}) {
   let guides, pixelCalls = 0
@@ -101,7 +101,7 @@ function drag({ delta = { x: 10, y: 2 }, shift = true, alt = false, snap = true,
     d: { kind: 'move', start: { x: 30, y: 40 }, ids: ['selected'], box,
       moved: true, duplicating: alt, view: { zoom }, screen: { x: 0, y: 0 } },
     p: { x: 30 + delta.x, y: 40 + delta.y },
-    e: { shiftKey: shift, altKey: alt }, entries, zoom, guideIndex,
+    e: { shiftKey: shift, altKey: alt, ctrlKey: ctrl }, entries, zoom, guideIndex, uiMode: 'sketch',
     editor: { state: { snap, snapPixels: pixels, doc: { nodes: { selected: { kind } } } },
       previewLayoutOrder: () => reorder, previewFreeMove: () => {} },
     dragThresholdPassed, screenPoint: () => ({ x: 30 + delta.x, y: 40 + delta.y }),
@@ -168,6 +168,10 @@ test('disabled snap keeps the axis lock without guides; Alt still snaps the unlo
   assert.deepEqual(off.delta, { x: 10, y: 0 })
   assert.deepEqual(off.guides, { x: undefined, y: undefined })
   assert.equal(off.pixelCalls, 0)
+  const ctrl = drag({ ctrl: true, pixels: true, entries: [target(111, 202)] })
+  assert.deepEqual(ctrl.delta, { x: 10, y: 0 })
+  assert.equal(ctrl.guides.x, undefined)
+  assert.equal(ctrl.pixelCalls, 1)
   const alt = drag({ alt: true, entries: [target(111, 202)] })
   assert.deepEqual(alt.delta, { x: 11, y: 0 })
   assertGuide(alt.guides.x, 'x', 111)
@@ -179,9 +183,9 @@ test('no candidates preserve Shift movement and unrestricted decimal movement', 
   assert.deepEqual(drag({ shift: false, delta: { x: 10.25, y: 2.5 } }).delta, { x: 10.25, y: 2.5 })
 })
 
-test('optional and forced pixel snapping cannot move the locked axis from a fractional origin', () => {
+test('the pixel preference on frames and shapes respects the locked axis from a fractional origin', () => {
   const box = { x: 100.25, y: 200.25, width: 20, height: 20 }
-  for (const options of [{ pixels: true }, { kind: 'frame', alt: true }]) {
+  for (const options of [{ pixels: true }, { pixels: true, kind: 'frame', alt: true }]) {
     const horizontal = drag({ ...options, box })
     assert.deepEqual(horizontal.delta, { x: 9.75, y: 0 })
     assert.equal(horizontal.pixelCalls, 1)
@@ -190,6 +194,9 @@ test('optional and forced pixel snapping cannot move the locked axis from a frac
     assert.equal(vertical.pixelCalls, 1)
     assert.deepEqual(drag({ ...options, box, shift: false }).delta, { x: 9.75, y: 1.75 })
   }
+  const frame = drag({ kind: 'frame', box })
+  assert.deepEqual(frame.delta, { x: 10, y: 0 })
+  assert.equal(frame.pixelCalls, 0)
 })
 
 test('smart guides still suppress optional pixel rounding on an unlocked axis', () => {

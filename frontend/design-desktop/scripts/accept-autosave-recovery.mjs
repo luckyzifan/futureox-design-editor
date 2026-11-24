@@ -2,12 +2,16 @@
 // A passing report is unit and simulated-fault evidence. It is not a signed
 // release-installer result and does not mark issue 86 as a confirmed runtime fault.
 import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { hashReadonlyFile, verifyPublishedInstallerFile } from './release-package-resources.mjs'
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repo = path.resolve(desktop, '../..')
 const studio = path.join(repo, 'design-studio')
+const packagedCrashTest = 'autosave_recovery_killed_process_reopens_last_commit'
+const sidecarOverride = 'FUTUREOX_TEST_PACKAGED_AUTOSAVE_SIDECAR'
 
 export const EXPECTED_RECOVERY_TESTS = [
   'autosave_recovery_storage_full_preserves_original_and_is_not_saved',
@@ -25,7 +29,7 @@ export const EXPECTED_RECOVERY_TESTS = [
   'autosave_recovery_sqlite_readonly_is_not_saved',
   'autosave_recovery_readonly_directory_is_not_corrupt',
   'autosave_recovery_synced_temp_reopens_without_touching_import',
-  'autosave_recovery_killed_process_reopens_last_commit',
+  packagedCrashTest,
 ]
 
 export const RELEASE_FLOW = [
@@ -40,12 +44,16 @@ export const RELEASE_FLOW = [
   'original_sha_unchanged',
 ]
 
-export function buildReport({ cargo, releasePackagePresent = false, platform = process.platform, arch = process.arch }) {
-  const passedTests = new Set(String(cargo?.stdout || '').split('\n').flatMap(line => {
+function passedCargoTests(cargo) {
+  return new Set(String(cargo?.stdout || '').split('\n').flatMap(line => {
     const parts = line.trim().split(' ').filter(Boolean)
     return parts[0] === 'test' && parts[2] === '...' && parts[3] === 'ok'
       ? [parts[1].split('::').at(-1)] : []
   }))
+}
+
+export function buildReport({ cargo, releasePackagePresent = false, packagedCrash, platform = process.platform, arch = process.arch }) {
+  const passedTests = passedCargoTests(cargo)
   const missingTests = EXPECTED_RECOVERY_TESTS.filter(name => !passedTests.has(name))
   const unitPassed = cargo?.status === 0 && missingTests.length === 0
   const unitStatus = unitPassed ? 'passed' : cargo?.status === 0 ? 'not_run' : 'failed'
@@ -90,6 +98,17 @@ export function buildReport({ cargo, releasePackagePresent = false, platform = p
       gap: 'human_desktop',
     })),
   ]
+  const packagedStatus = packagedCrash && (packagedCrash.cargo?.status === 0
+    ? passedCargoTests(packagedCrash.cargo).has(packagedCrashTest) ? 'passed' : 'not_run'
+    : 'failed')
+  if (packagedCrash) {
+    faults.push({
+      id: 'packaged_exit_during_save',
+      evidence: 'The published sidecar reopens the last commit after SIGKILL with a SQLite writer holding the next save.',
+      status: packagedStatus,
+      scope: 'packaged_sidecar',
+    })
+  }
   return {
     schema: 1,
     issue: 86,
@@ -104,32 +123,64 @@ export function buildReport({ cargo, releasePackagePresent = false, platform = p
       missingTests,
     },
     faults,
+    ...(packagedCrash ? { packagedCrash: { identity: packagedCrash.identity, status: packagedStatus } } : {}),
     releaseAcceptance: 'not_closed',
   }
 }
 
-function runCargo() {
+function runCargo(packagedSidecar = null) {
+  const env = { ...process.env }
+  delete env[sidecarOverride]
+  if (packagedSidecar) env[sidecarOverride] = packagedSidecar
+  const scope = packagedSidecar ? ['--test', 'autosave_failure_recovery', packagedCrashTest] : ['autosave_recovery']
   return spawnSync(
     'cargo',
-    ['test', '--locked', '--color', 'never', '-p', 'futureox-design-desktop-backend', 'autosave_recovery', '--', '--test-threads=2', '--color', 'never'],
-    { cwd: studio, encoding: 'utf8', timeout: 600_000, maxBuffer: 16 * 1024 * 1024 },
+    ['test', '--locked', '--color', 'never', '-p', 'futureox-design-desktop-backend', ...scope, '--', '--test-threads=2', '--color', 'never'],
+    { cwd: studio, encoding: 'utf8', timeout: 600_000, maxBuffer: 16 * 1024 * 1024, env },
   )
+}
+
+function publishedSidecar(args) {
+  if (!args.length) return null
+  const value = key => args.find(arg => arg.startsWith(`--${key}=`))?.slice(key.length + 3)
+  const sidecar = value('packaged-sidecar'), installer = value('installer'), recordPath = value('verification')
+  if (args.length !== 3 || [sidecar, installer, recordPath].some(file => !file || !path.isAbsolute(file))) {
+    throw new Error('Usage: accept-autosave-recovery.mjs --packaged-sidecar=/abs/bin --installer=/abs/package --verification=/abs/release-verification.json')
+  }
+  const record = JSON.parse(readFileSync(recordPath, 'utf8'))
+  const triple = `${process.platform}-${process.arch}`
+  const installerIdentity = verifyPublishedInstallerFile(installer, record, triple)
+  const name = `sidecar/futureox-design-desktop-backend${process.platform === 'win32' ? '.exe' : ''}`
+  const { sha256: sidecarSha256 } = hashReadonlyFile(sidecar)
+  if (sidecarSha256 !== record.packages?.[triple]?.nativeSha256?.[name]) {
+    throw new Error('Sidecar hash does not match the release verification')
+  }
+  return {
+    sidecar,
+    identity: { version: record.version, sourceCommit: record.sourceCommit, platform: triple,
+      installerSha256: installerIdentity.sha256, sidecarSha256 },
+  }
 }
 
 const invoked = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 if (invoked) {
+  const packaged = publishedSidecar(process.argv.slice(2))
   const cargo = runCargo()
+  const packagedCrash = packaged && { identity: packaged.identity, cargo: runCargo(packaged.sidecar) }
   const report = buildReport({
     cargo,
-    releasePackagePresent: Boolean(process.env.FUTUREOX_RELEASE_PACKAGE),
+    releasePackagePresent: Boolean(packaged || process.env.FUTUREOX_RELEASE_PACKAGE),
+    packagedCrash,
   })
-  if (cargo.stdout) process.stderr.write(cargo.stdout)
-  if (cargo.stderr) process.stderr.write(cargo.stderr)
+  for (const result of [cargo, packagedCrash?.cargo].filter(Boolean)) {
+    if (result.stdout) process.stderr.write(result.stdout)
+    if (result.stderr) process.stderr.write(result.stderr)
+  }
   console.log(JSON.stringify(report, null, 2))
   if (cargo.error) {
     console.error(cargo.error.message)
     process.exit(2)
   }
   const unitFailed = report.faults.some(item => item.scope === 'simulated_backend' && item.status !== 'passed')
-  process.exit(unitFailed ? 1 : 0)
+  process.exit(unitFailed || (packagedCrash && report.packagedCrash.status !== 'passed') ? 1 : 0)
 }

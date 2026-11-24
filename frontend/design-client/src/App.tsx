@@ -197,7 +197,8 @@ const figmaToolbarTools = new Set<Tool>([
 ])
 const figmaDrawExtraTools = new Set<Tool>([...figmaDrawPaintTools, ...figmaDrawUtilityTools, 'vector'])
 export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWorkspace}={}) {
-  const { locale, uiMode } = useInterfacePreferences()
+  const { locale, uiMode, figmaKeyboardLayout } = useInterfacePreferences()
+  const germanFigmaKeyboard = uiMode === 'figma' && figmaKeyboardLayout === 'de-qwertz'
   const { Layers: WorkspaceLayers, FileMenu: WorkspaceFileMenu } = workspaceLayoutHosts[uiMode]
   const agentDockOpen = useSyncExternalStore(subscribeAgentDock, () => getAgentDock().open, () => false)
   const toolbarText = canvasText[locale]
@@ -556,14 +557,14 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     const minimize = (event: KeyboardEvent) => {
       const primary = shortcutPlatform() === 'mac' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
       const sketchToggle = uiMode === 'sketch' && !event.shiftKey && event.code === 'Period'
-      const sharedToggle = event.shiftKey && event.code === 'Backslash'
+      const sharedToggle = event.shiftKey && (event.code === 'Backslash' || (germanFigmaKeyboard && event.code === 'Backquote'))
       if (!primary || (!sketchToggle && !sharedToggle) || event.altKey || event.defaultPrevented ||
           event.repeat || event.keyCode === 229 || event.isComposing || shortcutTargetOwnsKeyboard(event.target)) return
       if (toggleUi()) event.preventDefault()
     }
     window.addEventListener('keydown', minimize)
     return () => window.removeEventListener('keydown', minimize)
-  }, [uiMode, toggleUi])
+  }, [uiMode, toggleUi, germanFigmaKeyboard])
   const [ready, setReady] = useState(false),
     [saved, setSaved] = useState('载入中'),
     [menu, setMenu] = useState(false)
@@ -636,8 +637,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     const onKey = (event: KeyboardEvent) => {
       const primary = shortcutPlatform() === 'mac' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
       const altPage = event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey ? /^Digit([123])$/.exec(event.code) : null
-      // Unshifted ⌘\ / Ctrl\ hides every chrome surface. ⇧⌘\ stays minimize.
-      const hideAll = primary && !event.altKey && !event.shiftKey && event.code === 'Backslash' && (event.key === '\\' || event.key === '\u001c')
+      const backslash = event.code === 'Backslash' && (event.key === '\\' || event.key === '\u001c')
+      const germanHide = germanFigmaKeyboard && (event.code === 'Period' || event.code === 'Backquote')
+      const hideAll = primary && !event.altKey && !event.shiftKey && (backslash || germanHide)
       if (!altPage && !hideAll) return
       if (event.defaultPrevented || event.repeat || event.isComposing || event.keyCode === 229 ||
           event.getModifierState?.('AltGraph') || shortcutTargetOwnsKeyboard(event.target) ||
@@ -658,7 +660,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [uiMode, editor, showHome, ready, switching, desktopStatus.transitioning, largeDocument, source, shortcutContext])
+  }, [uiMode, editor, showHome, ready, switching, desktopStatus.transitioning, largeDocument, source, shortcutContext, germanFigmaKeyboard])
   useEffect(() => {
     // Figma layout only. Shift+Space is the inline preview; Option-Command-Return
     // (Ctrl+Alt+Enter off Mac) presents. Both open the existing player.
@@ -1684,7 +1686,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <b>/</b>
           {!figmaNameInSidebar && documentNameField}
           <span className="draft-badge">{panelText.localBadge}</span>
-          <button type="button" aria-label={uiMinimized ? menuText.expandUi : menuText.collapseUi} title={`${menuText.collapseUi} / ${menuText.expandUi} (${formatShortcutCombo(uiMode === 'sketch' ? 'Mod+.' : 'Mod+Shift+\\', shortcutContext.platform)})`}
+          <button type="button" aria-label={uiMinimized ? menuText.expandUi : menuText.collapseUi}
+            title={`${menuText.collapseUi} / ${menuText.expandUi} (${formatShortcutCombo(uiMode === 'sketch' ? 'Mod+.' : germanFigmaKeyboard ? 'Mod+Shift+^' : 'Mod+Shift+\\', shortcutContext.platform)})`}
             aria-pressed={uiMinimized} onClick={toggleUi}>
             {uiMinimized ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>

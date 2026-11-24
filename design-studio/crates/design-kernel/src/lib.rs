@@ -2718,7 +2718,7 @@ mod wasm {
         let parent = parent.as_deref().and_then(guide_rect);
         let targets: Vec<_> = siblings.chunks(4).filter_map(guide_rect).collect();
         let snap = smart_guides::snap_world(moving, parent, &targets, threshold);
-        guide_json(snap)
+        guide_json(snap, None)
     }
 
     fn guide_rect(flat: &[f64]) -> Option<smart_guides::WorldRect> {
@@ -2729,7 +2729,7 @@ mod wasm {
             Some(smart_guides::WorldRect{x:v[0],y:v[1],w:v[2],h:v[3]})
     }
 
-    fn guide_json(snap: smart_guides::Snap) -> String {
+    fn guide_json(snap: smart_guides::Snap, gaps: Option<[Option<smart_guides::GapPair>; 2]>) -> String {
         let guide = |g: Option<smart_guides::Guide>| match g {
             Some(g) => serde_json::json!({
                 "axis": if matches!(g.axis, smart_guides::Axis::X) { "x" } else { "y" },
@@ -2739,27 +2739,47 @@ mod wasm {
             }),
             None => serde_json::Value::Null,
         };
-        serde_json::json!({
+        let mut result = serde_json::json!({
             "dx": snap.dx,
             "dy": snap.dy,
             "guides": [guide(snap.guides[0]), guide(snap.guides[1])],
             "targetSpans": snap.target_spans,
-        })
-        .to_string()
+        });
+        if let Some(lines) = gaps.filter(|lines| lines.iter().any(Option::is_some)) {
+            result["gaps"] = serde_json::json!(lines);
+        }
+        result.to_string()
     }
 
     #[wasm_bindgen]
-    pub struct SmartGuidesIndex { inner: smart_guides::Index }
+    pub struct SmartGuidesIndex {
+        inner: smart_guides::Index,
+        spacing: Option<smart_guides::SpacingIndex>,
+    }
     #[wasm_bindgen]
     impl SmartGuidesIndex {
         #[wasm_bindgen(constructor)]
-        pub fn new(parent: Option<Vec<f64>>, siblings: &[f64]) -> SmartGuidesIndex {
-            let parent=parent.as_deref().and_then(guide_rect);
-            let targets:Vec<_>=siblings.chunks(4).filter_map(guide_rect).collect();
-            Self {inner:smart_guides::Index::new_world(parent,&targets)}
+        pub fn new(parent: Option<Vec<f64>>, siblings: &[f64], spacing_targets: Option<Vec<f64>>) -> SmartGuidesIndex {
+            let parent = parent.as_deref().and_then(guide_rect);
+            let targets: Vec<_> = siblings.chunks(4).filter_map(guide_rect).collect();
+            Self {
+                inner: smart_guides::Index::new_world(parent, &targets),
+                spacing: spacing_targets.map(|flat| {
+                    let rects: Vec<_> = flat.chunks(4).filter_map(guide_rect).collect();
+                    smart_guides::SpacingIndex::new(&rects)
+                }),
+            }
         }
-        pub fn snap(&self,moving:&[f64],threshold:f64)->String {
-            guide_json(guide_rect(moving).map(|r|self.inner.snap(r,threshold)).unwrap_or_default())
+        pub fn snap(&self, moving: &[f64], threshold: f64) -> String {
+            let Some(moving) = guide_rect(moving) else {
+                return guide_json(smart_guides::Snap::default(), None);
+            };
+            let edges = self.inner.snap(moving, threshold);
+            if let Some(spacing) = &self.spacing {
+                let (result, gaps) = spacing.snap(moving, threshold, edges);
+                return guide_json(result, Some(gaps));
+            }
+            guide_json(edges, None)
         }
     }
 

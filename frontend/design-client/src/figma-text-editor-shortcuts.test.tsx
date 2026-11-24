@@ -94,6 +94,61 @@ test('editing text applies the Figma chords and Cmd+Z restores that step', async
   expect(editor.state.doc.nodes[layer.id].textStyle?.list).toBe('bullet')
 })
 
+test.each([
+  { name: 'font size', key: 'Dead', code: 'Equal', modifiers: { metaKey: true, shiftKey: true }, read: (layer: ReturnType<typeof node>) => layer.fontSize, expected: 17 },
+  { name: 'font weight', key: 'ß', code: 'Minus', modifiers: { metaKey: true, altKey: true }, read: (layer: ReturnType<typeof node>) => layer.textStyle?.weight, expected: 300 },
+  { name: 'letter spacing', key: 'Dead', code: 'Equal', modifiers: { altKey: true }, read: (layer: ReturnType<typeof node>) => layer.textStyle?.letterSpacing, expected: .16 },
+  { name: 'line height', key: '?', code: 'Minus', modifiers: { altKey: true, shiftKey: true }, read: (layer: ReturnType<typeof node>) => layer.textStyle?.lineHeight, expected: 1.2875 },
+  { name: 'underline', key: 'Dead', code: 'KeyU', modifiers: { altKey: true }, read: (layer: ReturnType<typeof node>) => layer.textRuns?.[0].underline, expected: true },
+])('German Figma keyboard applies $name and undoes it in one step', async ({ key, code, modifiers, read, expected }) => {
+  interfacePreference.set({ uiMode: 'figma', figmaKeyboardLayout: 'de-qwertz' })
+  const layer = open()
+  const input = await render()
+  input.setSelectionRange(0, layer.text.length)
+  const before = editor.state.doc
+  await press(input, key, code, modifiers)
+  expect(read(editor.state.doc.nodes[layer.id])).toBe(expected)
+  expect(editor.state.doc.nodes[layer.id].text).toBe('Hello')
+  await press(input, 'z', 'KeyZ', { metaKey: true })
+  expect(editor.state.doc).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+})
+
+test('German Figma keyboard indents a list and still reorders plain text', async () => {
+  interfacePreference.set({ uiMode: 'figma', figmaKeyboardLayout: 'de-qwertz' })
+  const layer = open('List', true)
+  const input = await render()
+  const order = [...editor.state.doc.pages[0].children]
+  await press(input, 'ä', 'Quote', { metaKey: true })
+  expect(editor.state.doc.pages[0].children).toEqual([...order].reverse())
+  await press(input, 'z', 'KeyZ', { metaKey: true })
+  await act(async () => editor.update([layer.id], n => { n.textStyle = { ...defaultTextStyle(), list: 'bullet' } }, 'Bullet list'))
+  input.setSelectionRange(0, layer.text.length)
+  await press(input, 'ä', 'Quote', { metaKey: true })
+  expect(editor.state.doc.nodes[layer.id].textStyle?.listLevel).toBe(1)
+  expect(editor.state.doc.pages[0].children).toEqual(order)
+  await press(input, 'ö', 'Semicolon', { metaKey: true })
+  expect(editor.state.doc.nodes[layer.id].textStyle?.listLevel).toBeUndefined()
+  await press(input, 'z', 'KeyZ', { metaKey: true })
+  expect(editor.state.doc.nodes[layer.id].textStyle?.listLevel).toBe(1)
+})
+
+test.each([
+  { digit: '8', printable: '(', list: 'bullet' },
+  { digit: '7', printable: '/', list: 'ordered' },
+] as const)('German Figma keyboard applies the $list list and one undo clears it', async ({ digit, printable, list }) => {
+  interfacePreference.set({ uiMode: 'figma', figmaKeyboardLayout: 'de-qwertz' })
+  const layer = open('One\nTwo')
+  const input = await render()
+  input.setSelectionRange(0, layer.text.length)
+  await press(input, printable, `Digit${digit}`, { metaKey: true, shiftKey: true })
+  expect(editor.state.doc.nodes[layer.id].textStyle?.list).toBe(list)
+  expect(editor.state.doc.nodes[layer.id].text).toBe('One\nTwo')
+  await press(input, 'z', 'KeyZ', { metaKey: true })
+  expect(editor.state.doc.nodes[layer.id].textStyle?.list).toBeUndefined()
+  expect(editor.canUndo).toBe(false)
+})
+
 test('bracket chords reorder a layer that is not a list', async () => {
   const layer = open('Hello', true)
   const before = [...editor.state.doc.pages[0].children]

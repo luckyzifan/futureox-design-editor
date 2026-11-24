@@ -254,8 +254,18 @@ export function prepareDocumentJsonForEditing(source: string, captureValidatedJs
   return prepareAdmittedDocument(admitDocumentJsonSync(source, syntaxFailureAttempt), captureValidatedJson)
 }
 function prepareAdmittedDocument(original: DesignDocument, captureValidatedJson?: (json: string) => void): DesignDocument {
+  let designSystem = original.designSystem
+  const containers = designSystem?.sketchContainers
+  const index = containers?.currentPageIndex
+  if (designSystem && containers && typeof containers.sketchCurrentPageId !== 'string' &&
+      typeof index === 'number' && Number.isSafeInteger(index) && original.pages[index]) {
+    // Older saves only have an ordinal. Bind it to the original page before
+    // an editor or automation can reorder the page list.
+    designSystem = { ...designSystem, sketchContainers: { ...containers, sketchCurrentPageId: original.pages[index].id } }
+  }
   const prepared = documentStage(DocumentStage.layout, () => kernelLayout({
     ...original,
+    ...(designSystem ? { designSystem } : {}),
     schemaVersion: Math.max(2, original.schemaVersion) as DesignDocument['schemaVersion'],
     rasterProfile: original.rasterProfile || (original.colorManagement ? 'figma' : 'analytic'),
   }))

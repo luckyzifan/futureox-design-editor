@@ -3178,15 +3178,38 @@ fn sketch_page_metadata(page: &Value) -> Map<String, Value> {
     fields
 }
 
-fn retain_sketch_document_fields(document: &Value, containers: &mut BTreeMap<String, Value>) {
-    if let Some(index) = document.get("currentPageIndex").filter(|value| value.as_i64().is_some_and(|index| index != 0)) {
-        containers.insert("currentPageIndex".into(), index.clone());
+fn retain_sketch_document_fields(
+    document: &Value,
+    current_page: Option<(usize, String)>,
+    containers: &mut BTreeMap<String, Value>,
+) {
+    if let Some((index, id)) = current_page {
+        if index != 0 {
+            containers.insert("currentPageIndex".into(), json!(index));
+        }
+        containers.insert("sketchCurrentPageId".into(), Value::String(id));
     }
     for key in ["enableLayerInteraction", "enableSliceInteraction"] {
         if let Some(value) = document.get(key).filter(|value| value.is_boolean()) {
             containers.insert(key.into(), value.clone());
         }
     }
+}
+
+fn sketch_current_page_index(doc: &Document) -> usize {
+    let Some(system) = &doc.design_system else {
+        return 0;
+    };
+    let containers = &system.sketch_containers;
+    if let Some(id) = containers.get("sketchCurrentPageId").and_then(Value::as_str) {
+        return doc.pages.iter().position(|page| page.id == id).unwrap_or(0);
+    }
+    containers
+        .get("currentPageIndex")
+        .and_then(Value::as_u64)
+        .and_then(|index| usize::try_from(index).ok())
+        .filter(|index| *index < doc.pages.len())
+        .unwrap_or(0)
 }
 
 fn retain_sketch_user_json(files: &BTreeMap<String, Vec<u8>>, containers: &mut BTreeMap<String, Value>) {
@@ -3620,6 +3643,23 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
             .collect();
     }
 
+    let current_page = document
+        .get("currentPageIndex")
+        .and_then(Value::as_u64)
+        .and_then(|index| usize::try_from(index).ok())
+        .and_then(|index| {
+            // Native source windows project the page list. Resolve the
+            // archive's index before locating that page in the projection.
+            let index = if page_references.is_some() {
+                let reference = document.get("pages")?.get(index)?.get("_ref")?.as_str()?;
+                let file = reference.trim_start_matches("pages/").trim_end_matches(".json");
+                ordered.iter().position(|(file_id, _, _)| file_id == file)?
+            } else {
+                index
+            };
+            Some((index, ordered.get(index)?.1.clone()))
+        });
+
     let mut ruler_pages: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
     let mut page_metadata: Map<String, Value> = Map::new();
     for (file_id, kernel_id, page_name) in ordered {
@@ -3942,7 +3982,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     if !page_metadata.is_empty() {
         sketch_containers.insert("sketchPageMetadata".into(), Value::Object(page_metadata));
     }
-    retain_sketch_document_fields(document, &mut sketch_containers);
+    retain_sketch_document_fields(document, current_page, &mut sketch_containers);
     retain_sketch_user_json(files, &mut sketch_containers);
     // Embedded library definitions need an owned graph root before editable
     // admission. They remain native foreign resources when exported.
@@ -9190,7 +9230,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
         "do_objectID": format!("doc-{}", doc.id),
         "assets": {"_class": "assetCollection", "colors": [], "gradients": [], "images": [], "colorAssets": []},
         "colorSpace": color_space,
-        "currentPageIndex": 0,
+        "currentPageIndex": sketch_current_page_index(doc),
         "pages": page_refs,
         "layerStyles": {"_class": "sharedStyleContainer", "objects": layer_styles},
         "layerTextStyles": {"_class": "sharedTextStyleContainer", "objects": layer_text_styles}
@@ -9253,6 +9293,8 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     | "sketchCheckedLibraries"
                     | "sketchPageMetadata"
                     | "sketchUser"
+                    | "sketchCurrentPageId"
+                    | "currentPageIndex"
             ) {
                 continue;
             }

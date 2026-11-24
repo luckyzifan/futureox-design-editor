@@ -770,10 +770,10 @@ impl Effect {
         }
     }
     pub fn sketch_backdrop_sigma(&self, scale: f64) -> f64 {
-        let radius = self.radius * scale;
-        // Uniform Sketch blur uses the authored radius as the Gaussian sigma.
-        // The fractional three-box ramp keeps its own calibrated input scale.
-        if self.sketch_ramp().is_some() { radius * std::f64::consts::SQRT_2 * 0.75 } else { radius }
+        // Native uniform step exports at 1× and 2× need the wider Gaussian.
+        // The progressive operator retains its own calibrated strength.
+        let uniform = self.radius * scale * std::f64::consts::SQRT_2;
+        if self.sketch_ramp().is_some() { uniform * 0.75 } else { uniform }
     }
 
     pub(crate) fn backdrop_outset(&self, scale: f64) -> f64 {
