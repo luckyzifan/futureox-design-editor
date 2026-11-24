@@ -8915,9 +8915,14 @@ export class GpuRenderer {
     const preparation = [this.prepareWithFailureOrigin(1, () => this.driver.prepareScene?.(scene, !readback && present, this.gradientFusionActive))]
     // At high density, sum the outer shadow's three alpha boxes on the
     // full device lattice. Ordinary zoom and color filters keep their box path.
+    // The exact prefix is byte-exact against the rational box reducer (integer
+    // window sum + one nearest-even division, with a per-line exact fallback),
+    // so the optional low-zoom flag only widens the same alpha-only outer-shadow
+    // admission down to 800%; it never changes the kernel, source or rounding.
+    const shadowBoxLowZoom = import.meta.env.VITE_DESIGN_EXACT_SHADOW_BOX_LOW_ZOOM === '1' && scene.view.zoom >= 8
     this.analyticDisplayShadowBoxes = index.hasFilters && managedDisplay && this.optimized && !!scene.output && scene.coherentSamples === false &&
       !scene.colorManagement && !scene.integratedBlur && !scene.interactionRetained && !scene.resolve && !scene.presentation &&
-      !scene.softwareRaster && scene.view.zoom >= 32 && Object.values(scene.nodes).some(node => node.effects.some(effect =>
+      !scene.softwareRaster && (scene.view.zoom >= 32 || shadowBoxLowZoom) && Object.values(scene.nodes).some(node => node.effects.some(effect =>
         effect.visible && effect.kind === 'shadow' && effect.radius * scale(node.matrix) >= 2 * PREFIX_MIN_RADIUS))
     if (index.hasFilters) {
       const regionalBoxes = scene.view.zoom >= 32 && Object.values(scene.nodes).some(n => n.analyticRegion)

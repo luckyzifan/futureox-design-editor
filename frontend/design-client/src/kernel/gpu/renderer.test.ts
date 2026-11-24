@@ -694,6 +694,29 @@ test.each([
   } finally { renderer.dispose() }
 })
 
+test.each([
+  {zoom:16, mode:3},
+  {zoom:8, mode:3},
+  {zoom:1, mode:1},
+] as const)('optional low-zoom exact shadow box prefix admits alpha outer shadow at zoom $zoom', async ({zoom,mode}) => {
+  vi.stubEnv('VITE_DESIGN_EXACT_SHADOW_BOX_LOW_ZOOM', '1')
+  const mock = textureReplayDriver(), prepareFilters = vi.fn(async () => {})
+  const driver = {...mock.driver, managed:true, prepareFilters,
+    uploadRgba8: (_: Uint8Array, w: number, h: number) => mock.driver.create(w,h)}
+  const renderer = new GpuRenderer(driver)
+  const base = textureReplayScene(), frame = base.nodes.frame
+  const scene: GpuScene = {...base, output:base.extent, floatCompositing:true, coherentSamples:false, integratedBlur:false,
+    interactionRetained:false, view:{x:0,y:0,zoom}, nodes:{frame:{...frame, clip:false, children:[],
+      matrix:[zoom,0,0,zoom,0,0], inverse:[1/zoom,0,0,1/zoom,0,0], effects:[{...effect('shadow'), radius:15}]}}}
+  try {
+    await renderer.render(scene, false, true)
+    const passes = mock.passes.filter(pass => pass.mode === 22)
+    expect(prepareFilters).toHaveBeenCalledWith(mode === 3)
+    expect(passes.map(pass => pass.uniforms[37])).toEqual([0,1,0,1,0,1])
+    expect(passes.map(pass => pass.uniforms[39])).toEqual(Array(6).fill(mode))
+  } finally { renderer.dispose(); vi.unstubAllEnvs() }
+})
+
 function textureReplayScene(radius = 2, clipped = false): GpuScene {
   const parent = { x: 0, y: 0, w: 640, h: 320 }
   const leaf = { x: 456, y: 36, w: 148, h: 162 }
