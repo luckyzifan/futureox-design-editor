@@ -123,13 +123,16 @@ test('HTTP facade uses the operation grants after the real socket handshake', as
   const host = await bridge(t, { advertisedCapabilities, grants: { workspace: 'read' } })
   const server = await startLoopbackFigmaMcp({ endpoint: host.endpoint, sessionId, token })
   t.after(() => server.close())
+  const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: `Bearer ${token}` }
   const request = (method, { id, params } = {}) => fetch(server.url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    method: 'POST', headers,
     body: JSON.stringify({ jsonrpc: '2.0', method, id, params }),
   })
   const init = await request('initialize', { id: 1, params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'integration-test', version: '1' } } })
   assert.equal(init.status, 200)
+  headers['mcp-session-id'] = init.headers.get('mcp-session-id')
+  assert.ok(headers['mcp-session-id'])
+  headers['mcp-protocol-version'] = (await init.json()).result.protocolVersion
   assert.equal((await request('notifications/initialized')).status, 202)
   const listed = await (await request('tools/list', { id: 2 })).json()
   assert.equal(listed.result.tools.some(tool => tool.name === 'use_figma'), true)
