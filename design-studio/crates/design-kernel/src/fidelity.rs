@@ -46,6 +46,19 @@ pub(crate) fn coherent_samples(doc: &crate::scene::Document, options: &RenderOpt
 }
 
 impl crate::Engine {
+    pub(crate) fn export_source(
+        &mut self, options: &RenderOptions, width: u32, height: u32,
+    ) -> Result<RenderOptions, String> {
+        let mut source = source(options, 0, 0, width, height)?;
+        if source.raster_profile.is_software() && self.source_compile_context.is_none() {
+            self.resolve_layout()?;
+            if self.doc.as_ref().is_some_and(|doc| measured_phase_gradient(doc, options)) {
+                source.raster_profile = RasterProfile::Figma;
+            }
+        }
+        Ok(source)
+    }
+
     /// Only ordinary solid geometry certifies that two colored endpoints
     /// describe coverage. A material or effect capture can quantize to the
     /// same endpoints for other reasons. Use the full requested page so a
@@ -81,6 +94,74 @@ impl crate::Engine {
                     })
             })
     }
+}
+
+/// The Chrome phase controls establish one opaque gradient under a normal
+/// rectangular clip, with an optional single isolating opacity. Use the
+/// measured lookup, dither, opacity and resolve together for that paint
+/// program. A crop must not change the decision or the jitter phase.
+fn measured_phase_gradient(doc: &crate::scene::Document, options: &RenderOptions) -> bool {
+    use crate::scene::{Node, Paint};
+    let opaque = |color: &str| {
+        crate::color::unmanaged_straight(color).is_ok_and(|channels| channels[3] == 1.)
+    };
+    let visible_paint = |paint: &&Paint| paint.visible && paint.opacity > 0.;
+    let plain_box = |node: &Node| {
+        let [a, b, c, d, x, y] = node.transform.0;
+        node.visible && node.blend == "normal" && a == 1. && b == 0. && c == 0. && d == 1.
+            && x.fract() == 0. && y.fract() == 0.
+            && node.width > 0. && node.height > 0.
+            && node.width.fract() == 0. && node.height.fract() == 0.
+            && node.corner_radius == 0. && node.radii == [0.; 4] && node.smoothing == 0.
+            && !node.mask && node.mask_chain.is_none() && node.boolean_operation.is_none()
+            && node.network.is_none() && node.vector_geometry.is_none()
+            && node.repeat.is_none() && node.spatial.is_none() && node.instance.is_none()
+            && node.effects.iter().all(|effect| !effect.visible)
+            && node.strokes.iter().all(|stroke| !stroke.visible || stroke.width == 0.)
+    };
+    if doc.color_management.is_some() || options.transparent || options.grid || options.checkerboard
+        || options.animation.is_some() || options.interactive_effects
+        || options.view.zoom != 1. || options.view.x.fract() != 0. || options.view.y.fract() != 0.
+    {
+        return false;
+    }
+    let Some(page) = doc.pages.iter().find(|page| page.id == options.page_id) else { return false };
+    let [root] = page.children.as_slice() else { return false };
+    let root = &doc.nodes[root];
+    let [child] = root.children.as_slice() else { return false };
+    if root.kind != "frame" || !plain_box(root) || !root.clip || root.opacity != 1. || !opaque(&page.background) {
+        return false;
+    }
+    let mut fills = root.fills.iter().filter(visible_paint);
+    let Some(background) = fills.next() else { return false };
+    if fills.next().is_some() || background.kind != "solid" || background.opacity != 1.
+        || background.blend != "normal" || !opaque(&background.color)
+    {
+        return false;
+    }
+    let mut leaf = &doc.nodes[child];
+    if leaf.kind == "frame" {
+        let [child] = leaf.children.as_slice() else { return false };
+        if !plain_box(leaf) || !leaf.clip || !(0. < leaf.opacity && leaf.opacity < 1.)
+            || leaf.fills.iter().any(|paint| visible_paint(&paint))
+        {
+            return false;
+        }
+        leaf = &doc.nodes[child];
+    }
+    if leaf.kind != "rectangle" || !plain_box(leaf) || leaf.clip || leaf.opacity != 1.
+        || !leaf.children.is_empty()
+    {
+        return false;
+    }
+    let mut fills = leaf.fills.iter().filter(visible_paint);
+    let Some(gradient) = fills.next() else { return false };
+    let [first, last] = gradient.stops.as_slice() else { return false };
+    fills.next().is_none() && gradient.opacity == 1.
+        && crate::figma_gradient::canonical_angle(gradient).is_some_and(|angle| angle.rem_euclid(360.) == 0.)
+        && crate::figma_gradient::supported(gradient, leaf.transform)
+        && first.offset == 0. && last.offset == 1.
+        && opaque(&first.color) && opaque(&last.color)
 }
 
 pub(crate) fn full_frame_vector(frame: &crate::scene::Node, node: &crate::scene::Node) -> bool {

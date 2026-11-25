@@ -3073,7 +3073,7 @@ impl Engine {
     ) -> Result<Vec<u8>, String> {
         let Rect { x, y, w, h } = tile;
         if options.raster_profile.is_export() {
-            let source = crate::fidelity::source(options, 0, 0, w, h)?;
+            let source = self.export_source(options, w, h)?;
             let viewport = Rect::new(x * 2, y * 2, w * 2, h * 2);
             let mut planes = match padding {
                 ExportPadding::Extra(halo) => self.render_scene_inner_at(&source, coherent, viewport, halo * 2)?,
@@ -3083,7 +3083,7 @@ impl Engine {
             };
             if coherent {
                 let samples = [&planes[0][..], &planes[1][..], &planes[2][..], &planes[3][..]];
-                let mut bytes = if options.raster_profile.is_software() {
+                let mut bytes = if source.raster_profile.is_software() {
                     crate::fidelity::resolve_software_sample_planes_2x(
                         samples, w, h, self.allows_software_color_coverage(options),
                     )
