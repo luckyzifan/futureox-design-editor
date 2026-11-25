@@ -457,7 +457,8 @@ pub struct Stroke {
     pub cap: String,
     #[serde(default = "round")]
     pub join: String,
-    /// SVG/FIG miter limit. 4 is the historical renderer cap and is omitted.
+    /// SVG/FIG/Sketch miter limit. 4 is the historical renderer cap and is omitted.
+    /// Sketch's usual authored value is 10.
     #[serde(
         default = "crate::stroke::default_miter_limit",
         skip_serializing_if = "crate::stroke::is_default_miter_limit"

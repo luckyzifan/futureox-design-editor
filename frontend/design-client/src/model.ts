@@ -125,7 +125,7 @@ export type Stroke = {
   align: 'inside' | 'center' | 'outside'
   cap: 'butt' | 'round' | 'square'
   join: 'miter' | 'round' | 'bevel'
-  /** FIG/SVG miter limit. Absent means 4, the historical renderer cap. */
+  /** FIG/Sketch/SVG miter limit. Absent means 4, the historical renderer cap. Sketch's usual authored value is 10. */
   miterLimit?: number
   dash: string
   dashOffset?: number

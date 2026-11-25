@@ -449,6 +449,20 @@ fn sketch_flag(value: &Value) -> bool {
     }
 }
 
+/// Sketch archives the miter limit on `style.miterLimit`. Real files use 10.
+/// A missing field stays at the historical renderer cap of 4. Out-of-range
+/// values are reported and also stay at 4. `borderOptions.miterLimit` is not
+/// read: previous exports wrote a constant 10 there while the stroke stayed 4.
+pub(crate) fn sketch_style_miter_limit(style: &Value, lossy: &mut Vec<String>) -> f64 {
+    match crate::fig::authored_miter_limit(style.get("miterLimit")) {
+        Ok(limit) => limit,
+        Err(note) => {
+            lossy.push(note);
+            crate::stroke::default_miter_limit()
+        }
+    }
+}
+
 /// Sketch 2026 writes `centerDashes` as a bool. Older files omit it, which
 /// keeps the historical uncentered dash. A 0/1 number is accepted as well.
 pub(crate) fn sketch_center_dashes(options: &Value) -> bool {
@@ -1562,6 +1576,7 @@ impl<'a> Importer<'a> {
             .and_then(Value::as_i64)
             .map(|code| marker_of(code, lossy))
             .unwrap_or_default();
+        let miter_limit = sketch_style_miter_limit(style, lossy);
         let mut out = Vec::new();
         let Some(parts) = style.get("borders").and_then(Value::as_array) else {
             return out;
@@ -1587,7 +1602,7 @@ impl<'a> Importer<'a> {
                 .into(),
                 cap: cap.into(),
                 join: join.into(),
-                miter_limit: 4.,
+                miter_limit,
                 dash: dash.clone(),
                 dash_offset: 0.,
                 center_dashes: sketch_center_dashes(options),
@@ -5963,13 +5978,21 @@ fn export_style_parts(
             if strokes.iter().any(|s| s.center_dashes != first.center_dashes) {
                 note_lossy(lossy, "border-center-dashes-mixed-per-stroke");
             }
-            json!({"_class": "borderOptions",
+            if strokes
+                .iter()
+                .any(|stroke| (stroke.miter_limit - first.miter_limit).abs() > 1e-9)
+            {
+                note_lossy(lossy, "border-miter-limit-mixed-per-stroke");
+            }
+            let mut options = json!({"_class": "borderOptions",
                    "lineCapStyle": cap_code(&first.cap), "lineJoinStyle": join_code(&first.join),
                    "dashPattern": dash_pattern(&first.dash),
                    "centerDashes": first.center_dashes,
                    "startMarkerType": marker_code(first.start_marker, lossy),
                    "endMarkerType": marker_code(first.end_marker, lossy),
-                   "miterLimit": 10, "windingRule": 0})
+                   "windingRule": 0});
+            options["miterLimit"] = sketch_miter_json(first.miter_limit);
+            options
         }
         None => json!({"_class": "borderOptions", "lineCapStyle": 0, "lineJoinStyle": 0,
                        "dashPattern": [], "startMarkerType": 0, "endMarkerType": 0,
@@ -6038,6 +6061,18 @@ fn export_style_parts(
         "motionAngle": 0., "radius": 0., "saturation": 1., "type": 0
     }));
     Ok(SketchStyleParts { borders, shadows, inner_shadows, blur, additional_blurs, border_options })
+}
+
+/// Integer limits stay integers so a Sketch `10` does not become `10.0`.
+fn sketch_miter_json(limit: f64) -> Value {
+    let nearest = limit.round();
+    if limit.is_finite() && (limit - nearest).abs() <= 1e-6 && nearest.abs() <= i64::MAX as f64 {
+        Value::Number((nearest as i64).into())
+    } else {
+        serde_json::Number::from_f64(limit)
+            .map(Value::Number)
+            .unwrap_or(json!(4))
+    }
 }
 
 /// Record a downgrade note once; the exporter writes the collected list into
@@ -7245,7 +7280,12 @@ fn export_layer_impl(
         }
         // Keep the old dictionary for old readers; current Sketch reads blurs.
         style.insert("blur".into(), blur);
+        let archived_miter = border_options
+            .get("miterLimit")
+            .cloned()
+            .unwrap_or(json!(10));
         style.insert("borderOptions".into(), border_options);
+        style.insert("miterLimit".into(), archived_miter);
         // Per-layer color controls ride bindings verbatim when the source
         // archived an enabled part; the default-disabled object covers the
         // kernel-authored case.
@@ -7545,6 +7585,7 @@ fn export_layer_impl(
                             continue;
                         }
                         let SketchStyleParts { borders, shadows, inner_shadows, blur, border_options, .. } = export_style_parts(&strokes, &effects, &mut lossy, images, [1., 1.], false)?;
+                        let override_miter = border_options.get("miterLimit").cloned().unwrap_or(json!(10));
                         let mut paints = Vec::new();
                         for paint in &fills {
                             if let Some(part) = export_paint(paint, images, [1., 1.])? { paints.push(part); }
@@ -7552,7 +7593,7 @@ fn export_layer_impl(
                         values.push(json!({
                             "_class":"overrideValue",
                             "overrideName":format!("{native_path}_layerStyle"),
-                            "value":{"_class":"style","fills":paints,"borders":borders,"shadows":shadows,"innerShadows":inner_shadows,"blur":blur,"borderOptions":border_options}
+                            "value":{"_class":"style","fills":paints,"borders":borders,"shadows":shadows,"innerShadows":inner_shadows,"blur":blur,"borderOptions":border_options,"miterLimit":override_miter}
                         }));
                     }
                     layer.insert("overrideValues".into(), Value::Array(values));
@@ -8896,6 +8937,9 @@ fn sync_foreign_paint_styles(document: &mut Value, doc: &Document, images: &mut 
         value["shadows"] = Value::Array(shadows);
         value["innerShadows"] = Value::Array(inner_shadows);
         value["blur"] = blur;
+        if let Some(limit) = border_options.get("miterLimit") {
+            value["miterLimit"] = limit.clone();
+        }
         value["borderOptions"] = border_options;
     }
     Ok(())
@@ -9179,7 +9223,12 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
             }
             value["startMarkerType"] = json!(0);
             value["endMarkerType"] = json!(0);
-            value["miterLimit"] = json!(10);
+            let archived_miter = value
+                .get("borderOptions")
+                .and_then(|options| options.get("miterLimit"))
+                .cloned()
+                .unwrap_or(json!(10));
+            value["miterLimit"] = archived_miter;
             value["windingRule"] = json!(1);
             if value.get("innerShadows").is_none() {
                 value["innerShadows"] = json!([]);
