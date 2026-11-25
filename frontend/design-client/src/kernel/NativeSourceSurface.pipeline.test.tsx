@@ -449,6 +449,31 @@ test.each([20, 4000])('a large pan after zoom-out replaces stale work for a sour
   expect(statuses.some(value=>value.phase==='error')).toBe(false)
 })
 
+test('an overlapping zoom-out tile cannot block a pan when its visible part is already resident', async () => {
+ state.positionedTiles = true
+ await draw()
+ for (let batch = 0; batch < 2; batch++) {
+  const job = state.jobs[batch]
+  await act(async () => {
+   deliver(job, 0, 450 + batch * 2)
+   deliver(job, 1, 451 + batch * 2)
+   job.finish()
+   await pause()
+   paint()
+  })
+ }
+ expect(statuses.at(-1)?.sharp).toBe(true)
+ await draw({ x: 0, y: 0, zoom: .8 })
+ const zoom = state.jobs.find(job => job.active)!
+ expect(zoom.options.tileViewport?.[0].key).toBe('0.8:0:0:0')
+ await draw({ x: -512, y: 0, zoom: .8 })
+ expect(zoom.signal?.aborted).toBe(true)
+ const pan = state.jobs.find(job => job.active)
+ expect(pan?.options.tileViewport?.[0].key).toBe('0.8:512:0:0')
+ expect(state.maxActive).toBe(1)
+ expect(statuses.some(status => status.phase === 'error')).toBe(false)
+})
+
 test('pasteboard at 8% queues one coarse page tile and a pan publishes it',async()=>{
  vi.stubGlobal('OffscreenCanvas',class {})
  vi.stubGlobal('ImageBitmapRenderingContext',class {})

@@ -594,7 +594,13 @@ export function NativeSourceSurface(props:Props){
       // Settling keeps the exact key even when its rect test is stale. A live
       // batch still drops an off-screen neighbour so the visible tile can finish.
       if(keepPlanned&&next.keys.has(tile.key))return true
-      return retainInFlightTile(tile,next.p.view,next.p,cache.values(),next.keys,next.prefetchKeys,zoomingIn&&continuousZoom,next.raster.scale,settling)
+      // During an outward pan, a previous tile may still intersect the camera
+      // at a nearby density while its entire visible span is already painted.
+      // Give the latest missing lattice the slot. A tile that fills a real
+      // hole still survives, and accepted textures keep their ownership.
+      const fillingPan=missing&&moving&&translationFollow&&panned&&!zoomingIn
+      return retainInFlightTile(tile,next.p.view,next.p,cache.values(),next.keys,next.prefetchKeys,
+        zoomingIn&&continuousZoom,next.raster.scale,settling||fillingPan)
     }
     const updateWorkDemand=()=>{
       if(!moving)releaseIncompleteWideBand()
