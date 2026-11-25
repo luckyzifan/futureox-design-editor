@@ -262,6 +262,80 @@ export function measureToGuide(selection: Bounds, guide: { axis: 'x' | 'y'; posi
   ].filter(item => item.distance > EPS)
 }
 
+function finiteBox(selection: Bounds) {
+  return [selection.x, selection.y, selection.width, selection.height].every(Number.isFinite)
+    && selection.width >= -EPS && selection.height >= -EPS
+}
+
+/** Exits of the line through the box center, as signed distances along a unit normal. */
+function centerExits(selection: Bounds, nx: number, ny: number): { neg: number; pos: number } | null {
+  const cx = selection.x + selection.width / 2
+  const cy = selection.y + selection.height / 2
+  let tMin = -Infinity
+  let tMax = Infinity
+  const slab = (origin: number, min: number, max: number, component: number) => {
+    if (Math.abs(component) <= EPS) return origin >= min - EPS && origin <= max + EPS
+    let near = (min - origin) / component
+    let far = (max - origin) / component
+    if (near > far) { const swap = near; near = far; far = swap }
+    tMin = Math.max(tMin, near)
+    tMax = Math.min(tMax, far)
+    return tMax + EPS >= tMin
+  }
+  if (!slab(cx, selection.x, selection.x + selection.width, nx)) return null
+  if (!slab(cy, selection.y, selection.y + selection.height, ny)) return null
+  if (!(tMin <= EPS && tMax >= -EPS)) return null
+  return { neg: tMin, pos: tMax }
+}
+
+/** Perpendicular gap from the selection bounds to a guide that is tilted in page space.
+ * The line runs through the bounds center, which is the same cross-axis an
+ * axis-aligned guide uses. One segment when the guide is outside; both sides
+ * when it crosses. A zero-length side is omitted. */
+function measureRotatedGuide(selection: Bounds, from: Point, to: Point): Measurement[] {
+  if (!finiteBox(selection)) return []
+  const dx = to.x - from.x, dy = to.y - from.y
+  const len = Math.hypot(dx, dy)
+  if (!(len > EPS)) return []
+  const nx = -dy / len, ny = dx / len
+  const cx = selection.x + selection.width / 2
+  const cy = selection.y + selection.height / 2
+  const exits = centerExits(selection, nx, ny)
+  if (!exits) return []
+  const tGuide = from.x * nx + from.y * ny - (cx * nx + cy * ny)
+  const at = (t: number): Point => ({ x: cx + nx * t, y: cy + ny * t })
+  const side = (t0: number, t1: number): Measurement | null => {
+    const start = at(t0), end = at(t1)
+    const spanX = end.x - start.x, spanY = end.y - start.y
+    const distance = Math.hypot(spanX, spanY)
+    if (distance <= EPS) return null
+    return {
+      from: start, to: end, distance, tick: false, role: 'gap',
+      axis: Math.abs(spanX) >= Math.abs(spanY) ? 'horizontal' : 'vertical',
+    }
+  }
+  if (tGuide >= exits.neg - EPS && tGuide <= exits.pos + EPS) {
+    return [side(exits.neg, tGuide), side(tGuide, exits.pos)].filter((item): item is Measurement => item !== null)
+  }
+  const line = tGuide > exits.pos ? side(exits.pos, tGuide) : side(tGuide, exits.neg)
+  return line ? [line] : []
+}
+
+/** Spacing from a selection to one ruler guide. Axis-aligned guides keep
+ * measureToGuide. A frame guide that rotates with its frame uses the perpendicular gap. */
+export function measureGuideSpacing(selection: Bounds, guide: { axis: 'x' | 'y' | null; position: number; from?: Point; to?: Point }): Measurement[] {
+  if (guide.axis === 'x' || guide.axis === 'y') return measureToGuide(selection, { axis: guide.axis, position: guide.position })
+  if (!guide.from || !guide.to) return []
+  return measureRotatedGuide(selection, guide.from, guide.to)
+}
+
+/** A hovered ruler guide can be measured when it is axis-aligned or has a real segment. */
+export function guideSpacingAvailable(guide: { axis: 'x' | 'y' | null; from: Point; to: Point } | null): boolean {
+  if (!guide) return false
+  if (guide.axis === 'x' || guide.axis === 'y') return true
+  return Math.hypot(guide.to.x - guide.from.x, guide.to.y - guide.from.y) > EPS
+}
+
 /** Authored positions of two guides. No spacing line: the reader subtracts. */
 export function guidePositionReadout(positions: readonly number[], at: Point): SpacingPill[] {
   return positions.map((position, index) => ({

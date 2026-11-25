@@ -743,6 +743,77 @@ test('Option hover on a ruler guide measures from the selection, and a second gu
   expect(mount.querySelector('[data-testid="canvas-measurement"] line')).toBeNull()
 })
 
+function guideHit(id: string) {
+  const line = mount.querySelector<SVGLineElement>(`[data-guide-id="${id}"] line[stroke="transparent"]`)
+  if (!line) throw new Error(`missing guide ${id}`)
+  const x1 = Number(line.getAttribute('x1')), y1 = Number(line.getAttribute('y1'))
+  const x2 = Number(line.getAttribute('x2')), y2 = Number(line.getAttribute('y2'))
+  return { line, x: (x1 + x2) / 2, y: (y1 + y2) / 2, x1, y1, x2, y2 }
+}
+async function hoverGuide(id: string) {
+  const hit = guideHit(id)
+  await act(async () => pointer('pointerover', hit.x, hit.y, {}, hit.line))
+  return hit
+}
+
+test('Option hover measures a translated frame guide in page coordinates', async () => {
+  const frame = node('frame', 100, 50, 200, 100)
+  const layer = node('rectangle', 40, 40, 50, 40)
+  await render([frame, layer])
+  await act(async () => {
+    editor.change('参考线', document => {
+      document.nodes[frame.id].guides = [{ id: 'moved', axis: 'x', position: 30 }]
+    })
+    editor.set({ rulers: true })
+    editor.select([layer.id])
+  })
+  const guide = guideHit('moved')
+  expect(guide.x1).toBeCloseTo(130, 6)
+  expect(guide.x2).toBeCloseTo(130, 6)
+  await act(async () => key('Alt', { altKey: true }))
+  await hoverGuide('moved')
+  expect(measurePills()).toEqual(['40'])
+  expect(mount.querySelector('[data-testid="canvas-measurement"] [data-measure="gap"]')).not.toBeNull()
+})
+
+test('Option hover measures the perpendicular gap to a rotated frame guide', async () => {
+  const frame = node('frame', 0, 0, 100, 100)
+  const turn = Math.SQRT1_2
+  // The guide segment has to stay inside the canvas: a pointer release left of
+  // x=20 removes the guide. Translation keeps the same x + y = 280 line.
+  frame.transform = [turn, turn, -turn, turn, 200, 80]
+  const layer = node('rectangle', 280, 80, 40, 20)
+  await render([frame, layer])
+  await act(async () => {
+    editor.change('参考线', document => {
+      document.nodes[frame.id].guides = [
+        { id: 'tilt', axis: 'x', position: 0 },
+        { id: 'beside', axis: 'x', position: 40 },
+      ]
+    })
+    editor.set({ rulers: true })
+    editor.select([layer.id])
+  })
+  const guide = guideHit('tilt')
+  expect(Math.abs(guide.x2 - guide.x1)).toBeGreaterThan(1)
+  expect(Math.abs(guide.y2 - guide.y1)).toBeGreaterThan(1)
+  await act(async () => key('Alt', { altKey: true }))
+  await hoverGuide('tilt')
+  expect(measurePills()).toEqual(['63.64'])
+  const gap = mount.querySelector('[data-testid="canvas-measurement"] [data-measure="gap"]')!
+  expect(gap).not.toBeNull()
+  expect(Number(gap.getAttribute('data-distance'))).toBeCloseTo(45 * Math.SQRT2, 6)
+  const dx = Number(gap.getAttribute('x2')) - Number(gap.getAttribute('x1'))
+  const dy = Number(gap.getAttribute('y2')) - Number(gap.getAttribute('y1'))
+  const gx = guide.x2 - guide.x1, gy = guide.y2 - guide.y1
+  expect(Math.abs(dx * gx + dy * gy)).toBeLessThan(1e-6 * Math.hypot(dx, dy) * Math.hypot(gx, gy))
+  await act(async () => pointer('pointerdown', guide.x, guide.y, {}, guide.line))
+  await act(async () => pointer('pointerup', guide.x, guide.y, {}, guide.line))
+  await hoverGuide('beside')
+  expect(measurePills()).toEqual(['0', '40'])
+  expect(mount.querySelector('[data-testid="canvas-measurement"] line')).toBeNull()
+})
+
 test('a removed ruler guide stops contributing measurements beneath a stationary pointer', async () => {
   const layer = node('rectangle', 40, 40, 50, 40)
   await render([layer])

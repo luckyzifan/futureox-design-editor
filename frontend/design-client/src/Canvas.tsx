@@ -14,7 +14,7 @@ import { selectionMemberCorners, sharedRotationFrame } from './selection-outline
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
 import { ALIGNMENT_GUIDE, crispOutlinePath, crispSegmentPath } from './kernel/gpu/canvas-overlay'
-import { anchorPlacementBox, diagramFromLines, guidePositionReadout, measureAnchors, measureToGuide, readoutAtPoint, spacingInteraction, DISTANCE_PILL_BASELINE_LEAD, DISTANCE_PILL_EXTRA_HEIGHT, DISTANCE_PILL_PAD_X, DISTANCE_PILL_RADIUS, measurementTicks, SPACING_RED, textMeasurementBounds, type Measurement, type SpacingPill } from './canvas-measurements'
+import { anchorPlacementBox, diagramFromLines, guidePositionReadout, guideSpacingAvailable, measureAnchors, measureGuideSpacing, readoutAtPoint, spacingInteraction, DISTANCE_PILL_BASELINE_LEAD, DISTANCE_PILL_EXTRA_HEIGHT, DISTANCE_PILL_PAD_X, DISTANCE_PILL_RADIUS, measurementTicks, SPACING_RED, textMeasurementBounds, type Measurement, type SpacingPill } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
 import { frameTitleShown } from './page-frame-chrome'
 import { interfacePreference, useInterfacePreferences } from './interface-preference'
@@ -1039,7 +1039,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const altTargetRef=useRef<string|null>(null)
   const onGuideMeasure=useCallback((next:GuideMeasureState)=>{
     setGuideChrome(prev=>{
-      const same=(a:GuideMeasureState['hover'],b:GuideMeasureState['hover'])=>a?.owner===b?.owner&&a?.id===b?.id&&a?.axis===b?.axis&&a?.position===b?.position&&a?.label===b?.label&&a?.at.x===b?.at.x&&a?.at.y===b?.at.y
+      const same=(a:GuideMeasureState['hover'],b:GuideMeasureState['hover'])=>a?.owner===b?.owner&&a?.id===b?.id&&a?.axis===b?.axis&&a?.position===b?.position&&a?.label===b?.label&&a?.at.x===b?.at.x&&a?.at.y===b?.at.y&&a?.from.x===b?.from.x&&a?.from.y===b?.from.y&&a?.to.x===b?.to.x&&a?.to.y===b?.to.y
       return same(prev.selected,next.selected)&&same(prev.hover,next.hover)?prev:next
     })
   },[])
@@ -1297,14 +1297,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const interaction = spacingInteraction({
     tool: state.tool, alt: measureKeys.alt, inspect: devInspect, dragging: !!drag.current, space: spaceHeld,
     selection: state.selection, hover: measureHover, pick: keyboardMark?.pick ?? null,
-    guideHover: !!guideChrome.hover, guideMeasurable: !!guideChrome.hover?.axis, guidePair,
+    guideHover: !!guideChrome.hover, guideMeasurable: guideSpacingAvailable(guideChrome.hover), guidePair,
     vectorAnchor: !!(vectorFrom && vectorTo && vectorTo.id !== vectorFrom.id),
     vectorPlace: !!(vectorFrom && !vectorAnchorHover && cursor && !measureKeys.deep && !measureKeys.text),
   })
   const measurementTarget = interaction?.kind === 'layers' ? interaction.id : null
   let directMeasurement: { lines: Measurement[]; pills: SpacingPill[] } | null = null
-  if (interaction?.kind === 'guide' && guideChrome.hover?.axis) {
-    directMeasurement = diagramFromLines(measureToGuide(selectionBox, { axis: guideChrome.hover.axis, position: guideChrome.hover.position }), zoom)
+  if (interaction?.kind === 'guide' && guideChrome.hover) {
+    directMeasurement = diagramFromLines(measureGuideSpacing(selectionBox, guideChrome.hover), zoom)
   } else if (interaction?.kind === 'guide-positions' && guideChrome.selected && guideChrome.hover) {
     directMeasurement = { lines: [], pills: guidePositionReadout([guideChrome.selected.label, guideChrome.hover.label], guideChrome.hover.at) }
   } else if (interaction?.kind === 'anchors' && vectorFrom && vectorTo && vectorId) {
