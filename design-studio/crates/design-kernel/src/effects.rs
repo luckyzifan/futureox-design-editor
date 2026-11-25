@@ -125,8 +125,9 @@ pub fn gradient_endpoint_mix_at(
 }
 
 /// One separable tent whose radius follows the two authored endpoints.
-/// A column of constant radius matches `portable_tent_blur_edge` of that
-/// radius; the prefix sums stay one pass, not one blur per endpoint.
+/// The pass along the segment runs first, so a row or column of one radius
+/// matches `portable_tent_blur_edge` of that radius. A horizontal segment,
+/// and an exact tie, keeps horizontal-then-vertical.
 pub fn variable_endpoint_tent(
     source: &Surface,
     field: &crate::gradient_blur::CompositeField,
@@ -145,7 +146,11 @@ pub fn variable_endpoint_tent(
     if r0 == r1 && r0 <= 0. {
         return Ok(current);
     }
-    for horizontal in [true, false] {
+    // The second pass reads pixels the first pass already filtered. Those
+    // pixels share this pass's radius only when the first pass ran along the
+    // segment. `|b| > |a|` is a vertical segment.
+    let passes = if field.b.abs() > field.a.abs() { [false, true] } else { [true, false] };
+    for horizontal in passes {
         let rect = current.rect;
         let (lines, len) = if horizontal { (rect.h as i32, rect.w as i32) } else { (rect.w as i32, rect.h as i32) };
         let _scanline = current.reserve_scratch::<Pixel>(len.max(0) as usize)?;
@@ -2260,6 +2265,51 @@ mod gradient_blur_pipeline_tests {
             assert_eq!(varying.pixels.len(), uniform.pixels.len(), "radius {radius}");
             for (index, (left, right)) in varying.pixels.iter().zip(&uniform.pixels).enumerate() {
                 assert_eq!(left.0, right.0, "radius {radius} pixel {index}: {:?} vs {:?}", left.0, right.0);
+            }
+        }
+    }
+
+    #[test]
+    fn vertical_ramp_rows_match_the_uniform_radius() {
+        let rect = Rect::new(0, 0, 96, 80);
+        let mut source = Surface::new(rect).unwrap();
+        for y in 0..80 {
+            for x in 0..96 {
+                let on = (x / 8) % 2 == 0;
+                let color = if on { 17. / 255. } else { 238. / 255. };
+                source.pixels[rect.index(x, y).unwrap()] = Pixel([color, color, color, 1.]);
+            }
+        }
+        let code = |pixel: Pixel| pixel.0.map(|value| (value * 255.).round() as i16);
+        let delta = |left: Pixel, right: Pixel| {
+            let (left, right) = (code(left), code(right));
+            (0..4).map(|channel| (left[channel] - right[channel]).abs()).max().unwrap()
+        };
+        let at = |image: &Surface, x: i32, y: i32| image.pixels[rect.index(x, y).unwrap()];
+        let vertical = crate::gradient_blur::CompositeField {
+            a: 0., b: 1. / 31., c: -16.5 / 31., start_count: 0., end_count: 0., smooth: true,
+        };
+        let horizontal = crate::gradient_blur::CompositeField {
+            a: 1. / 63., b: 0., c: -16.5 / 63., start_count: 0., end_count: 0., smooth: true,
+        };
+        let filtered = variable_endpoint_tent(&source, &vertical, 4., 12., crate::math::Point::default(), true).unwrap();
+        let across = variable_endpoint_tent(&source, &horizontal, 4., 12., crate::math::Point::default(), true).unwrap();
+        for y in 16..48 {
+            let t = vertical.b.mul_add(y as f32 + 0.5, vertical.c).clamp(0., 1.);
+            let radius = f64::from(4. + (12. - 4.) * t);
+            let uniform = portable_tent_blur_edge(&source, radius, true).unwrap();
+            let gap = (0..96).map(|x| delta(at(&filtered, x, y), at(&uniform, x, y))).max().unwrap();
+            assert_eq!(gap, 0, "row {y} radius {radius} differs from the uniform tent");
+        }
+        for x in [16, 79] {
+            let t = horizontal.a.mul_add(x as f32 + 0.5, horizontal.c).clamp(0., 1.);
+            let radius = f64::from(4. + (12. - 4.) * t);
+            let uniform = portable_tent_blur_edge(&source, radius, true).unwrap();
+            for y in 0..80 {
+                assert_eq!(
+                    delta(at(&across, x, y), at(&uniform, x, y)), 0,
+                    "column {x} y {y} radius {radius}"
+                );
             }
         }
     }
