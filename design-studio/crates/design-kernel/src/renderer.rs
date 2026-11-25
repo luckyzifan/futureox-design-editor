@@ -566,6 +566,9 @@ pub struct Engine {
     pub fonts: Fonts,
     images: Images,
     rendering_png_region: bool,
+    /// Device rectangle of a PNG export. Tile blurs stay inside it so they
+    /// match one full-frame analytic render of that same rectangle.
+    png_frame: Option<Rect>,
     pub(crate) paths: HashMap<String, crate::path::SharedPaths>,
     pub(crate) local_strokes: crate::resident_strokes::ResidentStrokes,
     pub(crate) stats: Stats,
@@ -646,6 +649,7 @@ impl Engine {
             fonts,
             images: Images::default(),
             rendering_png_region: false,
+            png_frame: None,
             paths: HashMap::new(),
             local_strokes: Default::default(),
             stats: Stats::default(),
@@ -725,11 +729,18 @@ impl Engine {
     pub(crate) fn image_at_selected_level(&mut self, uri: &str, level: u32) -> Result<Arc<Surface>, String> {
         self.images.image_at_selected_level(uri, level)
     }
-    pub(crate) fn with_png_region<T>(&mut self, sketch_footprint: bool, render: impl FnOnce(&mut Self) -> T) -> T {
+    pub(crate) fn with_png_region<T>(
+        &mut self,
+        sketch_footprint: bool,
+        frame: Rect,
+        render: impl FnOnce(&mut Self) -> T,
+    ) -> T {
         let region = std::mem::replace(&mut self.rendering_png_region, true);
+        let previous = self.png_frame.replace(frame);
         let footprint = std::mem::replace(&mut self.images.sketch_png_footprint, sketch_footprint);
         let result = render(self);
         self.images.sketch_png_footprint = footprint;
+        self.png_frame = previous;
         self.rendering_png_region = region;
         result
     }
@@ -2544,6 +2555,7 @@ impl Engine {
             sketch_reduced_group,
             clipped_export_target: clipped_export_target.is_some(),
             png_region: self.rendering_png_region,
+            png_frame: self.png_frame,
             // PNG export already samples the flush frame's outside tap. The
             // Figma profile's direct render used the clamped capture and kept
             // that edge at alpha 255. Software export stays on its PNG gate.
@@ -3299,6 +3311,7 @@ impl Engine {
             fonts: self.fonts.clone(),
             images: self.images.clone(),
             rendering_png_region: self.rendering_png_region,
+            png_frame: self.png_frame,
             paths: self.paths.clone(),
             local_strokes: self.local_strokes.clone(),
             stats: Stats::default(),
@@ -3500,6 +3513,7 @@ struct Painter<'a> {
     sketch_reduced_group: Option<&'a Node>,
     clipped_export_target: bool,
     png_region: bool,
+    png_frame: Option<Rect>,
     flush_backdrop_frame: Option<&'a Node>,
     compact_export_groups: bool,
     sample: Option<usize>,
@@ -5116,11 +5130,11 @@ impl Painter<'_> {
         self.stats.effect_layers += 1;
         Ok(planes)
     }
-    /// Sharp shadow input is zero outside the unpadded content. The blur only
-    /// has to cover that content and the viewport (plus earlier shadows when a
-    /// later shadow reads them). The old layer used the full effect outset in
-    /// every direction, which allocated four halo-sized sample planes for a
-    /// small rectangle.
+    /// Sharp shadow input is zero outside the unpadded content. The blur still
+    /// has to keep one box-pass of intermediate values outside the viewport,
+    /// and a later shadow reads the previous shadow. The old layer used the
+    /// full effect outset in every direction, which allocated four halo-sized
+    /// sample planes for a small rectangle.
     fn shadow_composite_rect(&self, n: &Node, prepared: &Prepared, scale: f64) -> Option<Rect> {
         let shadows: Vec<_> = n
             .effects
@@ -5143,6 +5157,10 @@ impl Painter<'_> {
         if content.empty() {
             return None;
         }
+        // A second shadow reads the first shadow's already-spread result.
+        // One shadow still runs three box passes: each pass reads the
+        // previous pass, so a tile clipped to the viewport loses about one
+        // box radius of a wide shadow along that edge.
         let read = if shadows.len() > 1 {
             let effect = shadows[shadows.len() - 1];
             let pad = (effect.blur_radius() * 2.
@@ -5151,10 +5169,32 @@ impl Painter<'_> {
                 + effect.y.abs())
                 * scale;
             if pad.is_finite() { pad.ceil() as i32 } else { return None; }
+        } else if self.png_frame.is_some() {
+            let effect = shadows[0];
+            let sigma = if !self.compatible && self.doc.color_management.is_none() {
+                n.text_shadow_radius(effect, scale) / 2.
+            } else {
+                effect.blur_radius() * scale / 2.
+            };
+            let boxes = match effects::gaussian_box_radii(sigma) {
+                Ok(radii) => radii.into_iter().map(|radius| radius as i32).sum::<i32>(),
+                Err(_) => return None,
+            };
+            let offset = (effect.spread.abs() + effect.x.abs() + effect.y.abs()) * scale;
+            if !sigma.is_finite() || !offset.is_finite() {
+                return None;
+            }
+            boxes.saturating_add(offset.ceil() as i32).saturating_add(2)
         } else {
             0
         };
-        let needed = content.union(self.viewport.expand(read)).intersect(self.extent);
+        let mut needed = content.union(self.viewport.expand(read));
+        if let Some(frame) = self.png_frame {
+            // Stay inside the exported frame. Margin outside that frame is
+            // not part of the single analytic render this tile must match.
+            needed = needed.intersect(frame);
+        }
+        let needed = needed.intersect(self.extent);
         let full = prepared.bounds.intersect(self.extent);
         if needed.empty() || needed.pixels() >= full.pixels() {
             None
