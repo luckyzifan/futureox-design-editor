@@ -1,4 +1,5 @@
 import { getQuickJS, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSHandle, type QuickJSRuntime } from 'quickjs-emscripten'
+import { AutomationError } from '../../automation/types'
 import type { PluginStorage } from './client-storage'
 import { PluginApiError, PluginClosed } from './errors'
 import { matchNetworkAccess, type PluginFetch } from './network'
@@ -55,6 +56,7 @@ export class PluginController {
   private runtime: QuickJSRuntime | null
   private context: QuickJSContext | null
   private readonly asyncResults = new Set<QuickJSHandle>()
+  private readonly exportAbort = new AbortController()
   private currentTurn: Promise<void> | null = null
   private queuedTurns = 0
   private cancelTimerWait: (() => void) | null = null
@@ -283,9 +285,10 @@ export class PluginController {
       const job = this.session.takeExportJobs()
       if (job) {
         let payload: Record<string, unknown>
-        try { payload = { ok: true, ...(await this.session.captureRasterExport(job)) } }
+        try { payload = { ok: true, ...(await this.session.captureRasterExport(job, this.exportAbort.signal)) } }
         catch (error) {
-          payload = { ok: false, code: error instanceof PluginApiError ? error.code : 'export_failed', message: (error instanceof Error ? error.message : String(error)).slice(0, 500) }
+          const code = error instanceof PluginApiError || error instanceof AutomationError && error.code === 'export_limit' ? error.code : 'export_failed'
+          payload = { ok: false, code, message: (error instanceof Error ? error.message : String(error)).slice(0, 500) }
         }
         this.inject(`globalThis.__finishExport(${JSON.stringify(job.id)}, ${JSON.stringify(payload)})`)
         this.drain()
@@ -354,6 +357,7 @@ export class PluginController {
     const runtime = this.runtime
     this.context = null
     this.signal?.removeEventListener('abort', this.stopOnAbort)
+    this.exportAbort.abort()
     this.cancelTimerWait?.()
     this.disposeAsyncResults()
     if (context) context.dispose()

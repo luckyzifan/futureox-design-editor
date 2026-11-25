@@ -24,6 +24,8 @@ test('plugin folder reads stay inside the selected directory', async () => {
     const read = await host.read(opened.grant, ['code.js', 'nested/ui.html'])
     assert.equal(read.files['code.js'], 'figma.closePlugin()')
     assert.equal(read.files['nested/ui.html'], '<p>UI</p>')
+    await assert.rejects(() => host.read(opened.grant, ['dist/code.js']), error =>
+      error.code === 'PLUGIN_FILE_MISSING' && /Missing built plugin entry dist\/code\.js/.test(error.message) && !error.message.includes(root))
     await assert.rejects(() => host.read(opened.grant, ['../secret.js']))
     await assert.rejects(() => readPluginFile(root, 'escape.js'))
     await assert.rejects(() => host.read('00000000-0000-4000-8000-000000000000', ['code.js']))

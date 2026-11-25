@@ -13,7 +13,7 @@ function unsupported(api) {
 function host(op, payload) {
   const reading = {
     readNode: 1, readDocument: 1, children: 1, fonts: 1, log: 1, logClear: 1, notify: 1, postMessage: 1,
-    timerSchedule: 1, timerCancel: 1,
+    timerSchedule: 1, timerCancel: 1, textSegments: 1,
     showUI: 1, uiResize: 1, uiShow: 1, uiHide: 1, uiClose: 1, loadFont: 1, meta: 1, listen: 1,
     viewportRead: 1, clientStorageGet: 1, clientStorageKeys: 1,
     pluginDataGet: 1, pluginDataKeys: 1, sharedPluginDataGet: 1, sharedPluginDataKeys: 1,
@@ -158,7 +158,7 @@ function wrap(id) {
           for (let i = 0; i < encoded.length; i++) bytes[i] = encoded.charCodeAt(i)
           return bytes
         })
-        if (normalized === 'PNG' || normalized === 'JPG') {
+        if (normalized === 'PNG' || normalized === 'JPG' || normalized === 'PDF') {
           return new Promise(function (resolve, reject) {
             let result
             try { result = host('exportBegin', { id: nodeId, format: normalized, scale: scale }) }
@@ -170,7 +170,7 @@ function wrap(id) {
             return new Uint8Array(figma.base64Decode(payload.base64 || ''))
           })
         }
-        throw new Error('unsupported_api: exportAsync supports SVG, PNG and JPG in this host')
+        throw new Error('unsupported_api: exportAsync supports SVG, PNG, JPG and bitmap PDF')
       }
       if (prop === 'setBoundVariable') return function (field, variable) {
         host('variableBind', { id: nodeId, field: field, variableId: variable ? variable.id : null })
@@ -181,8 +181,10 @@ function wrap(id) {
         for (const key in snap) if (snap[key]) bound[key] = variableProxy(snap[key])
         return bound
       }
-      if (prop === 'setRelaunchData' || prop === 'getStyledTextSegments')
-        return function () { unsupported('SceneNode.' + prop) }
+      if (prop === 'getStyledTextSegments' && read(nodeId).type === 'TEXT') return function (fields, start, end) {
+        return host('textSegments', { id: nodeId, fields: fields, start: start, end: end })
+      }
+      if (prop === 'setRelaunchData') return function () { unsupported('SceneNode.setRelaunchData') }
       const snap = read(nodeId)
       if (Object.prototype.hasOwnProperty.call(snap, prop)) return snap[prop]
       return undefined

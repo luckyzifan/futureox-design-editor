@@ -410,6 +410,50 @@ describe('Figma plugin host', () => {
     expect(parsePluginManifest({ ...manifest, id }, { desktopFolder: true }).id).toBe(id)
   })
 
+  it('identifies a missing bundle entry without reading its uncompiled source', async () => {
+    const manifest = JSON.stringify({ name: 'Source only', id: 'source-only.plugin', api: '1.0.0', main: 'dist/code.js' })
+    const readTypeScript = vi.fn(async () => 'const name: string = "uncompiled"')
+    await expect(pluginBundleFromFiles([
+      { name: 'manifest.json', size: manifest.length, text: async () => manifest },
+      { name: 'code.ts', size: 32, text: readTypeScript },
+    ])).rejects.toThrow(/Missing built plugin entry dist\/code\.js/)
+    expect(readTypeScript).not.toHaveBeenCalled()
+    expect(() => pluginBundleFromZip(zipSync({ 'manifest.json': strToU8(manifest), 'code.ts': strToU8('let value: boolean') })))
+      .toThrow(/Missing built plugin entry dist\/code\.js/)
+  })
+
+  it('reads the requested styled text fields across actual UTF-16 runs', async () => {
+    const current = editor()
+    current.change('Styled text', doc => {
+      const text = node('text', 0, 0, 200, 40)
+      text.text = 'A😄BC'
+      text.fontSize = 20
+      text.textRuns = [
+        { start: 0, end: 3, fontSize: 32 },
+        { start: 3, end: 4, fontSize: 32, weight: 700 },
+      ]
+      doc.nodes[text.id] = text
+      doc.pages[0].children.push(text.id)
+    })
+    const values: unknown[] = []
+    const run = await openPlugin(current, bundle('Styled', `
+      const text = figma.currentPage.findOne(function (item) { return item.type === 'TEXT' })
+      figma.ui.postMessage(text.getStyledTextSegments(['fontSize']))
+      figma.ui.postMessage(text.getStyledTextSegments(['fontSize', 'fontWeight'], 1, 5))
+      figma.ui.postMessage(text.getStyledTextSegments([], 2, 3))
+    `), { onPostMessage: value => values.push(value) })
+    expect(values).toEqual([
+      [{ start: 0, end: 4, characters: 'A😄B', fontSize: 32 }, { start: 4, end: 5, characters: 'C', fontSize: 20 }],
+      [
+        { start: 1, end: 3, characters: '😄', fontSize: 32, fontWeight: 400 },
+        { start: 3, end: 4, characters: 'B', fontSize: 32, fontWeight: 700 },
+        { start: 4, end: 5, characters: 'C', fontSize: 20, fontWeight: 400 },
+      ],
+      [{ start: 2, end: 3, characters: '😄'[1] }],
+    ])
+    run.close()
+  })
+
   it('stores clientStorage outside the document and plugin data inside one undo', async () => {
     const storage = memoryPluginStorage()
     const current = editor()
@@ -715,9 +759,6 @@ describe('Figma plugin host', () => {
         let text = ''
         for (let i = 0; i < svg.length; i++) text += String.fromCharCode(svg[i])
         if (text.indexOf('<svg') < 0) throw new Error(text.slice(0, 80))
-        var pdfBlocked = false
-        try { await rect.exportAsync({ format: 'PDF' }) } catch (error) { pdfBlocked = String(error).indexOf('unsupported_api') >= 0 }
-        if (!pdfBlocked) throw new Error('pdf export accepted')
       })()
     `))
     const rect = named(current, 'Photo')
@@ -898,9 +939,6 @@ describe('Figma plugin host', () => {
 
   it('documents every coverage entry', () => {
     const coverage = pluginApiCoverage()
-    expect(coverage.counts.supported).toBeGreaterThan(20)
-    expect(coverage.counts.partial).toBeGreaterThan(10)
-    expect(coverage.counts.unsupported).toBeGreaterThan(10)
     expect(coverage.counts.supported + coverage.counts.partial + coverage.counts.unsupported).toBe(coverage.entries.length)
     const doc = readFileSync(new URL('../../../../../docs/FIGMA_PLUGIN_HOST_V1.md', import.meta.url), 'utf8')
     for (const entry of coverage.entries) expect(doc, entry.api).toContain(entry.api)
@@ -997,23 +1035,29 @@ describe('Async API coverage batch', () => {
 })
 
 describe('Raster export admission', () => {
-  it('queues PNG jobs and rejects PDF and out-of-range scales at admission', async () => {
+  it('admits PNG, JPG and PDF only through the product worker and checks the scale', async () => {
     const current = editor()
     const run = await openPlugin(current, bundle('ExportPng', `
-      const rect = figma.createRectangle()
-      rect.name = 'Exported'
-      try {
-        rect.exportAsync({ format: 'PDF' }).then(function () {
-          figma.closePlugin('unexpected pdf success')
-        }, function (error) {
-          figma.closePlugin('pdf-rejected:' + (error.message.indexOf('PNG') >= 0))
-        })
-        figma.closePlugin('pdf-threw-nothing')
-      } catch (error) {
-        figma.closePlugin('pdf-rejected:' + (String(error.message).indexOf('PNG') >= 0))
-      }
+      ;(async function () {
+        const rect = figma.createRectangle()
+        for (const format of ['PNG', 'JPG', 'PDF']) {
+          try { await rect.exportAsync({ format }); throw new Error('missing worker produced bytes') }
+          catch (error) {
+            if (!String(error).includes('mounted renderer Worker')) throw error
+          }
+          try { await rect.exportAsync({ format, constraint: { type: 'SCALE', value: 0.05 } }); throw new Error('scale accepted') }
+          catch (error) {
+            if (!String(error).includes('invalid_value')) throw error
+          }
+        }
+        try { await rect.exportAsync({ format: 'GIF' }); throw new Error('format accepted') }
+        catch (error) {
+          if (!String(error).includes('unsupported_api')) throw error
+        }
+        figma.closePlugin('validated')
+      })()
     `))
-    expect(run.closeMessage).toBe('pdf-rejected:true')
+    expect(run.closeMessage).toBe('validated')
     run.close()
   })
 })

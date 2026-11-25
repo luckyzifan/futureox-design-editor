@@ -574,13 +574,15 @@ export function exportDesignSvg(document: DesignDocument, input: CodeExportOptio
 
 export const PREVIEW_LIMITS = Object.freeze({ pixels: EXPORT_LIMITS.previewPixels, maxSide: 16384, responseBytes: EXPORT_LIMITS.bytes, envelopeBytes: 64 * 1024, nodeIds: 256, minScale: 0.1, maxScale: 4 })
 export type PreviewOptions = Pick<ContextOptions, 'pageId' | 'nodeIds'> & { format?: 'png' | 'jpeg' | 'webp'; scale?: number; signal?: AbortSignal }
+type ProductRegionFormat = NonNullable<PreviewOptions['format']> | 'pdf'
+type ProductRegionOptions = Omit<PreviewOptions, 'format'>
+
 /** Actual product CPU raster export, not the displayed GPU canvas or app chrome.
  * Never falls back to SVG/DOM rasterization when the product renderer fails. */
-export async function captureDesignPreview(document: DesignDocument, options: PreviewOptions = {}) {
+async function renderProductRegion(document: DesignDocument, options: ProductRegionOptions, format: ProductRegionFormat) {
   options.signal?.throwIfAborted()
   const selection = contextEntries(document, { ...options, maxDepth: 0 })
-  const format = options.format ?? 'png', scale = options.scale ?? 1
-  if (!['png', 'jpeg', 'webp'].includes(format)) throw new AutomationError('invalid_params', 'Preview format must be png, jpeg or webp')
+  const scale = options.scale ?? 1
   if (typeof scale !== 'number' || !Number.isFinite(scale) || scale < PREVIEW_LIMITS.minScale || scale > PREVIEW_LIMITS.maxScale) throw new AutomationError('invalid_params', 'Preview scale must be between 0.1 and 4')
   if (options.nodeIds && options.nodeIds.length > PREVIEW_LIMITS.nodeIds) throw new AutomationError('invalid_params', 'Preview supports at most 256 node ids')
   const { exportImage, rasterExportBounds } = await import('../export')
@@ -595,7 +597,27 @@ export async function captureDesignPreview(document: DesignDocument, options: Pr
   if (typeof Worker !== 'function') throw new AutomationError('renderer_unavailable', 'Product CPU export requires the mounted renderer Worker runtime; no substitute image was generated')
   const result = await exportImage(prepared, selection.page.id, format, scale, undefined, options.signal, target)
   options.signal?.throwIfAborted()
-  if (result.backend !== 'cpu' || result.blob.type !== `image/${format}` || result.width !== width || result.height !== height) throw new AutomationError('invalid_preview', 'Product export returned inconsistent renderer, media type or dimensions')
+  const mime = format === 'pdf' ? 'application/pdf' : `image/${format}`
+  if (result.backend !== 'cpu' || result.blob.type !== mime || result.width !== width || result.height !== height) throw new AutomationError('invalid_preview', 'Product export returned inconsistent renderer, media type or dimensions')
+  return { selection, target, bounds, scale, width, height, result }
+}
+
+/** The plugin bridge returns only the bounded product bytes, including bitmap PDF. */
+export async function capturePluginRegion(document: DesignDocument, options: ProductRegionOptions & { format: 'png' | 'jpeg' | 'pdf' }, maxBase64Bytes: number) {
+  const { result } = await renderProductRegion(document, options, options.format)
+  if (!result.blob.size) throw new AutomationError('invalid_preview', 'Product export did not return bytes')
+  if (4 * Math.ceil(result.blob.size / 3) > maxBase64Bytes)
+    throw new AutomationError('export_limit', 'Export exceeds the plugin transport. Lower the scale or narrow the selection.')
+  const bytes = new Uint8Array(await result.blob.arrayBuffer())
+  options.signal?.throwIfAborted()
+  return { base64: bytesToBase64(bytes) }
+}
+
+export async function captureDesignPreview(document: DesignDocument, options: PreviewOptions = {}) {
+  options.signal?.throwIfAborted()
+  const format = options.format ?? 'png'
+  if (!['png', 'jpeg', 'webp'].includes(format)) throw new AutomationError('invalid_params', 'Preview format must be png, jpeg or webp')
+  const { selection, target, bounds, scale, width, height, result } = await renderProductRegion(document, options, format)
   // The transport carries base64, not raw binary. Reserve envelope/ID metadata
   // before reading or expanding the Blob, then check the exact serialized result.
   if (!result.blob.size || 4 * Math.ceil(result.blob.size / 3) > PREVIEW_LIMITS.responseBytes - PREVIEW_LIMITS.envelopeBytes) throw new AutomationError('response_limit', 'Encoded preview exceeds the 8 MiB transport budget; lower scale or narrow the selection')

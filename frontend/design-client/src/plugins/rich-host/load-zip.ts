@@ -1,7 +1,7 @@
 import { strFromU8, unzipSync } from 'fflate'
 import { PluginApiError } from './errors'
 import { PLUGIN_LIMITS } from './limits'
-import { assertPluginSource, parsePluginManifest, pluginBundleFromSources, pluginUiPaths, type PluginBundle } from './manifest'
+import { assertPluginSource, missingPluginSource, parsePluginManifest, pluginBundleFromSources, pluginUiPaths, type PluginBundle } from './manifest'
 
 function safeZipPath(name: string): string | null {
   const path = name.replaceAll('\\', '/').replace(/^\.\//, '')
@@ -51,7 +51,7 @@ export function pluginBundleFromZip(bytes: Uint8Array): PluginBundle {
   const root = manifestPath.slice(0, -'manifest.json'.length)
   const read = (relative: string, limit: number) => {
     const data = files.get(`${root}${relative}`)
-    if (!data) throw new PluginApiError('invalid_plugin', `Missing ${relative}`)
+    if (!data) throw missingPluginSource(manifest, relative)
     if (data.byteLength > limit) throw new PluginApiError('plugin_too_large', `${relative} is too large`)
     return textFile(data, relative)
   }

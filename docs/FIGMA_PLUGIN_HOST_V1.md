@@ -62,7 +62,7 @@ Behavior follows the [Figma Plugin API](https://www.figma.com/plugin-docs/api/ap
 
 ## Still blocked
 
-These calls still throw or are absent: `createImageAsync`, vector networks, PNG/JPG/PDF `exportAsync`, remote variable libraries, `importStyleByKeyAsync`, payment transactions, parameters, codegen, annotations, rich text ranges, reactions, relaunch buttons, `strokeStyleId`, UI-frame network, and `setInterval`. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. `documentchange` does not list the changed nodes. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
+These calls still throw or are absent: `createImageAsync`, vector networks, remote variable libraries, `importStyleByKeyAsync`, payment transactions, parameters, codegen, annotations, styled text range writes, reactions, relaunch buttons, `strokeStyleId`, UI-frame network, and `setInterval`. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. `documentchange` does not list the changed nodes. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
 
 ## API coverage
 
@@ -213,7 +213,7 @@ These calls still throw or are absent: `createImageAsync`, vector networks, PNG/
 | `figma.createTextStyle` | partial | Creates a local text style. fontName, lineHeight, letterSpacing, textCase, and paragraph spacing can be set. fontSize and textDecoration are kept on the node, not the style. |
 | `figma.createEffectStyle` | partial | Creates a local effect style. name and effects can be set. No cloud library. |
 | `figma.createGridStyle` | unsupported | Throws unsupported_api. |
-| `SceneNode.exportAsync` | partial | SVG markup bytes resolve inline. PNG and JPG rasterize through the product CPU export path with scale 0.1–4 and a 500,000-character base64 transport cap; larger rasters reject with export_limit. PDF is not available. |
+| `SceneNode.exportAsync` | partial | SVG markup bytes resolve inline. PNG, JPG, and bitmap PDF use the product CPU renderer at scales 0.1–4, with a 500,000-character base64 transport cap. |
 | `SceneNode.getPluginData` | supported | String values for this manifest id. A missing key returns "". Pages and the document root use the same methods. Stored in the fdCompatibility extension design.futureox/plugin-data and undone with the edit. |
 | `SceneNode.setPluginData` | supported | Up to 50 keys and 10000 characters. An empty string deletes the key. The same limits apply to pages and figma.root. |
 | `SceneNode.getSharedPluginData` | supported | Reads a namespace another plugin on this file could also read. Missing keys return "". |
@@ -221,7 +221,7 @@ These calls still throw or are absent: `createImageAsync`, vector networks, PNG/
 | `SceneNode.setRelaunchData` | unsupported | Throws unsupported_api. Relaunch buttons are not shown. |
 | `SceneNode.reactions` | unsupported | Absent. Prototype reactions are not edited from this host. |
 | `SceneNode.boundVariables` | partial | Reads bindings written by setBoundVariable. Fields are width, height, opacity, characters, visible, fontSize, and itemSpacing. |
-| `TextNode.getStyledTextSegments` | unsupported | Throws unsupported_api. Rich-text ranges are not read back as styled segments. |
+| `TextNode.getStyledTextSegments` | partial | Reads UTF-16 ranges and groups equal adjacent styles. Supports fontSize, fontWeight, fontStyle, textDecoration, textCase, lineHeight, letterSpacing, paragraphSpacing, and paragraphIndent. |
 | `figma.currentPage.findAllWithCriteria` | partial | Filters by types only, up to 2000 nodes. pluginData criteria throws. |
 | `figma.createNodeFromSvg` | partial | Imports the SVG through the editor SVG importer and returns the created root. Scripts, external URLs, and animation are rejected. A multi-root import is grouped. The import is its own undo step. |
 | `figma.createPaintStyle` | partial | Creates a local paint style. name and paints can be set. No cloud library or style key. |

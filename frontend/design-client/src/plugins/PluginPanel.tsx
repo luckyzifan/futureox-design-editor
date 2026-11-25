@@ -6,7 +6,7 @@ import { modalKeyDown, useModalOwnership } from '../modal-keyboard'
 import { acceptedDeclaredPlugins, type DeclaredPlugin } from './catalog'
 import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, pluginEditorEvents, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
 import { PLUGIN_LIMITS } from './rich-host/limits'
-import { assertPluginSource, pluginBundleFromSources, pluginUiPaths } from './rich-host/manifest'
+import { assertPluginSource, missingPluginSource, pluginBundleFromSources, pluginUiPaths } from './rich-host/manifest'
 import { samplePlugin } from './sample-plugin'
 import './plugin-panel.css'
 
@@ -251,7 +251,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
       if (read.status !== 'ok') { setError(read.message); return }
       for (const path of requested) {
         const content = read.files[path]
-        if (typeof content !== 'string') throw new Error(`Missing ${path}`)
+        if (typeof content !== 'string') throw missingPluginSource(manifest, path)
         if (path !== manifest.main) remaining -= assertPluginSource(content, path, remaining)
         files.set(path, content)
       }

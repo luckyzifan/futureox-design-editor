@@ -159,10 +159,16 @@ export function pluginUiPaths(manifest: PluginManifest) {
   return manifest.ui ? [manifest.ui] : []
 }
 
+export function missingPluginSource(manifest: PluginManifest, path: string) {
+  return new PluginApiError('invalid_plugin', path === manifest.main
+    ? `Missing built plugin entry ${path}. Build the plugin to generate the JavaScript named by main.`
+    : `Missing plugin UI file ${path}`)
+}
+
 export function pluginBundleFromSources(manifest: PluginManifest, files: ReadonlyMap<string, string>): PluginBundle {
   const source = (path: string) => {
     const content = files.get(path)
-    if (content === undefined) throw new PluginApiError('invalid_plugin', `Missing ${path}`)
+    if (content === undefined) throw missingPluginSource(manifest, path)
     return content
   }
   const uiFiles = manifest.uiFiles && Object.fromEntries(Object.entries(manifest.uiFiles).map(([name, path]) => [name, source(path)]))

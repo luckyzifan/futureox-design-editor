@@ -143,7 +143,15 @@ export async function readPluginFile(root, relative) {
   const rootStat = await lstat(rootReal)
   if (!rootStat.isDirectory()) throw new Error('Plugin folder is not a directory')
   const candidate = path.resolve(rootReal, ...pluginRelativeParts(relative))
-  const fileReal = await realpath(candidate)
+  let fileReal
+  try { fileReal = await realpath(candidate) }
+  catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+    const compiled = /\.m?js$/i.test(relative)
+    throw Object.assign(new Error(compiled
+      ? `Missing built plugin entry ${relative}. Build the plugin to generate the JavaScript named by main.`
+      : `Missing plugin file ${relative}`), { code: 'PLUGIN_FILE_MISSING' })
+  }
   const rel = path.relative(rootReal, fileReal)
   if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) throw new Error('Plugin file escapes its folder')
   const stat = await lstat(fileReal)

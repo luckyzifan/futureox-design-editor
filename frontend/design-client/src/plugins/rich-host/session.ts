@@ -1,5 +1,5 @@
 import { createEditorDesignAutomation } from '../../automation'
-import { captureDesignPreview } from '../../automation/export'
+import { capturePluginRegion } from '../../automation/export'
 import type { DesignSystem } from '../../design-system'
 import { apply, bounds, worldMatrix } from '../../geometry'
 import type { Editor } from '../../engine'
@@ -13,6 +13,7 @@ import { PLUGIN_FETCH_METHODS, matchNetworkAccess, pluginFetchHeaders, type Plug
 import { figmaColorToHex, hexToFigmaColor } from './colors'
 import { PluginApiError, PluginClosed } from './errors'
 import { PLUGIN_LIMITS } from './limits'
+import { styledTextSegments } from './text-segments'
 import {
   pluginDataEmpty, pluginDataGet, pluginDataKeys, pluginDataSet, readPluginData, sharedPluginDataGet, sharedPluginDataKeys, sharedPluginDataSet,
   pluginDataExtension, type PluginDataScope, type PluginDataStore,
@@ -82,7 +83,7 @@ export type PluginSystemFonts = {
   read(request: { id: string }): Promise<{ face: PluginSystemFontFace; data: string } | null>
 }
 export type PluginFontJob = { id: string; family: string; style: string }
-export type PluginExportJob = { id: string; nodeId: string; pageId: string; format: 'png' | 'jpeg'; scale: number }
+export type PluginExportJob = { id: string; nodeId: string; pageId: string; format: 'png' | 'jpeg' | 'pdf'; scale: number }
 
 const KINDS = new Set<Kind>(['slice', 'frame', 'section', 'group', 'rectangle', 'ellipse', 'polygon', 'star', 'line', 'vector', 'text'])
 const TRANSFORM_KEYS = new Set(['x', 'y', 'rotation'])
@@ -469,14 +470,13 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   }
   /** Product CPU raster export (the same path as the export panel preview).
    * The QuickJS transport caps the base64 payload, so large rasters reject. */
-  async function captureRasterExport(job: PluginExportJob) {
+  async function captureRasterExport(job: PluginExportJob, signal: AbortSignal) {
     failIfReplaced()
-    const preview = await captureDesignPreview(editor.state.doc, { pageId: job.pageId, nodeIds: [job.nodeId], format: job.format, scale: job.scale })
-    const dataUrl = String(preview?.dataUrl ?? '')
-    const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
-    if (!base64) throw new PluginApiError('export_failed', 'Raster export did not return image bytes')
-    if (base64.length > PLUGIN_LIMITS.payloadBytes / 2) throw new PluginApiError('export_limit', `Raster export exceeds the plugin transport; lower the scale or use SVG`)
-    return { base64 }
+    const result = await capturePluginRegion(editor.state.doc, {
+      pageId: job.pageId, nodeIds: [job.nodeId], format: job.format, scale: job.scale, signal,
+    }, PLUGIN_LIMITS.payloadBytes / 2)
+    failIfReplaced()
+    return result
   }
   function requireFont(family: string, style: string) {
     if (/italic/i.test(style)) throw new PluginApiError('unsupported_api', `Italic styles are not available (${style})`)
@@ -1153,6 +1153,11 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       calls += 1
       if (calls > PLUGIN_LIMITS.hostCalls) throw new PluginApiError('plugin_limit', `Plugin exceeded ${PLUGIN_LIMITS.hostCalls} host calls`)
       const body = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
+      if (op === 'textSegments') {
+        flush()
+        const result = execute('node.get', { id: shortText(body.id, 'id', 80) }, false) as { node: DesignNode }
+        return styledTextSegments(result.node, body.fields, body.start, body.end)
+      }
       if (op === 'log') {
         const message = String(body.message ?? '').slice(0, PLUGIN_LIMITS.logChars)
         if (logs.length < PLUGIN_LIMITS.logLines) logs.push(message)
@@ -1499,20 +1504,21 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         flush()
         const id = shortText(body.id, 'id', 80)
         const format = String(body.format || 'PNG').toUpperCase()
-        if (format !== 'PNG' && format !== 'JPG') throw new PluginApiError('unsupported_api', 'Raster exportAsync supports PNG and JPG. PDF is not available.')
+        if (format !== 'PNG' && format !== 'JPG' && format !== 'PDF') throw new PluginApiError('unsupported_api', 'Renderer exportAsync supports PNG, JPG and PDF')
         const scale = body.scale === undefined ? 1 : finite(body.scale, 'scale', 0.1, 4)
         const result = execute('node.get', { id }, false) as { pageId?: string } | null
         if (!result || typeof result.pageId !== 'string') throw new PluginApiError('invalid_value', `Node ${id} was not found`)
         exportJobSerial += 1
         const jobId = `export-${exportJobSerial}`
-        exportJobs.push({ id: jobId, nodeId: id, pageId: result.pageId, format: format === 'JPG' ? 'jpeg' : 'png', scale })
+        const output = format === 'JPG' ? 'jpeg' : format === 'PDF' ? 'pdf' : 'png'
+        exportJobs.push({ id: jobId, nodeId: id, pageId: result.pageId, format: output, scale })
         return { pending: jobId }
       }
       if (op === 'export') {
         flush()
         const id = shortText(body.id, 'id', 80)
         const format = String(body.format || 'PNG').toUpperCase()
-        if (format !== 'SVG') throw new PluginApiError('unsupported_api', 'exportAsync supports SVG in this host. PNG, JPG, and PDF use the editor export panel.')
+        if (format !== 'SVG') throw new PluginApiError('unsupported_api', 'This export operation requires SVG')
         const scale = body.scale === undefined ? undefined : finite(body.scale, 'scale', 0.01, 4)
         const exported = operationResult(execute('vector.export', { nodeIds: [id], textMode: 'outlines', fontMode: 'references', ...(scale === undefined ? {} : { scale }) }, false))
         const text = exported.content

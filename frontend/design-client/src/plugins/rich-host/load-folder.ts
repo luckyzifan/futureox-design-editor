@@ -1,6 +1,6 @@
 import { PluginApiError } from './errors'
 import { PLUGIN_LIMITS } from './limits'
-import { assertPluginSource, parsePluginManifest, pluginBundleFromSources, pluginUiPaths, type PluginBundle } from './manifest'
+import { assertPluginSource, missingPluginSource, parsePluginManifest, pluginBundleFromSources, pluginUiPaths, type PluginBundle } from './manifest'
 
 export type PluginFile = {
   name: string
@@ -29,7 +29,7 @@ export async function pluginBundleFromFiles(files: Iterable<PluginFile>): Promis
   const read = async (path: string, limit: number) => {
     const full = `${root}${path}`
     const file = list.find(item => relativePath(item) === full)
-    if (!file) throw new PluginApiError('invalid_plugin', `Missing ${path}`)
+    if (!file) throw missingPluginSource(manifest, path)
     if (file.size > limit) throw new PluginApiError('plugin_too_large', `${path} is too large`)
     return file.text()
   }

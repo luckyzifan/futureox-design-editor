@@ -176,7 +176,7 @@ export const PLUGIN_API_COVERAGE: readonly PluginApiEntry[] = [
   { api: 'figma.base64Encode', status: 'supported', notes: 'Encodes up to 256 KiB. https://www.figma.com/plugin-docs/api/properties/figma-base64encode/' },
   { api: 'figma.base64Decode', status: 'supported', notes: 'Decodes base64 text to bytes.' },
   { api: 'figma.createGridStyle', status: 'unsupported', notes: 'Throws unsupported_api.' },
-  { api: 'SceneNode.exportAsync', status: 'partial', notes: 'SVG markup bytes resolve inline. PNG and JPG rasterize through the product CPU export path (fetch-style async side channel) with scale 0.1–4 and a 500,000-character base64 transport cap; larger rasters reject with export_limit. PDF is not available. https://www.figma.com/plugin-docs/api/properties/nodes-exportasync/' },
+  { api: 'SceneNode.exportAsync', status: 'partial', notes: 'SVG markup bytes resolve inline. PNG, JPG, and bitmap PDF use the product CPU renderer at scales 0.1–4, with a 500,000-character base64 transport cap. https://developers.figma.com/docs/plugins/api/properties/nodes-exportasync/' },
   { api: 'SceneNode.getPluginData', status: 'supported', notes: 'String values for this manifest id. A missing key returns "". Pages and the document root use the same methods. Stored in the fdCompatibility extension design.futureox/plugin-data and undone with the edit.' },
   { api: 'SceneNode.setPluginData', status: 'supported', notes: 'Up to 50 keys and 10000 characters. An empty string deletes the key. The same limits apply to pages and figma.root.' },
   { api: 'SceneNode.getSharedPluginData', status: 'supported', notes: 'Reads a namespace another plugin on this file could also read. Missing keys return "".' },
@@ -184,7 +184,7 @@ export const PLUGIN_API_COVERAGE: readonly PluginApiEntry[] = [
   { api: 'SceneNode.setRelaunchData', status: 'unsupported', notes: 'Throws unsupported_api. Relaunch buttons are not shown.' },
   { api: 'SceneNode.reactions', status: 'unsupported', notes: 'Absent. Prototype reactions are not edited from this host.' },
   { api: 'SceneNode.boundVariables', status: 'partial', notes: 'Reads bindings written by setBoundVariable. Fields are width, height, opacity, characters, visible, fontSize, and itemSpacing. Fills, strokes, and effects are not bound.' },
-  { api: 'TextNode.getStyledTextSegments', status: 'unsupported', notes: 'Throws unsupported_api. Rich-text ranges are not read back as styled segments.' },
+  { api: 'TextNode.getStyledTextSegments', status: 'partial', notes: 'Reads UTF-16 ranges and groups equal adjacent styles. Supports fontSize, fontWeight, fontStyle, textDecoration, textCase, lineHeight, letterSpacing, paragraphSpacing, and paragraphIndent.' },
 ]
 
 export function pluginApiCoverage() {
