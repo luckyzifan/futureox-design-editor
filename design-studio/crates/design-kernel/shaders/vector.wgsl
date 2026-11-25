@@ -662,7 +662,7 @@ fn figmaSpatialResolve(p:vec2<f32>)->vec4<f32>{
  if(softwareRasterByte()){
   let a=softwareSpatialTaps(sourceA,p,u(1));let b=softwareSpatialTaps(sourceB,p,u(2));
   let c=softwareSpatialTaps(sourceC,p,u(3));let d=softwareSpatialTaps(sourceD,p,u(1));
-  if(opaqueColorEndpoints(array<array<vec4<u32>,4>,4>(a,b,c,d))){
+  if(u(9).w>0.5&&opaqueColorEndpoints(array<array<vec4<u32>,4>,4>(a,b,c,d))){
    return figmaFourPass(exportTapSum(a),exportTapSum(b),exportTapSum(c),exportTapSum(d),false);
   }
   return figmaFourPass(softwareSpatialSample(a),softwareSpatialSample(b),softwareSpatialSample(c),softwareSpatialSample(d),true);

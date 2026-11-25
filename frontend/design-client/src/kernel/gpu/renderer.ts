@@ -9040,7 +9040,7 @@ export class GpuRenderer {
         if (this.surfaceNeedsAdmission(output)) await this.reclaimForSurface(output)
         target = p
           ? this.run(24, output, planes, (u) =>
-              u.set([p.offsetX, p.offsetY, p.scale, 0], 36),
+              u.set([p.offsetX, p.offsetY, p.scale, Number(p.softwareColorCoverage === true)], 36),
             )
           : this.run(this.driver.managed ? 23 : 36, output, planes)
         this.release(...planes)

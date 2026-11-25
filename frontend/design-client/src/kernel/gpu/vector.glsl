@@ -596,7 +596,7 @@ vec4 figmaSpatialResolve(vec2 p){
   softwareSpatialTaps(sourceA,p,u[1],a);softwareSpatialTaps(sourceB,p,u[2],b);
   softwareSpatialTaps(sourceC,p,u[3],c);softwareSpatialTaps(sourceD,p,u[1],d);
   uvec4 first=a[0],second=first;
-  bool coverage=recordOpaqueCoverageEndpoints(a,first,second)&&recordOpaqueCoverageEndpoints(b,first,second)&&
+  bool coverage=u[9].w>0.5&&recordOpaqueCoverageEndpoints(a,first,second)&&recordOpaqueCoverageEndpoints(b,first,second)&&
    recordOpaqueCoverageEndpoints(c,first,second)&&recordOpaqueCoverageEndpoints(d,first,second);
   bool chromatic=first.r!=first.g||first.g!=first.b||second.r!=second.g||second.g!=second.b;
   if(coverage&&any(notEqual(second,first))&&chromatic){return figmaFourPass(exportTapSum(a),exportTapSum(b),exportTapSum(c),exportTapSum(d),false);}

@@ -45,6 +45,44 @@ pub(crate) fn coherent_samples(doc: &crate::scene::Document, options: &RenderOpt
         && !(doc.color_management.is_some() && options.interactive_effects)
 }
 
+impl crate::Engine {
+    /// Only ordinary solid geometry certifies that two colored endpoints
+    /// describe coverage. A material or effect capture can quantize to the
+    /// same endpoints for other reasons. Use the full requested page so a
+    /// tile or export crop cannot independently change its rounding.
+    pub(crate) fn allows_software_color_coverage(&self, options: &RenderOptions) -> bool {
+        use crate::scene::{Document, Paint};
+        fn solid(paint: &Paint) -> bool {
+            !paint.visible || paint.kind == "solid" && paint.opacity == 1. && paint.blend == "normal"
+        }
+        fn visit(doc: &Document, id: &str) -> bool {
+            doc.nodes.get(id).is_some_and(|node| {
+                !node.mask && (!node.visible || node.opacity == 0. || {
+                    node.opacity == 1.
+                        && node.blend == "normal"
+                        && node.instance.is_none()
+                        && matches!(node.kind.as_str(), "frame" | "group" | "rectangle" | "ellipse" | "polygon" | "star" | "line" | "vector")
+                        && node.effects.iter().all(|effect| !effect.visible)
+                        && node.fills.iter().all(solid)
+                        && node.strokes.iter().all(|stroke| !stroke.visible || solid(&stroke.paint))
+                        && node.render_children().iter().all(|child| visit(doc, child))
+                })
+            })
+        }
+        options.raster_profile.is_software()
+            && !options.grid
+            && !options.checkerboard
+            && options.animation.is_none()
+            && self.source_compile_context.is_none()
+            && self.doc.as_ref().is_some_and(|doc| {
+                doc.color_management.is_none()
+                    && doc.pages.iter().find(|page| page.id == options.page_id).is_some_and(|page| {
+                        page.children.iter().all(|id| visit(doc, id))
+                    })
+            })
+    }
+}
+
 pub(crate) fn full_frame_vector(frame: &crate::scene::Node, node: &crate::scene::Node) -> bool {
     node.kind == "vector"
         && node.transform == crate::math::Transform::default()
@@ -233,7 +271,9 @@ fn opaque_color_endpoints(planes: &[[[u8; 4]; 4]; 4]) -> bool {
 /// The measured resolve for colored opaque coverage uses the exact spatial
 /// sum and jitter weights when two endpoints span the neighborhood. The
 /// achromatic filter and general-color paths keep their byte arithmetic.
-pub fn resolve_software_sample_planes_2x(samples: [&[u8]; 4], width: u32, height: u32) -> Vec<u8> {
+pub fn resolve_software_sample_planes_2x(
+    samples: [&[u8]; 4], width: u32, height: u32, allow_color_coverage: bool,
+) -> Vec<u8> {
     assert!(
         samples
             .iter()
@@ -248,7 +288,7 @@ pub fn resolve_software_sample_planes_2x(samples: [&[u8]; 4], width: u32, height
                     premultiplied_bytes(samples[index], i).map(|v| v as u8)
                 })
             });
-            let coverage = opaque_color_endpoints(&planes);
+            let coverage = allow_color_coverage && opaque_color_endpoints(&planes);
             let mut accumulated = [0_u8; 4];
             for (pass, pixels) in planes.into_iter().enumerate() {
                 if coverage {

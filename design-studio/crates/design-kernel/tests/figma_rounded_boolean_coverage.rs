@@ -198,3 +198,35 @@ fn zero_texture_radius_keeps_software_gradient_pixels() {
     let ordinary = render_profile(&untextured, &case["options"], "figmaSoftware");
     assert_eq!(gap(&actual, &ordinary), (0, 0));
 }
+
+#[test]
+fn software_color_coverage_proof_preserves_deep_glass_bytes() {
+    use futureox_design_kernel::math::Rect;
+    let curve = &cases("curves-2026-10-07/cases.json")[0];
+    let glass = cases("material-parameters-2026-10-08/cases.json")
+        .into_iter()
+        .find(|case| case["id"] == "MaterialQA-depth-24")
+        .unwrap();
+    for (case, allowed) in [(curve, true), (&glass, false)] {
+        let mut engine = Engine::new();
+        engine.load_document(&case["document"].to_string()).unwrap();
+        let mut options = case["options"].clone();
+        options["rasterProfile"] = json!("figmaSoftware");
+        let options: RenderOptions = serde_json::from_value(options).unwrap();
+        let whole = engine.compile_gpu(&options).unwrap();
+        // The crop is outside the lens. It still uses the whole-page proof.
+        let crop = engine.compile_gpu_region(&options, Rect::new(0, 0, 16, 16), None).unwrap();
+        for scene in [whole, crop] {
+            let resolve = serde_json::to_value(scene.resolve).unwrap();
+            assert_eq!(resolve["softwareColorCoverage"].as_bool(), allowed.then_some(true), "{}", case["id"]);
+        }
+    }
+    let expected = png("material-parameters-2026-10-08", &glass);
+    let actual = render_profile(&glass["document"], &glass["options"], "figmaSoftware");
+    assert_eq!(gap(&actual, &expected), (1464, 2));
+    // Complete RGBA output from the frozen baseline, before endpoint inference.
+    assert_eq!(
+        Sha256::digest(&actual).iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
+        "992b3ef648d1208fb8af11ef58cf8d85dbb1fdf99187cfc8d47d88d7b36bb7c5",
+    );
+}

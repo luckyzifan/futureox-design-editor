@@ -2607,6 +2607,7 @@ impl Engine {
                 offset_x: 0.,
                 offset_y: 0.,
                 scale: 0.5,
+                software_color_coverage: self.allows_software_color_coverage(options),
             });
             for n in scene.nodes.values_mut() {
                 n.fill.analytic_rect = None;
@@ -2664,6 +2665,7 @@ impl Engine {
                 offset_x: 0.,
                 offset_y: 0.,
                 scale: 0.5,
+                software_color_coverage: self.allows_software_color_coverage(options),
             });
             scene
         } else {

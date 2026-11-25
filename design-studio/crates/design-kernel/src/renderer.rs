@@ -3031,16 +3031,14 @@ impl Engine {
             let viewport = Rect::new(x * 2, y * 2, w * 2, h * 2);
             if coherent {
                 let planes = self.render_scene_inner_at(&source, true, viewport, extra_halo * 2)?;
-                let resolve = if options.raster_profile.is_software() {
-                    crate::fidelity::resolve_software_sample_planes_2x
+                let samples = [&planes[0][..], &planes[1][..], &planes[2][..], &planes[3][..]];
+                let mut bytes = if options.raster_profile.is_software() {
+                    crate::fidelity::resolve_software_sample_planes_2x(
+                        samples, w, h, self.allows_software_color_coverage(options),
+                    )
                 } else {
-                    crate::fidelity::resolve_sample_planes_2x
+                    crate::fidelity::resolve_sample_planes_2x(samples, w, h)
                 };
-                let mut bytes = resolve(
-                    [&planes[0], &planes[1], &planes[2], &planes[3]],
-                    w,
-                    h,
-                );
                 if options.raster_profile == crate::fidelity::RasterProfile::Figma {
                     crate::fidelity::apply_false_half_fixes(
                         &mut bytes,
