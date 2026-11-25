@@ -34,7 +34,8 @@ export function installedBundleFromListing(text) {
 export function bundleLaunchContract(bytes) {
   const source = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes ?? ''), 'utf8')
   return {
-    acceptanceProfile: source.includes('--desktop-acceptance-profile=') || source.includes('FUTUREOX_ACCEPTANCE_PROFILE'),
+    acceptanceProfile: source.includes('--desktop-acceptance-profile=') || source.includes('FUTUREOX_ACCEPTANCE_PROFILE')
+      || source.includes('resolveAcceptanceProfile(process.argv,'),
     argvFiles: source.includes('launchFilesFromArgv'),
   }
 }

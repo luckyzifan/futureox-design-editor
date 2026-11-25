@@ -37,6 +37,10 @@ test('launch contract follows the packaged host source', () => {
     acceptanceProfile: true,
     argvFiles: true,
   })
+  assert.deepEqual(bundleLaunchContract('const acceptance = resolveAcceptanceProfile(process.argv, options)'), {
+    acceptanceProfile: true,
+    argvFiles: false,
+  })
   assert.equal(JSON.parse(workspaceSelectionSeed()).kind, 'default')
   assert.throws(() => assertProductName('../futureox'), /product name/)
 })
