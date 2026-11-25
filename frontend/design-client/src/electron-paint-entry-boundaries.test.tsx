@@ -62,7 +62,7 @@ test('P01 actual Inspector second solid fill preview owns only its paint alpha/c
   await click(button('颜色',cards()[1]));await type(field('填充颜色值'),'#abcdef');await type(field('填充不透明度 %'),'25')
   const preview=editor.state.doc.nodes[n.id];expect(editor.authoredDocument).toBe(before);expect(editor.state.version).toBe(0)
   expect(preview.fills[0]).toEqual(before.nodes[n.id].fills[0]);expect(preview.fills[1]).toMatchObject({id:n.fills[1].id,color:'#abcdef',opacity:.25});expect(preview.strokes).toEqual(n.strokes);expect(preview.opacity).toBe(.75)
-  await click(button('应用'));const after=editor.state.doc;expect(editor.state.version).toBe(1);await history(before,after)
+  await click(button('关闭颜色编辑'));const after=editor.state.doc;expect(editor.state.version).toBe(1);await history(before,after)
 })
 test('P02 actual keyed Inspector retires old color input after external paint reorder, no redirected late write',async()=>{
   const n=node('rectangle');n.fills=[paint('#112233'),paint('#445566')];start([n]);await render('inspector');const before=editor.state.doc
