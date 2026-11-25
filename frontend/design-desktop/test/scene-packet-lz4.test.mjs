@@ -19,3 +19,32 @@ test('FGSZ pose packets inflate to the original FGSC bytes', () => {
   const plain = inflateScenePacket(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength))
   assert.equal(plain[0], 0x46)
 })
+
+test('FGSZ bulk copies preserve overlapping and independent matches at the decoder boundary', () => {
+  const pattern = Array.from({ length: 32 }, (_, index) => index + 20)
+  const block = [
+    0x1f, 7, 1, 0, 13,
+    0x2f, 10, 11, 2, 0, 12,
+    0x2f, 12, 13, 2, 0, 13,
+    0xff, 17, ...pattern, 32, 0, 13,
+    0x50, 90, 91, 92, 93, 94,
+  ]
+  const expected = [
+    ...Array(33).fill(7),
+    ...Array.from({ length: 33 }, (_, index) => 10 + index % 2),
+    ...Array.from({ length: 34 }, (_, index) => 12 + index % 2),
+    ...pattern, ...pattern, 90, 91, 92, 93, 94,
+  ]
+  const header = Buffer.alloc(12)
+  header.write('FGSZ')
+  header.writeUInt32LE(1, 4)
+  header.writeUInt32LE(expected.length, 8)
+  const packet = Buffer.concat([header, Buffer.from(block)])
+  assert.deepEqual(inflateScenePacket(packet), Uint8Array.from(expected))
+  const badOffset = Buffer.from(packet)
+  badOffset[14] = 2
+  assert.throws(() => inflateScenePacket(badOffset), /Invalid GPU scene packet length/)
+  const badMatch = Buffer.from(packet)
+  badMatch[16] = 0xfe
+  assert.throws(() => inflateScenePacket(badMatch), /Invalid GPU scene packet length/)
+})

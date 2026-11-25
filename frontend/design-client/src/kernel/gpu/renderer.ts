@@ -8919,7 +8919,7 @@ export class GpuRenderer {
     // window sum + one nearest-even division, with a per-line exact fallback),
     // so the optional low-zoom flag only widens the same alpha-only outer-shadow
     // admission down to 800%; it never changes the kernel, source or rounding.
-    const shadowBoxLowZoom = import.meta.env.VITE_DESIGN_EXACT_SHADOW_BOX_LOW_ZOOM === '1' && scene.view.zoom >= 8
+    const shadowBoxLowZoom = import.meta.env.VITE_DESIGN_EXACT_SHADOW_BOX_LOW_ZOOM !== '0' && scene.view.zoom >= 8
     this.analyticDisplayShadowBoxes = index.hasFilters && managedDisplay && this.optimized && !!scene.output && scene.coherentSamples === false &&
       !scene.colorManagement && !scene.integratedBlur && !scene.interactionRetained && !scene.resolve && !scene.presentation &&
       !scene.softwareRaster && (scene.view.zoom >= 32 || shadowBoxLowZoom) && Object.values(scene.nodes).some(node => node.effects.some(effect =>

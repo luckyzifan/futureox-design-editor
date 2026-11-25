@@ -230,7 +230,7 @@ export class WebGpuDriver implements Driver {
   private bindingCache = new GpuBindingCache()
   // Rollout gate until real-device validation and timings are available. The
   // static-offset route remains an exact negative control for bisection.
-  private dynamicUniformBindings = import.meta.env.VITE_DESIGN_DYNAMIC_UNIFORMS === '1'
+  private dynamicUniformBindings = import.meta.env.VITE_DESIGN_DYNAMIC_UNIFORMS !== '0'
   resourceEpoch = 0
   completedResourceEpoch = 0
   private rationalKernelBounds = new WeakMap<Texture, { packet: PrefixRationalBoundCertificate; resource: unknown; width: number; height: number }>()

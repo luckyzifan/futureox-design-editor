@@ -670,7 +670,7 @@ function textureReplayDriver(failUploadAt = Infinity, reusable = false) {
 
 test.each([
   {zoom:64, kind:'shadow', retained:false, readback:false, mode:3},
-  {zoom:16, kind:'shadow', retained:false, readback:false, mode:1},
+  {zoom:16, kind:'shadow', retained:false, readback:false, mode:3},
   {zoom:64, kind:'blur', retained:false, readback:false, mode:1},
   {zoom:64, kind:'background-blur', retained:false, readback:false, mode:1},
   {zoom:1, kind:'shadow', retained:false, readback:false, mode:1},

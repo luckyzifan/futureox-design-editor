@@ -1,7 +1,7 @@
 // Lossless LZ4 block decoder for FGSZ scene packets.
 // Matches lz4_flex::compress_prepend_size: little-endian uncompressed size,
-// then one independent LZ4 block. Matches are copied a byte at a time because
-// a match may overlap its own output.
+// then one independent LZ4 block. Overlapping matches are copied in bounded
+// bulk chunks so long matches do not run a byte loop.
 export const FGSZ = 0x5a534746
 const SCENE_PACKET_LIMIT = 128 * 1024 * 1024
 
@@ -39,7 +39,11 @@ function decompressLz4Block(src, dst) {
       }
     }
     if (literals > output - written || literals > limit - read) throw Error('Invalid GPU scene packet length')
-    dst.set(src.subarray(read, read + literals), written)
+    if (literals < 16) {
+      for (let index = 0; index < literals; index++) dst[written + index] = src[read + index]
+    } else {
+      dst.set(src.subarray(read, read + literals), written)
+    }
     read += literals
     written += literals
     if (written === output) {
@@ -62,7 +66,20 @@ function decompressLz4Block(src, dst) {
     }
     if (match > output - written) throw Error('Invalid GPU scene packet length')
     const from = written - offset
-    for (let index = 0; index < match; index++) dst[written++] = dst[from + index]
+    if (match < 32) {
+      for (let index = 0; index < match; index++) dst[written + index] = dst[from + index]
+    } else if (offset === 1) {
+      dst.fill(dst[from], written, written + match)
+    } else {
+      let copied = Math.min(offset, match)
+      dst.copyWithin(written, from, from + copied)
+      while (copied < match) {
+        const count = Math.min(copied, match - copied)
+        dst.copyWithin(written + copied, written, written + count)
+        copied += count
+      }
+    }
+    written += match
   }
   if (read !== limit) throw Error('Invalid GPU scene packet length')
 }
