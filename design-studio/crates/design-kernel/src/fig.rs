@@ -2231,6 +2231,89 @@ impl FigImporter {
         Ok((fill, rule))
     }
 
+    fn styled_mixed_vector(&self, record: &Value, notes: &mut Vec<String>) -> Result<Option<(Node, Vec<Node>)>, Error> {
+        let Some(entries) = record["fillGeometry"].as_array().filter(|entries|
+            entries.iter().any(|entry| matches!(str_of(entry, "windingRule"), Some("ODD" | "EVENODD")))
+            && entries.iter().any(|entry| str_of(entry, "windingRule") == Some("NONZERO")))
+        else { return Ok(None) };
+        if str_of(record, "type") != Some("VECTOR") { return Ok(None) }
+        if bool_of(record, "mask") == Some(true) || record.get("strokeBrushGuid").is_some() {
+            return Err(Error::Unsupported("Mixed FIG fill geometry requires an ordinary vector layer".into()));
+        }
+        let source = &record["vectorData"];
+        let blob = source["vectorNetworkBlob"].as_u64().and_then(|id| self.kiwi_blobs.get(id as usize))
+            .ok_or_else(|| Error::Malformed("Mixed FIG fill geometry has no source network".into()))?;
+        let mut without_geometry = record.clone();
+        if let Some(fields) = without_geometry.as_object_mut() {
+            fields.remove("fillGeometry");
+            fields.remove("vectorData");
+        }
+        let mut layer = self.node(&without_geometry, notes)?;
+        let normalized = source.get("normalizedSize");
+        let scale = normalized.map(|size| (
+            positive_axis_scale(layer.width, f64_of(Some(size), "x")),
+            positive_axis_scale(layer.height, f64_of(Some(size), "y")),
+        )).unwrap_or((1., 1.));
+        let decoded = crate::fig_geometry::decode_network_stroke(blob, scale.0, scale.1)
+            .map_err(Error::Malformed)?;
+        if decoded.region_styles.len() != entries.len() {
+            return Err(Error::Unsupported("Mixed FIG fill geometry does not cover every source region".into()));
+        }
+        let mut children = Vec::with_capacity(entries.len() + 1);
+        let mut commands = 0usize;
+        for (index, entry) in entries.iter().enumerate() {
+            let style = entry["styleID"].as_u64().unwrap_or(0);
+            let (path, rule) = self.baked_geometry(std::slice::from_ref(entry))?;
+            if u64::from(decoded.region_styles[index]) != style || decoded.region_windings[index] != rule {
+                return Err(Error::Unsupported("Mixed FIG baked fill does not match its source region".into()));
+            }
+            commands += path.commands.len();
+            if commands > crate::vector_geometry::MAX_COMMANDS {
+                return Err(Error::Malformed("FIG baked geometry exceeds its command allowance".into()));
+            }
+            let paints = if style == 0 {
+                layer.fills.clone()
+            } else {
+                let table = source["styleOverrideTable"].as_array().into_iter().flatten();
+                let mut matches = table.filter(|entry| entry["styleID"].as_u64() == Some(style));
+                let definition = matches.next().filter(|_| matches.next().is_none())
+                    .ok_or_else(|| Error::Unsupported("Mixed FIG region has no unique paint style".into()))?;
+                if let Some(link) = definition.get("inheritFillStyleID")
+                    && !(link["sessionID"].as_u64() == Some(u64::from(u32::MAX))
+                        && link["localID"].as_u64() == Some(u64::from(u32::MAX))) {
+                    return Err(Error::Unsupported("Mixed FIG regions with inherited paint styles are not supported".into()));
+                }
+                let source_paints = definition["fillPaints"].as_array()
+                    .ok_or_else(|| Error::Unsupported("Mixed FIG region has no literal fill paints".into()))?;
+                let paints: Vec<_> = source_paints.iter().filter_map(|paint| self.paint(paint, notes)).collect();
+                if paints.len() != source_paints.len() {
+                    return Err(Error::Unsupported("Mixed FIG region fill cannot be represented".into()));
+                }
+                paints
+            };
+            let mut fill = crate::facet::sample_node(&format!("{}:region:{index}", layer.id), "vector");
+            fill.name = format!("Fill region {}", index + 1);
+            fill.width = layer.width;
+            fill.height = layer.height;
+            fill.fills = paints;
+            fill.vector_geometry = Some(crate::vector_geometry::VectorGeometry::from_paths(&path, &path, rule)
+                .map_err(Error::Malformed)?.into());
+            children.push(fill);
+        }
+        if !layer.strokes.is_empty() {
+            let mut stroke = crate::facet::sample_node(&format!("{}:region-stroke", layer.id), "vector");
+            stroke.name = "Source stroke".into();
+            stroke.width = layer.width;
+            stroke.height = layer.height;
+            stroke.strokes = std::mem::take(&mut layer.strokes);
+            stroke.vector_geometry = decoded.vector_geometry;
+            children.push(stroke);
+        }
+        layer.kind = "group".into();
+        layer.fills.clear();
+        Ok(Some((layer, children)))
+    }
+
     fn bake_brush_stroke(&self, node: &mut Node, change: &Value, notes: &mut Vec<String>) -> Option<(Option<Node>, Node)> {
         let reference = guid_string(change.get("strokeBrushGuid")?);
         if node.strokes.is_empty() {
@@ -3153,7 +3236,16 @@ pub fn document_from_canvas(
                 .to_string();
             canvases.push((position, id.clone()));
         } else {
-            let mut node = importer.node(record, &mut untranslated)?;
+            let mut node = if let Some((layer, regions)) = importer.styled_mixed_vector(record, &mut untranslated)? {
+                let children = children_of.entry(layer.id.clone()).or_default();
+                for (index, region) in regions.into_iter().enumerate() {
+                    children.push((format!("{index:06}"), region.id.clone()));
+                    nodes.insert(region.id.clone(), region);
+                }
+                layer
+            } else {
+                importer.node(record, &mut untranslated)?
+            };
             importer.import_layout(&mut node, record, parent, &mut untranslated)?;
             nodes.insert(id.clone(), node);
             let parent_id = record

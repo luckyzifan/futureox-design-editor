@@ -88,6 +88,22 @@ test('legacy FIG Auto accepts a rounded intrinsic line from a real archive', () 
     node.textStyle.lineBoxBaseline === 'figma-font-metrics')).toBe(true)
 })
 
+test('a real styled FIG vector keeps both windings, all fills, and its stroke', () => {
+  const { document } = importFig(publicFig('vector'))
+  const authored = Object.values(document.nodes).find(layer => layer.children.length === 7)!
+  expect(authored.kind).toBe('group')
+  const fills = authored.children.slice(0, 6).map(id => document.nodes[id])
+  expect(fills.map(region => region.vectorGeometry?.fillRule))
+    .toEqual(['evenodd', 'nonzero', 'nonzero', 'nonzero', 'nonzero', 'nonzero'])
+  expect(fills.map(region => region.fills.length)).toEqual([1, 1, 1, 1, 1, 1])
+  expect(fills.every(region => (region.vectorGeometry?.fill.length ?? 0) > 0)).toBe(true)
+  const stroke = document.nodes[authored.children[6]]
+  expect(stroke.strokes).toHaveLength(1)
+  expect(stroke.vectorGeometry?.fill).toHaveLength(0)
+  expect(stroke.vectorGeometry?.stroke?.length).toBeGreaterThan(0)
+  validateDocument(document)
+})
+
 test.each([
   [undefined, 'butt', 'none'], ['NONE', 'butt', 'none'], ['ROUND', 'round', 'none'],
   ['SQUARE', 'square', 'none'], ['ARROW_LINES', 'butt', 'arrow'], ['ARROW_EQUILATERAL', 'butt', 'arrow'],

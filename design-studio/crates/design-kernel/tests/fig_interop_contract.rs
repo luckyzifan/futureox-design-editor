@@ -68,6 +68,37 @@ fn fig_unrendered_noise_remains_readable_and_does_not_reject_the_archive() {
 }
 
 #[test]
+fn actual_fig_vector_keeps_each_styled_region_and_the_stroke() {
+    let input = include_bytes!(
+        "../../../../testing/fixtures/fig-tools-public-20261106/fig2sketch/tests/data/vector.fig"
+    );
+    let report = futureox_design_kernel::interop::import_fig_report(input).unwrap();
+    assert_eq!(report.backend, "rust-native-fig", "{:?}", report.native_error);
+    let layer = &report.document.nodes["fig-0-5"];
+    assert_eq!(layer.kind, "group");
+    assert_eq!(layer.children.len(), 7, "six fills and one shared stroke");
+    let regions = &layer.children[..6];
+    for (index, id) in regions.iter().enumerate() {
+        let region = &report.document.nodes[id];
+        let geometry = region.vector_geometry.as_ref().unwrap();
+        assert_eq!(geometry.fill_rule, if index == 0 { "evenodd" } else { "nonzero" });
+        assert!(!geometry.fill.is_empty());
+        assert_eq!(region.fills.len(), 1);
+        assert!(region.strokes.is_empty());
+    }
+    for (index, color) in [(0, "#ff0000"), (1, "#ffff00"), (5, "#0000ff")] {
+        assert_eq!(report.document.nodes[&regions[index]].fills[0].color, color);
+    }
+    let stroke = &report.document.nodes[&layer.children[6]];
+    assert!(stroke.fills.is_empty());
+    assert_eq!(stroke.strokes.len(), 1);
+    assert!(stroke.vector_geometry.as_ref().unwrap().fill.is_empty());
+    assert!(stroke.vector_geometry.as_ref().unwrap().stroke.as_ref()
+        .is_some_and(|path| !path.is_empty()));
+    report.document.validate().unwrap();
+}
+
+#[test]
 fn legacy_percent_auto_uses_both_intrinsic_and_rounded_measured_advances() {
     let input = include_bytes!(
         "../../../../testing/fixtures/fig-tools-public-20261106/fig2sketch/tests/data/prototyping.fig"

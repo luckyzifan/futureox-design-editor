@@ -562,6 +562,11 @@ mod wasm {
         serde_json::to_string(&decoded).map_err(|e|JsValue::from_str(&e.to_string()))
     }
     #[wasm_bindgen]
+    pub fn decode_fig_network_stroke_json(bytes:&[u8],sx:f64,sy:f64)->Result<String,JsValue>{
+        let decoded=fig_geometry::decode_network_stroke(bytes,sx,sy).map_err(|e|JsValue::from_str(&e))?;
+        serde_json::to_string(&decoded).map_err(|e|JsValue::from_str(&e.to_string()))
+    }
+    #[wasm_bindgen]
     pub fn fig_stroke_caps_json() -> String {
         serde_json::to_string(fig::STROKE_CAPS).expect("static FIG stroke caps serialize")
     }
