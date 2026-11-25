@@ -194,7 +194,16 @@ export class FigmaFacade {
     this.terminalSignal = terminalSignal
   }
 
-  listTools() { return FIGMA_MCP_TOOLS.map(entry => ({ ...entry, inputSchema: entry.inputSchema })) }
+  listTools() {
+    const canWrite = this.scope === 'write' && this.methodNames.has('document.get')
+    const canUseFigma = canWrite && (this.methodNames.has('batch.apply') || this.pluginHost() !== null)
+    const canOpenDocument = canWrite && this.methodNames.has('workspace.open')
+    return FIGMA_MCP_TOOLS.filter(entry =>
+      entry.annotations.readOnlyHint ||
+      (canUseFigma && entry.name === 'use_figma') ||
+      (canOpenDocument && entry.name === 'open_document')
+    ).map(entry => ({ ...entry }))
+  }
 
   async callTool(name, args, context = {}) {
     const toolArgs = args ?? {}
@@ -423,10 +432,15 @@ export class FigmaFacade {
     return { method: 'node.move', params: { ids: operation.nodeIds ?? [operation.nodeId], parentId: operation.parentId, ...(operation.index === undefined ? {} : { index: operation.index }) } }
   }
 
+  pluginHost() {
+    const bridge = this.pluginBridge === undefined ? figmaPluginBridge() : this.pluginBridge
+    return typeof bridge?.run === 'function' ? bridge : null
+  }
+
   async pluginCode(args, context) {
     if (typeof args.code !== 'string' || !args.code.trim() || args.code.length > 100000) return failure('use_figma', 'invalid_params', 'code must be plugin source of at most 100000 characters')
-    const bridge = this.pluginBridge === undefined ? figmaPluginBridge() : this.pluginBridge
-    if (!bridge || typeof bridge.run !== 'function') {
+    const bridge = this.pluginHost()
+    if (!bridge) {
       return failure('use_figma', 'plugin_host_unavailable', 'No plugin host is registered. use_figma did not evaluate code. Send structured operations, or run this document in a desktop build that registers a Figma plugin bridge.')
     }
     const fences = await this.fences(context)

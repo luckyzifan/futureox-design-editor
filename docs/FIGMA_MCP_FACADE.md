@@ -36,7 +36,7 @@ Cursor-style client config:
 
 Codex-style stdio config uses `node` and `frontend/design-mcp/src/figma-cli.mjs`, forwarding the three environment variables. Do not commit the token.
 
-The HTTP listener speaks one JSON-RPC response per POST. It does not implement server-sent events. A new `initialize` starts a fresh session. Only loopback clients are accepted.
+The HTTP listener uses the [JSON response option of MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports). Use the URL and bearer token from the active desktop automation session. Native clients can omit the `Origin` header. When present it must match the listener origin. The listener returns `405` for a GET event stream and `400` for an unsupported `MCP-Protocol-Version` header. A new `initialize` starts a fresh MCP session on the authorized connection.
 
 ## Web editor
 
@@ -52,8 +52,8 @@ The browser page does not listen on a port and cannot host stdio. The in-app Des
 | `get_screenshot` | `preview.capture` | PNG. Omitted `nodeId` uses the selection, or the active page when the selection is empty. `scale` is 0.1–4. |
 | `get_variable_defs` | `variable.list`, `style.list`, `node.get` | Variables and styles used by the selection. An empty selection returns local document variables and styles. No team libraries. |
 | `download_assets` | `preview.capture` or `vector.export` | One node. `png`, `jpeg`, `webp`, or `svg`. |
-| `use_figma` | `batch.apply` | One undo step for 1–40 structured operations. `description` is required. |
-| `open_document` | `workspace.open` | Local saved design. Needs a workspace grant. Not `create_new_file`. A successful open can end the automation session. |
+| `use_figma` | `batch.apply` | Listed when the session can edit. One undo step for 1–40 structured operations. `description` is required. |
+| `open_document` | `workspace.open` | Listed when the session can edit and has a workspace write grant. Opens a saved local design and can end the automation session. |
 
 `use_figma` operations:
 

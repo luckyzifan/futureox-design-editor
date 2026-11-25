@@ -2,8 +2,9 @@ import http from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
 import { PassThrough } from 'node:stream'
 import { pathToFileURL } from 'node:url'
-import { DesignMcpServer } from './server.mjs'
+import { DesignMcpServer, PROTOCOL_VERSION } from './server.mjs'
 import { FIGMA_MCP_INSTRUCTIONS, FigmaFacade } from './figma-facade.mjs'
+import { MODERN_PROTOCOL_VERSION } from './modern-protocol.mjs'
 import { SocketDesignBackend } from './socket-backend.mjs'
 import { parseOptions } from './cli.mjs'
 
@@ -98,7 +99,7 @@ async function facadeFromSocket({ endpoint, sessionId, token, connectTimeoutMs }
   const operation = await socket.connect()
   const facade = new FigmaFacade({
     execute: (request, context) => operation.execute(request, context),
-    methods: operation.capabilities.methods,
+    methods: [...operation.methods.values()],
     scope: operation.scope,
     target: operation.target,
     terminalSignal: socket.terminalSignal,
@@ -111,6 +112,7 @@ async function facadeFromSocket({ endpoint, sessionId, token, connectTimeoutMs }
 export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backend, host = '127.0.0.1', port = 0, connectTimeoutMs = 10000 } = {}) {
   if (host !== '127.0.0.1' && host !== '::1') throw new TypeError('Figma MCP HTTP listens on loopback only')
   if (typeof token !== 'string' || token.length < 16) throw new TypeError('An ephemeral bridge token is required')
+  const urlHost = host === '::1' ? '[::1]' : host
   const owned = backend ? null : await facadeFromSocket({ endpoint, sessionId, token, connectTimeoutMs })
   const session = new HttpMcpSession(backend ?? owned.facade)
   const server = http.createServer((request, response) => {
@@ -120,14 +122,26 @@ export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backen
       response.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Loopback clients only' } }))
       return
     }
+    const origin = request.headers.origin
+    if (origin !== undefined && origin !== new URL(`http://${urlHost}:${request.socket.localPort}`).origin) {
+      response.writeHead(403, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Origin is not allowed' } }))
+      return
+    }
     if (!authorized(request.headers.authorization, token)) {
-      response.writeHead(401, { 'content-type': 'application/json' })
+      response.writeHead(401, { 'content-type': 'application/json', 'www-authenticate': 'Bearer' })
       response.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Unauthorized' } }))
       return
     }
     if (request.url !== '/mcp') {
       response.writeHead(404, { 'content-type': 'application/json' })
       response.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32601, message: 'Not found' } }))
+      return
+    }
+    const protocolVersion = request.headers['mcp-protocol-version']
+    if (protocolVersion !== undefined && protocolVersion !== PROTOCOL_VERSION && protocolVersion !== MODERN_PROTOCOL_VERSION) {
+      response.writeHead(400, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Unsupported MCP-Protocol-Version' } }))
       return
     }
     if (request.method !== 'POST') {
@@ -186,7 +200,7 @@ export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backen
   const address = server.address()
   const boundPort = typeof address === 'object' && address ? address.port : port
   return {
-    url: `http://127.0.0.1:${boundPort}/mcp`,
+    url: `http://${urlHost}:${boundPort}/mcp`,
     port: boundPort,
     close: async () => {
       await new Promise(resolve => server.close(resolve))

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { JsonLineReader } from '../src/framing.mjs'
 import { SocketDesignBackend, validateEndpoint } from '../src/socket-backend.mjs'
 import { parseOptions } from '../src/cli.mjs'
+import { startLoopbackFigmaMcp } from '../src/figma-http.mjs'
 
 const capabilities = { version: 1, methods: [
   { name: 'document.inspect', description: 'Inspect document', inputSchema: { type: 'object', properties: {} }, mutates: false },
@@ -19,7 +20,7 @@ const token = 'ephemeral-test-token-1234567890'
 const sessionId = 'session-test'
 const cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url))
 
-async function bridge(t, { scope = 'write', execute, handshakeError } = {}) {
+async function bridge(t, { scope = 'write', grants = {}, advertisedCapabilities = capabilities, execute, handshakeError } = {}) {
   // Keep the Unix socket pathname short when TMPDIR already belongs to an
   // isolated test run. Darwin limits the address itself to 103 bytes.
   const directory = await mkdtemp(path.join(await realpath(os.tmpdir()), 'mcp-'))
@@ -33,7 +34,7 @@ async function bridge(t, { scope = 'write', execute, handshakeError } = {}) {
       if (request.method === 'cancel') { cancellations.push(request.params.requestId); return }
       if (request.method === 'capabilities') {
         assert.deepEqual(request.params, { protocolVersion: 1, sessionId, token })
-        socket.write(JSON.stringify(handshakeError ? { id: request.id, error: { code: 'unauthorized', message: `Rejected ${token}` } } : { id: request.id, result: { protocolVersion: 1, sessionId, scope, capabilities, documentId: 'document-1', session: 3, revision: 7 } }) + '\n')
+        socket.write(JSON.stringify(handshakeError ? { id: request.id, error: { code: 'unauthorized', message: `Rejected ${token}` } } : { id: request.id, result: { protocolVersion: 1, sessionId, scope, grants, capabilities: advertisedCapabilities, documentId: 'document-1', session: 3, revision: 7 } }) + '\n')
       } else {
         const result = execute ? await execute(request.params) : { ok: true, method: request.params.method, documentId: 'document-1', session: 3, revision: 7, result: { source: 'bridge' } }
         if (result !== undefined && !socket.destroyed) socket.write(JSON.stringify({ id: request.id, result }) + '\n')
@@ -111,4 +112,32 @@ test('stdio executable handshake, real socket forwarding and EOF shutdown keep s
   assert.equal(code, 0)
   assert.equal(stderr, '')
   assert.equal(messages.every(message => message.jsonrpc === '2.0'), true)
+})
+
+test('HTTP facade uses the operation grants after the real socket handshake', async t => {
+  const advertisedCapabilities = { version: 1, methods: [
+    { name: 'document.get', description: 'Read document', inputSchema: { type: 'object' }, mutates: false },
+    { name: 'batch.apply', description: 'Edit document', inputSchema: { type: 'object' }, mutates: true },
+    { name: 'workspace.open', description: 'Open a document', inputSchema: { type: 'object' }, mutates: true, grant: 'workspace' },
+  ] }
+  const host = await bridge(t, { advertisedCapabilities, grants: { workspace: 'read' } })
+  const server = await startLoopbackFigmaMcp({ endpoint: host.endpoint, sessionId, token })
+  t.after(() => server.close())
+  const request = (method, { id, params } = {}) => fetch(server.url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ jsonrpc: '2.0', method, id, params }),
+  })
+  const init = await request('initialize', { id: 1, params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'integration-test', version: '1' } } })
+  assert.equal(init.status, 200)
+  assert.equal((await request('notifications/initialized')).status, 202)
+  const listed = await (await request('tools/list', { id: 2 })).json()
+  assert.equal(listed.result.tools.some(tool => tool.name === 'use_figma'), true)
+  assert.equal(listed.result.tools.some(tool => tool.name === 'open_document'), false)
+  const open = await (await request('tools/call', { id: 3, params: {
+    name: 'open_document',
+    arguments: { rootHandle: 'root', documentHandle: 'design', mutationId: 'open-1' },
+  } })).json()
+  assert.deepEqual(open.error, { code: -32602, message: 'Unknown tool name' })
+  assert.deepEqual(host.requests.map(entry => entry.method), ['capabilities'])
 })

@@ -160,6 +160,7 @@ test('registered plugin bridge receives source and the facade does not eval it',
 
 test('read-only scope rejects writes before calling the Design API', async () => {
   const { api, calls } = facade({}, { scope: 'read' })
+  assert.deepEqual(api.listTools().map(tool => tool.name), ['get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets'])
   const write = await api.callTool('use_figma', { description: 'Edit', operations: [{ op: 'delete', nodeId: 'a' }] }, {})
   const open = await api.callTool('open_document', { rootHandle: 'root', documentHandle: 'doc', mutationId: 'open-1' }, {})
   assert.equal(write.error.code, 'read_only')
@@ -169,6 +170,8 @@ test('read-only scope rejects writes before calling the Design API', async () =>
 
 test('open_document reports a missing workspace grant and otherwise forwards handles', async () => {
   const missing = facade({ 'document.get': () => ({}) }, { methods: METHODS.filter(name => name !== 'workspace.open') })
+  assert.equal(missing.api.listTools().some(tool => tool.name === 'use_figma'), true)
+  assert.equal(missing.api.listTools().some(tool => tool.name === 'open_document'), false)
   const unavailable = await missing.api.callTool('open_document', { rootHandle: 'root', documentHandle: 'saved', mutationId: 'open-1' }, {})
   assert.equal(unavailable.error.code, 'open_unavailable')
   assert.equal(missing.calls.length, 0)
@@ -176,7 +179,7 @@ test('open_document reports a missing workspace grant and otherwise forwards han
     'document.get': () => ({ revision: 5 }),
     'workspace.open': request => ({ handle: request.params.documentHandle, revision: 5 }),
   })
-  present.api.methodNames.add('workspace.open')
+  assert.equal(present.api.listTools().some(tool => tool.name === 'open_document'), true)
   const opened = ok(await present.api.callTool('open_document', { rootHandle: 'root', documentHandle: 'saved', mutationId: 'open-1' }, {}))
   assert.equal(opened.result.handle, 'saved')
   assert.equal(present.calls.at(-1).params.mutationId, 'open-1')
