@@ -183,6 +183,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
       const next = await openPlugin(editor, bundle, {
         command,
         signal: abort.signal,
+        onError: failed,
         systemFonts: desktop?.fonts ? {
           list: async () => { const listed = await desktop.fonts!.list(); return listed.status === 'ok' ? listed.fonts : null },
           read: async request => { const read = await desktop.fonts!.read(request); return read.status === 'ok' ? { face: read.font, data: read.data } : null },
