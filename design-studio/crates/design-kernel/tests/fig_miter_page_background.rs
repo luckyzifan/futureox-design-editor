@@ -172,6 +172,50 @@ fn page_background_keeps_opacity_and_the_off_switch() {
     assert!(bad.unwrap_err().to_string().contains("backgroundOpacity"));
 }
 
+fn pdf_text(doc: &futureox_design_kernel::scene::Document) -> String {
+    let bytes = futureox_design_kernel::pdf_export::encode_pdf_vector(
+        doc,
+        &doc.pages[0].id,
+        64.,
+        64.,
+        Some(doc.pages[0].background.as_str()),
+    )
+    .unwrap();
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+#[test]
+fn imported_page_background_alpha_reaches_the_pdf_page_fill() {
+    let half = import(canvas(json!({
+        "backgroundColor": {"r": 1, "g": 0, "b": 0, "a": 0.5},
+        "backgroundOpacity": 0.5,
+        "backgroundEnabled": true,
+    })))
+    .unwrap();
+    let off = import(canvas(json!({
+        "backgroundColor": {"r": 0, "g": 1, "b": 0, "a": 1},
+        "backgroundEnabled": false,
+    })))
+    .unwrap();
+    let plain = import(canvas(json!({}))).unwrap();
+    let half_pdf = pdf_text(&half);
+    let off_pdf = pdf_text(&off);
+    let plain_pdf = pdf_text(&plain);
+    assert!(
+        half_pdf.contains("/ca 0.25") && half_pdf.contains("1 0 0 rg"),
+        "translucent imported page fill dropped alpha:\n{half_pdf}"
+    );
+    assert!(
+        !off_pdf.contains("0 1 0 rg"),
+        "disabled imported page still paints its color:\n{off_pdf}"
+    );
+    assert!(
+        plain_pdf.contains("q 1 0 0 -1 0 64 cm\n1 1 1 rg 0 0 64 64 re f\n"),
+        "opaque default page bytes changed:\n{plain_pdf}"
+    );
+    assert!(!plain_pdf.contains("ExtGState"), "{plain_pdf}");
+}
+
 #[test]
 fn miter_limit_is_imported_and_changes_the_corner() {
     let sharp_doc = import(rect(json!(1.25))).unwrap();

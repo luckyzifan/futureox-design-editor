@@ -75,16 +75,32 @@ fn encode(
         .ok_or("Page not found")?;
     let mut pdf = Pdf::new();
     if let Some(background) = background {
-        let (rgb, _) = color(doc.color_management, background, 1.)?;
-        let _ = writeln!(
-            pdf.content,
-            "{} {} {} rg 0 0 {} {} re f",
-            num(f64::from(rgb[0]))?,
-            num(f64::from(rgb[1]))?,
-            num(f64::from(rgb[2]))?,
-            num(width)?,
-            num(height)?
-        );
+        let (rgb, alpha) = color(doc.color_management, background, 1.)?;
+        let alpha = f64::from(alpha);
+        // Alpha 1 keeps the historical one-line fill, with no ExtGState.
+        // A switched-off page is alpha 0 and must not paint its RGB. Any
+        // other alpha is isolated: later opaque paints omit /ca and would
+        // otherwise inherit this one.
+        if alpha > 0. {
+            let isolated = alpha != 1.;
+            if isolated {
+                let gs = pdf.gstate(alpha, "normal")?;
+                pdf.content.push_str("q\n");
+                emit_gs(&mut pdf.content, &gs);
+            }
+            let _ = writeln!(
+                pdf.content,
+                "{} {} {} rg 0 0 {} {} re f",
+                num(f64::from(rgb[0]))?,
+                num(f64::from(rgb[1]))?,
+                num(f64::from(rgb[2]))?,
+                num(width)?,
+                num(height)?
+            );
+            if isolated {
+                pdf.content.push_str("Q\n");
+            }
+        }
     }
     for id in &page.children {
         visit(&mut pdf, doc.color_management, fonts, doc, id, 1.)?;
@@ -1641,6 +1657,38 @@ mod tests {
         }))
         .unwrap();
         assert!(engine.export_pdf_vector(&missing).is_err());
+    }
+
+    #[test]
+    fn page_background_alpha_is_painted_and_does_not_tint_later_shapes() {
+        let mark = json!({
+            "mark": {"id":"mark","kind":"rectangle","width":8.,"height":8.,
+                     "fills":[{"kind":"solid","color":"#0000ff"}]}
+        });
+        let mut half = document(mark.clone(), &["mark"]);
+        half.pages[0].background = "color(srgb 1 0 0 / 0.25)".into();
+        let pdf = encode_pdf_vector(&half, "p", 64., 64., Some(&half.pages[0].background)).unwrap();
+        assert_xref_offsets(&pdf);
+        let text = String::from_utf8_lossy(&pdf);
+        let content = content_stream(&pdf);
+        assert_eq!(text.matches("/ca 0.25").count(), 1, "{text}");
+        let state = content.find("/GS0 gs").expect(&content);
+        let restore = content[state..].find("Q\n").expect(&content) + state;
+        let blue = content.find("0 0 1 rg").expect(&content);
+        assert!(content.contains("1 0 0 rg"), "{content}");
+        assert!(
+            blue > restore,
+            "page alpha leaked onto the opaque shape:\n{content}"
+        );
+
+        let mut off = document(mark, &["mark"]);
+        off.pages[0].background = "color(srgb 0 1 0 / 0)".into();
+        let pdf = encode_pdf_vector(&off, "p", 64., 64., Some(&off.pages[0].background)).unwrap();
+        assert_xref_offsets(&pdf);
+        let content = content_stream(&pdf);
+        assert!(!content.contains("0 1 0 rg"), "{content}");
+        assert!(content.contains("0 0 1 rg"), "{content}");
+        assert!(!content.contains("/ca "), "{content}");
     }
 
     #[test]
