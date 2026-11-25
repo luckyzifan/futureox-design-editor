@@ -66,6 +66,20 @@ node scripts/run-test.mjs -- node frontend/design-desktop/scripts/check-high-zoo
 
 临时调试时可另加 `--output="$PWD/test-results/high-zoom"`。私有对照通过参数或环境传入输入。`DESIGN_FIGMA_REFERENCES` 指向含 `cases.json` 的参考目录，`DESIGN_CACHE_FIXTURE` 指向缓存回归所需的本地作者文档 JSON。源码与历史构建有固定哈希的用例需要与之匹配的输入。
 
+真实 Sketch 和 FIG 的交互对照使用各自源码构建的桌面应用。脚本通过实际文件输入打开原件，在独立配置目录运行，记录原件哈希、窗口截图、模型几何及工作副本重开结果。
+
+```sh
+node frontend/design-desktop/scripts/build.mjs --release
+node scripts/run-test.mjs -- node frontend/design-desktop/scripts/check-real-canvas-regression.mjs \
+  --fixture=/absolute/117.sketch --layer=117
+node scripts/run-test.mjs -- node frontend/design-desktop/scripts/check-real-canvas-regression.mjs \
+  --fixture=/absolute/test.sketch --material=banner-中文
+node scripts/run-test.mjs -- node frontend/design-desktop/scripts/check-real-canvas-regression.mjs \
+  --fixture=/absolute/Figma-817-native-original.fig --layer=02_E-Commerce_Products
+```
+
+大 Sketch 使用 `--material` 指定完整画板中的一个可编辑素材。FIG 文件的导入和首帧检查使用 `--open-only`。比较不同版本时，可用 `--application` 指向相应工作树的绝对 `frontend/design-desktop` 路径，并分别保存结果到新建的 `--output` 目录。
+
 ### Figma 文字像素对照
 
 在 Figma 校准文件中运行生成脚本，用已配置的 sRGB 设置导出选中画板。保留 `KernelTextQA-*.png` 和 `KernelTextQA-*@2x.png` 文件名。准备脚本按七组 1×、2× 画板核对尺寸，并为原像素文件计算 SHA-256。[画板生成脚本](../frontend/design-client/public/fidelity/text-2026-10-09/create-in-figma.js)
