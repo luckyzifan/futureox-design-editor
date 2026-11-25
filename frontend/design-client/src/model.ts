@@ -455,6 +455,8 @@ export type TextStyle = {
   list?: TextListStyle
   /** Indent level 0–4. Absent means the first level. */
   listLevel?: number
+  /** FIG-authored list spacing, kept separately from plain paragraph spacing. */
+  listSpacing?: number
   fontId: string
   fallbacks: string[]
   weight: number
@@ -1054,6 +1056,7 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
         !['top','center','bottom'].includes(style.verticalAlign ?? 'top') ||
         !['auto', 'ltr', 'rtl'].includes(style.direction) ||
         !validTextList(style.list, style.listLevel) ||
+        (style.listSpacing !== undefined && !finite(style.listSpacing, 0, 10000)) ||
         !Array.isArray(style.fallbacks) ||
         style.fallbacks.length > 16 ||
         [style.fontId, ...style.fallbacks].some(

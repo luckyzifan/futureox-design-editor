@@ -679,7 +679,13 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       ...(mappedCap.endMarker ? { endMarker: mappedCap.endMarker } : {}),
     }))
   }
-  const effectsOf = (record: any, note?: (message: string) => void, size?: [number, number]): Effect[] => (record.effects || []).map((x: any) => {
+  const effectsOf = (record: any, note?: (message: string) => void, size?: [number, number],
+    retainedNoise?: { index: number; effect: unknown }[]): Effect[] => (record.effects || [])
+    .filter((source: any, index: number) => {
+      if (source.type !== 'NOISE' || !retainedNoise) return true
+      retainedNoise.push({ index, effect: source })
+      return false
+    }).map((x: any) => {
     const kind = (
       {
         DROP_SHADOW: 'shadow',
@@ -845,7 +851,21 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       r.rectangleBottomLeftCornerRadius ?? r.cornerRadius ?? 0,
     ]
     n.smoothing = r.cornerSmoothing || 0
-    n.effects = effectsOf(r, message => figNote(receipts, n.id, message), [n.width, n.height])
+    const noise: { index: number; effect: unknown }[] = []
+    n.effects = effectsOf(r, message => figNote(receipts, n.id, message), [n.width, n.height], noise)
+    if (noise.length) {
+      const kept = receipts.get(n.id) ?? {}
+      kept.figNoiseEffects = JSON.stringify(noise)
+      receipts.set(n.id, kept)
+      figNote(receipts, n.id, 'NOISE 已保留为源元数据，未栅格化')
+      warnings.add('FIG NOISE 已保留为源元数据，未栅格化')
+    }
+    if (typeof r.scrollBehavior === 'string' && r.scrollBehavior !== 'SCROLLS') {
+      const kept = receipts.get(n.id) ?? {}
+      kept.figScrollBehavior = r.scrollBehavior
+      receipts.set(n.id, kept)
+      figNote(receipts, n.id, `scrollBehavior=${r.scrollBehavior} 已保留为源元数据`)
+    }
     for (const x of r.effects || []) {
       if (x?.blendMode && x.blendMode !== 'NORMAL') {
         figNote(receipts, n.id, `effectBlendMode=${x.blendMode}`)
@@ -906,6 +926,8 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
         wrap: r.textAutoResize !== 'WIDTH_AND_HEIGHT',
         paragraphSpacing: r.paragraphSpacing || 0,
         paragraphIndent: r.paragraphIndent || 0,
+        ...(Number.isFinite(r.listSpacing) && r.listSpacing >= 0 && r.listSpacing <= 10000
+          ? { listSpacing: r.listSpacing } : {}),
         align:
           r.textAlignHorizontal === 'CENTER'
             ? 'center'

@@ -1137,7 +1137,8 @@ fn has_fig_automatic_line_height(change: &Value, size: f64) -> bool {
     let height = &change["lineHeight"];
     if str_of(height, "units") != Some("PERCENT") || height["value"].as_f64() != Some(100.)
         || !matches!(str_of(change, "textAutoResize"), Some("WIDTH_AND_HEIGHT" | "HEIGHT"))
-        || change["textData"]["styleOverrideTable"].as_array().is_some_and(|runs| !runs.is_empty())
+        || change["textData"]["styleOverrideTable"].as_array()
+            .is_some_and(|runs| runs.iter().any(|run| run.get("lineHeight").is_some()))
     {
         return false;
     }
@@ -1156,7 +1157,8 @@ fn has_fig_automatic_line_height(change: &Value, size: f64) -> bool {
         && derived["layoutSize"]["y"].as_f64().is_some_and(|height|
             (height - lines.len() as f64 * advance).abs() < 1e-3)
         && lines.iter().enumerate().all(|(index, line)|
-            line["lineHeight"].as_f64().is_some_and(|height| (height - intrinsic).abs() < 1e-3)
+            line["lineHeight"].as_f64().is_some_and(|height|
+                (height - intrinsic).abs() < 1e-3 || (height - advance).abs() < 1e-3)
                 && line["lineY"].as_f64().is_some_and(|y| (y - index as f64 * advance).abs() < 1e-3))
 }
 
@@ -1303,8 +1305,14 @@ impl FigImporter {
 
     // Inspect nested paints/overrides as well as node fields before publishing.
     fn validate_record(&self, value: &Value) -> Result<(), Error> {
+        let retain_noise = value.get("styleType").is_none()
+            && str_of(value, "type").and_then(kind_of).is_some();
+        self.validate_record_value(value, retain_noise)
+    }
+
+    fn validate_record_value(&self, value: &Value, retain_noise: bool) -> Result<(), Error> {
         match value {
-            Value::Array(xs) => for x in xs { self.validate_record(x)?; },
+            Value::Array(xs) => for x in xs { self.validate_record_value(x, false)?; },
             Value::Object(fields) => {
                 if let Some(space) = str_of(value, "interpolationColorSpace") {
                     if space != "DEFAULT" { return Err(Error::Unsupported(format!("interpolationColorSpace={space}"))); }
@@ -1345,11 +1353,12 @@ impl FigImporter {
                 }
                 for effect in value.get("effects").and_then(Value::as_array).into_iter().flatten() {
                     let kind = str_of(effect, "type").unwrap_or("");
-                    if !matches!(kind, "DROP_SHADOW" | "INNER_SHADOW" | "FOREGROUND_BLUR" | "LAYER_BLUR" | "BACKGROUND_BLUR" | "GLASS" | "GRAIN") {
+                    if !(retain_noise && kind == "NOISE")
+                        && !matches!(kind, "DROP_SHADOW" | "INNER_SHADOW" | "FOREGROUND_BLUR" | "LAYER_BLUR" | "BACKGROUND_BLUR" | "GLASS" | "GRAIN") {
                         return Err(Error::Unsupported(format!("effectType={kind}")));
                     }
                 }
-                for field in fields.values() { self.validate_record(field)?; }
+                for field in fields.values() { self.validate_record_value(field, false)?; }
             },
             _ => {},
         }
@@ -1635,6 +1644,10 @@ impl FigImporter {
             node.export_settings = settings.into();
             if incomplete { untranslated.push("exportSettings(partial)".into()); }
         }
+        if let Some(behavior) = str_of(change, "scrollBehavior").filter(|value| *value != "SCROLLS") {
+            node.bindings.insert("figScrollBehavior".into(), behavior.into());
+            untranslated.push(format!("scrollBehavior={behavior} retained as non-executable source metadata"));
+        }
 
         // corners: per-corner radii with the scalar as fallback (TS :557-563).
         // kernel `corner_radius` is polygon/star corner rounding only
@@ -1757,7 +1770,8 @@ impl FigImporter {
             }
         }
         if let Some(effects) = change.get("effects").and_then(Value::as_array) {
-            for e in effects {
+            let mut noise = Vec::new();
+            for (index, e) in effects.iter().enumerate() {
                 let etype = str_of(e, "type").unwrap_or("");
                 // Native FOREGROUND_BLUR is the layer blur. Older kiwi schemas
                 // and the REST/plugin name LAYER_BLUR are the same kernel blur.
@@ -1769,6 +1783,10 @@ impl FigImporter {
                     "BACKGROUND_BLUR" => "background-blur",
                     "GLASS" => "glass",
                     "GRAIN" => "texture",
+                    "NOISE" => {
+                        noise.push(serde_json::json!({ "index": index, "effect": e }));
+                        continue;
+                    }
                     _ => continue,
                 };
                 let (ox, oy) = e
@@ -1831,6 +1849,11 @@ impl FigImporter {
                     color_controls: None,
                     zoom_blur: None, motion_angle: 0., motion_zoom_origin: None,
                 });
+            }
+            if !noise.is_empty() {
+                node.bindings.insert("figNoiseEffects".into(), serde_json::to_string(&noise)
+                    .map_err(|error| Error::Malformed(error.to_string()))?);
+                untranslated.push("NOISE retained as source metadata; not rendered".into());
             }
         }
 
@@ -2278,6 +2301,8 @@ impl FigImporter {
             .get("paragraphIndent")
             .and_then(Value::as_f64)
             .unwrap_or(0.);
+        style.list_spacing = change.get("listSpacing").and_then(Value::as_f64)
+            .filter(|value| (0. ..=10000.).contains(value));
         style.align = match str_of(change, "textAlignHorizontal") {
             Some("CENTER") => "center",
             Some("RIGHT") => "end",
