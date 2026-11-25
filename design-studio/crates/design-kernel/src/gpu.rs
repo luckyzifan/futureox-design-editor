@@ -536,11 +536,43 @@ struct PoseAreaJob {
     samples: bool,
 }
 
+/// An axis-aligned rectangle's interval words are a pure function of its
+/// crop-relative bounds. Curved scanlines are not: translating the absolute
+/// sample lattice by a whole device pixel can change intersection bits even
+/// when every vertex is an exact integer translation. Those programs are
+/// compiled again. Text stays out because glyph masks snap to absolute pixels.
+fn reuse_axis_aligned_rectangle(
+    programs: &mut ProgramCache,
+    doc: &Document,
+    id: &str,
+    input: ProgramShape,
+    contours: &Arc<Vec<crate::path::Contour>>,
+    device_shift: Option<(i32, i32)>,
+) -> Option<Arc<CachedProgram>> {
+    let (dx, dy) = device_shift?;
+    if doc.nodes.get(id).is_some_and(|node| node.kind == "text") { return None; }
+    if crate::coverage::rectangle(contours).is_none() { return None; }
+    let mut prior = input;
+    prior.1 = prior.1.checked_sub(dx)?;
+    prior.2 = prior.2.checked_sub(dy)?;
+    let old = programs.get_shift_source(id, &prior)?;
+    if old.rect.x != prior.1 || old.rect.y != prior.2 || old.rect.w != prior.3 || old.rect.h != prior.4 {
+        return None;
+    }
+    let rect = Rect::new(old.rect.x.checked_add(dx)?, old.rect.y.checked_add(dy)?, old.rect.w, old.rect.h);
+    if !old.same_phase(contours, rect) { return None; }
+    let shifted = Arc::new(CachedProgram::new(crate::area_program::AreaProgram { rect, data: old.data.clone() }, Some(Arc::clone(contours))));
+    programs.store(id, input, Arc::clone(&shifted), false);
+    Some(shifted)
+}
+
 /// The clipped-board drag spends most of one core inside `AreaProgram::compile_crop`.
 /// These programs are pure functions of contours that geometry preparation already
 /// owns. Build the missing ones on the otherwise idle cores, then let the
 /// existing single-threaded walk install them in painter order. A miss keeps
 /// the original compile; cancellation uses the same shared flag as tile batches.
+/// An integer device shift reuses exact rectangles first; the remaining curves
+/// still compile here, including while that shift is active.
 fn warm_pose_area_programs(
     doc: &Document,
     prepared: &HashMap<String, crate::geometry_snapshot::Prepared>,
@@ -548,6 +580,7 @@ fn warm_pose_area_programs(
     extent: Rect,
     samples: bool,
     keep_phase: bool,
+    device_shift: Option<(i32, i32)>,
 ) -> Result<(), String> {
     let mut jobs = Vec::new();
     for (id, entry) in prepared {
@@ -560,6 +593,7 @@ fn warm_pose_area_programs(
             let Ok(crop) = crate::area_program::clip_bounds(bounds, limit) else { return; };
             let shape = (slot, crop.x, crop.y, crop.w, crop.h, even_odd, samples);
             if programs.contains(id, &shape) { return; }
+            if reuse_axis_aligned_rectangle(programs, doc, id, shape, &contours, device_shift).is_some() { return; }
             jobs.push(PoseAreaJob { id: id.clone(), shape, contours, crop, even_odd, samples });
         };
         push(0, entry.fill_program_bounds, Arc::clone(&entry.fill), node.kind != "text" && node.fill_even_odd());
@@ -1989,28 +2023,10 @@ struct Compiler<'a> {
     vertices: Vec<f32>,
 }
 impl Compiler<'_> {
-    /// Reuse scanline words when this pose is an integer device translation of
-    /// the cached crop. The interval payload is stored relative to that crop,
-    /// so only the rectangle origin moves. A viewport clip that changes the
-    /// crop size or relative coverage misses and compiles again.
+    /// Reuse an axis-aligned rectangle when this pose is an integer device
+    /// translation of the cached crop. Curved programs are compiled again.
     fn shifted_program(&mut self, id: &str, input: ProgramShape, contours: &Arc<Vec<crate::path::Contour>>) -> Option<Arc<CachedProgram>> {
-        let (dx, dy) = self.device_shift?;
-        // Glyph outlines can snap to the absolute pixel lattice. Shifting a
-        // cached text program would keep the old snap. Vectors and strokes
-        // are reused only when their crop-relative coordinates are identical.
-        if self.doc.nodes.get(id).is_some_and(|node| node.kind == "text") { return None; }
-        let mut prior = input;
-        prior.1 = prior.1.checked_sub(dx)?;
-        prior.2 = prior.2.checked_sub(dy)?;
-        let old = self.programs.get_shift_source(id, &prior)?;
-        if old.rect.x != prior.1 || old.rect.y != prior.2 || old.rect.w != prior.3 || old.rect.h != prior.4 {
-            return None;
-        }
-        let rect = Rect::new(old.rect.x.checked_add(dx)?, old.rect.y.checked_add(dy)?, old.rect.w, old.rect.h);
-        if !old.same_phase(contours, rect) { return None; }
-        let shifted = Arc::new(CachedProgram::new(crate::area_program::AreaProgram { rect, data: old.data.clone() }, Some(Arc::clone(contours))));
-        self.programs.store(id, input, Arc::clone(&shifted), false);
-        Some(shifted)
+        reuse_axis_aligned_rectangle(&mut self.programs, self.doc, id, input, contours, self.device_shift)
     }
     fn area_path(
         &mut self,
@@ -3220,9 +3236,9 @@ impl Engine {
             && backdrop_outputs.is_empty() && shadow_outputs.is_empty()
             && !gaussian_regions && gaussian_reduction == 0 && !source_filter_fields;
         let keep_program_phase = cache_key.is_some() && self.source_compile_context.is_none();
-        if pose_samples && device_shift.is_none() {
+        if pose_samples {
             warm_pose_area_programs(doc, &prepared, &mut programs, extent,
-                options.raster_profile != crate::fidelity::RasterProfile::Analytic, keep_program_phase)?;
+                options.raster_profile != crate::fidelity::RasterProfile::Analytic, keep_program_phase, device_shift)?;
         }
         let mut compiler = Compiler {
             analytic_regions: analytic.map(|plan| plan.nodes),

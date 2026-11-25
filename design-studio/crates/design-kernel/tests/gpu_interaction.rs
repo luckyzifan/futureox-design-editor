@@ -84,6 +84,54 @@ fn integer_device_translation_reuses_scanline_programs_and_matches_a_fresh_scene
 }
 
 #[test]
+fn integer_step_after_a_fractional_pose_matches_a_fresh_scene() {
+    // Enough curves to take the parallel pose compile. A whole-pixel step
+    // after a fractional phase must not reuse curved scanline words.
+    let request = clipped_request();
+    let mut nodes = serde_json::Map::new();
+    let mut children = Vec::new();
+    for i in 0..60 {
+        let id = format!("shape-{i:02}");
+        children.push(id.clone());
+        let x = (i % 10) as f64 * 120.0 + 8.0;
+        let y = (i / 10) as f64 * 90.0 + 12.0;
+        if i % 3 == 0 {
+            nodes.insert(id.clone(), json!({"id":id,"kind":"rectangle","width":40,"height":24,
+                "transform":[1,0,0,1,x,y],"fills":[{"kind":"solid","color":"#c4552a"}]}));
+        } else {
+            nodes.insert(id.clone(), json!({"id":id,"kind":"ellipse","width":70,"height":36,
+                "transform":[1,0,0,1,x,y],"fills":[{"kind":"solid","color":"#315c8a"}],
+                "strokes":[{"width":1.25,"paint":{"kind":"solid","color":"#102033"}}]}));
+        }
+    }
+    nodes.insert("board".into(), json!({"id":"board","kind":"frame","width":1440,"height":1030,"clip":true,
+        "transform":[1,0,0,1,0,0],"fills":[{"kind":"solid","color":"#f4f1ea"}],"children":children}));
+    let document = json!({"schemaVersion":1,"id":"phase","name":"phase","pages":[{"id":"p","name":"Page","children":["board"],"background":"#ffffff"}],"nodes":nodes});
+    let moved = |dx: f64, dy: f64| {
+        let mut value = document.clone();
+        value["nodes"]["board"]["transform"] = json!([1.0, 0.0, 0.0, 1.0, dx, dy]);
+        value
+    };
+    let mut warm = Engine::new();
+    warm.load_document(&document.to_string()).unwrap();
+    warm.compile_gpu_packet_request(&request).unwrap();
+    let partial = futureox_design_kernel::math::Transform([1.0, 0.0, 0.0, 1.0, 0.2, 0.0]);
+    assert!(warm.apply_interaction_transforms(&[("board".into(), partial)].into_iter().collect()).unwrap());
+    let fractional = warm.compile_gpu_packet_request(&request).unwrap();
+    let mut fractional_oracle = Engine::new();
+    fractional_oracle.load_document(&moved(0.2, 0.0).to_string()).unwrap();
+    assert_eq!(fractional, fractional_oracle.compile_gpu_packet_request(&request).unwrap());
+    // 1.25 world units * zoom 1.6 = 2 device pixels. -0.625 * 1.6 = -1.
+    let step = futureox_design_kernel::math::Transform([1.0, 0.0, 0.0, 1.0, 1.45, -0.625]);
+    assert!(warm.apply_interaction_transforms(&[("board".into(), step)].into_iter().collect()).unwrap());
+    let shifted = warm.compile_gpu_packet_request(&request).unwrap();
+    assert!(warm.gpu_compile_cache_stats()["programShifts"].as_u64().unwrap_or(0) > 0, "rectangles still shift");
+    let mut fresh = Engine::new();
+    fresh.load_document(&moved(1.45, -0.625).to_string()).unwrap();
+    assert_eq!(shifted, fresh.compile_gpu_packet_request(&request).unwrap(), "integer step after a fractional pose must match an independent compile");
+}
+
+#[test]
 fn offscreen_large_effect_does_not_block_high_zoom_tiles() {
     let scene = engine().compile_gpu_request(&options(16.).to_string()).unwrap();
     assert!(scene.nodes.contains_key("near"));
