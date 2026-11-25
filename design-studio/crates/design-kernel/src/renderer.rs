@@ -550,6 +550,43 @@ struct DegradePrepared {
     map: HashMap<String, Prepared>,
 }
 
+#[derive(Clone, PartialEq, Eq)]
+struct ExactViewportKey {
+    revision: u64,
+    page: String,
+    width: u32,
+    height: u32,
+    x: u64,
+    y: u64,
+    zoom: u64,
+    profile: crate::fidelity::RasterProfile,
+    transparent: bool,
+    grid: bool,
+}
+struct ExactViewport {
+    key: ExactViewportKey,
+    bytes: Vec<u8>,
+}
+impl ExactViewportKey {
+    fn from_options(revision: u64, options: &RenderOptions) -> Option<Self> {
+        if ![options.view.x, options.view.y, options.view.zoom].iter().all(|value| value.is_finite()) {
+            return None;
+        }
+        Some(Self {
+            revision,
+            page: options.page_id.clone(),
+            width: options.width,
+            height: options.height,
+            x: options.view.x.to_bits(),
+            y: options.view.y.to_bits(),
+            zoom: options.view.zoom.to_bits(),
+            profile: options.raster_profile,
+            transparent: options.transparent,
+            grid: options.grid,
+        })
+    }
+}
+
 pub struct Engine {
     source_doc: Option<SharedDocument>,
     source_doc_bytes: Option<usize>,
@@ -616,6 +653,8 @@ pub struct Engine {
     /// Sketch-parity tiled renderer state (tile residency, instructions,
     /// caches, telemetry). Lazily created so export-only engines pay nothing.
     tiled: Option<crate::tiled_renderer::TiledRenderer>,
+    /// Last two exact analytic viewports. A repeat or a reversal copies them.
+    exact_viewports: Vec<ExactViewport>,
     /// Reused analytic pixels in front of one rigid pose. Workers clone the
     /// entries. Settled cuts are shared so a later tile can restore pixels
     /// captured while the previous frame was painted.
@@ -672,6 +711,7 @@ impl Engine {
             page_support: None,
             render_index: None,
             tiled: None,
+            exact_viewports: Vec::new(),
             pose_prefix: None,
             settled_cuts: Arc::new(Mutex::new(SettledCuts::default())),
         }
@@ -2034,10 +2074,31 @@ impl Engine {
             Err(last_error)
         }
     }
-    /// Byte display. An integer camera on an exact zoom bucket reuses
-    /// world-anchored tiles in the display profiles. Export profiles and
-    /// screen-anchored checkerboards keep their exact viewport sampling.
+    /// Byte display. An integer analytic camera used to rebuild world tiles
+    /// even when a pan missed most of them. On real 117.sketch that cold batch
+    /// took about twice one exact viewport and disagreed with it by one
+    /// channel. The exact viewport is the frame. The previous two cameras stay
+    /// cached, so a repeat or a reversal does not draw again. Figma subpixel
+    /// keeps the tiled batch. Export profiles and screen-anchored checkerboards
+    /// keep their own sampling. Analytic pressure falls through to that batch.
     pub(crate) fn render_exact(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
+        if self.integer_bucket_residency(options)
+            && options.raster_profile == crate::fidelity::RasterProfile::Analytic
+        {
+            if let Some(bytes) = self.recall_exact_viewport(options) {
+                return Ok(bytes);
+            }
+            match self.render_unretained(options) {
+                Ok(bytes) => {
+                    self.remember_exact_viewport(options, &bytes);
+                    return Ok(bytes);
+                }
+                Err(error)
+                    if error == crate::export::BACKDROP_PADDING_BUDGET_ERROR
+                        || display_pressure(&error) => {}
+                Err(error) => return Err(error),
+            }
+        }
         if self.integer_bucket_residency(options) {
             match self.render_tiled_frame(options, None) {
                 Ok(frame) => return Ok(frame.rgba),
@@ -2049,6 +2110,22 @@ impl Engine {
             }
         }
         self.render_unretained(options)
+    }
+    fn recall_exact_viewport(&self, options: &RenderOptions) -> Option<Vec<u8>> {
+        let key = ExactViewportKey::from_options(self.content_revision(), options)?;
+        self.exact_viewports.iter().rev().find(|frame| frame.key == key).map(|frame| frame.bytes.clone())
+    }
+    fn remember_exact_viewport(&mut self, options: &RenderOptions, bytes: &[u8]) {
+        let Some(key) = ExactViewportKey::from_options(self.content_revision(), options) else { return };
+        let expected = (options.width as usize).saturating_mul(options.height as usize).saturating_mul(4);
+        if bytes.len() != expected || expected == 0 || expected > 8_388_608 * 4 { return; }
+        if let Some(slot) = self.exact_viewports.iter_mut().find(|frame| frame.key == key) {
+            slot.bytes.clear();
+            slot.bytes.extend_from_slice(bytes);
+            return;
+        }
+        if self.exact_viewports.len() == 2 { self.exact_viewports.remove(0); }
+        self.exact_viewports.push(ExactViewport { key, bytes: bytes.to_vec() });
     }
     fn integer_bucket_residency(&self, options: &RenderOptions) -> bool {
         // File-backed image rows share an in-flight read budget. Keep their
@@ -3327,6 +3404,7 @@ impl Engine {
             page_support: None,
             render_index: self.render_index.clone(),
             tiled: None,
+            exact_viewports: Vec::new(),
             pose_prefix: self.pose_prefix.clone(),
             settled_cuts: Arc::clone(&self.settled_cuts),
         }

@@ -1144,8 +1144,9 @@ fn continuous_zoom_stage_costs_keep_parallel_pixels() {
     }
 }
 
-/// Integer bucket cameras on the display entry reuse world tiles. The
-/// unretained renderer is the oracle, including after a fill edit.
+/// Integer analytic cameras paint the exact viewport. A repeated camera,
+/// including a reversal, copies that frame. The unretained renderer is the
+/// oracle, including after a fill edit.
 #[test]
 fn integer_bucket_display_matches_unretained_and_skips_a_full_repaint() {
     use futureox_design_kernel::editing::DocumentPatch;
@@ -1161,33 +1162,19 @@ fn integer_bucket_display_matches_unretained_and_skips_a_full_repaint() {
         View { x: -40., y: -8., zoom: 1. },
         View { x: -40., y: -32., zoom: 1. },
     ];
-    let mut cold = 0u64;
-    let mut previous = 0u64;
-    for (index, view) in views.into_iter().enumerate() {
+    let first = frame(views[0], 640, 480);
+    let shown = retained.render(&first).unwrap();
+    assert_eq!(shown, oracle.render_unretained(&first).unwrap(), "pan 0");
+    assert_eq!(retained.render(&first).unwrap(), shown, "the same camera is the retained frame");
+    for (index, view) in views.into_iter().enumerate().skip(1) {
         let options = frame(view, 640, 480);
         assert_eq!(
             retained.render(&options).unwrap(),
             oracle.render_unretained(&options).unwrap(),
             "pan {index}"
         );
-        let rasters = retained
-            .tiled_renderer()
-            .unwrap()
-            .telemetry()
-            .report_statistics()
-            .rasterisation_count;
-        if index == 0 {
-            assert!(rasters >= 1, "the cold frame must rasterise");
-            cold = rasters;
-        } else {
-            assert!(
-                rasters - previous < cold,
-                "pan {index} rasterised {} tiles after a cold frame of {cold}",
-                rasters - previous
-            );
-        }
-        previous = rasters;
     }
+    assert_eq!(retained.render(&first).unwrap(), shown, "panning back restores the retained frame");
 
     for zoom in [0.5, 2.0] {
         let options = frame(View { x: -8., y: -4., zoom }, 320, 240);
@@ -1358,4 +1345,44 @@ fn clipped_frame_translation_matches_fresh_pixels() {
             "repaint pixels {delta}"
         );
     }
+}
+
+#[test]
+fn integer_pan_uses_the_exact_viewport_and_keeps_the_two_recent_cameras() {
+    let doc = json!({
+        "schemaVersion": 1, "id": "d", "name": "pan",
+        "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["a", "b"]}],
+        "nodes": {
+            "a": {"id": "a", "kind": "rectangle", "transform": [1, 0, 0, 1, 40., 30.],
+                "width": 220., "height": 140., "fills": [{"kind": "solid", "color": "#3366aa"}]},
+            "b": {"id": "b", "kind": "rectangle", "transform": [1, 0, 0, 1, 420., 260.],
+                "width": 180., "height": 90., "fills": [{"kind": "solid", "color": "#cc6633"}],
+                "effects": [{"kind": "shadow", "x": 4., "y": 3., "radius": 6., "color": "#000000", "opacity": 0.4}]}
+        }
+    }).to_string();
+    let frame = |x: f64| serde_json::from_value::<RenderOptions>(json!({
+        "pageId": "p", "width": 640, "height": 480,
+        "view": { "x": x, "y": -24., "zoom": 1. },
+        "transparent": false, "grid": false, "rasterProfile": "analytic"
+    })).unwrap();
+    let mut engine = Engine::new();
+    engine.load_document(&doc).unwrap();
+    let mut oracle = Engine::new();
+    oracle.load_document(&doc).unwrap();
+    let first = frame(0.);
+    let shown = engine.render(&first).unwrap();
+    assert_eq!(shown, oracle.render_unretained(&first).unwrap());
+    assert_eq!(engine.render(&first).unwrap(), shown);
+    let panned = frame(-96.);
+    let moved = engine.render(&panned).unwrap();
+    assert_eq!(moved, oracle.render_unretained(&panned).unwrap());
+    assert_ne!(moved, shown);
+    assert_eq!(engine.render(&first).unwrap(), shown);
+    let mut subpixel = first.clone();
+    subpixel.raster_profile = futureox_design_kernel::fidelity::RasterProfile::FigmaSubpixel;
+    let mut sub = Engine::new();
+    sub.load_document(&doc).unwrap();
+    let shown = sub.render(&subpixel).unwrap();
+    let tiled = sub.render_tiled_frame(&subpixel, None).unwrap();
+    assert_eq!(shown, tiled.rgba);
 }
