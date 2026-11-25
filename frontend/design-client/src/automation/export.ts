@@ -572,9 +572,10 @@ export function exportDesignSvg(document: DesignDocument, input: CodeExportOptio
   return output
 }
 
-export const PREVIEW_LIMITS = Object.freeze({ pixels: EXPORT_LIMITS.previewPixels, maxSide: 16384, responseBytes: EXPORT_LIMITS.bytes, envelopeBytes: 64 * 1024, nodeIds: 256, minScale: 0.1, maxScale: 4 })
-export type PreviewOptions = Pick<ContextOptions, 'pageId' | 'nodeIds'> & { format?: 'png' | 'jpeg' | 'webp'; scale?: number; signal?: AbortSignal }
-type ProductRegionFormat = NonNullable<PreviewOptions['format']> | 'pdf'
+export const PREVIEW_LIMITS = Object.freeze({ pixels: EXPORT_LIMITS.previewPixels, maxSide: 16384, responseBytes: EXPORT_LIMITS.bytes, envelopeBytes: 64 * 1024, nodeIds: 256, minScale: 0.01, maxScale: 4 })
+export const PREVIEW_FORMATS = ['png', 'jpeg', 'webp', 'pdf'] as const
+type ProductRegionFormat = typeof PREVIEW_FORMATS[number]
+export type PreviewOptions = Pick<ContextOptions, 'pageId' | 'nodeIds'> & { format?: ProductRegionFormat; scale?: number; signal?: AbortSignal }
 type ProductRegionOptions = Omit<PreviewOptions, 'format'>
 
 /** Actual product CPU raster export, not the displayed GPU canvas or app chrome.
@@ -583,7 +584,8 @@ async function renderProductRegion(document: DesignDocument, options: ProductReg
   options.signal?.throwIfAborted()
   const selection = contextEntries(document, { ...options, maxDepth: 0 })
   const scale = options.scale ?? 1
-  if (typeof scale !== 'number' || !Number.isFinite(scale) || scale < PREVIEW_LIMITS.minScale || scale > PREVIEW_LIMITS.maxScale) throw new AutomationError('invalid_params', 'Preview scale must be between 0.1 and 4')
+  if (typeof scale !== 'number' || !Number.isFinite(scale) || scale < PREVIEW_LIMITS.minScale || scale > PREVIEW_LIMITS.maxScale)
+    throw new AutomationError('invalid_params', `Preview scale must be between ${PREVIEW_LIMITS.minScale} and ${PREVIEW_LIMITS.maxScale}`)
   if (options.nodeIds && options.nodeIds.length > PREVIEW_LIMITS.nodeIds) throw new AutomationError('invalid_params', 'Preview supports at most 256 node ids')
   const { exportImage, rasterExportBounds } = await import('../export')
   options.signal?.throwIfAborted()
@@ -616,7 +618,7 @@ export async function capturePluginRegion(document: DesignDocument, options: Pro
 export async function captureDesignPreview(document: DesignDocument, options: PreviewOptions = {}) {
   options.signal?.throwIfAborted()
   const format = options.format ?? 'png'
-  if (!['png', 'jpeg', 'webp'].includes(format)) throw new AutomationError('invalid_params', 'Preview format must be png, jpeg or webp')
+  if (!PREVIEW_FORMATS.includes(format)) throw new AutomationError('invalid_params', 'Preview format must be png, jpeg, webp or pdf')
   const { selection, target, bounds, scale, width, height, result } = await renderProductRegion(document, options, format)
   // The transport carries base64, not raw binary. Reserve envelope/ID metadata
   // before reading or expanding the Blob, then check the exact serialized result.
@@ -628,12 +630,65 @@ export async function captureDesignPreview(document: DesignDocument, options: Pr
     target: target.kind, bounds, mimeType: result.blob.type, name: result.name, bytes: bytes.byteLength,
     dataUrl: `data:${result.blob.type};base64,${bytesToBase64(bytes)}`, width, height, scale,
     backend: result.backend, renderer: 'product-cpu-export', screenshot: false,
-    warnings: [{ code: 'CPU_EXPORT_PREVIEW', message: 'Product CPU raster export of design content. Does not capture app chrome, selection overlays or the displayed GPU canvas; GPU/display pixel equivalence is not asserted.' }] as DesignAutomationWarning[],
+    warnings: [{ code: 'CPU_EXPORT_PREVIEW', message: format === 'pdf'
+      ? 'Bitmap PDF from the product CPU export. Its embedded raster represents the selected design content.'
+      : 'Product CPU raster export of design content. Does not capture app chrome, selection overlays or the displayed GPU canvas; GPU/display pixel equivalence is not asserted.' }] as DesignAutomationWarning[],
   }
   if (new TextEncoder().encode(JSON.stringify(preview)).byteLength > PREVIEW_LIMITS.responseBytes - PREVIEW_LIMITS.envelopeBytes) throw new AutomationError('response_limit', 'Preview metadata and encoded pixels exceed the transport budget; lower scale or narrow the selection')
   options.signal?.throwIfAborted()
   return preview
 }
+
+const EMBEDDED_SOURCE_LIMITS = Object.freeze({ images: 20, depth: 64, bytes: EXPORT_LIMITS.bytes - PREVIEW_LIMITS.envelopeBytes })
+const imageDataPrefix = /^data:(image\/(?:png|jpeg|gif|webp));base64,/
+const validImageBase64 = /^[A-Za-z0-9+/]*={0,2}$/
+
+function matchesImageHeader(mimeType: string, base64: string): boolean {
+  try {
+    const bytes = atob(base64.slice(0, 16))
+    switch (mimeType) {
+      case 'image/png': return bytes.startsWith('\x89PNG\r\n\x1a\n')
+      case 'image/jpeg': return bytes.startsWith('\xff\xd8\xff')
+      case 'image/gif': return bytes.startsWith('GIF87a') || bytes.startsWith('GIF89a')
+      case 'image/webp': return bytes.startsWith('RIFF') && bytes.slice(8, 12) === 'WEBP'
+      default: return false
+    }
+  } catch { return false }
+}
+
+export function exportEmbeddedImages(document: DesignDocument, params: Record<string, unknown>, context: AutomationContext) {
+  const nodeIds = params.nodeIds
+  if (!Array.isArray(nodeIds) || !nodeIds.length || nodeIds.length > EMBEDDED_SOURCE_LIMITS.images ||
+      nodeIds.some(id => typeof id !== 'string' || !id.trim() || id.length > 128))
+    throw new AutomationError('invalid_params', 'Choose 1–20 local node IDs')
+  const selection = contextEntries(document, { pageId: context.pageId, nodeIds, maxDepth: EMBEDDED_SOURCE_LIMITS.depth })
+  const seen = new Set<string>()
+  const assets: Array<{ nodeId: string; mimeType: string; base64: string }> = []
+  let bytes = 0, rawImagesTruncated = Boolean(selection.omittedByDepth), unavailableImages = 0
+  source: for (const { node } of selection.entries) {
+    for (const paint of node.fills) {
+      if (paint.kind !== 'image' || paint.video || !paint.image || seen.has(paint.image)) continue
+      seen.add(paint.image)
+      const prefix = imageDataPrefix.exec(paint.image)
+      if (!prefix) { unavailableImages++; continue }
+      const encodedLength = paint.image.length - prefix[0].length
+      if (assets.length >= EMBEDDED_SOURCE_LIMITS.images || bytes + encodedLength > EMBEDDED_SOURCE_LIMITS.bytes) {
+        rawImagesTruncated = true
+        break source
+      }
+      const base64 = paint.image.slice(prefix[0].length)
+      if (encodedLength % 4 || !validImageBase64.test(base64) || !matchesImageHeader(prefix[1], base64)) {
+        unavailableImages++
+        continue
+      }
+      bytes += base64.length
+      assets.push({ nodeId: node.id, mimeType: prefix[1], base64 })
+    }
+  }
+  return { format: 'futureox.design-asset-batch.v1', pageId: selection.page.id, assets,
+    rawImagesOnly: true, rawImagesTruncated, unavailableImages, urls: false }
+}
+
 export function importDesignSvg(document: DesignDocument, params: Record<string, unknown>, context: AutomationContext) {
   const format = params.format ?? 'svg'
   if (!['svg', 'svgz'].includes(String(format))) throw new AutomationError('invalid_params', 'SVG import format must be svg or svgz')
@@ -657,6 +712,10 @@ export function importDesignSvg(document: DesignDocument, params: Record<string,
 }
 
 export const exportExtensions: AutomationExtension[] = [
+  { name: 'raster.sourceAssets', description: 'Read exact PNG, JPEG, GIF or WebP image bytes embedded in fills on the requested local subtrees. Up to 20 distinct sources, within the response byte budget. External or invalid image references are reported separately.', mutates: false,
+    inputSchema: { type: 'object', required: ['nodeIds'], additionalProperties: false,
+      properties: { nodeIds: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 128 } } } },
+    execute: exportEmbeddedImages },
   { name: 'svg.import', description: 'Append editable SVG text or bounded gzip SVGZ base64 through the shared SVG importer. Returns remapped node IDs and compatibility warnings; foreign format conversion is not native-lossless.', mutates: true,
     inputSchema: { type: 'object', properties: { format: { type: 'string', enum: ['svg', 'svgz'] }, content: { type: 'string' }, base64: { type: 'string' }, name: { type: 'string', maxLength: 200 }, pageId: { type: 'string' } }, additionalProperties: false }, execute: importDesignSvg },
 

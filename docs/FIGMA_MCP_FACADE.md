@@ -52,7 +52,7 @@ The browser page does not listen on a port and cannot host stdio. The in-app Des
 | `get_design_context` | `context.get`, `code.export` | Futureox HTML/CSS when `code.export` is available. Not Figma React + Tailwind. `clientFrameworks` is ignored. |
 | `get_screenshot` | `preview.capture` | PNG. Omitted `nodeId` uses the selection, or the active page when the selection is empty. `scale` is 0.1–4. |
 | `get_variable_defs` | `variable.list`, `style.list`, `node.get` | Local variables, their alias dependencies across modes, and shared styles on the specified node or first 20 selected nodes. An empty selection returns a bounded document catalog. |
-| `download_assets` | `preview.capture` or `vector.export` | Up to 20 local nodes as separate MCP resources. `png`, `jpeg`, `webp`, or `svg`. |
+| `download_assets` | `preview.capture`, `vector.export`, or `raster.sourceAssets` | Up to 20 local nodes as separate MCP resources. `png`, `jpeg`, `webp`, `svg`, or bitmap `pdf`. Use `rawImagesOnly` for the original embedded image sources. |
 | `use_figma` | `batch.apply` | Listed when the session can edit. One undo step for 1–40 structured operations. `description` is required. |
 | `open_document` | `workspace.open` | Listed when the session can edit and has a workspace write grant. Opens a saved local design and can end the automation session. |
 
@@ -93,7 +93,7 @@ Absent:
 Partial:
 
 - `use_figma` structured edits are real Design API batches. Plugin JavaScript is not run unless a host bridge is registered.
-- `download_assets` accepts up to 20 local node IDs. Every node in a batch uses the same editor revision, and the batch succeeds only when all resources fit the existing byte budget. Download the results through `resources/read` in the same MCP client session. PDF, original uploaded images and external temporary URLs are unavailable.
+- `download_assets` accepts up to 20 local node IDs in the active page at one editor revision. Download PNG, JPEG, WebP, SVG or bitmap PDF through `resources/read` in the same MCP client session. Render scales range from 0.01× to 4×. A separate `rawImagesOnly: true` call reads up to 20 distinct original embedded PNG, JPEG, GIF or WebP fills from the requested subtrees. Omit format and scale for originals. Truncation and unavailable sources are reported. Original bytes are delivered through the same MCP resource mechanism.
 - `get_design_context` is Futureox HTML/CSS, not Figma React + Tailwind.
 - `get_screenshot` is a CPU design-content export, not a GPU or window screenshot.
 - `fileKey` does not select another file.

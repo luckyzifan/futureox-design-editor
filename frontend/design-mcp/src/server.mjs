@@ -35,7 +35,7 @@ function validTool(tool) {
  * All design validation, transactions and actual mutations belong to that backend.
  */
 export class DesignMcpServer {
-  constructor({ backend, input = process.stdin, output = process.stdout, diagnostics = process.stderr, limits = {}, instructions, artifactCount = 16 }) {
+  constructor({ backend, input = process.stdin, output = process.stdout, diagnostics = process.stderr, limits = {}, instructions, artifactCount }) {
     if (!backend || typeof backend.listTools !== 'function' || typeof backend.callTool !== 'function') {
       throw new TypeError('A real design operation backend is required')
     }

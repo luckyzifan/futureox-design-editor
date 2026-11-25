@@ -199,3 +199,38 @@ test('IPv6 loopback publishes its own reachable URL', async t => {
   const response = await fetch(server.url)
   assert.equal(response.status, 401)
 })
+
+test('single and batched PDF exports are resource links without inline images', async t => {
+  const pdf = id => Buffer.from(`%PDF-1.4\n% ${id}\n%%EOF\n`).toString('base64')
+  const backend = new FigmaFacade({
+    methods: ['document.get', 'preview.capture'].map(name => ({ name })),
+    scope: 'read',
+    execute: async request => ({
+      ok: true, method: request.method, documentId: 'doc', session: 1, revision: 2,
+      result: request.method === 'preview.capture' && request.params.format === 'pdf'
+        ? { format: 'futureox.design-preview.v1', mimeType: 'application/pdf',
+            dataUrl: `data:application/pdf;base64,${pdf(request.params.nodeIds[0])}` } : {},
+    }),
+  })
+  const server = await startLoopbackFigmaMcp({ backend, token })
+  t.after(() => server.close())
+  const headers = await openClient(server.url)
+  let requestId = 2
+  for (const nodeIds of [['one'], ['one', 'two']]) {
+    const capture = { jsonrpc: '2.0', id: requestId++, method: 'tools/call', params: {
+      name: 'download_assets', arguments: { nodeIds, defaultFormat: 'pdf' },
+    } }
+    const result = (await (await post(server.url, capture, authorization, headers)).json()).result
+    assert.equal(result.isError, false)
+    assert.equal(result.content.some(item => item.type === 'image'), false)
+    const links = result.content.filter(item => item.type === 'resource_link')
+    assert.equal(links.length, nodeIds.length)
+    for (const [i, link] of links.entries()) {
+      assert.match(link.name, /\.pdf$/)
+      assert.equal(link.mimeType, 'application/pdf')
+      const read = { jsonrpc: '2.0', id: requestId++, method: 'resources/read', params: { uri: link.uri } }
+      const resource = await (await post(server.url, read, authorization, headers)).json()
+      assert.equal(resource.result.contents[0].blob, pdf(nodeIds[i]))
+    }
+  }
+})
