@@ -1,5 +1,6 @@
 import { createEditorDesignAutomation } from '../../automation'
 import { captureDesignPreview } from '../../automation/export'
+import type { DesignSystem } from '../../design-system'
 import { apply, bounds, worldMatrix } from '../../geometry'
 import type { Editor } from '../../engine'
 import {
@@ -1050,6 +1051,9 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return ''
   }
   function variableValue(value: unknown, kind: 'color' | 'number' | 'boolean' | 'string') {
+    if (value && typeof value === 'object' && 'type' in value && value.type === 'VARIABLE_ALIAS') {
+      return { alias: shortText('id' in value ? value.id : null, 'alias id', 128) }
+    }
     if (kind === 'color') return typeof value === 'string' ? shortText(value, 'color', 32) : figmaColorToHex(value).hex
     if (kind === 'number') return finite(value, 'value', -1e7, 1e7)
     if (kind === 'boolean') return boolean(value, 'value')
@@ -1064,8 +1068,6 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return found.modes
   }
   function variableKindOf(id: string) {
-    const pending = commands.find(command => command.type === 'variableCreate' && command.id === id)
-    if (pending?.type === 'variableCreate') return pending.kind
     return (execute('variable.get', { variableId: id }, false) as { kind: 'color' | 'number' | 'boolean' | 'string' }).kind
   }
   function collectionView(id: string) {
@@ -1083,14 +1085,18 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     const variables = execute('variable.list', { collectionId: id }, false) as { id: string }[]
     return { id, name: found.name, defaultModeId: found.defaultMode, modes: found.modes.map(name => ({ modeId: name, name })), variableIds: variables.map(item => item.id) }
   }
-  function variableView(id: string) {
-    const pending = commands.find(command => command.type === 'variableCreate' && command.id === id)
-    if (pending?.type === 'variableCreate') {
-      return { id, name: pending.name, collectionId: pending.collectionId, resolvedType: pending.kind === 'color' ? 'COLOR' : pending.kind === 'number' ? 'FLOAT' : pending.kind === 'boolean' ? 'BOOLEAN' : 'STRING' }
-    }
+  function variableView(id: string, includeValues: boolean) {
     try {
-      const record = execute('variable.get', { variableId: id }, false) as { id: string; name: string; collection: string; kind: string }
-      return { id: record.id, name: record.name, collectionId: record.collection, resolvedType: record.kind === 'color' ? 'COLOR' : record.kind === 'number' ? 'FLOAT' : record.kind === 'boolean' ? 'BOOLEAN' : 'STRING' }
+      const record = execute('variable.get', { variableId: id }, false) as DesignSystem['variables'][string] & { id: string }
+      const resolvedType = { color: 'COLOR', number: 'FLOAT', boolean: 'BOOLEAN', string: 'STRING' }[record.kind]
+      const info = { id: record.id, name: record.name, collectionId: record.collection, resolvedType }
+      if (!includeValues) return info
+      const valuesByMode = Object.fromEntries(Object.entries(record.values).map(([mode, value]) => {
+        if (typeof value === 'object') return [mode, { type: 'VARIABLE_ALIAS', id: value.alias }]
+        if (record.kind === 'color' && typeof value === 'string') return [mode, hexToFigmaColor(value)]
+        return [mode, value]
+      }))
+      return { ...info, valuesByMode }
     } catch (error) {
       if (error instanceof PluginApiError && error.message.includes('Unknown variable')) return null
       throw error
@@ -1137,6 +1143,10 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       if (op === 'log') {
         const message = String(body.message ?? '').slice(0, PLUGIN_LIMITS.logChars)
         if (logs.length < PLUGIN_LIMITS.logLines) logs.push(message)
+        return null
+      }
+      if (op === 'logClear') {
+        logs.length = 0
         return null
       }
       if (op === 'notify') {
@@ -1540,7 +1550,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       }
       if (op === 'variableRead') {
         flush()
-        return variableView(shortText(body.id, 'id', 128))
+        return variableView(shortText(body.id, 'id', 128), body.includeValues === true)
       }
       if (op === 'variableCreate') {
         const kind = variableKind(body.resolvedType)
@@ -1561,8 +1571,20 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         const id = shortText(body.id, 'id', 128)
         const mode = shortText(body.mode, 'mode', 80)
         const pending = commands.find(command => command.type === 'variableCreate' && command.id === id)
-        const value = variableValue(body.value, pending && pending.type === 'variableCreate' ? pending.kind : variableKindOf(id))
-        if (pending && pending.type === 'variableCreate') { pending.values[mode] = value; return null }
+        const value = variableValue(body.value, pending?.type === 'variableCreate' ? pending.kind : variableKindOf(id))
+        if (pending?.type === 'variableCreate') {
+          const setter = commands.find(command => command.type === 'variableSet' && command.id === id && command.mode === mode)
+          if (setter?.type === 'variableSet') {
+            setter.value = value
+            return null
+          }
+          // A target created later in the same batch must exist before its
+          // alias is checked by the shared document operation.
+          if (typeof value !== 'object') {
+            pending.values[mode] = value
+            return null
+          }
+        }
         ensureRoom()
         commands.push({ type: 'variableSet', id, mode, value })
         return null

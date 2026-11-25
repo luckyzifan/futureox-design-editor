@@ -260,6 +260,7 @@ function variableProxy(id) {
     set name(value) { host('variableRename', { id: id, name: String(value) }) },
     get resolvedType() { return host('variableRead', { id: id }).resolvedType },
     get variableCollectionId() { return host('variableRead', { id: id }).collectionId },
+    get valuesByMode() { return host('variableRead', { id: id, includeValues: true }).valuesByMode },
     setValueForMode: function (modeId, value) { host('variableSet', { id: id, mode: String(modeId), value: value }) },
     remove: function () { host('variableDelete', { id: id }) },
   }
@@ -305,7 +306,9 @@ function hexChannels(input) {
     alpha: hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1,
   }
 }
+const payments = Object.freeze({ status: Object.freeze({ type: 'NOT_SUPPORTED' }) })
 const figma = {
+  get payments() { return payments },
   mixed: Object.freeze({ kind: 'mixed' }),
   createRectangle: function () { return create('rectangle') },
   createEllipse: function () { return create('ellipse') },
@@ -484,10 +487,29 @@ const figma = {
   variables: {
     getLocalVariableCollections: function () { return host('collectionList', null).map(function (item) { return collectionProxy(item.id) }) },
     getLocalVariables: function (type) { return host('variableList', { type: type || null }).map(function (item) { return variableProxy(item.id) }) },
+    getVariableCollectionById: function (id) {
+      if (id == null) return null
+      const snap = host('collectionRead', { id: String(id) })
+      return snap ? collectionProxy(snap.id) : null
+    },
     getVariableById: function (id) {
       if (id == null) return null
       const snap = host('variableRead', { id: String(id) })
       return snap ? variableProxy(snap.id) : null
+    },
+    getLocalVariableCollectionsAsync: async function () { return figma.variables.getLocalVariableCollections() },
+    getLocalVariablesAsync: async function (type) { return figma.variables.getLocalVariables(type) },
+    getVariableCollectionByIdAsync: async function (id) { return figma.variables.getVariableCollectionById(id) },
+    getVariableByIdAsync: async function (id) { return figma.variables.getVariableById(id) },
+    createVariableAlias: function (variable) {
+      const target = figma.variables.getVariableById(variable && variable.id)
+      if (!target) throw new Error('not_found: Variable alias target does not exist')
+      return { type: 'VARIABLE_ALIAS', id: target.id }
+    },
+    createVariableAliasByIdAsync: async function (id) {
+      const target = figma.variables.getVariableById(id)
+      if (!target) throw new Error('not_found: Variable alias target does not exist')
+      return { type: 'VARIABLE_ALIAS', id: target.id }
     },
     createVariableCollection: function (name) { return collectionProxy(host('collectionCreate', { name: String(name) }).id) },
     createVariable: function (name, collection, resolvedType) {
@@ -551,8 +573,11 @@ globalThis.__deliverPluginEvent = function (type) {
 globalThis.figma = figma
 globalThis.console = {
   log: function () { host('log', { level: 'log', message: Array.prototype.join.call(arguments, ' ') }) },
+  info: function () { host('log', { level: 'info', message: Array.prototype.join.call(arguments, ' ') }) },
+  debug: function () { host('log', { level: 'debug', message: Array.prototype.join.call(arguments, ' ') }) },
   warn: function () { host('log', { level: 'warn', message: Array.prototype.join.call(arguments, ' ') }) },
   error: function () { host('log', { level: 'error', message: Array.prototype.join.call(arguments, ' ') }) },
+  clear: function () { host('logClear', null) },
 }
 const fetchWaiters = {}
 const exportWaiters = {}

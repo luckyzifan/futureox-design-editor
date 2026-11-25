@@ -60,7 +60,7 @@ Behavior follows the [Figma Plugin API](https://www.figma.com/plugin-docs/api/ap
 
 ## Still blocked
 
-These calls still throw or are absent: `createImageAsync`, vector networks, PNG/JPG/PDF `exportAsync`, remote variable libraries and variable aliases, `importStyleByKeyAsync`, payments, parameters, codegen, annotations, rich text ranges, reactions, relaunch buttons, `strokeStyleId`, UI-frame network, positive `setTimeout`, and `setInterval`. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. `documentchange` does not list the changed nodes. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
+These calls still throw or are absent: `createImageAsync`, vector networks, PNG/JPG/PDF `exportAsync`, remote variable libraries, `importStyleByKeyAsync`, payment transactions, parameters, codegen, annotations, rich text ranges, reactions, relaunch buttons, `strokeStyleId`, UI-frame network, positive `setTimeout`, and `setInterval`. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. `documentchange` does not list the changed nodes. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
 
 ## API coverage
 
@@ -184,9 +184,9 @@ These calls still throw or are absent: `createImageAsync`, vector networks, PNG/
 | `figma.viewport.center` | partial | Get and set the world point at the camera origin (top-left). The host does not know the canvas size, so this is not the visual center. |
 | `figma.viewport.scrollAndZoomIntoView` | partial | Asks the editor to reveal the nodes. It does not change zoom. |
 | `figma.clientStorage` | supported | getAsync, setAsync, keysAsync, and deleteAsync. JSON values, undefined, and Uint8Array. 5 MB per plugin by the official size rule, with a host ceiling of 10000 keys. Stored in this client and not undone with the canvas. |
-| `figma.variables` | partial | Local collections and COLOR, FLOAT, STRING, and BOOLEAN variables. Mode ids are mode names. setValueForMode and setBoundVariable for width, height, opacity, characters, visible, fontSize, and itemSpacing. No remote libraries. |
+| `figma.variables` | partial | Local collections and COLOR, FLOAT, STRING, and BOOLEAN variables, synchronous and asynchronous lookups, and typed local aliases. Mode ids are mode names. setBoundVariable supports width, height, opacity, characters, visible, fontSize, and itemSpacing. Remote libraries are unavailable. |
 | `figma.teamLibrary` | unsupported | Absent. There is no team library or cloud account. |
-| `figma.payments` | unsupported | Absent. |
+| `figma.payments` | partial | Read-only status is NOT_SUPPORTED. Commerce is unavailable. |
 | `figma.parameters` | unsupported | Absent. Parameter UI is not collected. |
 | `figma.codegen` | unsupported | Absent. |
 | `figma.annotations` | unsupported | Absent. |

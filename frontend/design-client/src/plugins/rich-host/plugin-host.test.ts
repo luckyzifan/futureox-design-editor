@@ -470,6 +470,18 @@ describe('Figma plugin host', () => {
     run.close()
   })
 
+  it('clears the plugin console and reports the offline payment status', async () => {
+    const run = await openPlugin(editor(), bundle('Offline', `
+      console.log('cleared')
+      console.clear()
+      console.info('active')
+      console.debug('offline')
+      if (figma.payments.status.type !== 'NOT_SUPPORTED') throw new Error('payment status')
+    `))
+    expect(run.logs).toEqual(['active', 'offline'])
+    run.close()
+  })
+
   it('runs a zero-delay timer and rejects fetch', async () => {
     const current = editor()
     const run = await openPlugin(current, bundle('Later', `
@@ -626,6 +638,48 @@ describe('Figma plugin host', () => {
     const variable = current.state.doc.designSystem?.variables[rect!.bindings!.width]
     expect(variable).toMatchObject({ name: 'Gap', kind: 'number', values: { 'Mode 1': 12 } })
     run.close()
+  })
+
+  it('looks up variables asynchronously and round-trips their local aliases', async () => {
+    const current = editor()
+    const run = await openPlugin(current, bundle('Aliases', `
+      ;(async function () {
+        const vars = figma.variables
+        const collection = vars.createVariableCollection('Palette')
+        const alias = vars.createVariable('Accent', collection, 'COLOR')
+        const base = vars.createVariable('Base', collection, 'COLOR')
+        const mode = collection.defaultModeId
+        base.setValueForMode(mode, { r: 1, g: 0, b: 0 })
+        alias.setValueForMode(mode, vars.createVariableAlias(base))
+        const stored = alias.valuesByMode[mode]
+        if (stored.type !== 'VARIABLE_ALIAS' || stored.id !== base.id) throw new Error('alias')
+        if (base.valuesByMode[mode].r !== 1) throw new Error('color')
+        const reference = await vars.createVariableAliasByIdAsync(base.id)
+        if (reference.id !== base.id) throw new Error('async alias')
+        const collections = await vars.getLocalVariableCollectionsAsync()
+        if (collections.length !== 1 || collections[0].id !== collection.id) throw new Error('collections')
+        if ((await vars.getVariableCollectionByIdAsync(collection.id)).id !== collection.id) throw new Error('collection')
+        if ((await vars.getLocalVariablesAsync('COLOR')).length !== 2) throw new Error('variables')
+        if ((await vars.getVariableByIdAsync(alias.id)).name !== 'Accent') throw new Error('variable')
+        if (await vars.getVariableByIdAsync('missing') !== null) throw new Error('missing variable')
+      })()
+    `))
+    const [baseId] = Object.entries(current.state.doc.designSystem!.variables).find(([, variable]) => variable.name === 'Base')!
+    expect(Object.values(current.state.doc.designSystem!.variables).find(variable => variable.name === 'Accent')?.values).toEqual({ 'Mode 1': { alias: baseId } })
+    run.close()
+  })
+
+  it('rejects cyclic local variable aliases through the document validator', async () => {
+    const current = editor()
+    await expect(openPlugin(current, bundle('Cycle', `
+      const vars = figma.variables
+      const collection = vars.createVariableCollection('Sizes')
+      const first = vars.createVariable('First', collection, 'FLOAT')
+      const second = vars.createVariable('Second', collection, 'FLOAT')
+      first.setValueForMode('Mode 1', { type: 'VARIABLE_ALIAS', id: second.id })
+      second.setValueForMode('Mode 1', { type: 'VARIABLE_ALIAS', id: first.id })
+    `))).rejects.toThrow(/Variable alias cycle/)
+    expect(current.state.doc.designSystem).toBeUndefined()
   })
 
   it('fetches only declared https origins and refuses private hosts', async () => {
