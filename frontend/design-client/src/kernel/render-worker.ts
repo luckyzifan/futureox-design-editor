@@ -780,7 +780,7 @@ const terminalTransport = session.native && !session.affine && ownsSelection && 
           isBitmapPoseLayer(session.baseDocument.nodes[ids[0]])
         // A native absolute pose can replace queued work while the previous
         // accepted viewport remains visible. Submitted GPU work still fences.
-terminalMaySupersede ||= fullNativeAffine || viewportPatch || clippedTranslation
+terminalMaySupersede ||= fullNativePose || viewportPatch || clippedTranslation
         const window={x,y,w:right-x,h:bottom-y}
         const displayGeometry=displayFrame?[displayFrame.view.x,displayFrame.view.y,displayFrame.view.zoom,
           displayFrame.width,displayFrame.height,displayFrame.dpr]:undefined
@@ -878,14 +878,15 @@ const motion = advance.motion
             } finally {
               if (motion) prioritizeTerminalPose = undefined
             }
-            if(!prepared?.packet){rebasePose(pose);break}
+            if(!prepared?.packet){
+              if(advance.mutated)await restoreAdvance(advance)
+              advance=undefined
+            }
             if(!current())continue
             if(prepared?.packet){
               packet=prepared.packet.consume()
               poseCompileMs=prepared.compileMs
               preparedDuringRaster=true
-            }else if(advance.mutated){
-              rebasePose(pose);break
             }
             advance=undefined
           }
