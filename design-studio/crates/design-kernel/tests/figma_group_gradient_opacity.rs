@@ -1,7 +1,7 @@
 //! Isolating group opacity around an opaque measured linear gradient.
 //! The Chrome phase control is the oracle: quantize the gradient, scale the
 //! bytes, then source-over. The frozen PNG is not rewritten.
-use futureox_design_kernel::{Engine, RenderOptions};
+use futureox_design_kernel::{Engine, RenderOptions, fidelity::RasterProfile, math::Rect};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
@@ -44,19 +44,16 @@ fn srgb(rgba: [f64; 4]) -> String {
     )
 }
 
-fn render(document: &Value, width: u32, height: u32) -> Vec<u8> {
-    let mut engine = Engine::new();
-    engine.load_document(&document.to_string()).unwrap();
-    let options: RenderOptions = serde_json::from_value(json!({
+fn phase_options(width: u32, height: u32, profile: RasterProfile) -> RenderOptions {
+    serde_json::from_value(json!({
         "pageId": "p",
         "width": width,
         "height": height,
         "view": {"x": 0, "y": 0, "zoom": 1},
         "transparent": false,
-        "rasterProfile": "figma"
+        "rasterProfile": profile
     }))
-    .unwrap();
-    engine.render(&options).unwrap()
+    .unwrap()
 }
 
 fn stops(node: &Value) -> ([f64; 4], [f64; 4]) {
@@ -158,7 +155,7 @@ fn phase_document(record: &Value) -> (u32, u32, Value) {
 }
 
 #[test]
-fn isolating_group_opacity_matches_the_official_phase_png() {
+fn measured_gradients_match_the_official_phase_png_in_both_export_profiles() {
     let root = repo();
     let fixture: Value = serde_json::from_slice(
         &std::fs::read(root.join("testing/fixtures/design/figma-phase-controls-2026-10-08.json")).unwrap(),
@@ -178,9 +175,51 @@ fn isolating_group_opacity_matches_the_official_phase_png() {
         let image = image::load_from_memory(&png).unwrap().into_rgba8();
         let (width, height, document) = phase_document(record);
         assert_eq!(image.dimensions(), (width, height));
-        let actual = render(&document, width, height);
-        let (pixels, max) = gap(&actual, image.as_raw());
-        assert_eq!((pixels, max), (0, 0), "{name}");
+        let mut engine = Engine::new();
+        engine.load_document(&document.to_string()).unwrap();
+        for profile in [RasterProfile::Figma, RasterProfile::FigmaSoftware] {
+            let options = phase_options(width, height, profile);
+            let actual = engine.render(&options).unwrap();
+            assert_eq!(gap(&actual, image.as_raw()), (0, 0), "{name} {profile:?}");
+            let scene = engine.compile_gpu(&options).unwrap();
+            assert!(!scene.software_raster, "{name} {profile:?}");
+            let region = Rect::new(4, 3, width.min(128), height.min(128));
+            let scene = engine.compile_gpu_region(&options, region, None).unwrap();
+            assert!(!scene.software_raster, "{name} {profile:?} region");
+        }
+    }
+}
+
+#[test]
+fn translucent_gradient_and_fractional_camera_keep_software_arithmetic() {
+    let path = repo().join("testing/fixtures/design/figma-phase-controls-2026-10-08.json");
+    let fixture: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let (width, height, mut document) = phase_document(&fixture["records"][0]);
+    let mut options = phase_options(width, height, RasterProfile::FigmaSoftware);
+    let mut engine = Engine::new();
+    engine.load_document(&document.to_string()).unwrap();
+    options.view.x = 0.25;
+    assert!(engine.compile_gpu(&options).unwrap().software_raster);
+    options.view.x = 0.;
+    document["nodes"]["a"]["fills"][0]["opacity"] = json!(0.75);
+    engine.load_document(&document.to_string()).unwrap();
+    assert!(engine.compile_gpu(&options).unwrap().software_raster);
+}
+
+#[test]
+fn group_opacity_below_binary32_normal_range_keeps_software_arithmetic() {
+    let path = repo().join("testing/fixtures/design/figma-phase-controls-2026-10-08.json");
+    let fixture: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let isolated = fixture["records"].as_array().unwrap()
+        .iter().find(|record| record["name"] == "PhaseQA-isolated-282x270").unwrap();
+    let (width, height, mut document) = phase_document(isolated);
+    let mut engine = Engine::new();
+    let options = phase_options(width, height, RasterProfile::FigmaSoftware);
+    for opacity in [1e-50_f64, 1e-40] {
+        document["nodes"]["g"]["opacity"] = json!(opacity);
+        engine.load_document(&document.to_string()).unwrap();
+        assert!(engine.compile_gpu(&options).unwrap().software_raster);
+        assert!(engine.render(&options).unwrap().iter().all(|byte| *byte == 255));
     }
 }
 

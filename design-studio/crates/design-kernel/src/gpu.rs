@@ -2600,7 +2600,7 @@ impl Engine {
             return Ok(scene);
         }
         if options.raster_profile.is_export() {
-            let source = crate::fidelity::source(options, 0, 0, options.width, options.height)?;
+            let source = self.export_source(options, options.width, options.height)?;
             let mut scene = self.compile_gpu_scene(&source, None, None, false, false, false,0,false,false)?;
             scene.resolve = Some(crate::preview::Presentation {
                 width: options.width,
@@ -2608,7 +2608,7 @@ impl Engine {
                 offset_x: 0.,
                 offset_y: 0.,
                 scale: 0.5,
-                software_color_coverage: self.allows_software_color_coverage(options),
+                software_color_coverage: source.raster_profile.is_software() && self.allows_software_color_coverage(options),
             });
             for n in scene.nodes.values_mut() {
                 n.fill.analytic_rect = None;
@@ -2656,7 +2656,7 @@ impl Engine {
         cropped.width = region.w;
         cropped.height = region.h;
         let mut scene = if options.raster_profile.is_export() {
-            let source = crate::fidelity::source(&cropped, 0, 0, region.w, region.h)?;
+            let source = self.export_source(&cropped, region.w, region.h)?;
             let source_region = Rect::new(region.x * 2, region.y * 2, region.w * 2, region.h * 2);
             let source_prepare = prepare.map(|r| Rect::new(r.x * 2, r.y * 2, r.w * 2, r.h * 2));
             let mut scene = self.compile_gpu_scene(&source, Some(source_region), source_prepare, painter_support, capture_reads, false,0,false,false)?;
@@ -2666,7 +2666,7 @@ impl Engine {
                 offset_x: 0.,
                 offset_y: 0.,
                 scale: 0.5,
-                software_color_coverage: self.allows_software_color_coverage(options),
+                software_color_coverage: source.raster_profile.is_software() && self.allows_software_color_coverage(options),
             });
             scene
         } else {

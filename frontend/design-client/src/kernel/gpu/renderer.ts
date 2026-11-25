@@ -2043,6 +2043,19 @@ export class GpuRenderer {
     if (!required || this.workingBytes + required <= this.frameBudget) return
     return this.reclaimScratch(required).then(() => this.checkFrameCurrent())
   }
+  private measuredGradientOver(
+    n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, sample: number, postByteOpacity = 0,
+  ): Surface {
+    const lookup = this.figmaGradientLookup(paint)
+    const field = this.figmaGradientField(n, paint, sample)
+    const out = this.run(42, dst.rect, [dst, mask, lookup, field], (u) => {
+      u[32] = paint.opacity
+      u[33] = postByteOpacity
+      u.set([n.rect.x, n.rect.y, n.rect.w, n.rect.h], 52)
+    })
+    this.release(dst)
+    return out
+  }
   private paintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip?: Surface): Surface
   private paintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip: Surface | undefined, admitMerge: true, compactTarget?: boolean, skipGradientFusion?:boolean): Surface | Promise<Surface>
   private paintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip?: Surface, admitMerge = false, compactTarget = false, skipGradientFusion=false): Surface | Promise<Surface> {
@@ -2093,14 +2106,7 @@ export class GpuRenderer {
       paint.blend === 'normal' &&
       this.sampleIndex !== undefined
     ) {
-      const lookup = this.figmaGradientLookup(paint)
-      const field = this.figmaGradientField(n, paint, this.sampleIndex)
-      const out = this.run(42, dst.rect, [dst, mask, lookup, field], (u) => {
-        u[32] = paint.opacity
-        u.set([n.rect.x, n.rect.y, n.rect.w, n.rect.h], 52)
-      })
-      this.release(dst)
-      return out
+      return this.measuredGradientOver(n, paint, mask, dst, this.sampleIndex)
     }
     const compose = (source: Surface): Surface | Promise<Surface> => {
       try { this.checkFrameCurrent() }
@@ -5068,6 +5074,53 @@ export class GpuRenderer {
           else this.retireLeafMasks(n, undefined, clip, targets)
         }
         if (invariantCoverage) this.retireLeafMasks(n, undefined, clip, targets)
+        continue
+      }
+      // Quantize a measured gradient before applying its isolating frame's
+      // opacity, then blend it over the destination once.
+      const gradientNode = this.scene.resolve && !this.scene.softwareRaster && !this.driver.managed &&
+        n.clip && !maskId && !n.mask && !n.passthrough && n.blend === 'normal' &&
+        Math.fround(n.opacity) >= 2 ** -126 && n.opacity < 1 &&
+        !n.effects.length && !n.strokes.length && !n.fills.length && n.children.length === 1
+        ? this.scene.nodes[n.children[0]] : undefined
+      const gradient = gradientNode?.fills[0]
+      const groupArea = n.fill.area
+      const childArea = gradientNode?.fill.area
+      // AreaProgram's tag 4 proves both paths are sampled rectangles.
+      if (gradientNode && gradient?.figmaGradient && gradient.visible && gradient.opacity === 1 &&
+          gradient.blend === 'normal' && gradientNode.opacity === 1 && gradientNode.blend === 'normal' &&
+          gradient.stops.length === 2 && gradient.stops[0].offset === 0 && gradient.stops[1].offset === 1 &&
+          gradient.stops.every(stop => this.alpha(stop.color) === 1) &&
+          groupArea && childArea && this.scene.curves?.[groupArea.first * 4] === 4 &&
+          this.scene.curves?.[childArea.first * 4] === 4 &&
+          !gradientNode.clip && !gradientNode.mask && !gradientNode.maskId && !gradientNode.passthrough &&
+          !gradientNode.children.length && !gradientNode.strokes.length && !gradientNode.effects.length &&
+          gradientNode.fills.length === 1 && targets.length === 4 &&
+          targets.every(target => !target.logicalBounds)) {
+        for (let i = 0; i < 4; i++) {
+          await this.reclaimScratch()
+          this.sampleIndex = i
+          let coverage: Surface | undefined
+          let clipped: Surface | undefined
+          try {
+            this.activeNode = gradientNode.id
+            const childMask = await this.nodeMask(gradientNode, true)
+            this.activeNode = id
+            const groupMask = await this.nodeMask(n, true)
+            await this.reclaimForSurface(gradientNode.rect, clip ? 2 : 1)
+            coverage = this.combine(childMask, groupMask, gradientNode.rect)
+            if (clip) clipped = this.combine(coverage, clip[i], gradientNode.rect)
+            const mask = clipped ?? coverage
+            const admission = this.reclaimForPaintOver(gradientNode, gradient, mask, targets[i])
+            if (admission) await admission
+            targets[i] = this.measuredGradientOver(gradientNode, gradient, mask, targets[i], i, n.opacity)
+          } finally {
+            this.activeNode = id
+            this.release(coverage, clipped)
+          }
+        }
+        this.retireLeafMasks(gradientNode, undefined, clip, targets, true)
+        this.retireLeafMasks(n, undefined, clip, targets, true)
         continue
       }
       const masks: Surface[] = []
