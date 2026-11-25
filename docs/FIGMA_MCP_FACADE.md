@@ -52,7 +52,7 @@ The browser page does not listen on a port and cannot host stdio. The in-app Des
 | `get_design_context` | `context.get`, `code.export` | Futureox HTML/CSS when `code.export` is available. Not Figma React + Tailwind. `clientFrameworks` is ignored. |
 | `get_screenshot` | `preview.capture` | PNG. Omitted `nodeId` uses the selection, or the active page when the selection is empty. `scale` is 0.1–4. |
 | `get_variable_defs` | `variable.list`, `style.list`, `node.get` | Variables and styles used by the selection. An empty selection returns local document variables and styles. No team libraries. |
-| `download_assets` | `preview.capture` or `vector.export` | One node. `png`, `jpeg`, `webp`, or `svg`. |
+| `download_assets` | `preview.capture` or `vector.export` | Up to 20 local nodes as separate MCP resources. `png`, `jpeg`, `webp`, or `svg`. |
 | `use_figma` | `batch.apply` | Listed when the session can edit. One undo step for 1–40 structured operations. `description` is required. |
 | `open_document` | `workspace.open` | Listed when the session can edit and has a workspace write grant. Opens a saved local design and can end the automation session. |
 
@@ -89,7 +89,7 @@ Absent:
 Partial:
 
 - `use_figma` structured edits are real Design API batches. Plugin JavaScript is not run unless a host bridge is registered.
-- `download_assets` exports one node and does not return PDF, original uploaded images, temporary URLs, or a 20-node batch.
+- `download_assets` accepts up to 20 local node IDs. Every node in a batch uses the same editor revision, and the batch succeeds only when all resources fit the existing byte budget. Download the results through `resources/read` in the same MCP client session. PDF, original uploaded images and external temporary URLs are unavailable.
 - `get_design_context` is Futureox HTML/CSS, not Figma React + Tailwind.
 - `get_screenshot` is a CPU design-content export, not a GPU or window screenshot.
 - `fileKey` does not select another file.

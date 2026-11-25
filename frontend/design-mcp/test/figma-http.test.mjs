@@ -157,6 +157,41 @@ test('HTTP body and session limits allow recovery without replacing another clie
   assert.equal((await post(server.url, listRequest, authorization, clients[0])).status, 200)
 })
 
+test('HTTP exposes all twenty local assets atomically as resources in the exporting session', async t => {
+  const backend = new FigmaFacade({
+    methods: ['document.get', 'vector.export'].map(name => ({ name })),
+    scope: 'read',
+    execute: async request => ({
+      ok: true, method: request.method, documentId: 'doc', session: 1, revision: 2,
+      result: request.method === 'vector.export'
+        ? { content: `<svg xmlns="http://www.w3.org/2000/svg"><title>${request.params.nodeIds[0]}</title></svg>` } : {},
+    }),
+  })
+  const server = await startLoopbackFigmaMcp({ backend, token })
+  t.after(() => server.close())
+  const [exporter, peer] = await Promise.all([openClient(server.url), openClient(server.url)])
+  const nodeIds = Array.from({ length: 20 }, (_, i) => `shape-${i}`)
+  const response = await post(server.url, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
+    name: 'download_assets', arguments: { nodeIds, defaultFormat: 'svg' },
+  } }, authorization, exporter)
+  const result = (await response.json()).result
+  assert.equal(result.isError, false)
+  assert.deepEqual(result.structuredContent.result.assets.map(asset => asset.nodeId), nodeIds)
+  assert.ok(result.structuredContent.result.assets.every(asset => !Object.hasOwn(asset, 'base64')))
+  const links = result.content.filter(item => item.type === 'resource_link')
+  assert.equal(links.length, 20)
+  for (const [i, artifact] of links.entries()) {
+    const read = { jsonrpc: '2.0', id: 10 + i, method: 'resources/read', params: { uri: artifact.uri } }
+    const own = await (await post(server.url, read, authorization, exporter)).json()
+    assert.equal(own.result.contents[0].mimeType, 'image/svg+xml')
+    assert.match(Buffer.from(own.result.contents[0].blob, 'base64').toString(), new RegExp(`<title>${nodeIds[i]}</title>`))
+    if (i === 0) {
+      const other = await (await post(server.url, read, authorization, peer)).json()
+      assert.equal(other.error.code, -32002)
+    }
+  }
+})
+
 test('IPv6 loopback publishes its own reachable URL', async t => {
   const server = await startLoopbackFigmaMcp({ backend: facade(), token, host: '::1' })
   t.after(() => server.close())
