@@ -47,14 +47,18 @@ The browser page does not listen on a port and cannot host stdio. The in-app Des
 
 | Tool | Design API | Notes |
 |---|---|---|
-| `get_metadata` | `page.list`, `node.find` | No `nodeId`: pages. A page id outlines that page. Any other id outlines that subtree, at most 100 nodes. Text content is XML. |
+| `get_metadata` | `page.list`, `node.find` | Omit `nodeId` to list pages. Pass a local page or node ID for an XML outline and structured nodes. Use `limit` from 1 to 100 and return `nextCursor` as `cursor` with the same `nodeId` to continue. |
 | `get_selection` | `selection.get`, `node.get` | Active page and selection. At most 20 node summaries. |
 | `get_design_context` | `context.get`, `code.export` | Futureox HTML/CSS when `code.export` is available. Not Figma React + Tailwind. `clientFrameworks` is ignored. |
 | `get_screenshot` | `preview.capture` | PNG. Omitted `nodeId` uses the selection, or the active page when the selection is empty. `scale` is 0.1–4. |
-| `get_variable_defs` | `variable.list`, `style.list`, `node.get` | Variables and styles used by the selection. An empty selection returns local document variables and styles. No team libraries. |
+| `get_variable_defs` | `variable.list`, `style.list`, `node.get` | Local variables, their alias dependencies across modes, and shared styles on the specified node or first 20 selected nodes. An empty selection returns a bounded document catalog. |
 | `download_assets` | `preview.capture` or `vector.export` | Up to 20 local nodes as separate MCP resources. `png`, `jpeg`, `webp`, or `svg`. |
 | `use_figma` | `batch.apply` | Listed when the session can edit. One undo step for 1–40 structured operations. `description` is required. |
 | `open_document` | `workspace.open` | Listed when the session can edit and has a workspace write grant. Opens a saved local design and can end the automation session. |
+
+Metadata cursors bind to the local editor session and document revision. Restart the outline without a cursor after `stale_cursor`. XML nests nodes shown on the current page. Use structured node `parentId` values to join relationships across pages. An unknown local node ID returns `not_found` with the current page list in `error.details.pages`.
+
+Use the `create_design_system_rules` MCP prompt to draft project guidance from supported local reads. Retrieve the prompt without arguments through `prompts/get`.
 
 `use_figma` operations:
 

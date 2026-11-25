@@ -29,7 +29,8 @@ for (const mode of ['auto', 'pinned-modern', 'legacy']) test(`official SDK ${mod
     assert.equal((await client.readResource({ uri: link.uri })).contents[0].text, '{"fixture":true}')
     const resources = (await client.listResources()).resources
     assert.equal(resources.some(r => r.uri === link.uri), mode === 'legacy')
-    assert.equal((await client.listPrompts()).prompts.length, 2)
+    assert.ok((await client.listPrompts()).prompts.some(prompt => prompt.name === 'create_design_system_rules'))
+    assert.match((await client.getPrompt({ name: 'create_design_system_rules' })).messages[0].content.text, /get_variable_defs/)
     assert.equal((await client.getPrompt({ name: 'design_generation', arguments: { brief: 'fixture' } })).messages[0].role, 'user')
     assert.deepEqual((await client.listResourceTemplates()).resourceTemplates, [])
     await assert.rejects(client.readResource({ uri: 'missing' }), error => error.code === (mode === 'legacy' ? -32002 : -32602))

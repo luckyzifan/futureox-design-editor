@@ -4,6 +4,8 @@ export interface OperationMethod { name: string; description: string; inputSchem
 export interface ToolDefinition { name: string; description: string; inputSchema: Record<string, unknown>; annotations?: Record<string, boolean> }
 export declare class OperationBackend {
   constructor(options: { capabilities: { version: number; methods: OperationMethod[] }; execute: (request: OperationRequest, context: BackendContext) => unknown | Promise<unknown>; close?: () => void | Promise<void>; scope?: 'read' | 'write'; grants?: { workspace?: 'read' | 'write'; settings?: 'read' | 'write' }; target?: { documentId: string; session: number } })
+  readonly execute: (request: OperationRequest, context: BackendContext) => unknown | Promise<unknown>
+  readonly methods: ReadonlyMap<string, OperationMethod>
   listTools(): ToolDefinition[]
   callTool(name: string, args: Record<string, unknown>, context?: BackendContext): Promise<unknown>
   close(): void | Promise<void>
