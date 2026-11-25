@@ -203,6 +203,85 @@ fn measure_two_end_radii_against_uniform_endpoint_blurs() {
     assert_eq!(at(&progressive, 16), at(&start_uniform, 16), "the start end is the smaller uniform blur");
     assert_eq!(at(&progressive, 79), at(&end_uniform, 79), "the finish end is the larger uniform blur");
     assert_ne!(at(&progressive, 16), at(&progressive, 79), "the two ends are adjustable");
+
+    let figma = serde_json::from_value(json!({
+        "pageId":"p","width":96,"height":64,"view":{"x":0,"y":0,"zoom":1},
+        "transparent":true,"rasterProfile":"figma"
+    })).unwrap();
+    let draw_figma = |engine: &mut Engine, start: f64, end: f64, progressive: bool| {
+        engine.load_document(&document(start, end, progressive).to_string()).unwrap();
+        engine.render(&figma).unwrap()
+    };
+    let progressive = draw_figma(&mut engine, 4., 12., true);
+    let start_uniform = draw_figma(&mut engine, 4., 4., false);
+    let end_uniform = draw_figma(&mut engine, 12., 12., false);
+    for y in 8..40 {
+        assert_eq!(pixel(&progressive, 16, y), pixel(&start_uniform, 16, y), "figma column 16 y {y}");
+        assert_eq!(pixel(&progressive, 79, y), pixel(&end_uniform, 79, y), "figma column 79 y {y}");
+    }
+}
+
+/// The effect card's default segment runs top to bottom. That ramp has to
+/// meet the same uniform radii as a horizontal one.
+#[test]
+fn vertical_two_end_radii_match_uniform_endpoint_blurs() {
+    let mut stripes = serde_json::Map::new();
+    let mut children = Vec::new();
+    for index in 0..12 {
+        let id = format!("stripe{index}");
+        children.push(id.clone());
+        stripes.insert(id.clone(), json!({
+            "id": id, "kind": "rectangle", "width": 8, "height": 48,
+            "transform": [1, 0, 0, 1, index * 8, 0],
+            "fills": [{"kind": "solid", "color": if index % 2 == 0 { "#111111" } else { "#eeeeee" }}]
+        }));
+    }
+    children.push("lens".into());
+    let lens = |start: f64, end: f64, progressive: bool| {
+        let mut effect = json!({"kind":"background-blur","radius":1,"color":"#000000"});
+        if progressive {
+            effect["gradientBlur"] = json!({
+                "start":[32, 0.5], "end":[32, 31.5], "startCount": start, "endCount": end, "smooth": true
+            });
+        } else {
+            effect["radius"] = json!(end);
+        }
+        json!({
+            "id":"lens","kind":"rectangle","width":64,"height":32,"transform":[1,0,0,1,16,8],
+            "fills":[{"kind":"solid","color":"#ffffff","opacity":0.1}],
+            "effects":[effect]
+        })
+    };
+    let document = |start: f64, end: f64, progressive: bool| {
+        let mut nodes = stripes.clone();
+        nodes.insert("lens".into(), lens(start, end, progressive));
+        json!({
+            "schemaVersion":19,"id":"d","name":"Vertical two-end measure","rasterProfile":"figma",
+            "pages":[{"id":"p","name":"Page","children":children,"background":"#ffffff"}],
+            "nodes": nodes
+        })
+    };
+    let figma = serde_json::from_value(json!({"pageId":"p","width":96,"height":64,"view":{"x":0,"y":0,"zoom":1},"transparent":true,"rasterProfile":"figma"})).unwrap();
+    let mut engine = Engine::new();
+    let draw = |engine: &mut Engine, start: f64, end: f64, progressive: bool| {
+        engine.load_document(&document(start, end, progressive).to_string()).unwrap();
+        engine.render(&figma).unwrap()
+    };
+    let progressive = draw(&mut engine, 4., 12., true);
+    let start_uniform = draw(&mut engine, 4., 4., false);
+    let end_uniform = draw(&mut engine, 12., 12., false);
+    assert_eq!(pixel(&progressive, 48, 8), pixel(&start_uniform, 48, 8), "the top end is the smaller uniform blur");
+    assert_eq!(pixel(&progressive, 48, 39), pixel(&end_uniform, 48, 39), "the bottom end is the larger uniform blur");
+    assert_ne!(pixel(&progressive, 48, 8), pixel(&progressive, 48, 39), "the two ends are adjustable");
+    let mut top = 0;
+    let mut bottom = 0;
+    for x in 16..80 {
+        top = top.max(channel_delta(pixel(&progressive, x, 8), pixel(&start_uniform, x, 8)));
+        bottom = bottom.max(channel_delta(pixel(&progressive, x, 39), pixel(&end_uniform, x, 39)));
+    }
+    // The 2× four-sample resolve sits off the exact endpoint on stripe edges.
+    // The previous horizontal-then-vertical tent left 2 and 4 codes on these rows.
+    assert!(top <= 1 && bottom <= 1, "figma vertical ends top {top} bottom {bottom}");
 }
 
 #[test]

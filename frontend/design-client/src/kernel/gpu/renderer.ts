@@ -18,6 +18,7 @@ import { EMBEDDED_RASTER_URI_PREFIX } from '../../embedded-raster'
 import { FastPathWork } from '../../../../design-desktop/src/render-pass-work.mjs'
 import { GRADIENT_PAINT_OVER_MODE, gradientFieldMaximumStop, gradientFusionWorthwhile } from './gradient-paint-over'
 import { gradientPhaseFieldLayout } from './gradient-phase-field'
+import { progressiveBackdropAxes } from './progressive-backdrop-order'
 import { shadowFilterRegion } from './shadow-filter-region'
 import { annotateTextureFailure } from '../../../../design-desktop/src/render-texture-failure.mjs'
 import { MaintenanceResidency } from './maintenance-residency'
@@ -7833,11 +7834,14 @@ export class GpuRenderer {
       u[44] = axis
       u[45] = cropped ? 1 : 0
     })
-    const horizontal = pass(background, 0)
-    if (horizontal !== background) this.release(background)
-    const vertical = pass(horizontal, 1)
-    if (vertical !== horizontal) this.release(horizontal)
-    return vertical
+    // values[0] and values[1] are the CPU field's a and b. Filter along the
+    // segment first, matching variable_endpoint_tent.
+    const [firstAxis, secondAxis] = progressiveBackdropAxes(values[0], values[1])
+    const first = pass(background, firstAxis)
+    if (first !== background) this.release(background)
+    const second = pass(first, secondAxis)
+    if (second !== first) this.release(first)
+    return second
   }
   private async floatBackdropEndpoints(source: Surface, n: GpuNode, fx: Effect, cropped: boolean): Promise<Surface> {
     const ramp = fx.gradientBlur!
