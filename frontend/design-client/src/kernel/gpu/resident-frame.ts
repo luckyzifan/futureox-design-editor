@@ -39,6 +39,7 @@ export function residentFrameMessage(frame: ResidentFrame): ResidentFrame {
       labels:frame.overlay.labels?.map(label=>({anchor:{x:label.anchor.x,y:label.anchor.y},offset:{x:label.offset.x,y:label.offset.y},
         text:label.text,size:label.size,color:label.color,basis:label.basis?.slice() as typeof label.basis,centered:label.centered,halo:label.halo,...(label.frame==='pill'||label.frame==='accent'||label.frame==='measure'?{frame:label.frame}:{}),...(label.chip?{chip:label.chip}:{}),owners:label.owners?.slice()})),
       measurements:frame.overlay.measurements?.map(wireMeasurement),
+      ...(frame.overlay.crispMeasurements ? { crispMeasurements: true } : {}),
       transforms:frame.overlay.transforms?Object.fromEntries(Object.entries(frame.overlay.transforms).map(([id,m])=>[id,[...m]])):undefined,
     } : undefined,
     view: { x: frame.view.x, y: frame.view.y, zoom: frame.view.zoom },

@@ -1,4 +1,4 @@
-import { decode_fig_network_json, decode_fig_rounded_network_json, decode_fig_fill_commands_json, fig_boolean_outline_key_json, network_geometry_json, fig_mask_suffixes, fig_stroke_caps_json, fig_progressive_background_json } from './generated/design-kernel/design_kernel'
+import { decode_fig_network_json, decode_fig_network_stroke_json, decode_fig_rounded_network_json, decode_fig_fill_commands_json, fig_boolean_outline_key_json, network_geometry_json, fig_mask_suffixes, fig_stroke_caps_json, fig_progressive_background_json } from './generated/design-kernel/design_kernel'
 import { assertImportInputBytes } from './import-input-policy'
 import { figArchive, inflateFigDeflate } from './import-fig-archive'
 export { figArchive } from './import-fig-archive'
@@ -499,17 +499,83 @@ function figStrokeCap(cap: unknown, warnings: { add(message: string): unknown })
       return { cap: 'butt' }
   }
 }
+function figRegionRule(entry: any) {
+  return entry.windingRule === 'ODD' || entry.windingRule === 'EVENODD' ? 'evenodd' : 'nonzero'
+}
+
 function figBakedGeometry(entries: any[], getBlob: (index: number) => Uint8Array): NonNullable<DesignNode['vectorGeometry']> {
-  const rule = (entry: any) => entry.windingRule === 'ODD' || entry.windingRule === 'EVENODD' ? 'evenodd' : 'nonzero'
-  const fillRule = rule(entries[0])
+  const fillRule = figRegionRule(entries[0])
   const fill: NonNullable<DesignNode['vectorGeometry']>['fill'] = []
   for (const entry of entries) {
-    if (rule(entry) !== fillRule) throw new Error('FIG 混合区域填充规则需要独立几何工作集')
+    if (figRegionRule(entry) !== fillRule) throw new Error('FIG 混合区域填充规则需要独立几何工作集')
     const commands: typeof fill = JSON.parse(decode_fig_fill_commands_json(getBlob(entry.commandsBlob)))
     if (fill.length + commands.length > 131072) throw new Error('FIG 矢量路径超出命令预算')
     for (const command of commands) fill.push(command)
   }
   return { fillRule, fill }
+}
+
+function figMixedVectorRegions(
+  record: any, layer: DesignNode, getBlob: (index: number) => Uint8Array,
+  toPaint: (source: any) => Paint,
+): DesignNode[] | undefined {
+  const entries = record.fillGeometry
+  if (record.type !== 'VECTOR' || !Array.isArray(entries) ||
+      !entries.some(entry => figRegionRule(entry) === 'evenodd') ||
+      !entries.some(entry => entry.windingRule === 'NONZERO')) return
+  if (layer.mask || record.strokeBrushGuid)
+    throw new Error('FIG 混合填充区域需要普通矢量图层')
+  const source = record.vectorData
+  if (!Number.isInteger(source?.vectorNetworkBlob))
+    throw new Error('FIG 混合填充区域缺少矢量原始网络')
+  const scale = (size: number, normalized: number) => {
+    const ratio = size / normalized
+    return Number.isFinite(ratio) && ratio > 0 ? ratio : 1
+  }
+  const decoded = JSON.parse(decode_fig_network_stroke_json(
+    getBlob(source.vectorNetworkBlob),
+    scale(layer.width, source.normalizedSize?.x),
+    scale(layer.height, source.normalizedSize?.y),
+  )) as { vectorGeometry?: DesignNode['vectorGeometry']; regionStyles: number[]; regionWindings: string[] }
+  if (!decoded.vectorGeometry || decoded.regionStyles.length !== entries.length)
+    throw new Error('FIG 混合填充未覆盖所有原始区域')
+  let commands = 0
+  const children = entries.map((entry, index) => {
+    const style = entry.styleID ?? 0
+    const geometry = figBakedGeometry([entry], getBlob)
+    if (decoded.regionStyles[index] !== style || decoded.regionWindings[index] !== geometry.fillRule)
+      throw new Error('FIG 混合填充与源区域不符')
+    commands += geometry.fill.length
+    if (commands > 131072) throw new Error('FIG 矢量路径超出命令预算')
+    const child = node('vector', 0, 0, layer.width, layer.height)
+    child.name = `Fill region ${index + 1}`
+    child.vectorGeometry = geometry
+    child.strokes = []
+    if (style === 0) child.fills = layer.fills.slice()
+    else {
+      const matching = (source.styleOverrideTable || []).filter((candidate: any) => candidate.styleID === style)
+      const definition = matching[0]
+      const link = definition?.inheritFillStyleID
+      if (matching.length !== 1 || !Array.isArray(definition?.fillPaints) ||
+          link && (link.sessionID !== 0xffffffff || link.localID !== 0xffffffff))
+        throw new Error('FIG 混合填充区域缺少唯一可编辑填充样式')
+      child.fills = definition.fillPaints.map(toPaint)
+    }
+    return child
+  })
+  if (layer.strokes.length) {
+    const stroke = node('vector', 0, 0, layer.width, layer.height)
+    stroke.name = 'Source stroke'
+    stroke.vectorGeometry = decoded.vectorGeometry
+    stroke.fills = []
+    stroke.strokes = layer.strokes
+    children.push(stroke)
+  }
+  layer.kind = 'group'
+  layer.fills = []
+  layer.strokes = []
+  layer.children = children.map(child => child.id)
+  return children
 }
 
 /** Rust admits the two ends. A missing layer box keeps the uniform radius and names the limit. */
@@ -679,7 +745,13 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       ...(mappedCap.endMarker ? { endMarker: mappedCap.endMarker } : {}),
     }))
   }
-  const effectsOf = (record: any, note?: (message: string) => void, size?: [number, number]): Effect[] => (record.effects || []).map((x: any) => {
+  const effectsOf = (record: any, note?: (message: string) => void, size?: [number, number],
+    retainedNoise?: { index: number; effect: unknown }[]): Effect[] => (record.effects || [])
+    .filter((source: any, index: number) => {
+      if (source.type !== 'NOISE' || !retainedNoise) return true
+      retainedNoise.push({ index, effect: source })
+      return false
+    }).map((x: any) => {
     const kind = (
       {
         DROP_SHADOW: 'shadow',
@@ -845,14 +917,31 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       r.rectangleBottomLeftCornerRadius ?? r.cornerRadius ?? 0,
     ]
     n.smoothing = r.cornerSmoothing || 0
-    n.effects = effectsOf(r, message => figNote(receipts, n.id, message), [n.width, n.height])
+    const noise: { index: number; effect: unknown }[] = []
+    n.effects = effectsOf(r, message => figNote(receipts, n.id, message), [n.width, n.height], noise)
+    if (noise.length) {
+      const kept = receipts.get(n.id) ?? {}
+      kept.figNoiseEffects = JSON.stringify(noise)
+      receipts.set(n.id, kept)
+      figNote(receipts, n.id, 'NOISE 已保留为源元数据，未栅格化')
+      warnings.add('FIG NOISE 已保留为源元数据，未栅格化')
+    }
+    if (typeof r.scrollBehavior === 'string' && r.scrollBehavior !== 'SCROLLS') {
+      const kept = receipts.get(n.id) ?? {}
+      kept.figScrollBehavior = r.scrollBehavior
+      receipts.set(n.id, kept)
+      figNote(receipts, n.id, `scrollBehavior=${r.scrollBehavior} 已保留为源元数据`)
+    }
     for (const x of r.effects || []) {
       if (x?.blendMode && x.blendMode !== 'NORMAL') {
         figNote(receipts, n.id, `effectBlendMode=${x.blendMode}`)
         warnings.add(`FIG 效果混合 ${x.blendMode} 已保留效果，混合方式尚未绘制`)
       }
     }
-    if (r.vectorData?.vectorNetworkBlob !== undefined) {
+    const mixedRegions = figMixedVectorRegions(r, n, getBlob, toPaint)
+    if (mixedRegions) {
+      for (const child of mixedRegions) doc.nodes[child.id] = child
+    } else if (r.vectorData?.vectorNetworkBlob !== undefined) {
       const normalized=r.vectorData.normalizedSize
       const axis=(nodeSize:number,source:number|undefined)=>{
         if(source===undefined)return 1
@@ -876,7 +965,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       }
       catch(error){warnings.add(`FIG 矢量 ${n.name||n.id} 的网络几何未能解码，已保留包围盒：${error instanceof Error?error.message:error}`)}
     }
-    if((r.type==='VECTOR'||r.type==='BRUSH')&&Array.isArray(r.fillGeometry)&&r.fillGeometry.length){
+    if(!mixedRegions&&(r.type==='VECTOR'||r.type==='BRUSH')&&Array.isArray(r.fillGeometry)&&r.fillGeometry.length){
       const outline = figBakedGeometry(r.fillGeometry, getBlob)
       const source=n.vectorGeometry??(n.network?JSON.parse(network_geometry_json(JSON.stringify(n.network))) as NonNullable<DesignNode['vectorGeometry']>:undefined)
       if(!source&&!r.strokeBrushGuid&&n.strokes.some(s=>s.visible&&s.width>0))throw Error('FIG 仅提供填充轮廓，缺少可精确保留描边的路径')
@@ -906,6 +995,8 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
         wrap: r.textAutoResize !== 'WIDTH_AND_HEIGHT',
         paragraphSpacing: r.paragraphSpacing || 0,
         paragraphIndent: r.paragraphIndent || 0,
+        ...(Number.isFinite(r.listSpacing) && r.listSpacing >= 0 && r.listSpacing <= 10000
+          ? { listSpacing: r.listSpacing } : {}),
         align:
           r.textAlignHorizontal === 'CENTER'
             ? 'center'

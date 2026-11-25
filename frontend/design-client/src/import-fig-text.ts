@@ -32,7 +32,7 @@ const finite = (value: unknown): value is number => typeof value === 'number' &&
 export function hasFigAutomaticLineHeight(record: any, size: number): boolean {
   if (record.lineHeight?.units !== 'PERCENT' || record.lineHeight.value !== 100 ||
       !['WIDTH_AND_HEIGHT', 'HEIGHT'].includes(record.textAutoResize) ||
-      record.textData?.styleOverrideTable?.length) return false
+      record.textData?.styleOverrideTable?.some((run: any) => run.lineHeight !== undefined)) return false
   const derived = record.derivedTextData
   const lines = derived?.baselines
   const intrinsic = derived?.fontMetaData?.[0]?.fontLineHeight * size
@@ -40,7 +40,8 @@ export function hasFigAutomaticLineHeight(record: any, size: number): boolean {
   return derived?.fontMetaData?.length === 1 && Number.isFinite(intrinsic) && advance > 0 &&
     Math.abs(advance - size) > 0.5 && Array.isArray(lines) && lines.length > 0 &&
     Math.abs(derived.layoutSize?.y - lines.length * advance) < 1e-3 &&
-    lines.every((line, index) => Math.abs(line?.lineHeight - intrinsic) < 1e-3 &&
+    lines.every((line, index) => (Math.abs(line?.lineHeight - intrinsic) < 1e-3 ||
+      Math.abs(line?.lineHeight - advance) < 1e-3) &&
       Math.abs(line?.lineY - index * advance) < 1e-3)
 }
 

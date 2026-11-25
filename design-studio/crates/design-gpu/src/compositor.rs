@@ -214,6 +214,7 @@ pub(crate) fn render(
                         p.offset_y as f32,
                         p.scale as f32,
                     ]);
+                    u[39] = f32::from(p.software_color_coverage);
                 },
             )?,
             p.width,

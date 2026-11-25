@@ -1,5 +1,6 @@
 import type { Point, Matrix } from './model'
 import { around, rotate, pointInContours } from './geometry'
+import { SELECTION_HANDLE_PX } from './selection-blue'
 
 /** At overview zoom the fixed-size handles can cover the whole object. Keep
  * its interior available for moving; the exterior still resizes/rotates. */
@@ -36,6 +37,8 @@ export function selectionHandles(corners: Point[], zoom: number) {
     const next = corners[(index + 1) % 4], prev = corners[(index + 3) % 4]
     const u = unit(p, next) || { x: 1, y: 0 }, v = unit(p, prev) || { x: -u.y, y: u.x }
     const at = (x: number, y: number) => ({ x: p.x + (u.x * x + v.x * y) / zoom, y: p.y + (u.y * x + v.y * y) / zoom })
+    const square = (half: number) => [at(-half, -half), at(half, -half), at(half, half), at(-half, half)]
+    const half = SELECTION_HANDLE_PX / 2
     const outward = Math.atan2(-u.y - v.y, -u.x - v.x) * 180 / Math.PI
     return {
       index, point: p, next,
@@ -43,7 +46,8 @@ export function selectionHandles(corners: Point[], zoom: number) {
       // 32 CSS px, so a second drag still hits the handle after the box turns.
       rotatePoints: [[-32,-32],[14,-32],[14,-10],[-10,-10],[-10,14],[-32,14]].map(([x,y]) => at(x,y)),
       rotateAnchor: at(-20,-20),
-      resizePoints: [[-4,-4],[4,-4],[4,4],[-4,4]].map(([x,y]) => at(x,y)),
+      resizePoints: square(half),
+      resizeInsetPoints: square(half - 1),
       resizeCursor: transformCursor('resize', outward),
       rotateCursor: transformCursor('rotate', outward + 90),
       edgeCursor: transformCursor('resize', Math.atan2(u.y,u.x) * 180 / Math.PI + 90),

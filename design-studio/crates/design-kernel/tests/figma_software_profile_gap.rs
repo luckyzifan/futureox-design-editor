@@ -74,6 +74,7 @@ fn binary_two_and_two_split_uses_one_rounding_of_the_four_taps() {
         [&planes[0], &planes[1], &planes[2], &planes[3]],
         1,
         1,
+        false,
     );
     assert_eq!(resolved, [32, 32, 32, 255]);
 }

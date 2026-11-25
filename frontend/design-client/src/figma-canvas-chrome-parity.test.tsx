@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Canvas } from './Canvas'
 import { Inspector } from './Inspector'
 import { Editor } from './engine'
+import { figmaFixture } from './figma-fixtures'
 import { commonValue, selectionMetric } from './selection-properties'
 import { blank, defaultTextStyle, node, type DesignDocument, type DesignNode } from './model'
 import { shortcutPreference } from './shortcut-preference'
@@ -226,7 +227,16 @@ test('a selected layer shows the blue box, white corner handles, and a blue size
   expect(outline?.getAttribute('data-selection-role')).toBe('object')
   const handles = [...mount.querySelectorAll('[data-testid^="resize-"]')].filter(node => /^resize-\d+$/.test(node.getAttribute('data-testid') || ''))
   expect(handles).toHaveLength(4)
-  expect(handles.every(handle => handle.getAttribute('fill') === 'white' && handle.getAttribute('stroke') === SELECTION_BLUE)).toBe(true)
+  expect(handles.every(handle => handle.getAttribute('fill') === SELECTION_BLUE &&
+    !handle.getAttribute('stroke-width') && handle.getAttribute('shape-rendering') === 'crispEdges')).toBe(true)
+  expect(handles.every(handle => handle.nextElementSibling?.getAttribute('fill') === 'white' &&
+    handle.nextElementSibling?.getAttribute('pointer-events') === 'none')).toBe(true)
+  const square = (selector: string) => {
+    const points = polygonPoints(selector)
+    return Math.max(...points.map(point => point.x)) - Math.min(...points.map(point => point.x))
+  }
+  expect(square('[data-testid="resize-0"]')).toBe(8)
+  expect(square('[data-testid="resize-0"] + polygon')).toBe(6)
   const pill = mount.querySelector('[data-testid="canvas-selection-size"]')
   expect(pill?.getAttribute('data-pill')).toBe('accent')
   expect(pill?.textContent).toBe('80 × 40')
@@ -517,6 +527,7 @@ test('same-rotation multi-select draws that oriented box, and mixed rotations st
   expect(outline[0].y).not.toBeCloseTo(0, 1)
   expect(mount.querySelector('[data-testid="canvas-selection-outline"]')?.getAttribute('data-selection-role')).toBe('union')
   expect(mount.querySelectorAll('[data-testid="canvas-selection-member"]')).toHaveLength(2)
+  expect(mount.querySelector('[data-testid="canvas-selection-member"]')?.getAttribute('shape-rendering')).toBe('crispEdges')
   expect(mount.querySelector('[data-testid="resize-0"]')).not.toBeNull()
   const turned = Math.atan2(outline[1].y - outline[0].y, outline[1].x - outline[0].x) * 180 / Math.PI
   expect(turned).toBeCloseTo(30, 4)
@@ -641,7 +652,22 @@ test('keyboard pick keeps the original selection and Option measures to the high
   expect(mount.querySelector('[data-testid="keyboard-pick-outline"]')?.getAttribute('stroke')).toBe('#4597f7')
   await act(async () => key('Alt', { altKey: true }))
   expect(measurePills()).toEqual(expect.arrayContaining(['50', '40']))
+  expect(mount.querySelector('[data-testid="canvas-measurement"] [data-measure="gap"]')?.getAttribute('shape-rendering')).toBe('crispEdges')
   expect(editor.state.selection).toEqual([first.id])
+})
+
+test('keyboard pick outlines the same curve extrema as hover and multi-selection', async () => {
+  const fixture = figmaFixture('curve')
+  const curve = Object.values(fixture.nodes).find(node => node.kind === 'vector')!
+  await render([curve], [curve.id], fixture.schemaVersion)
+  await act(async () => key(' ', { code: 'Space', altKey: true }))
+  await act(async () => key('Tab'))
+  const outline = mount.querySelector('[data-testid="keyboard-pick-outline"]')
+  expect(outline?.getAttribute('shape-rendering')).toBe('crispEdges')
+  expect(polygonPoints('[data-testid="keyboard-pick-outline"]')).toEqual([
+    { x: 8, y: 8 }, { x: 108, y: 8 }, { x: 108, y: 83 }, { x: 8, y: 83 },
+  ])
+  expect(editor.state.selection).toEqual([])
 })
 
 test('Space repeats the distance under the pointer', async () => {

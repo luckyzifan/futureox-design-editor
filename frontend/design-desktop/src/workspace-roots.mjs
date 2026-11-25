@@ -79,7 +79,7 @@ export class WorkspaceRoots {
   async verifyProfile() {
     if (!sameIdentity(this.profileIdentity, await directory(this.profileRoot))) throw failure('WORKSPACE_ROOT_STALE')
   }
-  async prepare(selected, expected) {
+  async prepare(selected, expected, { resumeExisting = false } = {}) {
     const kind = selected === undefined ? 'default' : 'directory'
     if (selected !== undefined && (typeof selected !== 'string' || !path.isAbsolute(selected) || selected.includes('\0'))) throw failure()
     const rootPath = selected === undefined ? this.profileRoot : await realpath(selected)
@@ -108,9 +108,15 @@ export class WorkspaceRoots {
     await this.verify(root)
     // Probe only our new random file; never truncate or replace an existing user file.
     const writable = path.join(storagePath, `.workspace-write-check-${randomUUID()}`)
-    const fd = await open(writable, 'wx', 0o600)
-    try { await fd.writeFile('workspace write check'); await fd.sync() }
-    finally { await fd.close(); await unlink(writable) }
+    try {
+      const fd = await open(writable, 'wx', 0o600)
+      try { await fd.writeFile('workspace write check'); await fd.sync() }
+      finally { await fd.close(); await unlink(writable) }
+    } catch (error) {
+      // Resume a previously verified database through the sidecar's SQLite
+      // recovery probe. Selecting a different root still requires a write.
+      if (!resumeExisting || error.code !== 'ENOSPC' || !(await regularFile(this.config(root).workspaceDb))?.size) throw error
+    }
     await mkdir(path.join(storagePath, 'recovery-v1'), { recursive: true, mode: 0o700 })
     await directory(path.join(storagePath, 'recovery-v1'))
     await this.verify(root)
@@ -166,7 +172,8 @@ export class WorkspaceRoots {
     // existing staged workspace command.
     if (!warning && previous) {
       try {
-        const resumed = previous.kind === 'directory' ? await this.prepare(previous.rootPath, previous) : await this.prepare()
+        const selected = previous.kind === 'directory' ? previous.rootPath : undefined
+        const resumed = await this.prepare(selected, previous.kind === 'directory' ? previous : undefined, { resumeExisting: true })
         await this.probe(this.config(resumed)); await this.verify(resumed)
         this.current = resumed
         return resumed
@@ -184,7 +191,7 @@ export class WorkspaceRoots {
       if (!choice || choice === '退出') return undefined
       try {
         let root
-        if (choice === '继续上次工作区') root = await this.prepare(previous.rootPath, previous)
+        if (choice === '继续上次工作区') root = await this.prepare(previous.rootPath, previous, { resumeExisting: true })
         else if (choice === '打开原默认工作区') root = await this.prepare()
         else {
           const selected = await this.chooseDirectory()

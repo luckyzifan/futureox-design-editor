@@ -183,7 +183,7 @@ pub(crate) fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn open_read_no_follow(path: &Path) -> std::io::Result<File> {
+pub(crate) fn open_read_no_follow(path: &Path) -> std::io::Result<File> {
     let mut options = OpenOptions::new();
     options.read(true);
     // Native desktop ABI flags. No unsafe code or extra libc dependency is

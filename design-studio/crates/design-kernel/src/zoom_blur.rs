@@ -45,7 +45,9 @@ fn table_len(rect: Rect, samples: usize) -> Result<usize, String> {
     Ok(len)
 }
 pub(crate) fn sketch_sampling(doc: &crate::scene::Document, node: &crate::scene::Node) -> bool {
-    doc.color_management.is_none() && crate::interop::sketch_binding(doc, node, "sketchSourceBlur").is_some()
+    doc.color_management.is_none()
+        && crate::interop::sketch_binding(doc, node, "sketchSourceBlur").is_some()
+        && crate::interop::sketch_binding(doc, node, "sketchPortableZoomBlur") != Some("true")
 }
 
 pub fn coordinates(

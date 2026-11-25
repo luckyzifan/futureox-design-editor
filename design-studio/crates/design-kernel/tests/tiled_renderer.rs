@@ -506,7 +506,7 @@ fn off_bucket_zoom_assembles_from_residency() {
     let mut engine = Engine::new();
     engine.load_document(&doc()).expect("document");
     let options = frame(View { x: 0., y: 0., zoom: 0.9 }, 512, 384);
-    let cold = engine.render_tiled_frame(&options, None).expect("cold frame");
+    let cold = engine.render_tiled_preview_frame(&options, None).expect("cold preview");
     assert_eq!(cold.level_scale, 1., "0.9 rasterises at bucket 1.0");
     assert_eq!(cold.rgba.len(), 512 * 384 * 4);
     let cold_rasterised = cold.telemetry.rasterisation_count as usize;
@@ -514,8 +514,8 @@ fn off_bucket_zoom_assembles_from_residency() {
     // Zoom out inside the same bucket: the viewport shrinks onto residency.
     let zoomed = frame(View { x: 0., y: 0., zoom: 0.85 }, 512, 384);
     let warm = engine
-        .render_tiled_frame(&zoomed, None)
-        .expect("in-bucket frame");
+        .render_tiled_preview_frame(&zoomed, None)
+        .expect("in-bucket preview");
     assert_eq!(warm.level_scale, 1.);
     assert_eq!(
         warm.telemetry.rasterisation_count as usize, cold_rasterised,
@@ -533,8 +533,8 @@ fn off_bucket_assembly_stays_close_to_direct_render() {
     let options = frame(View { x: 0., y: 0., zoom: 0.9 }, 512, 384);
     let direct = engine.render_unretained(&options).expect("direct render");
     let assembled = engine
-        .render_tiled_frame(&options, None)
-        .expect("assembled frame");
+        .render_tiled_preview_frame(&options, None)
+        .expect("assembled preview");
     assert_eq!(assembled.rgba.len(), direct.len());
     let mut differing = 0usize;
     let mut strongly_differing = 0usize;
@@ -572,6 +572,44 @@ fn off_bucket_assembly_stays_close_to_direct_render() {
     }
 }
 
+#[test]
+fn settled_tiled_frame_preserves_the_requested_sampling_lattice() {
+    let mut engine = Engine::new();
+    engine.load_document(&doc()).expect("document");
+    for view in [
+        View { x: 0., y: 0., zoom: 0.9 },
+        View { x: 0.25, y: -0.5, zoom: 1. },
+    ] {
+        let lattice = (view.zoom, view.x, view.y);
+        let options = frame(view, 512, 384);
+        let direct = engine.render_unretained(&options).expect("direct render");
+        let assembled = engine
+            .render_tiled_frame(&options, None)
+            .expect("settled frame");
+        assert!(assembled.exact_viewport);
+        assert_eq!(assembled.visible_tiles, 0);
+        assert_eq!(assembled.rgba.len(), direct.len());
+        let differing = assembled
+            .rgba
+            .chunks_exact(4)
+            .zip(direct.chunks_exact(4))
+            .filter(|(retained, exact)| retained != exact)
+            .count();
+        let max_channel_error = assembled
+            .rgba
+            .iter()
+            .zip(&direct)
+            .map(|(retained, exact)| retained.abs_diff(*exact))
+            .max()
+            .unwrap_or_default();
+        assert_eq!(
+            (differing, max_channel_error),
+            (0, 0),
+            "settled frame at {lattice:?}, differing pixels and maximum channel error"
+        );
+    }
+}
+
 /// Returning to the bucket scale after an off-bucket zoom lands back on the
 /// byte-exact blit — the resample tier never contaminates the parity contract.
 #[test]
@@ -580,8 +618,8 @@ fn bucket_zoom_after_off_bucket_is_byte_exact() {
     engine.load_document(&doc()).expect("document");
     let off_bucket = frame(View { x: -64., y: -32., zoom: 0.9 }, 512, 384);
     engine
-        .render_tiled_frame(&off_bucket, None)
-        .expect("off-bucket frame");
+        .render_tiled_preview_frame(&off_bucket, None)
+        .expect("off-bucket preview");
     let snapped = frame(View { x: -64., y: -32., zoom: 1. }, 512, 384);
     let assembled = engine
         .render_tiled_frame(&snapped, None)

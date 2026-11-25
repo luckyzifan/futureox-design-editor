@@ -225,7 +225,7 @@ impl Engine {
                     let reduced = request.scale < 1.
                         && options.raster_profile == RasterProfile::Analytic
                         && space == crate::color::ColorSpace::Srgb;
-                    self.with_png_region(reduced, |engine| {
+                    self.with_png_region(reduced, Rect::new(0, 0, options.width, options.height), |engine| {
                         render_tiles(engine, &options, tile_width, rows, coherent, space)
                     })
                 }

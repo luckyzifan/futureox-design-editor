@@ -14,6 +14,105 @@ fn import(layer: Value) -> Document {
     let doc=fig::document_from_canvas(&tree(layer),BTreeMap::new(),vec![]).unwrap();
     doc.validate().unwrap(); doc
 }
+
+#[test]
+fn fig_scroll_behavior_survives_fd_round_trip_as_inert_receipt() {
+    let input = include_bytes!(
+        "../../../../testing/fixtures/fig-tools-public-20261106/fig2sketch/tests/data/prototyping.fig"
+    );
+    let doc = fig::import_fig_native(input).unwrap();
+    let path = "/designSystem/sketchContainers/nodeMetadata/fig-2-5/bindings/figScrollBehavior";
+    let value = serde_json::to_value(&doc).unwrap();
+    assert_eq!(value.pointer(path), Some(&json!("FIXED_WHEN_CHILD_OF_SCROLLING_FRAME")));
+    assert!(!doc.nodes["fig-2-5"].bindings.contains_key("figScrollBehavior"));
+    let encoded = futureox_design_kernel::binfmt::encode_authored_json(&value.to_string()).unwrap();
+    let restored: Document = serde_json::from_str(
+        &futureox_design_kernel::binfmt::decode_authored_json(&encoded).unwrap(),
+    ).unwrap();
+    restored.validate().unwrap();
+    assert_eq!(serde_json::to_value(restored).unwrap().pointer(path),
+        Some(&json!("FIXED_WHEN_CHILD_OF_SCROLLING_FRAME")));
+    let from_default = import(json!({"scrollBehavior":"SCROLLS"}));
+    assert!(serde_json::to_value(from_default).unwrap()
+        .pointer("/designSystem/sketchContainers/nodeMetadata/fig-1-3/bindings/figScrollBehavior").is_none());
+}
+
+#[test]
+fn fig_authored_list_spacing_stays_distinct_from_paragraph_spacing() {
+    let doc = import(json!({
+        "type":"TEXT", "fontSize":14, "listSpacing":5, "paragraphSpacing":2,
+        "textData":{"characters":"Plain","lines":[{"lineType":"PLAIN"}]},
+    }));
+    let value = serde_json::to_value(&doc.nodes["fig-1-3"]).unwrap();
+    assert_eq!(value["textStyle"]["listSpacing"], 5.);
+    assert_eq!(value["textStyle"]["paragraphSpacing"], 2.);
+    assert!(value["textStyle"].get("list").is_none());
+}
+
+#[test]
+fn fig_unrendered_noise_remains_readable_and_does_not_reject_the_archive() {
+    let input = include_bytes!(
+        "../../../../testing/fixtures/fig-tools-public-20261106/fig2sketch/tests/data/noise_and_grain.fig"
+    );
+    let report = futureox_design_kernel::interop::import_fig_report(input).unwrap();
+    assert_eq!(report.backend, "rust-native-fig");
+    let metadata = report.document.design_system.as_ref().unwrap().sketch_containers["nodeMetadata"]
+        .as_object().unwrap();
+    let preserved: Vec<Value> = metadata.values()
+        .filter_map(|entry| entry["bindings"]["figNoiseEffects"].as_str())
+        .map(|entry| serde_json::from_str(entry).unwrap())
+        .collect();
+    assert!(preserved.iter().flat_map(|entry| entry.as_array().unwrap())
+        .any(|entry| entry["effect"]["type"] == "NOISE" && entry["index"].is_u64()));
+    assert!(report.warnings.iter().any(|warning|
+        warning.contains("NOISE") && warning.contains("not rendered")));
+    assert!(report.document.nodes.values().any(|node|
+        node.effects.iter().any(|effect| effect.kind == "texture")));
+}
+
+#[test]
+fn actual_fig_vector_keeps_each_styled_region_and_the_stroke() {
+    let input = include_bytes!(
+        "../../../../testing/fixtures/fig-tools-public-20261106/fig2sketch/tests/data/vector.fig"
+    );
+    let report = futureox_design_kernel::interop::import_fig_report(input).unwrap();
+    assert_eq!(report.backend, "rust-native-fig", "{:?}", report.native_error);
+    let layer = &report.document.nodes["fig-0-5"];
+    assert_eq!(layer.kind, "group");
+    assert_eq!(layer.children.len(), 7, "six fills and one shared stroke");
+    let regions = &layer.children[..6];
+    for (index, id) in regions.iter().enumerate() {
+        let region = &report.document.nodes[id];
+        let geometry = region.vector_geometry.as_ref().unwrap();
+        assert_eq!(geometry.fill_rule, if index == 0 { "evenodd" } else { "nonzero" });
+        assert!(!geometry.fill.is_empty());
+        assert_eq!(region.fills.len(), 1);
+        assert!(region.strokes.is_empty());
+    }
+    for (index, color) in [(0, "#ff0000"), (1, "#ffff00"), (5, "#0000ff")] {
+        assert_eq!(report.document.nodes[&regions[index]].fills[0].color, color);
+    }
+    let stroke = &report.document.nodes[&layer.children[6]];
+    assert!(stroke.fills.is_empty());
+    assert_eq!(stroke.strokes.len(), 1);
+    assert!(stroke.vector_geometry.as_ref().unwrap().fill.is_empty());
+    assert!(stroke.vector_geometry.as_ref().unwrap().stroke.as_ref()
+        .is_some_and(|path| !path.is_empty()));
+    report.document.validate().unwrap();
+}
+
+#[test]
+fn legacy_percent_auto_uses_both_intrinsic_and_rounded_measured_advances() {
+    let input = include_bytes!(
+        "../../../../testing/fixtures/fig-tools-public-20261106/fig2sketch/tests/data/prototyping.fig"
+    );
+    let doc = fig::import_fig_native(input).unwrap();
+    for id in ["fig-2-21", "fig-2-22", "fig-4-30"] {
+        let style = doc.nodes[id].text_style.as_ref().unwrap();
+        assert!(style.line_height_auto, "{id} has a measured 15 px Auto line box");
+        assert_eq!(style.line_box_baseline, "figma-font-metrics");
+    }
+}
 #[test]
 fn rectangle_is_renderable_and_native_fixture_passes_admission() {
     let doc=import(json!({}));let n=&doc.nodes["fig-1-3"];

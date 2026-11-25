@@ -603,36 +603,69 @@ fn textureClipWeight(math:texture_2d<f32>,original:f32,displaced:f32)->f32{
  let a:u32=textureClipAlphaIndex(original);let b:u32=textureClipAlphaIndex(displaced);
  return textureClipWeightQ4(math,a,b);
 }
-fn figmaByteValue(bytes:vec4<u32>)->vec4<f32>{
- if(softwareRasterByte()){return softwareByteValue(bytes);}
+fn figmaExactByteValue(bytes:vec4<u32>)->vec4<f32>{
  return vec4<f32>(figmaNormalizeQ4(bytes.x*16u),figmaNormalizeQ4(bytes.y*16u),figmaNormalizeQ4(bytes.z*16u),figmaNormalizeQ4(bytes.w*16u));
 }
-fn figmaExportStep(previous:vec4<u32>,source:vec4<f32>,weight:f32)->vec4<u32>{
- if(softwareRasterByte()){return softwareBlendBytes(previous,softwareEncodeBytes(source),softwareEncodeByte(weight));}
- let dst:vec4<f32>=figmaByteValue(previous);
+fn figmaByteValue(bytes:vec4<u32>)->vec4<f32>{
+ if(softwareRasterByte()){return softwareByteValue(bytes);}
+ return figmaExactByteValue(bytes);
+}
+fn figmaExportStep(previous:vec4<u32>,source:vec4<f32>,weight:f32,software:bool)->vec4<u32>{
+ if(software){return softwareBlendBytes(previous,softwareEncodeBytes(source),softwareEncodeByte(weight));}
+ let dst:vec4<f32>=figmaExactByteValue(previous);
  let value:vec4<f32>=clamp(vec4<f32>(constantColorBlendRN(source.x,dst.x,weight),constantColorBlendRN(source.y,dst.y,weight),constantColorBlendRN(source.z,dst.z,weight),constantColorBlendRN(source.w,dst.w,weight)),vec4<f32>(0),vec4<f32>(1));
  return vec4<u32>(figmaEncodeUnorm8(value.x),figmaEncodeUnorm8(value.y),figmaEncodeUnorm8(value.z),figmaEncodeUnorm8(value.w));
 }
-fn figmaFourPass(a:vec4<f32>,b:vec4<f32>,c:vec4<f32>,d:vec4<f32>)->vec4<f32>{
- var result:vec4<u32>=figmaExportStep(vec4<u32>(0u),d,1.);
- result=figmaExportStep(result,a,0.5);
- result=figmaExportStep(result,c,bitcast<f32>(0x3eaaaaabu));
- result=figmaExportStep(result,b,0.25);
- return figmaByteValue(result);
+fn figmaFourPass(a:vec4<f32>,b:vec4<f32>,c:vec4<f32>,d:vec4<f32>,software:bool)->vec4<f32>{
+ var result:vec4<u32>=figmaExportStep(vec4<u32>(0u),d,1.,software);
+ result=figmaExportStep(result,a,0.5,software);
+ result=figmaExportStep(result,c,bitcast<f32>(0x3eaaaaabu),software);
+ result=figmaExportStep(result,b,0.25,software);
+ if(software){return softwareByteValue(result);}
+ return figmaExactByteValue(result);
 }
 fn figmaQuarterSum(sum:vec4<u32>)->vec4<f32>{
  return vec4<f32>(figmaNormalizeQ4(sum.x*4u),figmaNormalizeQ4(sum.y*4u),figmaNormalizeQ4(sum.z*4u),figmaNormalizeQ4(sum.w*4u));
 }
-fn softwareSpatialSample(tex:texture_2d<f32>,p:vec2<f32>,r:vec4<f32>)->vec4<f32>{
+fn softwareSpatialTaps(tex:texture_2d<f32>,p:vec2<f32>,r:vec4<f32>)->array<vec4<u32>,4>{
  let a:vec4<u32>=softwareEncodeBytes(at(tex,p,r));
  let b:vec4<u32>=softwareEncodeBytes(at(tex,p+vec2<f32>(1,0),r));
  let c:vec4<u32>=softwareEncodeBytes(at(tex,p+vec2<f32>(0,1),r));
  let d:vec4<u32>=softwareEncodeBytes(at(tex,p+vec2<f32>(1,1),r));
- return softwareByteValue(softwareSampleBytes(a,b,c,d,128u,128u));
+ return array<vec4<u32>,4>(a,b,c,d);
+}
+fn softwareSpatialSample(taps:array<vec4<u32>,4>)->vec4<f32>{
+ return softwareByteValue(softwareSampleBytes(taps[0],taps[1],taps[2],taps[3],128u,128u));
+}
+// The coverage proof uses just these sixteen taps. Other pixels and effects
+// never select the resolve of this neighborhood.
+fn opaqueColorEndpoints(planes:array<array<vec4<u32>,4>,4>)->bool{
+ let first=planes[0][0];
+ var second=first;
+ for(var j:u32=0u;j<4u;j++){
+  for(var i:u32=0u;i<4u;i++){
+   let pixel=planes[j][i];
+   if(pixel.a!=255u){return false;}
+   if(any(pixel!=first)&&any(pixel!=second)){
+    if(any(second!=first)){return false;}
+    second=pixel;
+   }
+  }
+ }
+ let chromatic=first.r!=first.g||first.g!=first.b||second.r!=second.g||second.g!=second.b;
+ return any(second!=first)&&chromatic;
+}
+fn exportTapSum(taps:array<vec4<u32>,4>)->vec4<f32>{
+ return figmaQuarterSum(taps[0]+taps[1]+taps[2]+taps[3]);
 }
 fn figmaSpatialResolve(p:vec2<f32>)->vec4<f32>{
  if(softwareRasterByte()){
-  return figmaFourPass(softwareSpatialSample(sourceA,p,u(1)),softwareSpatialSample(sourceB,p,u(2)),softwareSpatialSample(sourceC,p,u(3)),softwareSpatialSample(sourceD,p,u(1)));
+  let a=softwareSpatialTaps(sourceA,p,u(1));let b=softwareSpatialTaps(sourceB,p,u(2));
+  let c=softwareSpatialTaps(sourceC,p,u(3));let d=softwareSpatialTaps(sourceD,p,u(1));
+  if(u(9).w>0.5&&opaqueColorEndpoints(array<array<vec4<u32>,4>,4>(a,b,c,d))){
+   return figmaFourPass(exportTapSum(a),exportTapSum(b),exportTapSum(c),exportTapSum(d),false);
+  }
+  return figmaFourPass(softwareSpatialSample(a),softwareSpatialSample(b),softwareSpatialSample(c),softwareSpatialSample(d),true);
  }
  var a:vec4<u32>=vec4<u32>(0u);var b:vec4<u32>=vec4<u32>(0u);var c:vec4<u32>=vec4<u32>(0u);var d:vec4<u32>=vec4<u32>(0u);
  for(var y:u32=0u;y<2u;y=y+1u){for(var x:u32=0u;x<2u;x=x+1u){
@@ -640,7 +673,7 @@ fn figmaSpatialResolve(p:vec2<f32>)->vec4<f32>{
   a=a+vec4<u32>(round(at(sourceA,q,u(1))*255.));b=b+vec4<u32>(round(at(sourceB,q,u(2))*255.));
   c=c+vec4<u32>(round(at(sourceC,q,u(3))*255.));d=d+vec4<u32>(round(at(sourceD,q,u(1))*255.));
  }}
- return figmaFourPass(figmaQuarterSum(a),figmaQuarterSum(b),figmaQuarterSum(c),figmaQuarterSum(d));
+ return figmaFourPass(figmaQuarterSum(a),figmaQuarterSum(b),figmaQuarterSum(c),figmaQuarterSum(d),false);
 }
 fn materialTexture(p:vec2<f32>)->vec4<f32>{
  let delta:vec2<f32>=at(sourceB,p,u(2)).xy;let first:vec4<f32>=materialSample(p,delta);
@@ -1311,7 +1344,7 @@ fn sketchLayerGaussian(p:vec2<f32>)->vec4<f32>{
  if(axis==1){value.a=max(value.a,max(value.r,max(value.g,value.b)));}
  return vec4<f32>(value)/255.;
 }
-fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COMPOSITOR_MODE>=0);if(mode==98){return sketchLayerGaussian(p);}if(BYTE_SURFACE&&mode==43){return textureReplayEffect(p);}if(BYTE_SURFACE&&mode==44){return textureReplayCopyback(p);}if(BYTE_SURFACE&&mode==45){return textureReplaySource(p);}if(BYTE_SURFACE&&mode==42){return measuredGradientOver(p);}if(BYTE_SURFACE&&mode==40){return captureDownscale(p);}if(BYTE_SURFACE&&mode==41){return captureTriangle(p);}if(BYTE_SURFACE&&mode==36){return figmaFourPass(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)));}if(BYTE_SURFACE&&mode==35){return solidPaintOver(p);}if(mode==34){return analyticGlass(p);}if(mode==33){return bytePreview(p);}if(mode==46){return gradientBlurComposite(p);}if(mode==65){return progressiveTent(p);}if(mode==64){return sketchBlurBox(p);}if(mode==61){return motionBlurPixel(p);}if(mode==62){return zoomBlurPixel(p);}if(mode==63){return vec4<f32>(min(1.,smp(sourceA,p,u(1)).a*u(10).y));}if(mode==8&&u(10).z>0.5){return materialTexture(p);}if(mode==11&&u(10).w>0.5){return materialGlass(p);}let a=smp(sourceA,p,u(1));
+fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COMPOSITOR_MODE>=0);if(mode==98){return sketchLayerGaussian(p);}if(BYTE_SURFACE&&mode==43){return textureReplayEffect(p);}if(BYTE_SURFACE&&mode==44){return textureReplayCopyback(p);}if(BYTE_SURFACE&&mode==45){return textureReplaySource(p);}if(BYTE_SURFACE&&mode==42){return measuredGradientOver(p);}if(BYTE_SURFACE&&mode==40){return captureDownscale(p);}if(BYTE_SURFACE&&mode==41){return captureTriangle(p);}if(BYTE_SURFACE&&mode==36){return figmaFourPass(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)),softwareRasterByte());}if(BYTE_SURFACE&&mode==35){return solidPaintOver(p);}if(mode==34){return analyticGlass(p);}if(mode==33){return bytePreview(p);}if(mode==46){return gradientBlurComposite(p);}if(mode==65){return progressiveTent(p);}if(mode==64){return sketchBlurBox(p);}if(mode==61){return motionBlurPixel(p);}if(mode==62){return zoomBlurPixel(p);}if(mode==63){return vec4<f32>(min(1.,smp(sourceA,p,u(1)).a*u(10).y));}if(mode==8&&u(10).z>0.5){return materialTexture(p);}if(mode==11&&u(10).w>0.5){return materialGlass(p);}let a=smp(sourceA,p,u(1));
  // Managed surfaces preserve extended-range linear light in RGBA32F.
  if(u(60).x>0.5){
   if(mode==3||mode==15){var opacity=u(4).z;if(u(4).w>0.5){opacity=mulRN(opacity,at(sourceC,p,u(3)).a);}let src=mulRN4(a,vec4<f32>(opacity));if(mode==15){return src;}return over(smp(sourceB,p,u(2)),src,i32(u(4).y));}

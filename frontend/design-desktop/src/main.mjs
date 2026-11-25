@@ -67,6 +67,7 @@ const renderDiagnosticsEnabled = !app.isPackaged && ['1','detail'].includes(proc
 const terminalDiagnostics=createRenderDiagnostics({enabled:renderDiagnosticsEnabled,source:'host',session:Math.floor(Math.random()*1e12),sink:record=>console.log(PREFIX+JSON.stringify(record))})
 const smoke = process.argv.includes('--desktop-smoke')
 const cpuOnly = process.argv.includes('--core-cpu-only') || smoke
+if (smoke && process.platform === 'darwin') app.setActivationPolicy('accessory')
 const gpuWorkingBudgetMiB = selectGpuWorkingBudgetMiB(process.env.CORE_GPU_WORKING_BUDGET_MIB,
   { platform: process.platform, arch: process.arch, ...STARTUP_MEMORY })
 const guiTest = process.argv.includes('--desktop-gui-test')
@@ -104,6 +105,8 @@ const acceptanceProfile = resolveAcceptanceProfile(process.argv, {
   home: acceptanceHome,
   env: process.env,
 })
+const inactiveAcceptance = process.platform === 'darwin' && !!acceptanceProfile
+if (inactiveAcceptance) app.setActivationPolicy('accessory')
 const desktopProfile = selectDesktopProfile({
   smoke,
   guiTest,
@@ -1330,7 +1333,7 @@ async function buildWindow() {
       navigateOnDragDrop: false,
       // Isolated validation must not inherit occlusion-based timer throttling
       // when the operator reads the report in another app. Product policy stays unchanged.
-      backgroundThrottling: !renderCheck,
+      backgroundThrottling: !renderCheck && !smoke && !inactiveAcceptance,
       spellcheck: false,
     },
   })
@@ -1378,6 +1381,7 @@ async function buildWindow() {
     dirty = true
   })
   window.once('ready-to-show', () => {
+    if (smoke || inactiveAcceptance) return
     if (placement.maximized) ownedWindow.maximize()
     if (placement.fullscreen) ownedWindow.setFullScreen(true)
     ownedWindow.show()
@@ -1620,14 +1624,24 @@ async function runSmoke() {
   // Owned local smoke mode; no remote debugger, renderer IPC testing hooks or sandbox override.
   const report = await window.webContents.executeJavaScript(`(async () => {
     const deadline = Date.now() + 30000;
-    const surface = () => document.querySelector('canvas.kernel-surface[data-renderer="cpu"]');
-    while ((!document.querySelector('.app-shell[data-desktop-ready="true"]') || !surface()) && Date.now() < deadline) {
+    const ready = () => !!document.querySelector('.app-shell[data-desktop-ready="true"]');
+    const home = () => !!document.querySelector('.local-home');
+    const surface = () => document.querySelector('.kernel-presentation[data-presentation-ready="true"][data-presentation-backend="cpu"] canvas.kernel-surface[data-renderer="cpu"]');
+    let requestedNewDesign = false;
+    while ((!ready() || home() || !surface()) && Date.now() < deadline) {
+      if (ready() && home() && !requestedNewDesign) {
+        const button = document.querySelector('button[data-testid="home-new-design"]:enabled');
+        if (button) {
+          requestedNewDesign = true;
+          button.click();
+        }
+      }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     const frame = surface();
     return { url: location.href, bridge: window.coreDesktop?.version,
       node: typeof window.require, process: typeof window.process,
-      ready: !!document.querySelector('.app-shell[data-desktop-ready="true"]'),
+      ready: ready(), home: home(), requestedNewDesign, presentationReady: !!frame,
       text: document.body.innerText.slice(0, 1000), canvas: document.querySelectorAll('canvas').length,
       renderBackend: frame?.dataset.renderer, renderMs: Number(frame?.dataset.renderMs) };
   })()`)
@@ -1645,6 +1659,9 @@ async function runSmoke() {
     report.node !== 'undefined' ||
     report.process !== 'undefined' ||
     !report.ready ||
+    report.home ||
+    !report.requestedNewDesign ||
+    !report.presentationReady ||
     report.canvas < 1 ||
     report.renderBackend !== 'cpu' ||
     !Number.isFinite(report.renderMs) ||

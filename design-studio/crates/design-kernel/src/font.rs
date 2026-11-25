@@ -126,6 +126,9 @@ pub struct TextStyle {
     /// Explicit indent level, 0 through 4. Absent inherits the first level.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub list_level: Option<u8>,
+    /// FIG-authored list spacing. Plain paragraph layout uses paragraph_spacing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_spacing: Option<f64>,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -194,6 +197,7 @@ impl Default for TextStyle {
             writing_mode: "horizontal".into(),
             list: String::new(),
             list_level: None,
+            list_spacing: None,
         }
     }
 }
@@ -637,6 +641,7 @@ impl TextStyle {
             || self.letter_spacing.abs() > 1000.
             || !self.paragraph_spacing.is_finite()
             || !(0. ..=10000.).contains(&self.paragraph_spacing)
+            || self.list_spacing.is_some_and(|spacing| !(0. ..=10000.).contains(&spacing))
             || !self.paragraph_indent.is_finite()
             || self.paragraph_indent.abs() > 10000.
             || !["start", "center", "end", "justify"].contains(&self.align.as_str())

@@ -149,12 +149,16 @@ test('Electron minimum-width and compact-header contracts preserve Settings labe
   const display = { workArea: { x: 0, y: 0, width: 1440, height: 900 } }
   const fitted = fitWindowState({ version: 1, bounds: { x: 0, y: 0, width: 700, height: 700 } }, [display], display)
   assert.equal(fitted.minWidth, 1000); assert.equal(fitted.bounds.width, 1000)
-  // 1000px falls under the 1100px status-icon compact rule, not the <=900px mobile grid.
-  assert.match(css, /@media \(max-width: 1100px\) \{\s*\.editor-shell \.header-right \.save-status \{[^}]*font-size:\s*0/)
+  // The desktop minimum keeps the save status readable and lets its label shrink.
+  const saveStatus = css.match(/\.editor-shell \.header-right \.save-status \{([^}]+)\}/)?.[1]
+  assert.match(saveStatus, /font-size:\s*10px/)
+  assert.match(saveStatus, /flex:\s*0 1 auto/)
+  assert.match(css, /\.editor-shell \.header-right \.save-status \.save-status-label \{[^}]*text-overflow:\s*ellipsis/)
   assert.match(css, /\.editor-shell \.header-right > button \{[^}]*font-size:\s*0/)
   assert.match(css, /\.editor-shell \.header-right > \.app-settings-button \{[^}]*font-size:\s*12px/)
   // Small physical displays may be narrower than desktop minimum; mobile header remains right-aligned.
   const small = { workArea: { x: 0, y: 0, width: 800, height: 700 } }
   assert.equal(fitWindowState(undefined, [small], small).minWidth, 800)
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.editor-shell \.editor-header \.header-right \{[^}]*width:\s*auto/)
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.editor-shell \.header-right \.save-status \{[^}]*display:\s*none/)
 })

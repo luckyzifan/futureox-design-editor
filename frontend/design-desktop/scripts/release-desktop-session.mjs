@@ -228,7 +228,9 @@ async function launchPackaged(electron, executable, profile, extraArgs, logs, la
       const window = BrowserWindow.getAllWindows()[0]
       window.setFocusable(false)
       window.setIgnoreMouseEvents(true)
-      window.showInactive()
+      // The current isolated acceptance profile paints without revealing its
+      // window. Older packages still need their normal inactive presentation.
+      if (!process.env.FUTUREOX_ACCEPTANCE_PROFILE) window.showInactive()
     })
     page.on('pageerror', error => logs.push(`pageerror ${error}\n`))
     await page.waitForURL(/^design-app:/, { timeout: 90000, waitUntil: 'domcontentloaded' })
@@ -578,7 +580,9 @@ async function main() {
     let app
     let page
     try {
-      const openOnArgv = contract?.argvFiles ?? true
+      // The macOS host accepts Finder file events and its Open menu. Launching
+      // the executable directly does not synthesize a Finder open-file event.
+      const openOnArgv = process.platform !== 'darwin' && (contract?.argvFiles ?? true)
       ;({ app, page } = await launchPackaged(electron, executable, profile, openOnArgv ? [originalPath] : [], logs, launchOptions))
       launched = true
       reached.open = true
@@ -621,7 +625,11 @@ async function main() {
           throw new Error(`Packaged process userData ${runtime.userData} is inside the real home`)
         }
       }
-      if (!openOnArgv) {
+      if (process.platform === 'darwin') {
+        await page.locator('.app-shell[data-desktop-ready="true"]').waitFor({ timeout: 60000 })
+        await app.evaluate(({ app }, file) => app.emit('open-file', { preventDefault() {} }, file), originalPath)
+        observation.openMethod = 'native_open_file_event'
+      } else if (!openOnArgv) {
         await page.locator('.app-shell[data-desktop-ready="true"]').waitFor({ timeout: 60000 })
         await app.evaluate(({ dialog }, file) => {
           const original = dialog.showOpenDialog.bind(dialog)
@@ -630,9 +638,8 @@ async function main() {
             return { canceled: false, filePaths: [file] }
           }
         }, originalPath)
-        if (process.platform === 'darwin') await clickMenu(app, 'CmdOrCtrl+O')
-        else await page.getByRole('button', { name: '打开设计文件' }).click()
-        observation.openMethod = 'native_open_menu'
+        await page.getByRole('button', { name: /^(打开设计文件|Open design file)$/i }).click()
+        observation.openMethod = 'native_open_home'
       } else {
         observation.openMethod = 'argv'
       }

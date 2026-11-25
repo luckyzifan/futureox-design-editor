@@ -134,11 +134,17 @@ impl Backend {
     }
 
     pub(crate) fn workspace_unavailable(&self) -> BackendError {
+        let reason = self.workspace_issue.unwrap_or("WORKSPACE_ERROR");
+        if reason == "WORKSPACE_STORAGE_FULL" {
+            return BackendError::new(
+                reason,
+                "Local workspace storage is full. Free space and reopen the workspace to recover the last committed revision. The database is retained.",
+            );
+        }
         BackendError::new(
             "WORKSPACE_UNAVAILABLE",
             format!(
-                "Local workspace unavailable ({}). Database retained; portable files and recovery remain available.",
-                self.workspace_issue.unwrap_or("WORKSPACE_ERROR")
+                "Local workspace unavailable ({reason}). Database retained; portable files and recovery remain available.",
             ),
         )
     }

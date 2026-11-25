@@ -9,6 +9,9 @@ pub struct Presentation {
     pub offset_x: f64,
     pub offset_y: f64,
     pub scale: f64,
+    /// Kernel proof for mode 24. Ordinary preview plans never set it.
+    #[serde(skip_serializing_if = "crate::components::is_false")]
+    pub software_color_coverage: bool,
 }
 pub struct Plan {
     pub source: RenderOptions,
@@ -77,6 +80,7 @@ pub fn plan(options: &RenderOptions) -> Result<Plan, String> {
             offset_x: options.view.x + left * scale,
             offset_y: options.view.y + top * scale,
             scale,
+            software_color_coverage: false,
         },
     })
 }
