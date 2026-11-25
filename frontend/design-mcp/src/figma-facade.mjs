@@ -48,7 +48,9 @@ export function figmaPluginBridge() { return registeredBridge }
 const tool = (name, description, properties, required = []) => ({
   name,
   description,
-  inputSchema: { type: 'object', additionalProperties: false, properties: { ...properties, fileKey: { type: 'string', ...LOOSE }, clientFrameworks: LOOSE, clientLanguages: LOOSE, skillNames: LOOSE }, required },
+  inputSchema: { type: 'object', additionalProperties: false, properties: { ...properties,
+    sessionId: { type: 'string', minLength: 1, maxLength: 256, description: 'Optional Futureox session assertion. Use the current HTTP Mcp-Session-Id or the packaged Figma stdio desktop grant session.' },
+    fileKey: { type: 'string', ...LOOSE }, clientFrameworks: LOOSE, clientLanguages: LOOSE, skillNames: LOOSE }, required },
   annotations: { readOnlyHint: name !== 'use_figma' && name !== 'open_document', destructiveHint: name === 'use_figma' || name === 'open_document', idempotentHint: name !== 'use_figma' && name !== 'open_document', openWorldHint: false },
 })
 
@@ -195,7 +197,7 @@ function patchFrom(operation) {
 }
 
 export class FigmaFacade {
-  constructor({ execute, methods, scope = 'write', pluginBridge = undefined, target, terminalSignal } = {}) {
+  constructor({ execute, methods, scope = 'write', pluginBridge = undefined, target, terminalSignal, localSessionId } = {}) {
     if (typeof execute !== 'function') throw new TypeError('FigmaFacade requires the Design API execute function')
     if (!Array.isArray(methods) || methods.some(method => !isRecord(method) || typeof method.name !== 'string')) throw new TypeError('FigmaFacade requires Design API method descriptors')
     if (!['read', 'write'].includes(scope)) throw new TypeError('FigmaFacade scope must be read or write')
@@ -205,6 +207,7 @@ export class FigmaFacade {
     this.pluginBridge = pluginBridge
     this.target = target
     this.terminalSignal = terminalSignal
+    this.localSessionId = localSessionId
   }
 
   listTools() {
@@ -219,8 +222,15 @@ export class FigmaFacade {
   }
 
   async callTool(name, args, context = {}) {
-    const toolArgs = args ?? {}
+    let toolArgs = args ?? {}
     try {
+      if (isRecord(toolArgs) && Object.hasOwn(toolArgs, 'sessionId')) {
+        const { sessionId, ...parameters } = toolArgs
+        const boundSession = context.localSessionId ?? this.localSessionId
+        if (typeof sessionId !== 'string' || !sessionId.length || sessionId.length > 256 || sessionId !== boundSession)
+          return failure(name, 'invalid_local_session', 'Use the active Futureox transport session ID for this connection.')
+        toolArgs = parameters
+      }
       if (name === 'get_metadata') return await this.metadata(toolArgs, context)
       if (name === 'get_selection') return await this.selection(toolArgs, context)
       if (name === 'get_design_context') return await this.designContext(toolArgs, context)

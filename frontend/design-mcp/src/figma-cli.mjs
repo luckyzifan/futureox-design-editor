@@ -18,6 +18,7 @@ export async function main(argv = process.argv.slice(2)) {
     scope: operation.scope,
     target: operation.target,
     terminalSignal: socket.terminalSignal,
+    localSessionId: options.sessionId,
   })
   const server = new DesignMcpServer({ backend, instructions: FIGMA_MCP_INSTRUCTIONS, artifactCount: FIGMA_ASSET_LIMIT }).start()
   const stop = () => { void server.close() }

@@ -282,7 +282,12 @@ export async function verifyPackagedMcpTransport({ resources, executable, hostSo
     const asset = await call(figma, 'download_assets', { nodeId: id, defaultFormat: 'svg' })
     const assetUri = asset.content.find(item => item.type === 'resource_link').uri
     assert.equal((await figma.rpc('resources/read', { uri: assetUri })).result.contents[0].text, SVG)
-    const figmaShot = await call(figma, 'get_screenshot', { nodeId: id })
+    const localSessionId = figmaConfig.env.FUTUREOX_DESIGN_SESSION
+    const rejectedAssertion = await figma.rpc('tools/call', {
+      name: 'get_screenshot', arguments: { nodeId: id, sessionId: 'another-local-transport-session' },
+    })
+    assert.equal(rejectedAssertion.result.structuredContent.error.code, 'invalid_local_session')
+    const figmaShot = await call(figma, 'get_screenshot', { nodeId: id, sessionId: localSessionId })
     const figmaShotUri = png(figmaShot)
     mark('screenshot', 'figma-cli.mjs')
     await call(design, 'design_history_undo', { params: {}, ...(await fence(design)) })
