@@ -105,6 +105,8 @@ const acceptanceProfile = resolveAcceptanceProfile(process.argv, {
   home: acceptanceHome,
   env: process.env,
 })
+const inactiveAcceptance = process.platform === 'darwin' && !!acceptanceProfile
+if (inactiveAcceptance) app.setActivationPolicy('accessory')
 const desktopProfile = selectDesktopProfile({
   smoke,
   guiTest,
@@ -1331,7 +1333,7 @@ async function buildWindow() {
       navigateOnDragDrop: false,
       // Isolated validation must not inherit occlusion-based timer throttling
       // when the operator reads the report in another app. Product policy stays unchanged.
-      backgroundThrottling: !renderCheck && !smoke,
+      backgroundThrottling: !renderCheck && !smoke && !inactiveAcceptance,
       spellcheck: false,
     },
   })
@@ -1379,7 +1381,7 @@ async function buildWindow() {
     dirty = true
   })
   window.once('ready-to-show', () => {
-    if (smoke) return
+    if (smoke || inactiveAcceptance) return
     if (placement.maximized) ownedWindow.maximize()
     if (placement.fullscreen) ownedWindow.setFullScreen(true)
     ownedWindow.show()

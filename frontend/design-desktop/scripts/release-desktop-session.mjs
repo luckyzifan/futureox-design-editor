@@ -228,7 +228,9 @@ async function launchPackaged(electron, executable, profile, extraArgs, logs, la
       const window = BrowserWindow.getAllWindows()[0]
       window.setFocusable(false)
       window.setIgnoreMouseEvents(true)
-      window.showInactive()
+      // The current isolated acceptance profile paints without revealing its
+      // window. Older packages still need their normal inactive presentation.
+      if (!process.env.FUTUREOX_ACCEPTANCE_PROFILE) window.showInactive()
     })
     page.on('pageerror', error => logs.push(`pageerror ${error}\n`))
     await page.waitForURL(/^design-app:/, { timeout: 90000, waitUntil: 'domcontentloaded' })
