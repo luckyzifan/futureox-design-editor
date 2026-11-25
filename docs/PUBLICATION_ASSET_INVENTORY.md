@@ -140,6 +140,22 @@ bytes of `combined-2026-10-08/cases.json`, `text-2026-10-09/cases.json`, and
 `text-2026-10-09/create-in-figma.js`. Their publication fields stay withhold
 with no source and no license.
 
+The kernel sources under `design-studio` and the bytes under
+`testing/fixtures/design/io` are the same as main
+`ca2e46efcdb5e056faa109b0c0511d3dc21fc850`. On this Linux machine, after
+installing the C++ linker library the debug build needed, the CPU tests that
+read those bytes were:
+
+```bash
+cargo test --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel --test image_metadata --test gif_tiff_import -- --test-threads=1
+```
+
+`image_metadata`: 5 passed, 0 failed, 0.15s. `gif_tiff_import`: 3 passed, 0
+failed, 0.05s. Rustc 1.99.1. The profile is Cargo's default debug test
+profile, and the raster path inside those tests is `analytic`. This is not a
+GPU, Metal, or timing comparison. The GIF and TIFF passing that decoder does
+not make them publication grants.
+
 ## Cloud measurement versus main
 
 Measured on this Linux cloud VM on 2026-11-10. Baseline is `main` at
