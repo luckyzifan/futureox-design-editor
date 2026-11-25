@@ -620,6 +620,219 @@ pub(crate) fn figma_portable_layer_blur(source: Surface) -> Result<Surface, Stri
     Ok(quantized)
 }
 
+/// Separable tent sample in channel units of 0..255, with no byte rounding
+/// between the two passes. Matches `tent_blur_impl(..., linear: true)`.
+fn unrounded_tent_pixel(source: &Surface, radius: f64, x: i32, y: i32) -> [f64; 4] {
+    let reach = radius.ceil() as i32;
+    let horizontal = |at_x: i32, at_y: i32| {
+        let mut acc = [0.0; 4];
+        for distance in 0..=reach {
+            let weight = tent_weight(radius, distance as u32);
+            if weight == 0.0 {
+                continue;
+            }
+            let sample = |px: i32| source.at(px, at_y).0.map(|value| f64::from(value));
+            let add = if distance == 0 {
+                sample(at_x)
+            } else {
+                let left = sample(at_x - distance);
+                let right = sample(at_x + distance);
+                std::array::from_fn(|channel| left[channel] + right[channel])
+            };
+            for channel in 0..4 {
+                acc[channel] += add[channel] * weight;
+            }
+        }
+        acc
+    };
+    let mut acc = [0.0; 4];
+    for distance in 0..=reach {
+        let weight = tent_weight(radius, distance as u32);
+        if weight == 0.0 {
+            continue;
+        }
+        let add = if distance == 0 {
+            horizontal(x, y)
+        } else {
+            let above = horizontal(x, y - distance);
+            let below = horizontal(x, y + distance);
+            std::array::from_fn(|channel| above[channel] + below[channel])
+        };
+        for channel in 0..4 {
+            acc[channel] += add[channel] * weight;
+        }
+    }
+    acc
+}
+
+fn unorm_byte(value: f32) -> u8 {
+    (value.clamp(0.0, 1.0) * 255.0).round_ties_even() as u8
+}
+
+fn half_up_byte(mean: f64) -> u8 {
+    (mean.clamp(0.0, 255.0) + 0.5).floor() as u8
+}
+
+/// `k + 0.5` in byte units. Those pairs already follow the export's ties-even
+/// (and the radius-1 half-up lift). A mean that is only near a half because
+/// each device pixel was rounded first is not this case.
+fn exact_byte_half(mean: f64) -> bool {
+    let doubled = mean * 2.0;
+    let nearest = doubled.round();
+    (doubled - nearest).abs() < 1.0e-3 && (nearest as i64) % 2 != 0
+}
+
+/// Straight RGBA8 of a premultiplied layer pixel after source-over onto
+/// opaque black. That is the byte the export plane holds when no later
+/// sibling, clip, or non-black backdrop has replaced it.
+fn opaque_black_straight(pixel: Pixel) -> [u8; 4] {
+    [unorm_byte(pixel.0[0]), unorm_byte(pixel.0[1]), unorm_byte(pixel.0[2]), 255]
+}
+
+pub(crate) struct FalseHalfMean {
+    x: i32,
+    y: i32,
+    means: [f64; 4],
+}
+
+/// Unrounded 2×2 means for pairs inside the source support expanded by the
+/// tent reach. Reads `source` only, so the byte blur can run afterwards
+/// without a second surface on the compositing budget. Direct samples are
+/// O(radius²); a wide support stays on the byte average.
+pub(crate) fn figma_false_half_means(source: &Surface, radius: f64) -> Vec<FalseHalfMean> {
+    let radius = f64::from(radius as f32);
+    let rect = source.rect;
+    if !(radius > 0.0) || rect.empty() {
+        return Vec::new();
+    }
+    let reach = radius.ceil() as i32;
+    let mut content: Option<Rect> = None;
+    for y in rect.y..rect.bottom() {
+        for x in rect.x..rect.right() {
+            let pixel = source.at(x, y);
+            if pixel.0.iter().any(|value| *value != 0.0) {
+                let dot = Rect::new(x, y, 1, 1);
+                content = Some(content.map_or(dot, |bounds| bounds.union(dot)));
+            }
+        }
+    }
+    let Some(content) = content else {
+        return Vec::new();
+    };
+    let region = content.expand(reach + 1).intersect(rect);
+    if region.empty() {
+        return Vec::new();
+    }
+    let pair_start = |edge: i32| edge + edge.rem_euclid(2);
+    let pairs = ((region.h as usize + 1) / 2).saturating_mul((region.w as usize + 1) / 2);
+    if pairs.saturating_mul(reach.max(0) as usize).saturating_mul(reach.max(0) as usize) > 100_000 {
+        return Vec::new();
+    }
+    let mut means = Vec::new();
+    let mut y = pair_start(region.y);
+    while y + 1 < region.bottom() {
+        let mut x = pair_start(region.x);
+        while x + 1 < region.right() {
+            if rect.index(x, y).is_some()
+                && rect.index(x + 1, y).is_some()
+                && rect.index(x, y + 1).is_some()
+                && rect.index(x + 1, y + 1).is_some()
+            {
+                let samples = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)]
+                    .map(|(px, py)| unrounded_tent_pixel(source, radius, px, py));
+                if samples.iter().flatten().all(|value| value.is_finite()) {
+                    let mut average = [0.0; 4];
+                    for sample in samples {
+                        for channel in 0..4 {
+                            average[channel] += sample[channel] * 255.0 * 0.25;
+                        }
+                    }
+                    let rows_match = (0..4).all(|channel| {
+                        (samples[0][channel] - samples[2][channel]).abs() < 1.0e-4
+                            && (samples[1][channel] - samples[3][channel]).abs() < 1.0e-4
+                    });
+                    if rows_match {
+                        means.push(FalseHalfMean { x, y, means: average });
+                    }
+                }
+            }
+            x += 2;
+        }
+        y += 2;
+    }
+    means
+}
+
+/// Pairs whose per-pixel byte rounding invented a half the unrounded tent
+/// does not have. The layer bytes stay as they are: a later overlay, clip,
+/// or split coverage still composites with those samples. The export 2×2
+/// uses the returned straight color only when the plane still shows this pair.
+pub(crate) fn figma_false_half_fixes(
+    means: &[FalseHalfMean],
+    quantized: &Surface,
+) -> Vec<crate::fidelity::FalseHalfFix> {
+    let mut fixes = Vec::new();
+    for sample in means {
+        let coords = [
+            (sample.x, sample.y),
+            (sample.x + 1, sample.y),
+            (sample.x, sample.y + 1),
+            (sample.x + 1, sample.y + 1),
+        ];
+        let Some(quantized_pixels) = coords
+            .into_iter()
+            .map(|(x, y)| quantized.rect.index(x, y).map(|index| quantized.pixels[index]))
+            .collect::<Option<Vec<_>>>()
+        else {
+            continue;
+        };
+        if quantized_pixels.len() != 4 {
+            continue;
+        }
+        let quantized_pixels = [
+            quantized_pixels[0],
+            quantized_pixels[1],
+            quantized_pixels[2],
+            quantized_pixels[3],
+        ];
+        let rows = quantized_pixels[0].0 == quantized_pixels[2].0
+            && quantized_pixels[1].0 == quantized_pixels[3].0;
+        let half = unorm_byte(quantized_pixels[0].0[0]) % 2 != unorm_byte(quantized_pixels[1].0[0]) % 2;
+        let varied = quantized_pixels.iter().any(|pixel| pixel.0 != quantized_pixels[0].0);
+        if !rows || !half || !varied {
+            continue;
+        }
+        let expected = quantized_pixels.map(opaque_black_straight);
+        let current = crate::fidelity::export_pair_straight(expected);
+        let gray = (sample.means[0] - sample.means[1]).abs() < 1.0e-3
+            && (sample.means[1] - sample.means[2]).abs() < 1.0e-3
+            && (sample.means[0] - sample.means[3]).abs() < 1.0e-3
+            && current[0] == current[1]
+            && current[1] == current[2]
+            && current[3] == 255;
+        // White columns are the measured layer-blur contract. A colored pair
+        // can move one channel the other way, so it keeps the byte average.
+        if !gray || sample.means.iter().any(|mean| exact_byte_half(*mean)) {
+            continue;
+        }
+        let output = [
+            half_up_byte(sample.means[0]),
+            half_up_byte(sample.means[1]),
+            half_up_byte(sample.means[2]),
+            255,
+        ];
+        if output != current {
+            fixes.push(crate::fidelity::FalseHalfFix {
+                x: sample.x,
+                y: sample.y,
+                expected,
+                output,
+            });
+        }
+    }
+    fixes
+}
+
 // Shadow inputs have zero RGB. The one-channel specialization uses exactly
 // the same sums, rounding proof and rational fallback for their alpha.
 fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, horizontal: bool, bounded: bool) -> Result<(), String> {
@@ -2554,6 +2767,52 @@ mod figma_layer_half_up_tests {
                 && pixel.0[1] == pixel.0[2]
                 && pixel.0[2] == pixel.0[3]
         }));
+    }
+
+    #[test]
+    fn false_half_above_radius_one_rounds_the_unrounded_pair() {
+        let mut source = Surface::new(Rect::new(0, 0, 16, 8)).unwrap();
+        for y in 0..8 {
+            for x in 6..10 {
+                source.pixels[source.rect.index(x, y).unwrap()] = Pixel::rgba(1., 1., 1., 1.);
+            }
+        }
+        let radius = 1.0039999485015869;
+        let quantized = portable_tent_blur_edge(&source, radius, false).unwrap();
+        let fixes = figma_false_half_fixes(&figma_false_half_means(&source, radius), &quantized);
+        let at = |x: i32| {
+            fixes.iter().find(|fix| fix.x == x && fix.y == 4).map(|fix| fix.output)
+        };
+        // Device pair (4,5) is outside the bar and the shoulder. Byte rounding
+        // makes 0 and 43, whose export half is 22. The unrounded mean is 21.3.
+        assert_eq!(at(4), Some([21, 21, 21, 255]));
+        // 212 beside 255 is the odd half the export already resolves to 234.
+        assert_eq!(at(6), None);
+    }
+
+    #[test]
+    fn direct_tent_matches_the_linear_pass() {
+        let mut source = Surface::new(Rect::new(0, 0, 16, 8)).unwrap();
+        for y in 0..8 {
+            for x in 6..10 {
+                source.pixels[source.rect.index(x, y).unwrap()] = Pixel::rgba(1., 1., 1., 1.);
+            }
+        }
+        for radius in [1.0, 1.0039999485015869, 1.332, 2.0, 4.0] {
+            let linear = tent_blur_impl(source.try_clone().unwrap(), radius, false, false, true, [None; 2]).unwrap();
+            for y in 0..8 {
+                for x in 0..16 {
+                    let got = unrounded_tent_pixel(&source, radius, x, y);
+                    for channel in 0..4 {
+                        let expect = f64::from(linear.at(x, y).0[channel]);
+                        assert!(
+                            (got[channel] - expect).abs() < 1.0e-6,
+                            "r={radius} {x},{y} c={channel} {got:?} vs {expect}"
+                        );
+                    }
+                }
+            }
+        }
     }
 }
 

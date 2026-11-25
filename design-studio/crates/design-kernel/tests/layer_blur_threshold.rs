@@ -132,19 +132,19 @@ fn issue_282_frozen_layer_blur_references_do_not_regress() {
         (
             "frontend/design-client/public/fidelity/blur-threshold-2026-10-08/cases.json",
             "BlurThreshold-0p251-2x",
-            430,
+            74,
             1,
         ),
         (
             "frontend/design-client/public/fidelity/blur-threshold-2026-10-08/cases.json",
             "BlurThreshold-0p333-2x",
-            621,
+            174,
             2,
         ),
         (
             "frontend/design-client/public/fidelity/blur-threshold-2026-10-08/cases.json",
             "BlurThreshold-0p499-2x",
-            454,
+            318,
             1,
         ),
         (
@@ -204,13 +204,13 @@ fn issue_282_frozen_layer_blur_references_do_not_regress() {
         (
             "frontend/design-client/public/fidelity/combined-2026-10-08/cases.json",
             "BlurQA-1p5",
-            212,
+            78,
             1,
         ),
         (
             "frontend/design-client/public/fidelity/combined-2026-10-08/cases.json",
             "BlurQA-2p5",
-            296,
+            214,
             2,
         ),
         (
@@ -233,6 +233,8 @@ fn issue_282_frozen_layer_blur_references_do_not_regress() {
         ),
     ];
     // Issue #282 baselines. A case may not gain different pixels or max channel error.
+    // Five rows are lower than the previous lock because a false export half
+    // now follows the unrounded tent. The baselines stay the original issue counts.
     let baselines = [
         99usize, 364, 704, 621, 454, 378, 896, 645, 865, 1344, 1782, 99, 57, 114, 212, 296, 213,
         361, 1079,

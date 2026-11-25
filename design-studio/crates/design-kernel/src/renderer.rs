@@ -621,6 +621,10 @@ pub struct Engine {
     /// captured while the previous frame was painted.
     pose_prefix: Option<PosePrefix>,
     settled_cuts: Arc<Mutex<SettledCuts>>,
+    /// Export-only. Layer-blur 2×2s whose byte average is a false half.
+    /// Cleared at the start of every surface render and consumed by the
+    /// figma tile resolver. Not a document or stats field.
+    false_half_fixes: Vec<crate::fidelity::FalseHalfFix>,
 }
 impl Default for Engine {
     fn default() -> Self {
@@ -674,6 +678,7 @@ impl Engine {
             tiled: None,
             pose_prefix: None,
             settled_cuts: Arc::new(Mutex::new(SettledCuts::default())),
+            false_half_fixes: Vec::new(),
         }
     }
     pub fn load_font(&mut self, data: &[u8]) -> Result<(), String> {
@@ -2259,6 +2264,7 @@ impl Engine {
         &mut self, options: &RenderOptions, synchronized: bool, viewport: Rect,
         padding: ExportPadding, budget: Budget, regional: bool, plan: Option<&mut CpuFramePlan>, use_pose_prefix: bool,
     ) -> Result<Vec<Surface>, String> {
+        self.false_half_fixes.clear();
         let (extra_halo, required) = match padding {
             ExportPadding::Extra(value) => (value, None),
             ExportPadding::Required(rect) => (0, Some(rect)),
@@ -2564,6 +2570,7 @@ impl Engine {
             settled_cuts: Arc::clone(&self.settled_cuts),
             prefix_view,
             prefix_allocations: Vec::new(),
+            false_half_fixes: Vec::new(),
         };
         let rendered = if synchronized {
             let mut targets = vec![target];
@@ -2598,6 +2605,7 @@ impl Engine {
                         output.push(result);
                     }
                 }
+                self.false_half_fixes = std::mem::take(&mut painter.false_half_fixes);
                 return Ok(output);
             }
             if draw_root.iter().all(|draw| *draw) {
@@ -2606,6 +2614,7 @@ impl Engine {
                 let roots: Vec<String> = page.children.iter().enumerate().filter(|(index, _)| draw_root[*index]).map(|(_, id)| id.clone()).collect();
                 painter.paint_siblings(&roots, &mut targets, None, false, None)?;
             }
+            self.false_half_fixes = std::mem::take(&mut painter.false_half_fixes);
             Ok(targets.into_iter().collect())
         } else {
             // Reverse paint order: earlier layers must retain every input read
@@ -2626,6 +2635,7 @@ impl Engine {
                 if !draw_root[index] { continue; }
                 painter.node_region(root, &mut target, None, regional.then_some(output), extent, false)?;
             }
+            self.false_half_fixes = std::mem::take(&mut painter.false_half_fixes);
             Ok(vec![target])
         };
         rendered
@@ -3014,11 +3024,24 @@ impl Engine {
                 } else {
                     crate::fidelity::resolve_sample_planes_2x
                 };
-                Ok(resolve(
+                let mut bytes = resolve(
                     [&planes[0], &planes[1], &planes[2], &planes[3]],
                     w,
                     h,
-                ))
+                );
+                if options.raster_profile == crate::fidelity::RasterProfile::Figma {
+                    crate::fidelity::apply_false_half_fixes(
+                        &mut bytes,
+                        [&planes[0], &planes[1], &planes[2], &planes[3]],
+                        w,
+                        h,
+                        viewport.x,
+                        viewport.y,
+                        &self.false_half_fixes,
+                    );
+                }
+                self.false_half_fixes.clear();
+                Ok(bytes)
             } else {
                 let source = self
                     .render_scene_inner_at(&source, false, viewport, extra_halo * 2)?
@@ -3329,6 +3352,7 @@ impl Engine {
             tiled: None,
             pose_prefix: self.pose_prefix.clone(),
             settled_cuts: Arc::clone(&self.settled_cuts),
+            false_half_fixes: Vec::new(),
         }
     }
 
@@ -3511,6 +3535,7 @@ struct Painter<'a> {
     settled_cuts: Arc<Mutex<SettledCuts>>,
     prefix_view: PrefixView,
     prefix_allocations: Vec<Allocation>,
+    false_half_fixes: Vec<crate::fidelity::FalseHalfFix>,
 }
 
 enum TextureBundle {
@@ -4949,7 +4974,24 @@ impl Painter<'_> {
                 // basis. Release them before allocating the filter's buffers.
                 drop(planes);
                 drop(shadow_basis);
+                // Radius 1 lifts its constant half on the layer. Other figma
+                // layer blurs keep those bytes for later samples and only
+                // record a 2×2 whose byte average is a false half. The means
+                // are read from the sharp layer before the byte blur allocates.
+                let means = if !correct_export_ties
+                    && fx.gradient_blur.is_none()
+                    && compatible
+                    && self.profile == crate::fidelity::RasterProfile::Figma
+                {
+                    effects::figma_false_half_means(&resolved, fx.blur_radius() * scale)
+                } else {
+                    Vec::new()
+                };
                 let output = Arc::new(filter(resolved)?);
+                if !means.is_empty() {
+                    self.false_half_fixes
+                        .extend(effects::figma_false_half_fixes(&means, output.as_ref()));
+                }
 
                 planes = std::array::from_fn(|_| output.clone());
                 shadow_basis = planes.clone();
