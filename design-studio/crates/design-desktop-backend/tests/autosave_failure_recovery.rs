@@ -434,3 +434,170 @@ async fn autosave_recovery_killed_process_reopens_last_commit() {
     assert_eq!(opened["result"]["document"], document("consistent"));
     assert_eq!(fs::read(&import).unwrap(), import_bytes);
 }
+
+#[test]
+fn autosave_recovery_same_millisecond_synced_temp_reopens_last_edit() {
+    let f = Fixture::new();
+    let import = f.0.join("original-import.fig");
+    let import_bytes = b"user-import-bytes-must-stay";
+    fs::write(&import, import_bytes).unwrap();
+    let import_hash = sha256(import_bytes);
+    let recovery = f.0.join("recovery");
+    let backend = Backend::new(&recovery).unwrap();
+    backend
+        .recovery_write(
+            "session-1",
+            &document("consistent"),
+            import.to_str(),
+            Some(&import_hash),
+        )
+        .unwrap();
+    let published = recovery.join("session-1.recovery.json");
+    let older: Value = serde_json::from_slice(&fs::read(&published).unwrap()).unwrap();
+    // The next autosave can land in the same wall-clock millisecond as the
+    // previous publish (close-drain right after an idle autosave). The process
+    // then exits after the temporary snapshot was synced but before the atomic
+    // rename. The synced temp is provably the last write for this single-writer
+    // recovery id, so restart must adopt it even though updatedAt ties.
+    backend
+        .recovery_write(
+            "session-1",
+            &document("recovered edit"),
+            import.to_str(),
+            Some(&import_hash),
+        )
+        .unwrap();
+    let mut newer: Value = serde_json::from_slice(&fs::read(&published).unwrap()).unwrap();
+    assert_ne!(newer["document"]["name"], older["document"]["name"]);
+    newer["updatedAt"] = older["updatedAt"].clone();
+    fs::write(&published, serde_json::to_vec(&older).unwrap()).unwrap();
+    fs::write(
+        recovery.join(".fd-write-same-ms.tmp"),
+        serde_json::to_vec(&newer).unwrap(),
+    )
+    .unwrap();
+    drop(backend);
+    let reopened = Backend::new(&recovery).unwrap();
+    let restored = reopened.recovery_read("session-1").unwrap();
+    eprintln!(
+        "MEASURE same_ms_temp older_updated_at={} newer_updated_at={} restored={} import_bytes={}",
+        older["updatedAt"],
+        newer["updatedAt"],
+        restored.document["name"],
+        import_bytes.len()
+    );
+    assert_eq!(restored.document["name"], "recovered edit");
+    assert_eq!(restored.document, document("recovered edit"));
+    assert_eq!(fs::read(&import).unwrap(), import_bytes);
+    assert!(!recovery.join(".fd-write-same-ms.tmp").exists());
+    assert_eq!(
+        restored.entry.source_hash.as_deref(),
+        Some(import_hash.as_str())
+    );
+}
+
+#[test]
+fn autosave_recovery_stale_temp_with_newer_clock_does_not_roll_back_published() {
+    let f = Fixture::new();
+    let recovery = f.0.join("recovery");
+    let backend = Backend::new(&recovery).unwrap();
+    backend
+        .recovery_write("session-1", &document("stale content"), None, None)
+        .unwrap();
+    let published = recovery.join("session-1.recovery.json");
+    let stale: Value = serde_json::from_slice(&fs::read(&published).unwrap()).unwrap();
+    backend
+        .recovery_write("session-1", &document("current"), None, None)
+        .unwrap();
+    let current_bytes = fs::read(&published).unwrap();
+    let current: Value = serde_json::from_slice(&current_bytes).unwrap();
+    // A leftover temp from an earlier write (lower monotonic sequence) must never
+    // replace the newer published snapshot, even if its wall-clock updatedAt is
+    // newer (backward clock adjustment or tampered metadata). The single-writer
+    // counter is authoritative; updatedAt is only a legacy tie-breaker.
+    let mut stale = stale;
+    stale["updatedAt"] = json!(current["updatedAt"].as_u64().unwrap() + 1000);
+    fs::write(
+        recovery.join(".fd-write-stale.tmp"),
+        serde_json::to_vec(&stale).unwrap(),
+    )
+    .unwrap();
+    drop(backend);
+    let reopened = Backend::new(&recovery).unwrap();
+    let restored = reopened.recovery_read("session-1").unwrap();
+    eprintln!(
+        "MEASURE stale_temp stale_updated_at={} current_updated_at={} restored={}",
+        stale["updatedAt"], current["updatedAt"], restored.document["name"]
+    );
+    assert_eq!(restored.document["name"], "current");
+    assert_eq!(restored.document, document("current"));
+    assert_eq!(fs::read(&published).unwrap(), current_bytes);
+    // The rejected stale temp is retained unchanged, not silently consumed.
+    assert_eq!(
+        fs::read(recovery.join(".fd-write-stale.tmp")).unwrap(),
+        serde_json::to_vec(&stale).unwrap()
+    );
+}
+
+#[test]
+fn autosave_recovery_legacy_record_without_sequence_upgrades_and_recovers() {
+    let f = Fixture::new();
+    let recovery = f.0.join("recovery");
+    let backend = Backend::new(&recovery).unwrap();
+    backend
+        .recovery_write("session-1", &document("legacy"), None, None)
+        .unwrap();
+    let published = recovery.join("session-1.recovery.json");
+    // Simulate a snapshot written by an older app: no monotonic sequence field.
+    let mut legacy: Value = serde_json::from_slice(&fs::read(&published).unwrap()).unwrap();
+    legacy.as_object_mut().unwrap().remove("sequence");
+    fs::write(&published, serde_json::to_vec(&legacy).unwrap()).unwrap();
+    drop(backend);
+    let reopened = Backend::new(&recovery).unwrap();
+    assert_eq!(
+        reopened.recovery_read("session-1").unwrap().document,
+        document("legacy")
+    );
+    // A newer edit upgrades the legacy record to sequence 1 without data loss.
+    reopened
+        .recovery_write("session-1", &document("upgraded"), None, None)
+        .unwrap();
+    let upgraded: Value = serde_json::from_slice(&fs::read(&published).unwrap()).unwrap();
+    assert_eq!(upgraded["sequence"], json!(1));
+    assert_eq!(
+        reopened.recovery_read("session-1").unwrap().document,
+        document("upgraded")
+    );
+}
+
+#[test]
+fn autosave_recovery_legacy_synced_temp_still_adopts_by_timestamp() {
+    let f = Fixture::new();
+    let recovery = f.0.join("recovery");
+    let backend = Backend::new(&recovery).unwrap();
+    backend
+        .recovery_write("session-1", &document("consistent"), None, None)
+        .unwrap();
+    let published = recovery.join("session-1.recovery.json");
+    let mut older: Value = serde_json::from_slice(&fs::read(&published).unwrap()).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    backend
+        .recovery_write("session-1", &document("recovered edit"), None, None)
+        .unwrap();
+    let mut newer: Value = serde_json::from_slice(&fs::read(&published).unwrap()).unwrap();
+    // Both records predate the sequence field; ordering must fall back to
+    // updatedAt exactly as before, so legacy crash recovery is unchanged.
+    older.as_object_mut().unwrap().remove("sequence");
+    newer.as_object_mut().unwrap().remove("sequence");
+    fs::write(&published, serde_json::to_vec(&older).unwrap()).unwrap();
+    fs::write(
+        recovery.join(".fd-write-legacy.tmp"),
+        serde_json::to_vec(&newer).unwrap(),
+    )
+    .unwrap();
+    drop(backend);
+    let reopened = Backend::new(&recovery).unwrap();
+    let restored = reopened.recovery_read("session-1").unwrap();
+    assert_eq!(restored.document["name"], "recovered edit");
+    assert!(!recovery.join(".fd-write-legacy.tmp").exists());
+}
