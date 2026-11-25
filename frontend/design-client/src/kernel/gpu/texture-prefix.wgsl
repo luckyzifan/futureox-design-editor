@@ -50,6 +50,36 @@ fn prefix_scan_add(a:PrefixInt,b:PrefixInt)->PrefixInt {
  }
  return prefix_add(a,b);
 }
+
+// A uniform box consumes only the sum field of a prefix pair. Each band
+// keeps the existing layout, signed bound, and line-level fallback.
+fn prefixScanBox(length:u32,line:u32,base:u32,lane:u32,minimum:u32,channel:u32){
+ if(workgroupUniformLoad(&scanAccepted)==0u){return;}
+ for(var chunk=0u;chunk<length;chunk=chunk+256u){
+  let j=chunk+lane;var value=PrefixInt(0u);
+  if(j<length){value=prefix_sample(bitcast<u32>(textureLoad(sourceA,prefixPixel(j,line),0)[channel]),minimum);}
+  scanSums[lane]=value;workgroupBarrier();
+  for(var stride=1u;stride<256u;stride=stride*2u){
+   let index=(lane+1u)*stride*2u-1u;
+   if(index<256u){scanSums[index]=prefix_scan_add(scanSums[index],scanSums[index-stride]);}
+   workgroupBarrier();
+  }
+  if(lane==0u){scanSums[255u]=PrefixInt(0u);}
+  workgroupBarrier();
+  for(var stride=128u;stride>0u;stride=stride/2u){
+   let index=(lane+1u)*stride*2u-1u;
+   if(index<256u){
+    let left=scanSums[index-stride];let parent=scanSums[index];
+    scanSums[index-stride]=parent;scanSums[index]=prefix_scan_add(parent,left);
+   }
+   workgroupBarrier();
+  }
+  let sum=prefix_scan_add(scanCarry.sum,prefix_scan_add(scanSums[lane],value));
+  if(j<length){prefixes[base+j+1u].sum=sum;}
+  workgroupBarrier();if(lane==255u){scanCarry.sum=sum;}workgroupBarrier();
+ }
+}
+
 @compute @workgroup_size(256)
 fn prefixScan(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_index) lane:u32){
  let localLine=group.x;let length=u32(u(48u).x);let first=u32(u(48u).y);let count=u32(u(48u).z);let radius=u32(u(49u).y);
@@ -114,8 +144,12 @@ fn prefixScan(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_i
    if(scanNarrow!=0u){atomicAdd(&prefixMetadata.unused,1u);}
   }
  }
- workgroupBarrier();
  let base=localLine*(length+1u);
+ if(box){
+  prefixScanBox(length,first+localLine+u32(u(50u).z),base,lane,minimum,channel);
+  return;
+ }
+ workgroupBarrier();
  for(var chunk=0u;chunk<length;chunk=chunk+256u){
   let j=chunk+lane;var value=PrefixInt(0u);
   if(j<length&&scanAccepted!=0u){let bits=bitcast<u32>(textureLoad(sourceA,prefixPixel(j,first+localLine+u32(u(50u).z)),0)[channel]);value=prefix_sample(bits,minimum);}

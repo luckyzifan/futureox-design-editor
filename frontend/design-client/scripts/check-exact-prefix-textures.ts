@@ -125,6 +125,16 @@ await runProof('forma-prefix-textures', [], async (proof) => {
     fixtures.push({name:`low-zoom-shadow-chunk-${w}x${h}`,kind:'box',w,h,r,origin:[31949,25297],channels:8,maxBandLines:255,
       values:Array.from({length:w*h*4}, (_,i) => i % 4 === 3 ? ((i * 19) % 113) / 112 : 0)})
   }
+  // Exercise rejected box lines alongside admitted lines while scratch is
+  // reused across bands and between axes. A rejected line must use the
+  // original reducer, even if its prefix slots still hold earlier sums.
+  const boxWidth = 513, boxHeight = 5
+  const boxBits = new Uint32Array(Float32Array.from({ length: boxWidth * boxHeight * 4 },
+    (_, i) => ((i * 19) % 113 - 56) / 112).buffer)
+  boxBits[(boxWidth + 256) * 4 + 1] = 0x7fc01234
+  boxBits[(boxWidth * 3 + 512) * 4 + 2] = 0x7f800000
+  fixtures.push({ name:'mixed-validity-colour-box', kind:'box', w:boxWidth, h:boxHeight,
+    r:160, origin:[-131, 179], channels:15, values:Array.from(boxBits) })
   for (const f of fixtures) {
     f.kernel = Array.from(f.kind === 'box' ? rational_box_kernel_rgba(f.r) : rational_tent_kernel_rgba(f.r))
     f.certified = Array.from(f.kind === 'box' ? certified_box_kernel_rgba(f.r) : certified_tent_kernel_rgba(f.r))
@@ -410,6 +420,9 @@ await runProof('forma-prefix-textures', [], async (proof) => {
             }
             device.queue.writeBuffer(uniformBuffer, 0, arena.subarray(0, offset))
             const counters = await prefix.counters(activeEncoder!)
+            if (f.name === 'mixed-validity-colour-box' &&
+                (!counters.acceptedLines || !counters.declinedLines))
+              throw new Error('Box fallback control did not exercise both line outcomes')
             accepted += counters.acceptedLines
             declined += counters.declinedLines
             const actualH = await readTexture(horizontal),
