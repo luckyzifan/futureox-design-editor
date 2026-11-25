@@ -494,6 +494,33 @@ enum OutlineOutput {
     Spans,
     Svg,
 }
+/// Indent of one list level and the gap after its marker, in em of the node
+/// font size. Figma's exact list metrics are not measured here.
+const LIST_LEVEL_INDENT: f64 = 1.25;
+const LIST_MARKER_GAP: f64 = 0.5;
+const LIST_BULLETS: [&str; 3] = ["\u{2022}", "\u{25E6}", "\u{25AA}"];
+
+/// A list item's text inset: the level indent, the marker column of its level
+/// and the gap. Every line of the paragraph starts there.
+#[derive(Clone)]
+struct ListItem {
+    indent: f64,
+    gap: f64,
+    marker_width: f64,
+    text: String,
+}
+
+/// One painted list marker: the byte where its paragraph starts, the marker
+/// text and where its first glyph was placed. Tests read it; the glyph table
+/// keeps the authored text alone.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ListMarker {
+    pub start: usize,
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Glyph {
@@ -551,6 +578,9 @@ pub struct TextLayout {
     pub path: Path,
     #[serde(skip)]
     measurement: Option<TextVerticalMeasurement>,
+    #[serde(skip)]
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) list_markers: Vec<ListMarker>,
 }
 
 /// Node-local cap line of the first laid-out text line and baseline of the last.
@@ -2030,6 +2060,97 @@ impl Fonts {
             is_noto_sans_sc(face.borrow_face())
         });
         let sketch_display_fallback = use_builtin_text_metrics && style.writing_mode == "horizontal";
+        // A paragraph is a list item when its own or the layer's list style says
+        // so. Its marker is shaped like text and painted in a gutter before the
+        // first line; every line of the item starts after that gutter, so a
+        // wrapped line stays aligned with the first one. Markers join the
+        // painted outline only: the glyph table that caret and selection
+        // geometry read keeps the authored text alone.
+        let paragraph_count = paragraphs.len();
+        let mut list_items = vec![None::<ListItem>; paragraph_count];
+        let mut list_glyphs = (0..paragraph_count).map(|_| Vec::<Glyph>::new()).collect::<Vec<_>>();
+        let mut list_marker_glyphs = Vec::<Glyph>::new();
+        let mut list_markers = Vec::<ListMarker>::new();
+        let list_layout = style.writing_mode == "horizontal" && baseline.is_none() && style.direction != "rtl";
+        if list_layout {
+            // Numbering continues through consecutive ordered items of one
+            // level. A bullet or a paragraph outside a list restarts every level.
+            let mut ordinals = [0usize; 5];
+            let mut prepared = Vec::<Option<(usize, String)>>::with_capacity(paragraph_count);
+            for paragraph in &paragraphs {
+                let attributes = paragraph_at(paragraph.start);
+                // An empty paragraph list inherits the layer's list style.
+                let own = attributes.map(|p| p.list.as_str()).unwrap_or("");
+                let kind = if own.is_empty() { style.list.as_str() } else { own };
+                if kind != "bullet" && kind != "ordered" {
+                    ordinals = [0; 5];
+                    prepared.push(None);
+                    continue;
+                }
+                let level = attributes.and_then(|p| p.list_level).or(style.list_level).unwrap_or(0).min(4) as usize;
+                for deeper in ordinals.iter_mut().skip(level + 1) {
+                    *deeper = 0;
+                }
+                let marker = if kind == "bullet" {
+                    ordinals = [0; 5];
+                    LIST_BULLETS[level % LIST_BULLETS.len()].to_string()
+                } else {
+                    ordinals[level] += 1;
+                    format!("{}.", ordinals[level])
+                };
+                prepared.push(Some((level, marker)));
+            }
+            // The marker takes the style of the item's first character.
+            let mut columns = [0f64; 5];
+            let mut widths = vec![0f64; paragraph_count];
+            let mut texts = vec![String::new(); paragraph_count];
+            for (index, (paragraph, item)) in paragraphs.iter().zip(&prepared).enumerate() {
+                let Some((level, marker)) = item else { continue };
+                texts[index] = marker.clone();
+                let first = utf16[paragraph.start];
+                let mut utf16_marker = vec![0; marker.len() + 1];
+                let mut position = 0;
+                for (byte, c) in marker.char_indices() {
+                    utf16_marker[byte] = position;
+                    position += c.len_utf16();
+                }
+                utf16_marker[marker.len()] = position;
+                let marker_run = run_covering(runs, first).map(|run| {
+                    let mut run = run.clone();
+                    run.paragraph = None;
+                    run.text_case = None;
+                    run.start = 0;
+                    run.end = position;
+                    run
+                });
+                let marker_runs: &[TextRun] = match &marker_run {
+                    Some(run) => std::slice::from_ref(run),
+                    None => &[],
+                };
+                let mut glyphs = self.shape(marker, 0, size, style, marker_runs, &utf16_marker, sketch_display_fallback)?;
+                // Run and metric lookups answer for the item's first character.
+                for glyph in &mut glyphs {
+                    glyph.cluster = paragraph.start;
+                    glyph.cluster_end = paragraph.end;
+                    glyph.byte = paragraph.start;
+                }
+                let width = glyphs.iter().map(|glyph| glyph.advance).sum::<f64>();
+                columns[*level] = columns[*level].max(width);
+                widths[index] = width;
+                list_glyphs[index] = glyphs;
+            }
+            // Numbers of one level share a column, so "9." and "10." end alike.
+            for (index, item) in list_items.iter_mut().enumerate() {
+                if let Some((level, _)) = &prepared[index] {
+                    *item = Some(ListItem {
+                        indent: LIST_LEVEL_INDENT * *level as f64 * size + columns[*level] + LIST_MARKER_GAP * size,
+                        gap: LIST_MARKER_GAP * size,
+                        marker_width: widths[index],
+                        text: texts[index].clone(),
+                    });
+                }
+            }
+        }
         let nearest_point = style.line_box_baseline == "nearest-point"
             || (style.line_box_baseline == "sketch-fixed-advance" && !uniform_sketch_line_height);
         let sketch_baseline = if paragraphs.len() > 1 && nearest_point && style.writing_mode != "vertical" {
@@ -2070,6 +2191,8 @@ impl Fonts {
             } else {
                 style
             };
+            let list_item = list_items[paragraph_index].as_ref();
+            let list_indent = list_item.map_or(0., |item| item.indent);
             let value = &text[paragraph.clone()];
             let initial = self.shape(value, paragraph.start, size, style, runs, &utf16, sketch_display_fallback)?;
             // A fallback preview may be narrower while keeping the authored
@@ -2105,6 +2228,7 @@ impl Fonts {
                         if end > begin
                             && !hanging
                             && advance + entries[end].1 - tracking
+                                + list_indent
                                 + if begin == 0 {
                                     style.paragraph_indent.max(0.)
                                 } else {
@@ -2250,7 +2374,14 @@ impl Fonts {
                     continue;
                 }
                 let figma_auto = style.line_height_auto && style.line_box_baseline == "figma-font-metrics";
-                let mut ascent = if figma_auto || shaped.is_empty() || attributes.is_some() {
+                // An empty list item has no text to give its line a font
+                // metric, so its marker stands in for the text of the item.
+                let metrics: &[Glyph] = if shaped.is_empty() && range.start == paragraph.start {
+                    &list_glyphs[paragraph_index]
+                } else {
+                    &shaped
+                };
+                let mut ascent = if figma_auto || metrics.is_empty() || attributes.is_some() {
                     0.
                 } else {
                     // Seed the line box with the style font's ascent floor; a
@@ -2258,11 +2389,11 @@ impl Fonts {
                     // fonts the line actually shaped onto.
                     let face = self
                         .face(&style.font_id, style.weight)
-                        .or_else(|_| self.face(&shaped[0].font_id, shaped[0].weight))?;
+                        .or_else(|_| self.face(&metrics[0].font_id, metrics[0].weight))?;
                     let face = face.borrow_face();
                     face.ascender() as f64 * size / face.units_per_em() as f64
                 };
-                let explicit_line_height = shaped.iter().any(|glyph| {
+                let explicit_line_height = metrics.iter().any(|glyph| {
                     run_covering(runs, glyph.cluster).is_some_and(|run| run.line_height.is_some())
                 });
                 // Without a run override the node font size remains the line-box
@@ -2279,7 +2410,7 @@ impl Fonts {
                 let use_sketch_leading = style.line_box_baseline == "sketch-font-leading"
                     && use_sketch_ascender;
                 let mut leading = 0f64;
-                for glyph in &shaped {
+                for glyph in metrics {
                     let face = self.face(&glyph.font_id, glyph.weight)?;
                     let face = face.borrow_face();
                     if use_sketch_leading {
@@ -2392,6 +2523,24 @@ impl Fonts {
                 } else {
                     0.
                 };
+                if let (true, Some(item)) = (range.start == paragraph.start, list_item) {
+                    // The marker ends one gap before the text of its first line.
+                    let marker_x = list_indent - item.gap - item.marker_width;
+                    let mut pen = marker_x;
+                    for mut glyph in std::mem::take(&mut list_glyphs[paragraph_index]) {
+                        glyph.x += pen;
+                        glyph.y += baseline_y;
+                        glyph.ink_offset.y += ink_y;
+                        pen += glyph.advance;
+                        list_marker_glyphs.push(glyph);
+                    }
+                    list_markers.push(ListMarker {
+                        start: paragraph.start,
+                        text: item.text.clone(),
+                        x: marker_x,
+                        y: baseline_y,
+                    });
+                }
                 if output == OutlineOutput::Measurement && !shaped.is_empty() {
                     if let Some(measurement) = &mut measurement {
                         measurement.baseline_y = baseline_y;
@@ -2412,7 +2561,7 @@ impl Fonts {
                         });
                     }
                 }
-                let available = width.unwrap_or(line_width);
+                let available = width.map(|w| (w - list_indent).max(0.)).unwrap_or(line_width);
                 let rtl = style.direction == "rtl"
                     || (style.direction == "auto"
                         && unicode_bidi::BidiInfo::new(&text[range.clone()], None)
@@ -2426,6 +2575,8 @@ impl Fonts {
                     _ => 0.,
                 };
                 let mut boundaries: Vec<_> = shaped.iter().map(|g| g.cluster).collect();
+                // A list item keeps every line after its marker gutter.
+                x += list_indent;
                 if range.start == paragraph.start {
                     x += style.paragraph_indent;
                 }
@@ -2469,7 +2620,7 @@ impl Fonts {
                 } else {
                     0.
                 };
-                widest = widest.max(line_width + inset);
+                widest = widest.max(line_width + inset + list_indent);
                 y += height;
                 glyphs.extend(shaped);
                 if glyphs.len() > 200000 || lines.len() > 100000 {
@@ -2490,7 +2641,11 @@ impl Fonts {
         let mut spans: Vec<TextSpan> = Vec::new();
         let figma_decoration = uses_figma_line_metrics(style);
         let mut underline_cache: Option<(String, u32, u64, f64, f64)> = None;
-        for glyph in glyphs.iter_mut().filter(|_| !matches!(output, OutlineOutput::None | OutlineOutput::Measurement)) {
+        for glyph in glyphs
+            .iter_mut()
+            .chain(list_marker_glyphs.iter_mut())
+            .filter(|_| !matches!(output, OutlineOutput::None | OutlineOutput::Measurement))
+        {
             let run = runs
                 .iter()
                 .find(|r| r.start <= glyph.cluster && glyph.cluster < r.end);
@@ -2639,6 +2794,7 @@ impl Fonts {
             },
             path,
             measurement,
+            list_markers,
         })
     }
 }
@@ -4146,3 +4302,216 @@ mod figma_typography_fidelity {
         assert!((h - 0.65).abs() < 1e-6, "thickness {h}");
     }
 }
+
+#[cfg(test)]
+mod list_tests {
+    use super::*;
+
+    fn fonts() -> Fonts {
+        let mut fonts = Fonts::new();
+        fonts
+            .load(&std::fs::read(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../frontend/design-client/public/fonts/NotoSansSC.ttf"
+            ))
+            .unwrap())
+            .unwrap();
+        fonts
+    }
+
+    fn node(text: &str, style: serde_json::Value, width: f64) -> Node {
+        serde_json::from_value(serde_json::json!({
+            "id":"t", "kind":"text", "text":text, "fontSize":20,
+            "width":width, "height":800, "textStyle":style,
+            "fills":[{"kind":"solid","color":"#112233"}]
+        }))
+        .unwrap()
+    }
+
+    fn paragraph(value: TextParagraph) -> TextRun {
+        TextRun { paragraph: Some(value), ..TextRun::default() }
+    }
+
+    #[test]
+    fn a_bullet_item_keeps_its_glyph_table_and_lines_and_paints_a_marker() {
+        let fonts = fonts();
+        let plain = fonts.node_layout(&node("One\nTwo", serde_json::json!({}), 400.), None).unwrap();
+        let listed = fonts
+            .node_layout(&node("One\nTwo", serde_json::json!({"list":"bullet"}), 400.), None)
+            .unwrap();
+        assert!(plain.list_markers.is_empty());
+        assert_eq!(
+            listed.list_markers.iter().map(|m| m.text.as_str()).collect::<Vec<_>>(),
+            ["\u{2022}", "\u{2022}"]
+        );
+        // The authored text is laid out as before, only further right.
+        assert_eq!(listed.glyphs.len(), plain.glyphs.len());
+        assert_eq!(listed.glyphs.len(), 6);
+        for (a, b) in plain.glyphs.iter().zip(&listed.glyphs) {
+            assert_eq!((a.cluster, a.cluster_end), (b.cluster, b.cluster_end));
+            assert!((a.y - b.y).abs() < 1e-9 && (a.advance - b.advance).abs() < 1e-9,
+                "plain ({}, {}, {}) listed ({}, {}, {})", a.cluster, a.y, a.advance, b.cluster, b.y, b.advance);
+        }
+        let shift = listed.glyphs[0].x - plain.glyphs[0].x;
+        assert!(shift > 20. && shift < 60., "marker gutter {shift}");
+        for (a, b) in plain.lines.iter().zip(&listed.lines) {
+            assert_eq!((a.start, a.end), (b.start, b.end));
+            assert!((a.y - b.y).abs() < 1e-9 && (a.height - b.height).abs() < 1e-9);
+        }
+        for marker in &listed.list_markers {
+            assert!(marker.x >= 0. && marker.x < listed.glyphs[0].x, "the marker precedes its text");
+        }
+        // Each marker sits on the baseline of its own first line.
+        assert!((listed.list_markers[1].y - listed.list_markers[0].y - (listed.lines[1].y - listed.lines[0].y)).abs() < 1e-9);
+        assert!((listed.list_markers[0].y - listed.glyphs[0].y).abs() < 1e-9);
+        assert!(listed.width > plain.width);
+        assert!(listed.path.commands.len() > plain.path.commands.len(), "the marker outlines are painted");
+    }
+
+    #[test]
+    fn a_wrapped_item_starts_every_line_after_the_marker() {
+        let fonts = fonts();
+        let text = "alpha beta gamma delta epsilon zeta";
+        let listed = fonts
+            .node_layout(&node(text, serde_json::json!({"list":"ordered","wrap":true}), 150.), Some(150.))
+            .unwrap();
+        assert!(listed.lines.len() >= 2, "the item wraps");
+        assert_eq!(listed.list_markers.len(), 1);
+        assert_eq!(listed.list_markers[0].text, "1.");
+        let starts: Vec<f64> = listed
+            .lines
+            .iter()
+            .map(|line| listed.glyphs.iter().find(|g| g.cluster >= line.start).unwrap().x)
+            .collect();
+        assert!(starts.windows(2).all(|w| (w[0] - w[1]).abs() < 1e-9), "every line starts at the item text: {starts:?}");
+        // The text column is narrower than the box by the marker gutter, so the
+        // item wraps at least as much as the plain text in the whole box.
+        assert!(starts[0] > 0.);
+        let plain = fonts.node_layout(&node(text, serde_json::json!({"wrap":true}), 150.), Some(150.)).unwrap();
+        assert!(listed.lines.len() >= plain.lines.len(), "{} {}", listed.lines.len(), plain.lines.len());
+    }
+
+    #[test]
+    fn ordered_items_are_numbered_until_a_plain_paragraph_or_a_bullet() {
+        let fonts = fonts();
+        let mut n = node("a\nb\nc\nd\ne", serde_json::json!({"list":"ordered"}), 400.);
+        // "c" leaves the list and "d" is a bullet; both restart the numbering.
+        n.text_runs = vec![
+            TextRun { start: 4, end: 5, ..paragraph(TextParagraph { list: "none".into(), ..TextParagraph::default() }) },
+            TextRun { start: 6, end: 7, ..paragraph(TextParagraph { list: "bullet".into(), ..TextParagraph::default() }) },
+        ];
+        let layout = fonts.node_layout(&n, None).unwrap();
+        let texts: Vec<_> = layout.list_markers.iter().map(|m| m.text.as_str()).collect();
+        assert_eq!(texts, ["1.", "2.", "\u{2022}", "1."]);
+    }
+
+    #[test]
+    fn a_nested_item_indents_further_and_numbers_its_own_level() {
+        let fonts = fonts();
+        let mut n = node("a\nb\nc\nd", serde_json::json!({"list":"ordered"}), 400.);
+        let nested = || TextParagraph { list: "ordered".into(), list_level: Some(1), ..TextParagraph::default() };
+        n.text_runs = vec![TextRun { start: 2, end: 3, ..paragraph(nested()) }, TextRun { start: 4, end: 5, ..paragraph(nested()) }];
+        let layout = fonts.node_layout(&n, None).unwrap();
+        let markers: Vec<(&str, f64)> = layout.list_markers.iter().map(|m| (m.text.as_str(), m.x)).collect();
+        assert_eq!(markers.iter().map(|m| m.0).collect::<Vec<_>>(), ["1.", "1.", "2.", "2."]);
+        assert!(markers[1].1 > markers[0].1 + 20., "the nested marker sits further right: {markers:?}");
+        let x: Vec<f64> = layout.lines.iter().map(|line| layout.glyphs.iter().find(|g| g.cluster >= line.start).unwrap().x).collect();
+        assert!(x[1] > x[0] + 20. && x[2] > x[0] + 20. && (x[3] - x[0]).abs() < 1e-9 && (x[2] - x[1]).abs() < 1e-9,
+            "nested items indent and the outer level returns: {x:?}");
+    }
+
+    #[test]
+    fn a_centred_item_centres_its_text_inside_the_remaining_column() {
+        let fonts = fonts();
+        let left = fonts.node_layout(&node("ab", serde_json::json!({"list":"bullet","wrap":true}), 400.), Some(400.)).unwrap();
+        let centre = fonts.node_layout(&node("ab", serde_json::json!({"list":"bullet","wrap":true,"align":"center"}), 400.), Some(400.)).unwrap();
+        let indent = left.glyphs[0].x;
+        assert!(indent > 0.);
+        let first = centre.glyphs[0].x;
+        let last = centre.glyphs.iter().map(|g| g.x + g.advance).fold(0., f64::max);
+        assert!(((first + last) / 2. - (indent + 400.) / 2.).abs() < 1e-9, "centred after the gutter");
+    }
+
+    fn ink(path: &Path) -> Vec<Point> {
+        path.commands
+            .iter()
+            .flat_map(|command| match command {
+                crate::path::Command::Move(p) | crate::path::Command::Line(p) => vec![*p],
+                crate::path::Command::Quad(a, b) => vec![*a, *b],
+                crate::path::Command::Cubic(a, b, c) => vec![*a, *b, *c],
+                _ => vec![],
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_marker_of_several_glyphs_is_painted_in_sequence() {
+        let fonts = fonts();
+        let text = (1..=10).map(|i| i.to_string()).collect::<Vec<_>>().join("\n");
+        let layout = fonts
+            .node_layout(&node(&text, serde_json::json!({"list":"ordered"}), 400.), None)
+            .unwrap();
+        let marker = layout.list_markers.last().unwrap();
+        assert_eq!(marker.text, "10.");
+        let period = fonts.node_layout(&node(".", serde_json::json!({}), 400.), None).unwrap().glyphs.remove(0);
+        let line = layout.lines.last().unwrap();
+        let text_x = layout.glyphs.iter().find(|g| g.cluster >= line.start).unwrap().x;
+        // The gap after a marker is half an em and the period ends the marker.
+        let period_start = text_x - 10. - period.advance;
+        let painted: Vec<f64> = ink(&layout.path)
+            .into_iter()
+            .filter(|p| p.x >= period_start && p.x < text_x - 10. && p.y <= marker.y && p.y > marker.y - period.size / 2.)
+            .map(|p| p.x)
+            .collect();
+        assert!(!painted.is_empty(), "the period is painted after the digits");
+        assert!(painted.iter().all(|x| *x < period_start + period.advance), "the period keeps its advance: {painted:?}");
+    }
+
+    #[test]
+    fn an_empty_item_keeps_its_number_on_the_baseline_of_its_line() {
+        let fonts = fonts();
+        let listed = |text: &str| {
+            fonts
+                .node_layout(&node(text, serde_json::json!({"list":"ordered"}), 400.), None)
+                .unwrap()
+        };
+        let full = listed("a\nb\nc");
+        assert_eq!(
+            full.list_markers.iter().map(|m| m.text.as_str()).collect::<Vec<_>>(),
+            ["1.", "2.", "3."]
+        );
+        let expected: Vec<f64> = full.list_markers.iter().map(|m| m.y).collect();
+        for text in ["\nb\nc", "a\n\nc", "a\nb\n"] {
+            let layout = listed(text);
+            assert_eq!(layout.list_markers.len(), 3, "{text:?}");
+            assert_eq!(layout.lines.len(), 3, "{text:?}");
+            let y: Vec<f64> = layout.list_markers.iter().map(|m| m.y).collect();
+            assert!(y.iter().zip(&expected).all(|(a, b)| (a - b).abs() < 1e-9), "{text:?}: {y:?} vs {expected:?}");
+        }
+    }
+
+    #[test]
+    fn a_marker_takes_the_style_of_its_own_paragraph() {
+        let fonts = fonts();
+        let mut n = node("ab\ncd", serde_json::json!({"list":"bullet"}), 400.);
+        n.text_runs = vec![TextRun { start: 3, end: 5, color: Some("#ff0000".into()), ..TextRun::default() }];
+        let layout = fonts.node_layout(&n, None).unwrap();
+        let last = layout.spans.last().unwrap();
+        assert_eq!(last.color.as_deref(), Some("#ff0000"));
+        assert!(!last.outline.commands.is_empty(), "the red span carries the marker of the second item");
+    }
+
+    #[test]
+    fn vertical_text_on_a_path_or_right_to_left_keeps_its_layout_without_markers() {
+        let fonts = fonts();
+        let vertical = fonts
+            .node_layout(&node("ab\ncd", serde_json::json!({"list":"bullet","writingMode":"vertical"}), 400.), None)
+            .unwrap();
+        assert!(vertical.list_markers.is_empty());
+        let rtl = fonts
+            .node_layout(&node("ab\ncd", serde_json::json!({"list":"bullet","direction":"rtl"}), 400.), None)
+            .unwrap();
+        assert!(rtl.list_markers.is_empty());
+    }
+}
+
