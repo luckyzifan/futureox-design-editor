@@ -213,6 +213,43 @@ fn wfp_page_masters_survive_embedded_library_copy_ids() {
     assert_eq!(page_masters(&export_document("reopened WFP Template", &reopened)), expected);
 }
 
+#[test]
+fn wfp_inferred_layouts_keep_absent_size_fields_out_of_the_archive() {
+    let bytes = fixture("../../../testing/fixtures/sketch-public-20261105/ui-design-kit/[Legacy] WFP Template.sketch");
+    let source = json_files(&bytes);
+    let inferred_layouts = |files: &BTreeMap<String, Value>| -> BTreeMap<String, Value> {
+        let mut layouts = BTreeMap::new();
+        for page in pages(files) {
+            let mut children = Vec::new();
+            descendants(page, &mut children);
+            for node in children {
+                let layout = &node["groupLayout"];
+                if layout["_class"] == "MSImmutableInferredGroupLayout" {
+                    layouts.insert(node["do_objectID"].as_str().unwrap().to_owned(), layout.clone());
+                }
+            }
+        }
+        layouts
+    };
+    let expected = inferred_layouts(&source);
+    assert_eq!(expected.len(), 21);
+    let mut doc = interop::import_sketch(&bytes).unwrap();
+    assert_eq!(inferred_layouts(&export_document("WFP inferred groups", &doc)), expected);
+
+    // Existing FD documents can still hold the old null placeholders.
+    // Sketch rejects the archive while either placeholder is present.
+    for (id, native) in &expected {
+        let binding = doc.nodes.get_mut(id).unwrap().bindings.get_mut("sketchInferredGroupLayout").unwrap();
+        assert_eq!(&serde_json::from_str::<Value>(binding).unwrap(), native);
+        let mut legacy = native.as_object().unwrap().clone();
+        for name in ["minSize", "maxSize"] {
+            legacy.entry(name).or_insert(Value::Null);
+        }
+        *binding = serde_json::to_string(&legacy).unwrap();
+    }
+    assert_eq!(inferred_layouts(&export_document("WFP legacy FD inferred groups", &doc)), expected);
+}
+
 fn authored_document() -> Vec<u8> {
     let user = serde_json::to_vec(&json!({
         "document": {
