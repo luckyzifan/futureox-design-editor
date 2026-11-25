@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '../engine'
 import { desktopBridge, type DesktopBridge, type PluginStorageOrigin } from '../desktop'
-import { useInterfacePreferences } from '../interface-preference'
+import { interfacePreference, useInterfacePreferences } from '../interface-preference'
+import { figmaDevMode, useFigmaDevMode } from '../figma-dev-mode'
 import { modalKeyDown, useModalOwnership } from '../modal-keyboard'
 import { acceptedDeclaredPlugins, type DeclaredPlugin } from './catalog'
 import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, pluginEditorEvents, PluginApiError, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
 import type { PluginStorageRequest } from './rich-host/client-storage'
 import { PLUGIN_LIMITS } from './rich-host/limits'
-import { assertPluginSource, missingPluginSource, pluginBundleFromSources, pluginUiPaths } from './rich-host/manifest'
+import { assertPluginSource, missingPluginSource, pluginBundleFromSources, pluginEditorType, pluginUiPaths, type PluginLaunchMode } from './rich-host/manifest'
 import { samplePlugin } from './sample-plugin'
 import './plugin-panel.css'
 
@@ -28,7 +29,7 @@ const copy = {
     run: '运行',
     commands: '选择要运行的命令',
     none: '未找到本机插件。放入插件文件夹后重新打开此面板。',
-    missing: '这个本机插件已不再启用。',
+    missing: '当前编辑模式无法运行这个本机插件。',
   },
   en: {
     title: 'Figma plugins',
@@ -46,7 +47,7 @@ const copy = {
     run: 'Run',
     commands: 'Choose a command',
     none: 'No local plugins found. Add a plugin folder and reopen this panel.',
-    missing: 'That local plugin is no longer enabled.',
+    missing: 'That local plugin is unavailable in this editor mode.',
   },
 } as const
 
@@ -57,7 +58,10 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   onClose: () => void
   returnFocus?: HTMLElement | null
 }) {
-  const { locale } = useInterfacePreferences()
+  const { locale, uiMode } = useInterfacePreferences()
+  const devMode = useFigmaDevMode()
+  const mode: PluginLaunchMode = uiMode === 'figma' && devMode ? 'inspect' : 'default'
+  const editorType = pluginEditorType(mode)
   const text = copy[locale]
   const counts = {
     supported: PLUGIN_API_COVERAGE.filter(entry => entry.status === 'supported').length,
@@ -83,6 +87,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   const uiOpen = useRef(false)
   const unlisten = useRef<(() => void) | null>(null)
   const stopRef = useRef<() => void>(() => {})
+  const lastMode = useRef(mode)
 
   function stop() {
     generation.current += 1
@@ -101,6 +106,14 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
 
   useEffect(() => stop, [desktop])
   stopRef.current = stop
+  useEffect(() => {
+    if (lastMode.current === mode) return
+    lastMode.current = mode
+    setPending(null)
+    setStatus('')
+    setError('')
+    stopRef.current()
+  }, [mode])
 
   useEffect(() => {
     if (typeof editor.subscribe !== 'function') return
@@ -142,14 +155,14 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     let live = true
     void list().then(result => {
       if (!live) return
-      if (result.status === 'ok') setEnabled(acceptedDeclaredPlugins(result.plugins))
+      if (result.status === 'ok') setEnabled(acceptedDeclaredPlugins(result.plugins, editorType))
       else if (result.status === 'error' || result.status === 'conflict') { setEnabled([]); setError(result.message) }
       else setEnabled([])
     }).catch(cause => {
       if (live) { setEnabled([]); setError(cause instanceof Error ? cause.message : String(cause)) }
     })
     return () => { live = false }
-  }, [desktop])
+  }, [desktop, editorType])
 
   async function run(manifestText: string, mainSource: string, uiHtml: string, notes: string[], command?: string) {
     try {
@@ -166,6 +179,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     const token = generation.current
     setError('')
     setWarnings(notes)
+    if (!bundle.manifest.editorType.includes(editorType)) { setError(text.missing); return }
     // A manifest menu is a choice. Loading the file must not run commands[0].
     if (command === undefined && bundle.manifest.commands.length > 0) {
       setPending({ bundle, source })
@@ -204,6 +218,8 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
       }
       const next = await openPlugin(editor, bundle, {
         command,
+        mode,
+        isModeCurrent: () => mode === (interfacePreference.getSnapshot().uiMode === 'figma' && figmaDevMode() ? 'inspect' : 'default'),
         signal: abort.signal,
         onError: failed,
         storageRequest,
@@ -367,7 +383,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
           </details>
         </section>
         <footer>
-          <button type="button" className="plugin-panel-primary" disabled={running} onClick={() => void runSample()}>{text.sample}</button>
+          <button type="button" className="plugin-panel-primary" disabled={running || mode === 'inspect'} onClick={() => void runSample()}>{text.sample}</button>
           {desktop?.plugins ? <button type="button" disabled={running} onClick={() => void loadFolder()}>{text.load}</button> : null}
           <button type="button" disabled={running} onClick={() => archive.current?.click()}>{text.archive}</button>
           <input ref={archive} hidden type="file" accept=".zip,.figma,application/zip" data-testid="plugin-archive" onChange={event => {

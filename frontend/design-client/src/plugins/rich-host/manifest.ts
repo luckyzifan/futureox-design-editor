@@ -2,6 +2,11 @@ import { PluginApiError } from './errors'
 import { PLUGIN_LIMITS } from './limits'
 
 export type PluginCommand = { name: string; command: string }
+export type PluginLaunchMode = 'default' | 'inspect'
+
+export function pluginEditorType(mode: PluginLaunchMode) {
+  return mode === 'inspect' ? 'dev' : 'figma'
+}
 const LOCAL_FOLDER_ID_PREFIX = 'futureox.local.folder:'
 
 export type PluginManifest = {
@@ -103,8 +108,8 @@ export function parsePluginManifest(value: unknown, { desktopFolder = false } = 
     if (!Array.isArray(record.editorType) || record.editorType.some(item => typeof item !== 'string'))
       throw new PluginApiError('invalid_manifest', 'editorType must be an array of strings')
     editorType = record.editorType
-    if (!editorType.includes('figma'))
-      throw new PluginApiError('invalid_manifest', 'Only editorType "figma" can run in Futureox Design')
+    if (!editorType.includes('figma') && !editorType.includes('dev'))
+      throw new PluginApiError('invalid_manifest', 'Futureox Design supports Figma design and Dev inspection plugins')
   }
   if (record.documentAccess !== undefined && typeof record.documentAccess !== 'string')
     throw new PluginApiError('invalid_manifest', 'documentAccess must be a string. The open document is already local.')

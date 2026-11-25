@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { DesktopBridge } from '../desktop'
 import type { Editor } from '../engine'
 import { interfacePreference } from '../interface-preference'
+import { resetFigmaDevMode, setFigmaDevMode } from '../figma-dev-mode'
 import { acceptedDeclaredPlugins } from './catalog'
 import { PluginPanel } from './PluginPanel'
 
@@ -31,6 +32,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await act(async () => root.unmount())
   interfacePreference.reset()
+  resetFigmaDevMode()
   vi.unstubAllGlobals()
   dom.window.close()
 })
@@ -48,6 +50,41 @@ test('declared plugin records keep the manifest identity and drop paths', () => 
   }))
   expect(acceptedDeclaredPlugins(many)).toHaveLength(32)
   expect(acceptedDeclaredPlugins(many).some(plugin => JSON.stringify(plugin).includes('root'))).toBe(false)
+  const onlyDev = JSON.stringify({ ...JSON.parse(manifestText), editorType: ['dev'] })
+  expect(acceptedDeclaredPlugins([{ grant, manifestText: onlyDev }])).toEqual([])
+  expect(acceptedDeclaredPlugins([{ grant, manifestText: onlyDev }], 'dev')).toHaveLength(1)
+})
+
+test('the live Dev toggle changes the plugin catalog and launches its inspection context', async () => {
+  interfacePreference.set({ locale: 'en', uiMode: 'figma' })
+  const dev = JSON.stringify({ ...JSON.parse(manifestText), name: 'Only Dev', editorType: ['dev'] })
+  const opened: unknown[] = []
+  const desktop = {
+    plugins: {
+      list: async () => ({ status: 'ok' as const, plugins: [{ grant, manifestText: dev }] }),
+      read: async () => ({ status: 'ok' as const, files: { 'code.js': 'figma.showUI(figma.editorType + ":" + figma.mode)', 'ui.html': '' } }),
+      closeUi: async () => ({ status: 'ok' as const }),
+      openUi: async (request: unknown) => { opened.push(request); return { status: 'ok' as const } },
+      onUiMessage: () => () => {},
+      onUiClosed: () => () => {},
+    },
+  } as unknown as DesktopBridge
+  const { Editor: EditorClass } = await import('../engine')
+  const { blank } = await import('../model')
+  const current = new EditorClass(blank('Dev plugin panel'))
+  try {
+    await act(async () => { root.render(<PluginPanel editor={current} desktop={desktop} onClose={() => {}} />) })
+    expect(document.body.textContent).not.toContain('Only Dev')
+    await act(async () => { setFigmaDevMode(true) })
+    expect(document.body.textContent).toContain('Only Dev')
+    const run = [...document.querySelectorAll('button')].find(button => button.textContent === 'Run')
+    await act(async () => {
+      run!.click()
+      await vi.waitFor(() => expect(opened[0]).toMatchObject({ html: 'dev:inspect' }))
+    })
+    await act(async () => { setFigmaDevMode(false) })
+    expect(document.body.textContent).not.toContain('Only Dev')
+  } finally { current.dispose() }
 })
 
 test('plugin host lists startup plugins and runs only the declared files', async () => {

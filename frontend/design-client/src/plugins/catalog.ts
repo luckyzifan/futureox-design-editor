@@ -11,7 +11,7 @@ export type DeclaredPlugin = {
 const grantPattern = /^[0-9a-f-]{36}$/
 
 /** Keep the plugins the desktop grants. Derive their names and identities from the manifest. */
-export function acceptedDeclaredPlugins(value: unknown): DeclaredPlugin[] {
+export function acceptedDeclaredPlugins(value: unknown, editorType: 'figma' | 'dev' = 'figma'): DeclaredPlugin[] {
   if (!Array.isArray(value)) return []
   const plugins: DeclaredPlugin[] = []
   const seen = new Set<string>()
@@ -25,6 +25,7 @@ export function acceptedDeclaredPlugins(value: unknown): DeclaredPlugin[] {
     if (typeof manifestText !== 'string' || new TextEncoder().encode(manifestText).byteLength > 64 * 1024) continue
     let manifest: PluginManifest
     try { manifest = parsePluginManifest(JSON.parse(manifestText), { desktopFolder: true }) } catch { continue }
+    if (!manifest.editorType.includes(editorType)) continue
     seen.add(grant)
     plugins.push({
       grant,

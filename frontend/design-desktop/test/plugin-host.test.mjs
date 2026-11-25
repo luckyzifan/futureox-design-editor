@@ -107,6 +107,7 @@ test('startup scan enables declared plugins and ignores symlinks, FigJam, duplic
     const sample = await readFile(new URL('../../design-client/plugins/labeled-rectangles/manifest.json', import.meta.url), 'utf8')
     assert.equal(parseDeclaredPluginManifest(sample).id, 'futureox.sample.labeled-rectangles')
     assert.equal(parseDeclaredPluginManifest(sample).ui, 'ui.html')
+    assert.equal(parseDeclaredPluginManifest(JSON.stringify(manifest('Inspector', 'local.inspector', { editorType: ['dev'] }))).id, 'local.inspector')
     assert.throws(() => parseDeclaredPluginManifest('{"name":"A","id":"a","api":"1","main":"code.js","editorType":["figjam"]}'), /manifest/)
     assert.deepEqual(await scanDeclaredPlugins(path.join(root, 'missing')), { plugins: [], skipped: 0, truncated: false })
 

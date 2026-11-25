@@ -17,6 +17,7 @@ import { PLUGIN_FETCH_METHODS, matchNetworkAccess, pluginFetchHeaders, type Plug
 import { figmaColorToHex, hexToFigmaColor } from './colors'
 import { PluginApiError, PluginClosed } from './errors'
 import { PLUGIN_LIMITS } from './limits'
+import { pluginEditorType, type PluginLaunchMode } from './manifest'
 import { styledTextSegments } from './text-segments'
 import {
   pluginDataEmpty, pluginDataGet, pluginDataKeys, pluginDataSet, readPluginData, sharedPluginDataGet, sharedPluginDataKeys, sharedPluginDataSet,
@@ -72,6 +73,8 @@ export type PluginSessionOptions = {
   name: string
   pluginId: string
   command?: string
+  mode?: PluginLaunchMode
+  isModeCurrent?: () => boolean
   uiHtml: string | null
   storage?: PluginStorage
   storageRequest?: PluginStorageRequest
@@ -319,6 +322,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   const api = createEditorDesignAutomation(editor, undefined, [pluginDataExtension])
   const pluginName = options.name
   const pluginId = options.pluginId
+  const mode = options.mode ?? 'default'
   const storage = options.storage ?? (options.storageRequest ? memoryPluginStorage() : defaultPluginStorage())
   const storageWriter = createClientStorageWriter()
   const storageJobs: { id: number; operation: PluginStorageOperation; bytes: number }[] = []
@@ -359,9 +363,15 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   function failIfReplaced() {
     if (editor.state.doc.id !== documentId || editor.sessionGeneration !== sessionId)
       throw new PluginApiError('document_changed', 'The open document changed while the plugin was running')
+    if (options.isModeCurrent && !options.isModeCurrent())
+      throw new PluginApiError('editor_mode_changed', 'The editor mode changed while the plugin was running')
+  }
+  function requireDesignWrite() {
+    if (mode === 'inspect') throw new PluginApiError('permission_denied', 'Dev inspection plugins cannot edit the design')
   }
   function execute(method: string, params: Record<string, unknown>, mutate: boolean) {
     failIfReplaced()
+    if (mutate && method !== 'batch.apply') requireDesignWrite()
     if (mutate) applying += 1
     try {
       const response = api.execute({
@@ -377,6 +387,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   }
   function batch(operations: AutomationOp[]) {
     if (!operations.length) return null
+    if (mode === 'inspect' && operations.some(operation => operation.method !== 'plugin.data.replace')) requireDesignWrite()
     const label = `Plugin: ${pluginName}`.replace(/[\u0000-\u001f]/g, ' ').slice(0, 200)
     const result = execute('batch.apply', { operations, label }, true)
     flushes += 1
@@ -392,6 +403,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return id
   }
   function ensureRoom() {
+    requireDesignWrite()
     if (commands.length >= PLUGIN_LIMITS.batchOps) flush()
   }
   function hasMove(id: string) {
@@ -1231,6 +1243,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     captureRasterExport,
     call(op: string, payload: unknown): unknown {
       if (closed) throw new PluginClosed(closeMessage)
+      failIfReplaced()
       calls += 1
       if (calls > PLUGIN_LIMITS.hostCalls) throw new PluginApiError('plugin_limit', `Plugin exceeded ${PLUGIN_LIMITS.hostCalls} host calls`)
       const body = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
@@ -1277,7 +1290,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         throw new PluginClosed(closeMessage)
       }
       if (op === 'meta') return {
-        pluginId, command: options.command ?? null, editorType: 'figma', mode: 'default', fileKey: null,
+        pluginId, command: options.command ?? null, editorType: pluginEditorType(mode), mode, fileKey: null,
       }
       if (op === 'listen') { listening = true; return null }
       if (op === 'commitUndo') { flush(); return null }

@@ -133,7 +133,7 @@ function wrap(id) {
       if (prop === 'mainComponent') { const main = read(nodeId).mainComponentId; return main ? wrap(main) : null }
       if (prop === 'cornerRadius') { const radius = read(nodeId).cornerRadius; return radius === null ? figma.mixed : radius }
       if (prop === 'resize' || prop === 'resizeWithoutConstraints') return function (width, height) { host('resize', { id: nodeId, width: width, height: height }) }
-      if (prop === 'remove') return function () { dead.add(nodeId); host('remove', { id: nodeId }) }
+      if (prop === 'remove') return function () { host('remove', { id: nodeId }); dead.add(nodeId) }
       if (prop === 'clone') return function () { return wrap(host('clone', { id: nodeId }).id) }
       if (prop === 'appendChild') return function (child) { host('move', { id: child.id, parentId: nodeId }); return child }
       if (prop === 'insertChild') return function (index, child) { host('move', { id: child.id, parentId: nodeId, index: index }); return child }
@@ -371,8 +371,8 @@ const figma = {
       getSharedPluginDataKeys: data.getSharedPluginDataKeys,
     }
   },
-  get editorType() { return 'figma' },
-  get mode() { return 'default' },
+  get editorType() { return host('meta', null).editorType },
+  get mode() { return host('meta', null).mode },
   get pluginId() { return __pluginMeta.pluginId },
   get fileKey() { return null },
   get command() { return __pluginMeta.command == null ? undefined : __pluginMeta.command },

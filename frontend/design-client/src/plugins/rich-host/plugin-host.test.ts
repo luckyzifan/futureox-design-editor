@@ -410,6 +410,37 @@ describe('Figma plugin host', () => {
     expect(parsePluginManifest({ ...manifest, id }, { desktopFolder: true }).id).toBe(id)
   })
 
+  it('runs a Dev-only plugin in read-only inspection and allows its metadata', async () => {
+    const current = editor()
+    current.change('Seed inspected node', doc => {
+      const rectangle = node('rectangle', 0, 0, 40, 30)
+      rectangle.name = 'Inspected'
+      doc.nodes[rectangle.id] = rectangle
+      doc.pages[0].children.push(rectangle.id)
+    })
+    const plugin = {
+      manifest: parsePluginManifest({ name: 'Inspector', id: 'inspect.plugin', api: '1.0.0', main: 'code.js', editorType: ['dev'] }),
+      main: `
+        if (figma.editorType !== 'dev' || figma.mode !== 'inspect') throw new Error('Wrong plugin mode')
+        const found = figma.currentPage.children[0]
+        if (found.name !== 'Inspected') throw new Error('Missing inspection data')
+        for (const edit of [() => figma.createRectangle(), () => { found.name = 'Changed' }, () => found.remove()]) {
+          try { edit(); throw new Error('Edit was accepted') }
+          catch (error) { if (!String(error).includes('permission_denied')) throw error }
+        }
+        if (found.name !== 'Inspected') throw new Error('Inspection proxy lost the node after a denied edit')
+        found.setPluginData('inspected', 'yes')
+        figma.closePlugin(found.getPluginData('inspected'))
+      `,
+      ui: null,
+    }
+    await expect(openPlugin(current, plugin)).rejects.toMatchObject({ code: 'unsupported_editor_type' })
+    const run = await openPlugin(current, plugin, { mode: 'inspect' })
+    expect(run.closeMessage).toBe('yes')
+    expect(nodes(current).map(node => node.name)).toEqual(['Inspected'])
+    run.close()
+  })
+
   it('identifies a missing bundle entry without reading its uncompiled source', async () => {
     const manifest = JSON.stringify({ name: 'Source only', id: 'source-only.plugin', api: '1.0.0', main: 'dist/code.js' })
     const readTypeScript = vi.fn(async () => 'const name: string = "uncompiled"')

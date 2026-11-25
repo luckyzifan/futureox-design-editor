@@ -27,7 +27,8 @@ For a desktop folder with a missing `main.js` entry, the loader can strip types 
 
 Manifest rules:
 
-- `api` must be `1.0.0` and `editorType` must include `figma`.
+- `api` must be `1.0.0`. The plugin panel filters manifests by `editorType`. Design supports `figma` and the Dev toggle supports inspection plugins declaring `dev`.
+- Dev inspection plugins can read the design, open a sandboxed UI and update their own plugin metadata. Design edits are denied.
 - `documentAccess` is ignored. The open document is already local.
 - `networkAccess` may name domains. Main-thread `fetch` is allowed only for those origins (`https`, plus an explicit `localhost` origin). The UI frame still has `connect-src 'none'`. There is no collaboration server. The panel says when network is limited to the manifest.
 - `permissions` may be non-empty. They are not granted.
@@ -105,8 +106,8 @@ These calls still throw or are absent: `createImageAsync`, vector networks, remo
 | `figma.ui.hide` | supported | Hides the iframe. The plugin keeps running. |
 | `figma.ui.close` | partial | Hides the iframe. The plugin keeps running until closePlugin. show() can open it again. |
 | `figma.commitUndo` | supported | Flushes the current turn as its own undo entry. Later edits in the same run are a new undo step. |
-| `figma.editorType` | supported | Always "figma". |
-| `figma.mode` | partial | Always "default". Inspect and codegen modes are not available. |
+| `figma.editorType` | partial | "figma" in design and "dev" in the editor’s Dev inspection mode. |
+| `figma.mode` | partial | "default" in design and "inspect" in Dev. Code generation and FigJam are unavailable. |
 | `figma.pluginId` | partial | The manifest id. It is not a published Figma plugin id. |
 | `figma.command` | partial | The menu command the host launched, or undefined when the manifest has no menu. |
 | `figma.fileKey` | partial | Always null. Local documents have no Figma file key. |
