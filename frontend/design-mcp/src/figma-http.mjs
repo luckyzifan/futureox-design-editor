@@ -27,7 +27,7 @@ function authorized(header, token) {
 }
 
 class HttpMcpSession {
-  constructor(backend) {
+  constructor(backend, clientId) {
     this.input = new PassThrough()
     this.output = new PassThrough()
     this.decoder = new StringDecoder('utf8')
@@ -38,7 +38,8 @@ class HttpMcpSession {
     this.server = new DesignMcpServer({
       // The desktop grant owns the shared socket. Ending one client session
       // only retires that client's request IDs, work and resources.
-      backend, input: this.input, output: this.output, diagnostics: { write() {} },
+      backend: { ...backend, callTool: (name, args, context) => backend.callTool(name, args, { ...context, localSessionId: clientId }) },
+      input: this.input, output: this.output, diagnostics: { write() {} },
       instructions: FIGMA_MCP_INSTRUCTIONS, artifactCount: FIGMA_ASSET_LIMIT,
     }).start()
     this.output.on('data', chunk => this.receive(chunk))
@@ -251,7 +252,7 @@ export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backen
         return
       }
       const clientId = randomUUID()
-      const session = new HttpMcpSession(sharedBackend)
+      const session = new HttpMcpSession(sharedBackend, clientId)
       sessions.set(clientId, session)
       void session.server.done.then(() => retire(clientId, session))
       const result = await session.dispatch(message)

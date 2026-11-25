@@ -39,6 +39,8 @@ Codex-style stdio config uses `node` and `frontend/design-mcp/src/figma-cli.mjs`
 
 The HTTP listener implements Streamable HTTP with JSON responses. Use the URL and bearer token from the active desktop automation grant. Native clients can omit the `Origin` header. When present it must match the listener origin. A successful `initialize` returns a distinct `Mcp-Session-Id`. Send it and the negotiated `MCP-Protocol-Version` on subsequent requests. `DELETE` releases that session. The listener holds up to eight clients per grant and retires idle sessions after 30 minutes of inactivity. The listener returns `405` for a GET event stream and `400` for an unsupported protocol version. [MCP Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
 
+Tool arguments may also assert the active local `sessionId`. Use the current `Mcp-Session-Id` for HTTP, or `FUTUREOX_DESIGN_SESSION` from the packaged Figma stdio config. The assertion is checked before the tool reads the document. Figma cloud session IDs do not select a Futureox document.
+
 ## Web editor
 
 The browser page does not listen on a port and cannot host stdio. The in-app Design API buttons (context, check, export) still run inside the page. An external AI client needs the desktop bridge, either the listener the desktop starts or `figma-http.mjs` / `figma-cli.mjs` pointed at that bridge.

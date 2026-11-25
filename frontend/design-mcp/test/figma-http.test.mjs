@@ -110,6 +110,25 @@ test('two HTTP clients can initialize concurrently and use the same request IDs 
   assert.match(alive.result.content[0].text, /node-1/)
 })
 
+test('HTTP validates a tool session assertion against the current client before forwarding', async t => {
+  const backend = facade()
+  const execute = backend.execute
+  const forwarded = []
+  backend.execute = (request, context) => { forwarded.push(request); return execute(request, context) }
+  const server = await startLoopbackFigmaMcp({ backend, token })
+  t.after(() => server.close())
+  const [first, second] = await Promise.all([openClient(server.url), openClient(server.url)])
+  const request = { ...selectionRequest, params: { ...selectionRequest.params, arguments: { sessionId: first['mcp-session-id'] } } }
+  const denied = (await (await post(server.url, request, authorization, second)).json()).result
+  assert.equal(denied.isError, true)
+  assert.equal(denied.structuredContent.error.code, 'invalid_local_session')
+  assert.deepEqual(forwarded, [])
+  const allowed = (await (await post(server.url, request, authorization, first)).json()).result
+  assert.equal(allowed.isError, false)
+  assert.deepEqual(forwarded.map(request => request.method), ['selection.get', 'node.get'])
+  assert.ok(forwarded.every(request => !Object.hasOwn(request.params, 'sessionId')))
+})
+
 test('a pending HTTP tool can be cancelled and grant revocation retires every client', async t => {
   const grant = new AbortController()
   let started, aborted

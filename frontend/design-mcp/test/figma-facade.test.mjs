@@ -92,6 +92,22 @@ test('get_selection reads ids and summarizes at most the requested nodes', async
   assert.deepEqual(calls.map(call => call.method), ['selection.get', 'node.get', 'node.get'])
 })
 
+test('a packaged stdio session assertion must match the authenticated grant', async () => {
+  const calls = []
+  const api = new FigmaFacade({ scope: 'read', localSessionId: 'desktop-grant-id', methods: [{ name: 'selection.get' }],
+    execute: async request => {
+      calls.push(request)
+      return { ok: true, method: request.method, documentId: 'doc-1', session: 3, revision: 4,
+        result: { ids: [], pageId: 'page-1' } }
+    },
+  })
+  assert.equal((await api.callTool('get_selection', { sessionId: 'another-grant' })).error.code, 'invalid_local_session')
+  assert.equal((await api.callTool('get_selection', { sessionId: 3 })).error.code, 'invalid_local_session')
+  assert.deepEqual(calls, [])
+  ok(await api.callTool('get_selection', { sessionId: 'desktop-grant-id' }))
+  assert.deepEqual(calls.map(request => request.params), [{}])
+})
+
 test('get_design_context asks for context and HTML/CSS without claiming React output', async () => {
   const { api, calls } = facade({
     'selection.get': () => ({ pageId: 'page-1', ids: ['card'] }),
