@@ -174,9 +174,14 @@ impl PluginStorage {
             .connect_with(options.clone().read_only(true))
             .await
             .map_err(database)?;
-        let mut reader = preflight.acquire().await.map_err(database)?;
-        let checked = storage_schema(&mut reader).await;
-        drop(reader);
+        // Another process can initialize the file between schema reads.
+        // A read transaction keeps both header fields and sqlite_schema on
+        // the same snapshot before this process acquires its write lock.
+        let checked = async {
+            let mut reader = preflight.begin().await.map_err(database)?;
+            storage_schema(&mut reader).await?;
+            reader.commit().await.map_err(database)
+        }.await;
         preflight.close().await;
         checked?;
 
