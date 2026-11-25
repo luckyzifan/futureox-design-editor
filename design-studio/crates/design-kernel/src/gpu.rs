@@ -365,6 +365,11 @@ impl CachedProgram {
         use std::hash::{Hash, Hasher};
         let mut hash = std::collections::hash_map::DefaultHasher::new();
         program.data.len().hash(&mut hash);
+        // On little-endian machines the coverage word stream already has
+        // the bytes consumed by write_u32, including signed zero.
+        #[cfg(target_endian = "little")]
+        hash.write(bytemuck::cast_slice(&program.data));
+        #[cfg(target_endian = "big")]
         for value in &program.data { value.to_bits().hash(&mut hash); }
         Self { program, fingerprint: hash.finish(), phase_contours }
     }
@@ -4123,6 +4128,27 @@ mod incremental_prepare_tests {
 #[cfg(test)]
 mod program_identity_tests {
     use super::*;
+
+    #[test]
+    fn coverage_fingerprint_matches_the_original_word_stream() {
+        use std::hash::{Hash, Hasher};
+
+        let words = [0., -0., f32::from_bits(0x7fc0_0081), -1., 4., 0.125, f32::MAX];
+        for size in [0, 1, 2, 3, 7, 8, 31, 257, 16_384] {
+            let data: Vec<_> = words.into_iter().cycle().take(size).collect();
+            let mut reference = std::collections::hash_map::DefaultHasher::new();
+            data.len().hash(&mut reference);
+            for value in &data {
+                value.to_bits().hash(&mut reference);
+            }
+            let actual = CachedProgram::new(
+                crate::area_program::AreaProgram { rect: Rect::default(), data },
+                None,
+            );
+            assert_eq!(actual.fingerprint, reference.finish(), "{size} coverage words");
+        }
+    }
+
     #[test]
     fn colliding_hashes_still_compare_all_float_bits() {
         let make=|data|ProgramIdentity(Arc::new(CachedProgram{program:crate::area_program::AreaProgram{rect:Rect::default(),data},fingerprint:7,phase_contours:None}));
