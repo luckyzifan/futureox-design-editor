@@ -336,11 +336,28 @@ function SelectionChromeChip({ testId, x, y, text, size, zoom, fill, opacity, ce
   </g>
 }
 
-function MeasurementGuides({ measurements, labels, zoom, hidden, testId = 'canvas-measurement', pillPrefix = 'canvas-distance-pill' }: {
+function SelectionResizeHandle({ handle, zoom, figma, opacity, onPointerDown }: {
+  handle: ReturnType<typeof selectionHandles>[number]; zoom: number; figma: boolean; opacity?: number
+  onPointerDown?: React.PointerEventHandler<SVGPolygonElement>
+}) {
+  const points = (corners: readonly Point[]) => corners.map(point => `${point.x},${point.y}`).join(' ')
+  return <g opacity={opacity}>
+    <polygon data-testid={`resize-${handle.index}`} points={points(handle.resizePoints)}
+      fill={figma ? SELECTION_BLUE : 'white'} stroke={figma ? undefined : SELECTION_BLUE}
+      strokeWidth={figma ? undefined : 1 / zoom} strokeLinejoin="miter"
+      shapeRendering={figma || onPointerDown ? 'crispEdges' : undefined}
+      pointerEvents={onPointerDown ? 'all' : 'none'} style={onPointerDown ? { cursor: handle.resizeCursor } : undefined}
+      onPointerDown={onPointerDown} />
+    {figma && <polygon points={points(handle.resizeInsetPoints)} fill="white" shapeRendering="crispEdges" pointerEvents="none" />}
+  </g>
+}
+
+function MeasurementGuides({ measurements, labels, zoom, hidden, crisp, testId = 'canvas-measurement', pillPrefix = 'canvas-distance-pill' }: {
   measurements: readonly Measurement[]
   labels: readonly { anchor: Point; offset: Point; text: string; size: number }[]
   zoom: number
   hidden: boolean
+  crisp?: boolean
   testId?: string
   pillPrefix?: string
 }) {
@@ -348,8 +365,10 @@ function MeasurementGuides({ measurements, labels, zoom, hidden, testId = 'canva
   return <g data-testid={testId} pointerEvents="none" opacity={hidden ? 0 : 1}>
     {measurements.map((m, i) => <g key={`line-${i}`}>
       <line data-measure={m.role || 'gap'} data-distance={m.distance} data-dashed={m.dash || undefined} x1={m.from.x} y1={m.from.y} x2={m.to.x} y2={m.to.y}
-        stroke={SPACING_RED} strokeWidth={1 / zoom} strokeDasharray={m.dash ? `${4 / zoom} ${3 / zoom}` : undefined} />
-      {m.tick !== false && measurementTicks(m, zoom).map(([from, to], tick) => <line data-measure="edge" key={tick} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={SPACING_RED} strokeWidth={1 / zoom} />)}
+        stroke={SPACING_RED} strokeWidth={1 / zoom} strokeDasharray={m.dash ? `${4 / zoom} ${3 / zoom}` : undefined}
+        shapeRendering={crisp && !m.dash ? 'crispEdges' : undefined} />
+      {m.tick !== false && measurementTicks(m, zoom).map(([from, to], tick) => <line data-measure="edge" key={tick} x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+        stroke={SPACING_RED} strokeWidth={1 / zoom} shapeRendering={crisp ? 'crispEdges' : undefined} />)}
     </g>)}
     {labels.map((label, i) =>
       <SelectionChromeChip key={`pill-${i}`} testId={`${pillPrefix}-${i}`} tone="measure" centered opacity={1}
@@ -4064,12 +4083,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             <circle data-testid="keyboard-selection-cursor" cx={screen.x} cy={screen.y} r={5} />
             {keyboardMark.pick && (() => {
               const entry = entries.find(item => item.id === keyboardMark.pick)
-              const node = entry && state.doc.nodes[entry.id]
-              if (!entry || !node) return null
-              const points = boxPoints({ x: 0, y: 0, width: node.width, height: node.height })
-                .map(point => worldToScreen(displayView, apply(entry.matrix, point)))
+              const corners = entry && selectionMemberCorners(state.doc, entry.id, entry.matrix)
+              if (!corners) return null
+              const points = corners.map(point => worldToScreen(displayView, point))
               return <polygon data-testid="keyboard-pick-outline" points={points.map(point => `${point.x},${point.y}`).join(' ')}
-                fill="none" stroke={HOVER_BLUE} strokeWidth={1} />
+                fill="none" stroke={HOVER_BLUE} strokeWidth={HOVER_STROKE_PX} shapeRendering="crispEdges" />
             })()}
           </svg>
           <span className="sr-only" role="status">{keyboardMark.pick ? (locale === 'en' ? 'Keyboard pick selection' : '键盘点选') : (locale === 'en' ? 'Keyboard box selection' : '键盘框选')}</span>
@@ -4393,7 +4411,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 return <polygon key={entry.id} data-testid="canvas-selection-member" data-node-id={entry.id} points={points}
                   data-alignment-reference={reference || undefined} fill="none" stroke={SELECTION_BLUE}
                   strokeWidth={reference ? 2 * SELECTION_MEMBER_STROKE_PX : SELECTION_MEMBER_STROKE_PX}
-                  vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                  vectorEffect="non-scaling-stroke" shapeRendering={uiMode === 'figma' ? 'crispEdges' : undefined} pointerEvents="none" />
               })}
               {showSelectionChrome && <polygon
                 data-testid="canvas-selection-outline"
@@ -4410,7 +4428,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 shapeRendering="crispEdges"
                 pointerEvents="none"
               />}
-              <MeasurementGuides measurements={measurements} labels={measurementLabels} zoom={zoom} hidden={!!gpuOverlay} />
+              <MeasurementGuides measurements={measurements} labels={measurementLabels} zoom={zoom} hidden={!!gpuOverlay} crisp={overlay.commands.crispMeasurements} />
               {showTransformHandles && drawnHandles.map(h => <line key={`edge-${h.index}`} data-testid={`resize-edge-${h.index}`}
                 x1={h.point.x} y1={h.point.y} x2={h.next.x} y2={h.next.y}
                 stroke="transparent" strokeWidth={8/zoom} pointerEvents="stroke" style={{cursor:h.edgeCursor}}
@@ -4420,25 +4438,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   points={h.rotatePoints.map(p=>`${p.x},${p.y}`).join(' ')} fill="transparent" pointerEvents="all"
                   style={{cursor:h.rotateCursor}} onPointerDown={e=>{e.stopPropagation();start(e,'rotate',h.index)}} />
               </g>)}
-              {showTransformHandles && drawnHandles.map((h, i) => (
-                <polygon
-                  key={i}
-                  data-testid={`resize-${i}`}
-                  opacity={documentChromeOpacity}
-                  points={h.resizePoints.map(p=>`${p.x},${p.y}`).join(' ')}
-                  fill="white"
-                  stroke={SELECTION_BLUE}
-                  strokeWidth={1 / zoom}
-                  strokeLinejoin="miter"
-                  shapeRendering="crispEdges"
-                  pointerEvents={showTransformHandles?'all':'none'}
-                  style={{ cursor: h.resizeCursor }}
-                  onPointerDown={(e) => {
-                    e.stopPropagation()
-                    start(e, 'resize', i)
-                  }}
-                />
-              ))}
+              {showTransformHandles && drawnHandles.map(handle =>
+                <SelectionResizeHandle key={handle.index} handle={handle} zoom={zoom}
+                  figma={uiMode === 'figma'} opacity={documentChromeOpacity}
+                  onPointerDown={event => {
+                    event.stopPropagation()
+                    start(event, 'resize', handle.index)
+                  }} />)}
               {showTransformHandles&&origin.current.visible&&(()=>{const p=drag.current?.kind==='rotate'?drag.current.rotationCenter!:originWorld();return <g
                 data-testid="rotation-origin" transform={`translate(${p.x} ${p.y}) scale(${1/zoom})`} style={{cursor:'move'}}
                 onPointerDown={e=>{e.stopPropagation();start(e,'pivot')}} onDoubleClick={e=>{e.stopPropagation();setOrigin({x:.5,y:.5},true)}}>
@@ -4616,7 +4622,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               ))}
             </g>
           )}
-          {!selectionChromeOn && <MeasurementGuides measurements={measurements} labels={measurementLabels} zoom={zoom} hidden={!!gpuOverlay} />}
+          {!selectionChromeOn && <MeasurementGuides measurements={measurements} labels={measurementLabels} zoom={zoom}
+            hidden={!!gpuOverlay} crisp={overlay.commands.crispMeasurements} />}
         </g>
         <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`}
           visibility={exactOverlayMatches || !!ownedDrag ? 'visible' : 'hidden'}>
@@ -4774,15 +4781,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               if (!corners?.length) return null
               const points = corners.map(point => `${point.x},${point.y}`).join(' ')
               return <polygon key={entry.id} data-testid="canvas-selection-member" data-node-id={entry.id} points={points}
-                fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_MEMBER_STROKE_PX} vectorEffect="non-scaling-stroke" />
+                fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_MEMBER_STROKE_PX} vectorEffect="non-scaling-stroke"
+                shapeRendering={uiMode === 'figma' ? 'crispEdges' : undefined} />
             })}
             <polygon data-testid="canvas-selection-outline" data-selection-role={marqueeChrome.chosen.length > 1 ? 'union' : 'object'}
               points={marqueeChrome.corners.map(point => `${point.x},${point.y}`).join(' ')}
               fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_UNION_STROKE_PX} strokeLinejoin="miter"
               vectorEffect="non-scaling-stroke" shapeRendering="crispEdges" />
-            {marqueeChrome.handles.map((handle, index) => <polygon key={index} data-testid={`resize-${index}`}
-              points={handle.resizePoints.map(point => `${point.x},${point.y}`).join(' ')}
-              fill="white" stroke={SELECTION_BLUE} strokeWidth={1 / zoom} />)}
+            {marqueeChrome.handles.map(handle => <SelectionResizeHandle key={handle.index} handle={handle}
+              zoom={zoom} figma={uiMode === 'figma'} />)}
             <SelectionChromeChip testId="canvas-selection-size" centered tone="accent" opacity={1}
               x={marqueeChrome.box.x + marqueeChrome.box.width / 2}
               y={marqueeChrome.box.y + marqueeChrome.box.height + 21 / zoom}

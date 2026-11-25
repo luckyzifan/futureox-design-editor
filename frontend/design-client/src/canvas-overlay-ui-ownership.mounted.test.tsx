@@ -171,16 +171,17 @@ test('the acknowledged outline keeps its owner when a transform begins or a fram
   await present()
 
   const opacity = (testId: string) => mount.querySelector(`[data-testid="${testId}"]`)?.getAttribute('opacity')
+  const handleOpacity = () => mount.querySelector('[data-testid="resize-0"]')?.parentElement?.getAttribute('opacity')
   expect(opacity('canvas-selection-outline')).toBe('0')
   const rotate = mount.querySelector('[data-testid="rotate-corner-0"]')!
   await act(async () => pointer('pointerdown', 76, 76, {}, rotate))
   expect(editor.interactionActive).toBe(true)
   expect(opacity('canvas-selection-outline')).toBe('0')
-  expect(opacity('resize-0')).toBe('0')
+  expect(handleOpacity()).toBe('0')
 
   await present(boundary.props.overlay, original, true, false)
   expect(opacity('canvas-selection-outline')).toBe('1')
-  expect(opacity('resize-0')).toBe('1')
+  expect(handleOpacity()).toBe('1')
   expect(mount.querySelector('[data-frame-title]')?.getAttribute('opacity')).toBe('0')
   await present()
   expect(opacity('canvas-selection-outline')).toBe('0')

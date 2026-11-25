@@ -120,3 +120,13 @@ test('the display wire keeps a vector placement rectangle dashed and leaves anch
   }
   expect(residentFrameSignature(wire)).not.toBe(residentFrameSignature(withoutDash))
 })
+
+test('the display wire preserves an opaque Figma measurement band', () => {
+  const view = { x: 0, y: 0, zoom: 1 }
+  const frame: ResidentFrame = { view, width: 160, height: 90, dpr: 1, items: [],
+    overlay: { pixelGrid: false, crispMeasurements: true,
+      measurements: [{ from: { x: 10, y: 20 }, to: { x: 40, y: 20 }, axis: 'horizontal' }] } }
+  const wire = residentFrameMessage(frame)
+  expect(wire.overlay?.crispMeasurements).toBe(true)
+  expect(overlayVertices(wire.overlay!, view, frame.width, frame.height)[7]).toBe(-1)
+})

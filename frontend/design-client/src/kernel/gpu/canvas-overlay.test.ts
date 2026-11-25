@@ -39,6 +39,18 @@ test('spacing guides draw the gap plus six-pixel end ticks', () => {
   expect([data[2], data[3], data[4], data[5]]).toEqual(stored(SPACING_RED))
 })
 
+test('Figma measurement gaps and their ticks use solid one-pixel bands', () => {
+  const data = overlayVertices({
+    pixelGrid: false, crispMeasurements: true,
+    measurements: [{ from: { x: 10, y: 20 }, to: { x: 40, y: 20 }, axis: 'horizontal' }],
+  }, { x: 0, y: 0, zoom: 1 }, 200, 200)
+  expect(data.length).toBe(3 * 6 * 8)
+  for (let vertex = 0; vertex < 18; vertex++) expect(data[vertex * 8 + 7]).toBe(-1)
+  const ys = Array.from({ length: 6 }, (_, i) => data[i * 8 + 1])
+  expect([...new Set(ys)]).toEqual([20, 21])
+  expect([data[2], data[3], data[4], data[5]]).toEqual(stored(SPACING_RED))
+})
+
 test('an axis-aligned selection edge is one solid pixel of selection blue', () => {
   const corners = [{ x: 10.2, y: 20.8 }, { x: 40.2, y: 20.8 }, { x: 40.2, y: 50.8 }, { x: 10.2, y: 50.8 }]
   const data = overlayVertices({ pixelGrid: false, selection: { corners, handles: false } }, { x: 0, y: 0, zoom: 1 }, 200, 200)
