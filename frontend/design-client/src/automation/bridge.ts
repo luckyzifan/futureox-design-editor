@@ -4,16 +4,16 @@ import { captureSvgArtifact, vectorArtifactMethods, vectorArtifactParams } from 
 import type { Editor, EditorEditEvent } from '../engine'
 import type { AutomationCapabilities, AutomationMethod, AutomationRequest, AutomationResponse } from './types'
 import { createEditorDesignAutomation } from './index'
-import { captureDesignPreview, PREVIEW_LIMITS } from './export'
+import { captureDesignPreview, PREVIEW_FORMATS, PREVIEW_LIMITS } from './export'
 import { captureRaster, rasterMethods, rasterParams, RASTER_LIMITS } from './raster'
 
 const MAX_MESSAGE_BYTES = 32 * 1024 * 1024
 const STANDARD_MESSAGE_BYTES = 8 * 1024 * 1024
 const previewMethod: AutomationMethod = {
-  name: 'preview.capture', description: 'Capture PNG/JPEG/WebP through the real product CPU raster exporter, with document/page/node/revision metadata. Defaults to the active page. This is design-content export, not a screenshot of app chrome or the GPU canvas. At most 16 megapixels and 8 MiB including base64; lower scale for inline MCP image content, otherwise read the exact image resource.', mutates: false,
+  name: 'preview.capture', description: 'Capture PNG, JPEG, WebP, or bitmap PDF through the real product CPU exporter with document/page/node/revision metadata. Defaults to the active page. At most 16 megapixels and 8 MiB including base64. PDF bytes are delivered as an MCP resource. The requested resolution is preserved.', mutates: false,
   inputSchema: { type: 'object', additionalProperties: false, properties: {
     pageId: { type: 'string', minLength: 1, maxLength: 512 }, nodeIds: { type: 'array', minItems: 1, maxItems: 256, items: { type: 'string', minLength: 1, maxLength: 512 } },
-    format: { type: 'string', enum: ['png', 'jpeg', 'webp'] }, scale: { type: 'number', minimum: 0.1, maximum: 4 },
+    format: { type: 'string', enum: PREVIEW_FORMATS }, scale: { type: 'number', minimum: PREVIEW_LIMITS.minScale, maximum: PREVIEW_LIMITS.maxScale },
   } },
 }
 export interface DesktopAutomationRequest {
@@ -87,7 +87,7 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
   const artifacts = new Map<string, { blob: Blob; owner: string; expires: number; revision: number; kind: 'vector'|'raster'; format?:'svg'|'svgz' }>()
   let rasterBusy = false
   const pruneArtifacts = () => { for (const [id, a] of artifacts) if (a.expires <= Date.now()) artifacts.delete(id) }
-  const capabilities = (scope: 'read' | 'write') => ({ ...api.capabilities(), vectorArtifact: { limits: SVG_ARTIFACT_LIMITS, storage: RASTER_LIMITS, transport: 'session-local handles; vector.read chunks; vector.release', embeddedFonts: 'whole local TTF/OTF plus bundled default; explicit redistribution permission' }, raster: { renderer: 'product-cpu-export', backend: 'cpu', limits: RASTER_LIMITS, pngTransparency: 'preserved', jpegQuality: 100, webpCompression: 'lossless', transport: 'session-local handles; raster.read chunks; raster.release' }, methods: methods.filter(method => scope === 'write' || !method.mutates), preview: { renderer: 'product-cpu-export', backend: 'cpu', formats: ['png', 'jpeg', 'webp'], screenshot: false, gpuDisplayPixelEquivalence: false, runtime: typeof Worker === 'function' ? 'worker-available-unprobed' : 'worker-unavailable', limits: PREVIEW_LIMITS, transport: 'MCP image content when within tool budget; exact bytes in session-local resources' } })
+  const capabilities = (scope: 'read' | 'write') => ({ ...api.capabilities(), vectorArtifact: { limits: SVG_ARTIFACT_LIMITS, storage: RASTER_LIMITS, transport: 'session-local handles; vector.read chunks; vector.release', embeddedFonts: 'whole local TTF/OTF plus bundled default; explicit redistribution permission' }, raster: { renderer: 'product-cpu-export', backend: 'cpu', limits: RASTER_LIMITS, pngTransparency: 'preserved', jpegQuality: 100, webpCompression: 'lossless', transport: 'session-local handles; raster.read chunks; raster.release' }, methods: methods.filter(method => scope === 'write' || !method.mutates), preview: { renderer: 'product-cpu-export', backend: 'cpu', formats: PREVIEW_FORMATS, screenshot: false, gpuDisplayPixelEquivalence: false, runtime: typeof Worker === 'function' ? 'worker-available-unprobed' : 'worker-unavailable', limits: PREVIEW_LIMITS, transport: 'Inline MCP image content for small PNG, JPEG, or WebP; exact bytes for every format in session-local resources' } })
   const active = new Map<string, AbortController>()
   let disposed = false
   let identity = ''
@@ -262,8 +262,9 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
       if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => !['pageId', 'nodeIds', 'format', 'scale'].includes(key))) throw bridgeError('INVALID_PARAMS', 'Invalid preview arguments')
       if (params.pageId !== undefined && (typeof params.pageId !== 'string' || !params.pageId.length || params.pageId.length > 512)) throw bridgeError('INVALID_PARAMS', 'pageId must be a string')
       if (params.nodeIds !== undefined && (!Array.isArray(params.nodeIds) || !params.nodeIds.length || params.nodeIds.length > 256 || params.nodeIds.some(value => typeof value !== 'string' || !value.length || value.length > 512))) throw bridgeError('INVALID_PARAMS', 'nodeIds must contain at most 256 node ids')
-      if (params.format !== undefined && !['png', 'jpeg', 'webp'].includes(params.format as string)) throw bridgeError('INVALID_PARAMS', 'Unsupported preview format')
-      if (params.scale !== undefined && (typeof params.scale !== 'number' || !Number.isFinite(params.scale) || params.scale < 0.1 || params.scale > 4)) throw bridgeError('INVALID_PARAMS', 'Preview scale must be between 0.1 and 4')
+      if (params.format !== undefined && !PREVIEW_FORMATS.some(format => format === params.format)) throw bridgeError('INVALID_PARAMS', 'Unsupported preview format')
+      if (params.scale !== undefined && (typeof params.scale !== 'number' || !Number.isFinite(params.scale) || params.scale < PREVIEW_LIMITS.minScale || params.scale > PREVIEW_LIMITS.maxScale))
+        throw bridgeError('INVALID_PARAMS', `Preview scale must be between ${PREVIEW_LIMITS.minScale} and ${PREVIEW_LIMITS.maxScale}`)
       // Export sees a detached immutable snapshot, never a subsequently edited
       // live document. Reject stale completion instead of labelling it current.
       const document = structuredClone(editor.authoredDocument)

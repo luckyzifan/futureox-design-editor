@@ -153,7 +153,7 @@ describe('actual product CPU preview raster', () => {
     installWorker(); const { document, board } = sceneFixture()
     document.nodes[board.id].width = 5000; document.nodes[board.id].height = 5000
     await expect(captureDesignPreview(document)).rejects.toMatchObject({ code: 'preview_limit' })
-    for (const options of [{ pageId: 'missing' }, { nodeIds: ['missing'] }, { nodeIds: [] }, { scale: 0.01 }]) await expect(captureDesignPreview(document, options)).rejects.toThrow()
+    for (const options of [{ pageId: 'missing' }, { nodeIds: ['missing'] }, { nodeIds: [] }, { scale: 0.009 }]) await expect(captureDesignPreview(document, options)).rejects.toThrow()
     expect(workers).toHaveLength(0)
   })
   it('reports missing real renderer without an SVG or placeholder fallback', async () => {

@@ -3,6 +3,7 @@ import { isRecord } from './framing.mjs'
 const validBase64 = value => typeof value === 'string' && value.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(value)
 const unavailable = message => Object.assign(new Error(`${message}; narrow or split the export and retry. No export bytes were returned inline.`), { code: 'artifact_unavailable' })
 const jsonBytes = value => Buffer.byteLength(JSON.stringify(value))
+const previewMedia = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/webp': 'webp', 'application/pdf': 'pdf' }
 
 /** Attach actual small preview bytes, never fabricate/re-render. */
 export function previewImage(response, maxBytes = 256 * 1024) {
@@ -23,7 +24,7 @@ export function previewImage(response, maxBytes = 256 * 1024) {
  * admitted atomically, so a returned link is not evicted by its own siblings.
  */
 export class ArtifactResources {
-  constructor({ maxArtifacts = 16, maxBytes = 32 * 1024 * 1024, maxArtifactBytes = 32 * 1024 * 1024, maxResponseBytes = 32 * 1024 * 1024 } = {}) {
+  constructor({ maxArtifacts = 20, maxBytes = 32 * 1024 * 1024, maxArtifactBytes = 32 * 1024 * 1024, maxResponseBytes = 32 * 1024 * 1024 } = {}) {
     Object.assign(this, { maxArtifacts, maxBytes, maxArtifactBytes, maxResponseBytes })
     this.records = new Map()
     this.bytes = 0
@@ -83,22 +84,23 @@ export class ArtifactResources {
     } else if (result.format === 'futureox.design-sketch.v1' && result.encoding === 'base64' && result.mimeType === 'application/zip') {
       blob('base64', 'design.sketch', result.mimeType)
     } else if (result.format === 'futureox.design-asset-batch.v1') {
-      if (response.method !== 'download_assets' || !Array.isArray(result.assets) || result.assets.length > this.maxArtifacts)
+      if (!['download_assets', 'raster.sourceAssets'].includes(response.method) || !Array.isArray(result.assets) || result.assets.length > this.maxArtifacts)
         throw unavailable('The backend returned an invalid asset batch')
-      const extensions = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/webp': 'webp', 'image/svg+xml': 'svg' }
+      const extensions = { ...previewMedia, 'image/svg+xml': 'svg', 'image/gif': 'gif' }
+      const idLimit = response.method === 'raster.sourceAssets' ? 512 : 128
       metadata.assets = result.assets.map((asset, index) => {
         const extension = Object.hasOwn(extensions, asset?.mimeType) && extensions[asset.mimeType]
-        if (!extension || typeof asset.nodeId !== 'string' || !asset.nodeId.length || asset.nodeId.length > 128 ||
+        if (!extension || typeof asset.nodeId !== 'string' || !asset.nodeId.length || asset.nodeId.length > idLimit ||
             !asset.base64 || !validBase64(asset.base64)) throw unavailable('The backend returned invalid batch media')
         const field = `assets[${index}]`
         candidates.push({ field, name: `asset-${index + 1}.${extension}`, mimeType: asset.mimeType, encoding: 'base64', blob: asset.base64 })
         return { nodeId: asset.nodeId, mimeType: asset.mimeType, field }
       })
     } else if (result.format === 'futureox.design-preview.v1') {
-      if (!['image/png', 'image/jpeg', 'image/webp'].includes(result.mimeType) || typeof result.dataUrl !== 'string') throw unavailable('The backend returned invalid preview media')
+      if (!Object.hasOwn(previewMedia, result.mimeType) || typeof result.dataUrl !== 'string') throw unavailable('The backend returned invalid preview media')
       const prefix = `data:${result.mimeType};base64,`, data = result.dataUrl.slice(prefix.length)
       if (!result.dataUrl.startsWith(prefix) || !data || !validBase64(data)) throw unavailable('The backend returned invalid preview data')
-      candidates.push({ field: 'dataUrl', name: `preview.${result.mimeType.split('/')[1]}`, mimeType: result.mimeType, encoding: 'data-url', blob: data })
+      candidates.push({ field: 'dataUrl', name: `preview.${previewMedia[result.mimeType]}`, mimeType: result.mimeType, encoding: 'data-url', blob: data })
       delete metadata.dataUrl
     }
     if (!candidates.length) return { value: response, links: [] }

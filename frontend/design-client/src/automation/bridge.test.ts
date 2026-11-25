@@ -116,6 +116,7 @@ describe('preview lifecycle and truthful capabilities', () => {
     expect(called.ok).toBe(true)
     expect(called.result.preview).toEqual(negotiated.capabilities.preview)
     expect(called.result.preview).toMatchObject({ renderer: 'product-cpu-export', backend: 'cpu', screenshot: false, gpuDisplayPixelEquivalence: false })
+    expect(called.result.preview.formats).toEqual(['png', 'jpeg', 'webp', 'pdf'])
     expect(called.result.methods.some((method: any) => method.name === 'preview.capture')).toBe(true)
     expect(called.result.methods.every((method: any) => !method.mutates)).toBe(true)
   })

@@ -17,6 +17,53 @@ function fixture() {
   document.nodes = { [frame.id]: frame, [text.id]: text }; document.pages[0].children = [frame.id]
   return { document, frame, text }
 }
+describe('embedded image source export', () => {
+  const gif = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+  const source = (image: string) => ({ ...paint('#ffffff'), kind: 'image' as const, image })
+
+  it('returns exact descendant bytes once and reports unavailable references', () => {
+    const { document, frame } = fixture()
+    const first = node('rectangle'), second = node('rectangle')
+    first.fills = [source(`data:image/gif;base64,${gif}`), source('https://example.invalid/remote.png')]
+    second.fills = [source(`data:image/gif;base64,${gif}`), source(`data:image/png;base64,${gif}`)]
+    frame.children.push(first.id, second.id)
+    document.nodes[first.id] = first
+    document.nodes[second.id] = second
+    const editor = new Editor(document)
+    try {
+      const api = createDesignAutomation(editor, exportExtensions)
+      expect(api.execute({ method: 'raster.sourceAssets', params: { nodeIds: [frame.id, first.id] } })).toMatchObject({
+        ok: true,
+        result: { assets: [{ nodeId: first.id, mimeType: 'image/gif', base64: gif }], rawImagesOnly: true,
+          rawImagesTruncated: false, unavailableImages: 2 },
+      })
+    } finally { editor.dispose() }
+  })
+
+  it('keeps the first twenty distinct sources and explicitly marks truncation', () => {
+    const { document, frame } = fixture()
+    const original = Buffer.from(gif, 'base64')
+    const sources: string[] = []
+    for (let index = 0; index < 21; index++) {
+      const rectangle = node('rectangle')
+      // A distinct GIF comment preserves the original image pixels.
+      const base64 = Buffer.concat([original.subarray(0, -1), Uint8Array.of(0x21, 0xfe, 1, index, 0, 0x3b)]).toString('base64')
+      sources.push(base64)
+      rectangle.fills = [source(`data:image/gif;base64,${base64}`)]
+      document.nodes[rectangle.id] = rectangle
+      frame.children.push(rectangle.id)
+    }
+    const editor = new Editor(document)
+    try {
+      const api = createDesignAutomation(editor, exportExtensions)
+      const response = api.execute({ method: 'raster.sourceAssets', params: { nodeIds: [frame.id] } })
+      expect(response).toMatchObject({
+        ok: true, result: { rawImagesTruncated: true, assets: sources.slice(0, 20).map(base64 => ({ base64 })) },
+      })
+    } finally { editor.dispose() }
+  })
+})
+
 describe('AI-friendly semantic export', () => {
   it('preserves authored text and identifies the HTML approximation of title case', () => {
     const { document, text } = fixture()

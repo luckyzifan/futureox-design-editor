@@ -108,7 +108,13 @@ test('get_screenshot and single-node download call the CPU export', async () => 
   const preview = { format: 'futureox.design-preview.v1', mimeType: 'image/png', width: 4, height: 4 }
   const { api, calls } = facade({
     'selection.get': () => ({ pageId: 'page-1', ids: [] }),
-    'preview.capture': request => ({ ...preview, nodeIds: request.params.nodeIds, formatName: request.params.format }),
+    'preview.capture': request => ({
+      ...preview, nodeIds: request.params.nodeIds, formatName: request.params.format,
+      ...(request.params.format === 'pdf' ? {
+        mimeType: 'application/pdf',
+        dataUrl: `data:application/pdf;base64,${Buffer.from('%PDF-1.4').toString('base64')}`,
+      } : {}),
+    }),
     'vector.export': () => ({ format: 'futureox.design-vector.v1', content: '<svg/>' }),
   })
   const shot = ok(await api.callTool('get_screenshot', {}, {}))
@@ -120,8 +126,9 @@ test('get_screenshot and single-node download call the CPU export', async () => 
   assert.equal(png.result.urls, false)
   const many = await api.callTool('download_assets', { nodeIds: Array.from({ length: 21 }, (_, i) => `node-${i}`) }, {})
   assert.equal(many.error.code, 'too_many_nodes')
-  const pdf = await api.callTool('download_assets', { nodeId: 'icon', defaultFormat: 'pdf' }, {})
-  assert.equal(pdf.error.code, 'unsupported_format')
+  const pdf = ok(await api.callTool('download_assets', { nodeId: 'icon', defaultFormat: 'pdf' }, {}))
+  assert.equal(pdf.result.mimeType, 'application/pdf')
+  assert.deepEqual(calls.at(-1).params, { format: 'pdf', nodeIds: ['icon'] })
   ok(await api.callTool('download_assets', { nodeId: 'icon', defaultFormat: 'svg' }, {}))
   assert.equal(calls.at(-1).method, 'vector.export')
 })
