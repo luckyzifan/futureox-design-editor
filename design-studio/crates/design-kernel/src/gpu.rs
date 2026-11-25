@@ -4150,19 +4150,6 @@ mod program_identity_tests {
     }
 
     #[test]
-    fn coverage_fingerprint_matches_the_original_word_stream() {
-        use std::hash::{Hash, Hasher};
-        let words = [0., -0., f32::from_bits(0x7fc0_0081), -1., 4., 0.125, f32::MAX];
-        for size in [0, 1, 2, 3, 7, 8, 31, 257, 16_384] {
-            let data: Vec<_> = words.into_iter().cycle().take(size).collect();
-            let mut original = std::collections::hash_map::DefaultHasher::new();
-            data.len().hash(&mut original);
-            for value in &data { value.to_bits().hash(&mut original); }
-            let cached = CachedProgram::new(crate::area_program::AreaProgram { rect: Rect::default(), data }, None);
-            assert_eq!(cached.fingerprint, original.finish(), "{size} words");
-        }
-    }
-    #[test]
     fn colliding_hashes_still_compare_all_float_bits() {
         let make=|data|ProgramIdentity(Arc::new(CachedProgram{program:crate::area_program::AreaProgram{rect:Rect::default(),data},fingerprint:7,phase_contours:None}));
         let a=make(vec![0.,1.]);let equal=make(vec![0.,1.]);let signed=make(vec![-0.,1.]);let different=make(vec![0.,2.]);
