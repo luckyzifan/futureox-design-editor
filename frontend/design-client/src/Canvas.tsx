@@ -1602,7 +1602,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const entry = entries.find(item => item.id === id)
       if (entry) reveal(entry.bounds)
     }
-    if ((event.key === ' ' || event.code === 'Space') && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+    const optionChord = event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey
+    const controlChord = shortcutPlatform() !== 'mac' && event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
+    if ((event.key === ' ' || event.code === 'Space') && (optionChord || controlChord)) {
       event.preventDefault()
       if (!event.repeat) {
         if (gesture.mode === 'pick') {
@@ -1690,7 +1692,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if ((e.key === ' ' || e.code === 'Space') && !e.repeat && !e.metaKey && !e.ctrlKey && !e.shiftKey && cursorPoint.current) {
         const readout = measureReadoutRef.current
         const text = readoutAtPoint(readout.lines, readout.pills, cursorPoint.current, readout.zoom)
-        if (text) {
+        // Option+Space enters or switches keyboard selection. It repeats a
+        // value only after pick select is already active.
+        if (text && (!e.altKey || keyboardBox.current?.mode === 'pick')) {
           e.preventDefault()
           setMeasureAnnounce(text)
           setAnnounceNonce(nonce => nonce + 1)
