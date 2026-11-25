@@ -100,7 +100,7 @@ contextBridge.exposeInMainWorld(
       storageStatus: () => invoke('automation-storage-status'),
       enable: value => invoke('automation-enable', value),
       disable: () => invoke('automation-disable'),
-      copyConnection: format => invoke('automation-copy-connection', format === 'stdio' || format === 'codex' ? format : undefined),
+      copyConnection: format => invoke('automation-copy-connection', ['stdio', 'codex', 'figma-stdio'].includes(format) ? format : undefined),
       onStatus: callback => subscribe('design-desktop:automation-status', callback,
         value => value && typeof value.enabled === 'boolean'),
       register: value => invoke('automation-register', value),

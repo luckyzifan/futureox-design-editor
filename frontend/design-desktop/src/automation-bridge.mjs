@@ -427,10 +427,11 @@ export function registerAutomationBridge({ ipcMain, getWindow, assertSender, dia
     },
     disable: async value => { if (value !== undefined) throw fail('INVALID_REQUEST', 'Unexpected disable arguments'); await bridge.close(); return getStatus() },
     'copy-connection': value => {
-      if (value !== undefined && !(['stdio', 'codex'].includes(value) && clientConfig)) throw fail('INVALID_REQUEST', 'Unexpected connection arguments')
+      if (value !== undefined && !(['stdio', 'codex', 'figma-stdio'].includes(value) && clientConfig)) throw fail('INVALID_REQUEST', 'Unexpected connection arguments')
       const connection = bridge.connection()
       if (!connection) return { copied: false }
-      clipboard.writeText(value === 'codex' ? codexMcpToml(clientConfig(connection)) : JSON.stringify(value === 'stdio' ? clientConfig(connection) : connection, null, 2))
+      const config = value === undefined ? connection : clientConfig(connection, value)
+      clipboard.writeText(value === 'codex' ? codexMcpToml(config) : JSON.stringify(config, null, 2))
       return { copied: true }
     },
   })) ipcMain.handle(`design-desktop:automation-${name}`, (event, value) => { assertSender(event, getWindow()); return handler(value) })

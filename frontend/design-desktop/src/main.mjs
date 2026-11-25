@@ -7,7 +7,7 @@ import { createPetHost } from './pet/host.mjs'
 import { diagnosticFileAdapter } from './diagnostic-file.mjs'
 import { forwardNativeEditorShortcut } from './keyboard-shortcuts.mjs'
 import { registerAutomationBridge } from './automation-bridge.mjs'
-import { desktopMcpPaths, desktopMcpClientConfig, startDesktopFigmaMcp } from './figma-mcp-host.mjs'
+import { desktopMcpClientConfig, startDesktopFigmaMcp } from './figma-mcp-host.mjs'
 import { SketchSessionHost } from './sketch-session.mjs'
 import { serveSourceBitmap } from './source-bitmap.mjs'
 import { LargeDocumentHost } from './large-document.mjs'
@@ -213,7 +213,7 @@ const automationBridge = registerAutomationBridge({
   ipcMain, getWindow: () => window, assertSender, dialog, clipboard,
   openPermissions: () => sendCommand('automation-settings'),
   figmaMcp: config => startDesktopFigmaMcp(config, app.isPackaged ? process.resourcesPath : undefined),
-  clientConfig: config => desktopMcpClientConfig(config, desktopMcpPaths(app.isPackaged ? process.resourcesPath : undefined).cli),
+  clientConfig: (config, format) => desktopMcpClientConfig(config, { format, resourcesPath: app.isPackaged ? process.resourcesPath : undefined }),
   storage: (method, params) => backend.request(method, params),
   audit: entry => backend.request('automation.audit.append', {
     event: entry.event === 'edit' ? 'edit' : entry.method === 'bridge.enable' ? 'grant' : entry.method === 'bridge.disable' ? 'revoke' : 'execute',

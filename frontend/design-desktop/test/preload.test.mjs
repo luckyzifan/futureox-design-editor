@@ -360,6 +360,8 @@ test('automation preload is frozen and routes only named IPC methods', async () 
     assert.deepEqual(calls.at(-1), [`design-desktop:${channel}`, forwards ? value : undefined])
   }
   assert.equal(calls.length, Object.keys(requests).length)
+  await api.automation.copyConnection('figma-stdio')
+  assert.deepEqual(calls.at(-1), ['design-desktop:automation-copy-connection', 'figma-stdio'])
 })
 
 test('automation subscriptions filter payloads, strip IPC events and independently unsubscribe', () => {

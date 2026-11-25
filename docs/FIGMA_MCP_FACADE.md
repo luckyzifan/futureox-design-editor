@@ -10,6 +10,7 @@ Screenshots are `preview.capture`: a CPU raster of design content, not an applic
 
 1. Open the design in the desktop app and enable local automation (read-only, or read and edit for `use_figma` and `open_document`).
 2. The enable dialog’s JSON includes `endpoint`, `sessionId`, `token`, and, when the listener started, `figmaMcp.url`.
+3. For the Figma-shaped stdio catalog, choose **Copy Figma-compatible stdio config** in the MCP connection and permissions panel. The JSON entry is named `futureox_design_figma` and runs the packaged `figma-cli.mjs`. **Copy stdio client config** continues to provide the full `design_*` catalog.
 
 Stdio, using the same socket variables as the full catalog:
 
