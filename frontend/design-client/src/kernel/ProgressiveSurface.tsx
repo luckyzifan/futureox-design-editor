@@ -1605,18 +1605,19 @@ export function ProgressiveSurfaceImpl(
           }
           const native=canvasRasterPlan(view,dpr,width,height,{rasterProfile,exactPhase:true})
           const limit=budgetTileLimit(displayBudget,false)
-          let target=region??shifted, coversBoard=!!region
+          // The board region is the whole artboard. Planning that rectangle
+          // fills pixels this drag has not revealed and can evict the viewport
+          // tiles the retained frame is already showing. The intersection with
+          // the shifted viewport is the source that will actually land on
+          // screen; a later sample schedules the next edge when it grows.
+          const revealed=needed
+          let target=region&&revealed?revealed:shifted
+          let coversBoard=!!region&&!!revealed&&boundsContain(revealed,region)
           let planned
           try { planned=planTilesAligned(target,native.scale,limit,native.phase) }
           catch (error) {
-            if (!region || !needed) {
-              if (region) rejectBoard()
-              else throw error
-              return
-            }
-            target=needed; coversBoard=false
-            try { planned=planTilesAligned(target,native.scale,limit,native.phase) }
-            catch { rejectBoard(); return }
+            if (region) { rejectBoard(); return }
+            throw error
           }
           const plan=planned.map(tile=>({...tile,key:tileComputationKey(tile,native.camera,false)}))
           const missing=plan.filter(tile=>{const resident=tileRef.current.get(tile.key)
@@ -3081,7 +3082,7 @@ export function ProgressiveSurfaceImpl(
           preserveZoomBasis={props.interaction?.figmaBoardPreview}
           zoomInputActive={navigationGesture.active}
           panBacking={reusableFrame&&displayed&&!displayed.preview?displayed:undefined}
-          onTranslatedCoverage={residentDisplay ? (source,offset,sequence,failed)=>translationCoverage.current?.({source,offset,sequence,failed})===true : undefined}
+          onTranslatedCoverage={residentDisplay ? (source,offset,sequence,failed,region)=>translationCoverage.current?.({source,offset,sequence,failed,region})===true : undefined}
           onComposited={residentDisplay ? undefined : frame => { observeBacking(frame); props.onPresentation?.(frame) }}
           terminalQuality={complete ? { qualitySequence: terminalQualityState.current.sequence,
             qualityRevision: contract.revision, pageToken: diagnosticPage.current.token } : undefined}

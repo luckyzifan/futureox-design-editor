@@ -2735,6 +2735,53 @@ test('whole-page translation fills original native world misses through the boun
   request.resolve();await flushRasterWork();expect(failed).not.toHaveBeenCalled()
 })
 
+test('a clipped board fill schedules the newly revealed edge instead of one shifted page', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('navigator', { gpu: {} })
+  Object.assign(worker.policy, { desktopFullMath: true, desktopDisplay: true })
+  worker.dpr = 2
+  worker.dynamicPlan = true
+  const view = { x: 0, y: 0, zoom: 1 }
+  const size = { width: 128, height: 64 }
+  const seeds = planTiles({ x: 0, y: 0, width: size.width, height: size.height }, 2)
+    .map((tile, index) => ({ ...tile, gpuTile: 8100 + index }))
+  const h = harness(seeds)
+  const options: any = { backend: 'webgpu', ...size, view }
+  h.render(options)
+  await flushRasterWork()
+  let parts = surfaceParts(h.render(options))
+  parts.compositor.props.onPresented({ view, ...size, dpr: 2, interaction: false, ids: seeds.map(tile => tile.gpuTile) },
+    parts.compositor.props.presentation, { client: worker.clients[0], deviceWorkerScope: 11, deviceIncarnation: 1, deviceOwner: 1 })
+  options.interaction = { document: h.doc, selection: ['board'], active: true, epoch: 1, control: { current: null }, onReady() {} }
+  h.render(options)
+  await flushRasterWork()
+  parts = surfaceParts(h.render(options))
+  const board = { x: 0, y: 0, width: 1440, height: 1030 }
+  const failed = vi.fn()
+  const before = worker.calls.length
+  // 300 world px puts the revealed source on the next 512px tile, past the
+  // resident viewport tile. 700 world px crosses the tile after that.
+  expect(parts.compositor.props.onTranslatedCoverage(h.doc, { x: -300, y: 0 }, 7, failed, board)).toBe(true)
+  await vi.waitFor(() => expect(worker.calls.length).toBe(before + 1))
+  const first = worker.calls[before]
+  const firstNeeded = { x: 300, y: 0, width: size.width, height: size.height }
+  const expectedFirst = planTiles(firstNeeded, 2).map(tile => tile.key)
+  expect(first.options.tileViewport.map((tile: RasterTile) => tile.key)).toEqual(expectedFirst)
+  expect(first.options.tileViewport.length).toBeLessThan(8)
+  let gpu = 8200
+  for (const tile of first.options.tileViewport)
+    first.progress({ ...tile, bytes: new Uint8Array(), backend: 'webgpu', gpuTile: gpu++, cached: false })
+  first.resolve()
+  await flushRasterWork()
+  expect(failed).not.toHaveBeenCalled()
+  expect(parts.compositor.props.onTranslatedCoverage(h.doc, { x: -700, y: 0 }, 7, failed, board)).toBe(true)
+  await vi.waitFor(() => expect(worker.calls.length).toBe(before + 2))
+  const second = worker.calls[before + 1]
+  const secondNeeded = { x: 700, y: 0, width: size.width, height: size.height }
+  expect(second.options.tileViewport.map((tile: RasterTile) => tile.key)).toEqual(planTiles(secondNeeded, 2).map(tile => tile.key))
+  expect(second.options.tileViewport.some((tile: RasterTile) => tile.key === expectedFirst[0])).toBe(false)
+})
+
 test('covering navigation history cannot globally cancel an in-flight native refinement',async()=>{
   nativeNavigationHost();vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION','0');vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX','0')
   worker.dynamicPlan=true
