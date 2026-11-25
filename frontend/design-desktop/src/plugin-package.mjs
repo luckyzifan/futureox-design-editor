@@ -1,4 +1,5 @@
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises'
+import { watch } from 'node:fs'
 import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 
@@ -7,6 +8,7 @@ export const PLUGIN_FILE_BYTES = 1024 * 1024
 export const PLUGIN_UI_BYTES = 512 * 1024
 export const LOCAL_PLUGIN_SCAN_LIMIT = 64
 export const LOCAL_PLUGIN_ENABLE_LIMIT = 32
+const LOCAL_PLUGIN_WATCH_LIMIT = 128
 const suffixes = new Set(['js', 'mjs', 'html', 'json', 'css', 'svg'])
 const NAMED_UI_LIMIT = 16
 const LOCAL_FOLDER_ID_PREFIX = 'futureox.local.folder:'
@@ -104,6 +106,7 @@ export async function scanDeclaredPlugins(root, options = {}) {
   }
   const rootStat = await lstat(rootReal)
   if (!rootStat.isDirectory()) return empty
+  options.watchFolders?.add(rootReal)
   const entries = await readdir(rootReal, { withFileTypes: true })
   const names = entries
     .filter(entry => entry.isDirectory() && !entry.isSymbolicLink() && pluginFolderName(entry.name))
@@ -113,7 +116,6 @@ export async function scanDeclaredPlugins(root, options = {}) {
   let skipped = 0
   const seen = new Set()
   for (const name of names.slice(0, scanLimit)) {
-    if (plugins.length >= enableLimit) { skipped += 1; continue }
     try {
       const listed = path.join(rootReal, name)
       const stat = await lstat(listed)
@@ -121,9 +123,16 @@ export async function scanDeclaredPlugins(root, options = {}) {
       const folderReal = await realpath(listed)
       const rel = path.relative(rootReal, folderReal)
       if (rel !== name || path.isAbsolute(rel)) { skipped += 1; continue }
+      options.watchFolders?.add(folderReal)
+      if (plugins.length >= enableLimit) { skipped += 1; continue }
       const manifestText = await readLocalPluginManifest(folderReal)
       const manifest = parseDeclaredPluginManifest(manifestText)
       if (seen.has(manifest.id)) { skipped += 1; continue }
+      if (options.watchFolders) {
+        for (const file of [manifest.main, ...Object.values(manifest.uiFiles ?? (manifest.ui ? { main: manifest.ui } : {}))]) {
+          await watchSourceParent(folderReal, file, options.watchFolders)
+        }
+      }
       await readPluginFile(folderReal, manifest.main)
       const uiFiles = manifest.uiFiles ? Object.values(manifest.uiFiles) : manifest.ui ? [manifest.ui] : []
       let remaining = PLUGIN_UI_BYTES
@@ -136,6 +145,69 @@ export async function scanDeclaredPlugins(root, options = {}) {
     } catch { skipped += 1 }
   }
   return { plugins, skipped, truncated: names.length > scanLimit }
+}
+
+async function watchSourceParent(folder, relative, folders) {
+  if (folders.size >= LOCAL_PLUGIN_WATCH_LIMIT) return
+  let parent = path.dirname(path.resolve(folder, ...pluginRelativeParts(relative)))
+  while (parent !== folder) {
+    try {
+      const stat = await lstat(parent)
+      if (stat.isDirectory() && !stat.isSymbolicLink() && await realpath(parent) === parent) folders.add(parent)
+      return
+    } catch (error) {
+      if (error?.code !== 'ENOENT') return
+    }
+    parent = path.dirname(parent)
+  }
+}
+
+/** Reconcile live directory watches from the same bounded catalog scan. */
+export function createPluginCatalogWatcher(profile, refresh) {
+  const watchers = new Map()
+  let timer
+  let closed = false
+  function changed() {
+    if (closed) return
+    clearTimeout(timer)
+    timer = setTimeout(() => { if (!closed) void refresh() }, 125)
+    timer.unref?.()
+  }
+  return {
+    update(folders) {
+      if (closed) return
+      // The profile watch sees creation/removal of the plugins directory itself.
+      const ordered = [...folders].sort((left, right) => left.split(path.sep).length - right.split(path.sep).length)
+      const next = new Set([profile, ...ordered.slice(0, LOCAL_PLUGIN_WATCH_LIMIT)])
+      for (const [folder, watcher] of watchers) {
+        if (!next.has(folder)) { watcher.close(); watchers.delete(folder) }
+      }
+      for (const folder of next) {
+        if (watchers.has(folder)) continue
+        try {
+          const watcher = watch(folder, { persistent: false }, (event, name) => {
+            if (folder !== profile && event === 'rename' && (name == null || String(name) === path.basename(folder))) {
+              watchers.delete(folder)
+              watcher.close()
+            }
+            if (folder !== profile || name == null || String(name) === 'plugins') changed()
+          })
+          watchers.set(folder, watcher)
+          watcher.on('error', () => {
+            if (watchers.get(folder) !== watcher) return
+            watchers.delete(folder)
+            watcher.close()
+          })
+        } catch { /* The catalog can still refresh when the panel opens. */ }
+      }
+    },
+    close() {
+      closed = true
+      clearTimeout(timer)
+      for (const watcher of watchers.values()) watcher.close()
+      watchers.clear()
+    },
+  }
 }
 
 export async function readPluginFile(root, relative) {
