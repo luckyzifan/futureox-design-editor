@@ -2036,6 +2036,7 @@ impl Fonts {
         let mut lines = Vec::new();
         let mut glyphs = Vec::new();
         let mut y = 0.;
+        let mut previous_figma_line = None;
         let mut measurement: Option<TextVerticalMeasurement> = None;
         // Pen for vertical wrapping: filled columns advance in +x with no
         // gap (the column width is the tallest glyph size).
@@ -2525,6 +2526,21 @@ impl Fonts {
                         }
                     }
                 }
+                if style.line_box_baseline == "figma-pixel-leading" && attributes.is_none()
+                    && explicit_line_height && natural > 0.
+                {
+                    // With a common font metric, Figma advances to the next
+                    // baseline using that line's authored height. Align the
+                    // adjacent box edges by half the change in explicit leading.
+                    if let Some((previous_height, previous_natural)) = previous_figma_line {
+                        if previous_natural == natural {
+                            y += (height - previous_height) / 2.;
+                        }
+                    }
+                    previous_figma_line = Some((height, natural));
+                } else {
+                    previous_figma_line = None;
+                }
                 let trailing = shaped
                     .last()
                     .map(|glyph| cluster_tracking(runs, glyph.cluster, style))
@@ -2642,7 +2658,9 @@ impl Fonts {
                     return Err("Text layout work budget exceeded".into());
                 }
             }
-            if paragraph.end < text.len() {
+            let figma_soft_break = attributes.is_none() && uses_figma_line_metrics(style)
+                && text[paragraph.end..].starts_with('\u{2028}');
+            if paragraph.end < text.len() && !figma_soft_break {
                 if limit.is_some() && style.writing_mode == "vertical" {
                     // Vertical block flow runs horizontally: paragraph gaps
                     // open between columns.
@@ -3026,6 +3044,30 @@ mod tests {
         assert!(changed.glyphs[0].y < original.glyphs[0].y);
         n.text_style.as_mut().unwrap().line_height_auto = false;
         assert_eq!(fonts.node_layout(&n, Some(n.width)).unwrap().height, 60.);
+    }
+
+    #[test]
+    fn figma_explicit_line_advances_and_soft_breaks_keep_the_authored_baselines() {
+        let mut fonts = Fonts::new();
+        fonts.load(include_bytes!(
+            "../../../../frontend/design-client/public/fonts/poppins/v2.000/Poppins-Bold.ttf"
+        )).unwrap();
+        let mut n = node("A\nB\u{2028}C\nD\u{2028}E", serde_json::json!({
+            "lineHeight": 30. / 14.,
+            "paragraphSpacing": 5.,
+            "lineBoxBaseline": "figma-pixel-leading",
+        }), 200.);
+        n.font_size = 14.;
+        n.text_runs = vec![
+            TextRun { start: 0, end: 2, line_height: Some(30. / 14.), ..Default::default() },
+            TextRun { start: 2, end: 9, line_height: Some(22. / 14.), ..Default::default() },
+        ].into();
+        let layout = fonts.node_layout(&n, Some(n.width)).unwrap();
+        let baselines: Vec<_> = layout.lines.iter().map(|line| line_glyphs(&layout, line)[0].y).collect();
+        assert_eq!(baselines.len(), 5);
+        for ([a, b], advance) in baselines.array_windows().copied().zip([27., 22., 27., 22.]) {
+            assert!((b - a - advance).abs() < 1e-8, "baselines: {baselines:?}");
+        }
     }
 
     #[test]
