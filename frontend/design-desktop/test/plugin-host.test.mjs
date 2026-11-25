@@ -55,6 +55,7 @@ test('plugin ui window is sandboxed and only its messages reach the editor', asy
         super()
         this.options = options
         this.webContents = new EventEmitter()
+        this.webContents.mainFrame = {}
         this.webContents.setWindowOpenHandler = () => {}
         this.webContents.send = (...args) => sent.push(args)
         this.destroyed = false
@@ -68,7 +69,7 @@ test('plugin ui window is sandboxed and only its messages reach the editor', asy
       setPermissionRequestHandler: handler => { permissionPolicy = handler },
       webRequest: { onBeforeRequest: handler => { requestPolicy = handler } },
     } } },
-    ipcMain: { on: (name, fn) => listeners.set(name, fn) },
+    ipcMain: { on: (name, fn) => listeners.set(name, fn), handle: (name, fn) => listeners.set(name, fn) },
     preloadPath: '/plugin-ui-preload.cjs',
     send: (channel, value) => sent.push([channel, value]),
   })

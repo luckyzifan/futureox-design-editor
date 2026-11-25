@@ -21,7 +21,7 @@ export interface PluginBridge {
     call(request: { token: string; operation: PluginStorageOperation }): Promise<DesktopResult<{ value: unknown }>>
     end(request: { token: string }): Promise<DesktopResult>
   }
-  openUi(request: { html: string; width?: number; height?: number; title?: string }): Promise<DesktopResult>
+  openUi(request: { html: string; width?: number; height?: number; title?: string; allowedDomains?: string[] }): Promise<DesktopResult>
   postUi(request: { pluginMessage: unknown }): Promise<DesktopResult>
   closeUi(): Promise<DesktopResult>
   onUiMessage(callback: (message: { pluginMessage: unknown }) => void): () => void

@@ -505,7 +505,7 @@ register('plugins-storage-end', async value => {
   return { status: 'ok' }
 }, false)
 register('plugins-ui-open', async value => {
-  record(value, ['html', 'width', 'height', 'title'])
+  record(value, ['html', 'width', 'height', 'title', 'allowedDomains'])
   await pluginUiHost().open({ ...value, parent: window })
   return { status: 'ok' }
 }, false)

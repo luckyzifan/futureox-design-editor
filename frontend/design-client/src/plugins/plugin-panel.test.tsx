@@ -181,9 +181,13 @@ test('a plugin UI crosses the desktop bridge with only the contracted keys', asy
   const opened: unknown[] = []
   const uiHtml = '<!doctype html><p>QA UI</p>'
   const code = "figma.showUI(__html__, { width: 320, height: 200, title: 'QA UI' }); figma.notify('QA ready')"
+  const manifest = JSON.stringify({
+    ...JSON.parse(manifestText),
+    networkAccess: { allowedDomains: ['https://cdn.example.test'], devAllowedDomains: ['http://localhost:3000'] },
+  })
   const desktop = {
     plugins: {
-      list: async () => ({ status: 'ok' as const, plugins: [{ grant, name: 'QA', id: 'qa', displayName: 'QA', manifestText, root: '/tmp/qa' }] }),
+      list: async () => ({ status: 'ok' as const, plugins: [{ grant, manifestText: manifest }] }),
       read: async () => ({ status: 'ok' as const, files: { 'code.js': code, 'ui.html': uiHtml } }),
       openUi: async (request: unknown) => { opened.push(request); return { status: 'ok' as const } },
       closeUi: async () => ({ status: 'ok' as const }),
@@ -209,7 +213,7 @@ test('a plugin UI crosses the desktop bridge with only the contracted keys', asy
       run!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
       await vi.waitFor(() => { if (opened.length === 0) throw new Error('openUi was not called') })
     })
-    expect(opened).toEqual([{ html: uiHtml, width: 320, height: 200, title: 'QA UI' }])
+    expect(opened).toEqual([{ html: uiHtml, width: 320, height: 200, title: 'QA UI', allowedDomains: ['https://cdn.example.test'] }])
   } finally {
     current.dispose()
   }

@@ -22,7 +22,7 @@ For a desktop folder with a missing `main.js` entry, the loader can strip types 
 
 `frontend/design-client/src/plugins/sample-ui/` is a small UI plugin. Its `ui.html` posts `{ pluginMessage: { type: "create-label", text } }`. The host answers with `{ pluginMessage, pluginId }`.
 
-- The desktop panel opens the page in a sandboxed Electron window with Node integration disabled and context isolation enabled. The window permits inline UI code and blocks network requests.
+- The desktop panel opens the page in a sandboxed Electron window with Node integration disabled and context isolation enabled. Direct network requests and remote subresources are blocked. Explicit `fetch()` calls can use the host's public HTTPS broker.
 - The web panel runs the main script and reports that the plugin UI window is available in the desktop app.
 
 Manifest rules:
@@ -30,7 +30,7 @@ Manifest rules:
 - `api` must be `1.0.0`. The plugin panel filters manifests by `editorType`. Design supports `figma` and the Dev toggle supports inspection plugins declaring `dev`.
 - Dev inspection plugins can read the design, open a sandboxed UI and update their own plugin metadata. Design edits are denied.
 - `documentAccess` is ignored. The open document is already local.
-- `networkAccess` may name domains. Main-thread `fetch` is allowed only for those origins (`https`, plus an explicit `localhost` origin). The UI frame still has `connect-src 'none'`. There is no collaboration server. The panel says when network is limited to the manifest.
+- `networkAccess` may name domains. Main-script `fetch` uses those origins. Desktop UI `fetch` accepts public IPv4 CORS GET and HEAD for declared HTTPS origins and wildcard subdomains. Each window allows 32 requests, up to four at a time and 1 MiB per response. UI path patterns and development domains do not grant access. UI requests carry no credentials and redirects are refused.
 - `permissions` may be non-empty. They are not granted.
 - `main` and `ui` paths are relative to the plugin folder. A string `ui` supplies `__html__`. A named map such as `{ "import": "import.html", "export": "export.html" }` supplies `__uiFiles__`; a `main` entry also supplies `__html__`. A manifest can declare up to 16 pages with a combined UTF-8 limit of 512 KiB.
 
@@ -67,7 +67,7 @@ Behavior follows the [Figma Plugin API](https://www.figma.com/plugin-docs/api/ap
 
 ## Still blocked
 
-These calls still throw or are absent: vector networks, remote variable libraries, `importStyleByKeyAsync`, payment transactions, parameters, codegen, annotations, styled text range writes, reactions, relaunch buttons, `strokeStyleId`, and UI-frame network. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
+These calls still throw or are absent: vector networks, remote variable libraries, `importStyleByKeyAsync`, payment transactions, parameters, codegen, annotations, styled text range writes, reactions, relaunch buttons, and `strokeStyleId`. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
 
 ## API coverage
 
@@ -101,7 +101,7 @@ These calls still throw or are absent: vector networks, remote variable librarie
 | `figma.root` | supported | Document name and page children. The root is not a frame. |
 | `figma.notify` | supported | Shows the editor status line and the plugin log. No toast UI. |
 | `figma.closePlugin` | supported | Flushes pending edits, then stops the script. The message is returned to the host. |
-| `figma.showUI` | partial | Accepts __html__, a manifest page from __uiFiles__, or an HTML string up to 512 KiB. The desktop panel opens a sandboxed window without UI network access. themeColors is ignored. |
+| `figma.showUI` | partial | Accepts __html__, a manifest page from __uiFiles__, or an HTML string up to 512 KiB. The desktop panel opens a sandboxed window. themeColors is ignored. |
 | `figma.ui.show` | supported | Shows the plugin iframe after hide or showUI({ visible: false }). |
 | `figma.ui.hide` | supported | Hides the iframe. The plugin keeps running. |
 | `figma.ui.close` | partial | Hides the iframe. The plugin keeps running until closePlugin. show() can open it again. |
@@ -204,7 +204,7 @@ These calls still throw or are absent: vector networks, remote variable librarie
 | `figma.skipInvisibleInstanceChildren` | partial | The flag is stored. findAll does not skip invisible instance children. |
 | `setTimeout` | partial | One-shot and repeating timers accept callback arguments, cancellation, and delays up to five seconds. setInterval uses a minimum 10 ms period and a bounded per-run callback budget. |
 | `console` | partial | log, info, debug, warn, error, and clear operate on the current plugin log, with bounded output. |
-| `fetch` | partial | Main-thread fetch only, and only to origins declared in networkAccess. https except an explicit localhost origin. Private networks, metadata hosts, credentials, and the UI frame stay blocked. |
+| `fetch` | partial | Main-script fetch uses the manifest policy. Desktop UI fetch proxies public CORS GET/HEAD to explicitly declared HTTPS origins. UI requests are capped at 1 MiB and cannot send credentials or follow redirects. |
 | `figma.loadAllPagesAsync` | supported | Resolves immediately; every page of the local document is always loaded. |
 | `figma.getNodeByIdAsync` | supported | Async form of `getNodeById`. Missing ids resolve null. |
 | `figma.setCurrentPageAsync` | supported | Async form of the `currentPage` assignment. |
