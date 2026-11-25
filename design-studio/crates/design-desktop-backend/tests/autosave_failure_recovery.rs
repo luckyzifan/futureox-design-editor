@@ -63,6 +63,26 @@ fn sha256(bytes: &[u8]) -> String {
         .collect()
 }
 
+#[test]
+fn autosave_recovery_full_startup_has_an_actionable_health_error() {
+    let fixture = Fixture::new();
+    let backend = Backend::new(&fixture.0.join("recovery"))
+        .unwrap()
+        .with_workspace_unavailable("WORKSPACE_STORAGE_FULL");
+    let health = futureox_design_desktop_backend::protocol::handle_frame(
+        &backend,
+        br#"{"id":1,"method":"health","params":{}}"#,
+    )
+    .result
+    .unwrap();
+    assert_eq!(health["workspaceAvailable"], false);
+    assert_eq!(health["workspaceError"]["code"], "WORKSPACE_STORAGE_FULL");
+    let message = health["workspaceError"]["message"].as_str().unwrap();
+    assert!(message.contains("Free space and reopen"));
+    assert!(message.contains("last committed revision"));
+    assert!(!message.contains(fixture.0.to_str().unwrap()));
+}
+
 #[tokio::test]
 async fn autosave_recovery_uncommitted_exit_reopens_last_commit() {
     let f = Fixture::new();
