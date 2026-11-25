@@ -11,6 +11,7 @@ Markdown 结论记录一次实际运行能够支持的范围。复现入口见[�
 
 ## 记录
 
+- [2026-11-26 117.sketch 原生 Sketch 对照](SKETCH_117_NATIVE_20261126.zh-CN.md)
 - [2026-11-25 开放 PR 与真实文件回归](PR_BATCH_20261125.zh-CN.md)
 - [2026-11-24 117.sketch 高倍缩放和画板交互](117_HIGH_ZOOM_20261124.zh-CN.md)
 - [2026-11-23 测试清理与复跑](TESTING_CLEANUP_20261123.zh-CN.md)
