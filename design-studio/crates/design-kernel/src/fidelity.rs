@@ -172,6 +172,16 @@ pub fn resolve_sample_planes(samples: [&[u8]; 4]) -> Vec<u8> {
 // is inserted between spatial filtering and accumulation. This order matches
 // complete official gradient/coverage exports and the independent numeric probes.
 pub fn resolve_sample_planes_2x(samples: [&[u8]; 4], width: u32, height: u32) -> Vec<u8> {
+    resolve_export_planes_2x(samples, width, height, straight_bytes)
+}
+
+fn resolve_export_planes_2x(
+    samples: [&[u8]; 4],
+    width: u32,
+    height: u32,
+    straighten: fn([u8; 4]) -> [u8; 4],
+) -> Vec<u8> {
+    assert!(samples.iter().all(|s| s.len() == width as usize * height as usize * 16));
     let mut out = vec![0; width as usize * height as usize * 4];
     for y in 0..height as usize {
         for x in 0..width as usize {
@@ -184,60 +194,18 @@ pub fn resolve_sample_planes_2x(samples: [&[u8]; 4], width: u32, height: u32) ->
                 accumulated = accumulate_export(accumulated, pair_source(pixels), pass + 1);
             }
             let i = (y * width as usize + x) * 4;
-            out[i..i + 4].copy_from_slice(&straight_bytes(accumulated));
+            out[i..i + 4].copy_from_slice(&straighten(accumulated));
         }
     }
     out
 }
 
-/// A 0/255 neighborhood is four equal coverage taps. Rounding each axis first
-/// sends the two-and-two split to 127; one rounding of the four-tap mean is
-/// 128, which is the code the measured export keeps after byte accumulation.
-/// Other neighborhoods keep the separable byte filter.
-fn software_binary_coverage_sample(pixels: [[u8; 4]; 4]) -> [u8; 4] {
-    if pixels
-        .iter()
-        .all(|pixel| pixel.iter().all(|channel| *channel == 0 || *channel == 255))
-    {
-        return std::array::from_fn(|channel| {
-            let sum = pixels
-                .iter()
-                .map(|pixel| u32::from(pixel[channel]))
-                .sum::<u32>();
-            ((sum + 2) / 4) as u8
-        });
-    }
-    crate::software_raster::sample_bytes(pixels, 128, 128)
-}
-
-/// Same four jitter planes and 2x source density, with byte-precision
-/// horizontal/vertical filtering and separately rounded UNORM blend terms.
-/// This is an explicit arithmetic contract, not an adaptive quality mode.
+/// Resolve already-composited software planes with the measured export box
+/// average. Byte interpolation and rounded blend factors belong to the
+/// software paint operators. The output still uses software straight-alpha
+/// conversion.
 pub fn resolve_software_sample_planes_2x(samples: [&[u8]; 4], width: u32, height: u32) -> Vec<u8> {
-    assert!(
-        samples
-            .iter()
-            .all(|s| s.len() == width as usize * height as usize * 16)
-    );
-    let mut out = vec![0; width as usize * height as usize * 4];
-    for y in 0..height as usize {
-        for x in 0..width as usize {
-            let mut accumulated = [0_u8; 4];
-            for (pass, index) in EXPORT_ORDER.into_iter().enumerate() {
-                let pixels = std::array::from_fn(|corner| {
-                    let i = ((y * 2 + corner / 2) * width as usize * 2 + x * 2 + corner % 2) * 4;
-                    premultiplied_bytes(samples[index], i).map(|v| v as u8)
-                });
-                let source = software_binary_coverage_sample(pixels);
-                let factor =
-                    crate::software_raster::encode_unorm8((1.0_f64 / (pass + 1) as f64) as f32);
-                accumulated = crate::software_raster::blend_constant(accumulated, source, factor);
-            }
-            let i = (y * width as usize + x) * 4;
-            out[i..i + 4].copy_from_slice(&crate::software_raster::straight_rgba8(accumulated));
-        }
-    }
-    out
+    resolve_export_planes_2x(samples, width, height, crate::software_raster::straight_rgba8)
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
