@@ -12,14 +12,14 @@ The sample is `frontend/design-client/src/plugins/sample/` (`manifest.json` + `c
 
 ## Load a plugin folder or archive
 
-Choose **载入插件文件夹** / **Load plugin folder** and pick a directory that contains a Figma-style `manifest.json` and the `main` script it names. Or choose **载入 .zip / .figma** / **Load .zip / .figma** in the Plugins panel. A `.figma` plugin file is a zip. The same archive loader is covered by `pluginBundleFromZip`. The archive may nest the plugin in one folder. The loader reads `manifest.json`, the manifest `main` script, and the optional `ui` file. Other files are ignored. Paths that leave the folder are rejected.
+Choose **载入插件文件夹** / **Load plugin folder** and pick a directory that contains a Figma-style `manifest.json` and the built JavaScript entry it names. Or choose **载入 .zip / .figma** / **Load .zip / .figma** in the Plugins panel. A `.figma` plugin file is a zip. The archive may nest the plugin in one folder. The loader reads `manifest.json`, the `main` script, and the UI files declared in the manifest. Other files are ignored. Paths must stay inside the plugin folder.
 
 If the manifest has a `menu`, the panel lists those commands and runs the one you pick. `figma.command` is that command, or `undefined` when there is no menu.
 
 `frontend/design-client/src/plugins/sample-ui/` is a small UI plugin. Its `ui.html` posts `{ pluginMessage: { type: "create-label", text } }`. The host answers with `{ pluginMessage, pluginId }`.
 
-- On the desktop app the page is a sandboxed `design-app://plugin/<id>` frame (`sandbox="allow-scripts"`, no same-origin). Its response policy is `script-src 'unsafe-inline'` and `connect-src 'none'`.
-- In the web app the same HTML is a sandboxed srcdoc iframe with that policy in a meta element. The parent page CSP can still block inline scripts; the desktop frame does not inherit it.
+- The desktop panel opens the page in a sandboxed Electron window with Node integration disabled and context isolation enabled. The window permits inline UI code and blocks network requests.
+- The web panel runs the main script and reports that the plugin UI window is available in the desktop app.
 
 Manifest rules:
 
@@ -27,13 +27,13 @@ Manifest rules:
 - `documentAccess` is ignored. The open document is already local.
 - `networkAccess` may name domains. Main-thread `fetch` is allowed only for those origins (`https`, plus an explicit `localhost` origin). The UI frame still has `connect-src 'none'`. There is no collaboration server. The panel says when network is limited to the manifest.
 - `permissions` may be non-empty. They are not granted.
-- `main` and `ui` must be relative paths inside the folder. `ui` may be a string or `{ "main": "ui.html" }`.
+- `main` and `ui` paths are relative to the plugin folder. A string `ui` supplies `__html__`. A named map such as `{ "import": "import.html", "export": "export.html" }` supplies `__uiFiles__`; a `main` entry also supplies `__html__`. A manifest can declare up to 16 pages with a combined UTF-8 limit of 512 KiB.
 
 ## How a call reaches the document
 
 Plugin JavaScript runs in QuickJS. The only bridge is a fixed set of host operations. Those operations call the shared editor automation API (`batch.apply` and the existing node, page, component, and boolean methods) and commit through `Editor.change`. There is no second document model. Each flush is one undo entry. A synchronous throw before the next flush drops the unflushed edits. The same rule applies when the script's completion promise rejects: QuickJS does not report that rejection as an eval error or a pending-job error, so the host reads the completion promise after pending jobs and declared host work finish. A rejection fails the run, the panel shows the message, and that turn's queue is discarded. Edits already flushed by `figma.closePlugin`, `figma.commitUndo`, `exportAsync`, or a read that flushes stay committed; earlier undo history is not rolled back. `figma.closePlugin` still flushes, then stops the script, including when it runs inside an async function. A rejection that is not the script's completion value (for example `void` around the async call, or a later expression) is not visible to this QuickJS build.
 
-Desktop content security policy still has no `unsafe-eval`. Plugin UI is an iframe with `sandbox="allow-scripts"` and `connect-src 'none'`. Main-thread `fetch` reaches only domains declared in `networkAccess`. `figma.clientStorage` is local to this client (5 MB, including JSON, `undefined`, and `Uint8Array`). Node `getPluginData` / `setPluginData` is stored in the inert FD extension `design.futureox/plugin-data` and shares the undo step of that flush. A file that carries the extension cannot be appended into another document until the extension is removed; open it on its own to keep the data.
+Desktop content security policy still has no `unsafe-eval`. The plugin UI window uses `connect-src 'none'`. Main-thread `fetch` reaches only domains declared in `networkAccess`. `figma.clientStorage` is local to this client (5 MB, including JSON, `undefined`, and `Uint8Array`). Node `getPluginData` / `setPluginData` is stored in the inert FD extension `design.futureox/plugin-data` and shares the undo step of that flush. A file that carries the extension cannot be appended into another document until the extension is removed; open it on its own to keep the data.
 
 Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host calls, and 2,000 nodes in one `findAll`. One-shot timers allow delays up to five seconds and up to 64 pending timers and 128 callbacks in a turn. Stopping the plugin cancels pending timers.
 
@@ -94,7 +94,7 @@ These calls still throw or are absent: `createImageAsync`, vector networks, PNG/
 | `figma.root` | supported | Document name and page children. The root is not a frame. |
 | `figma.notify` | supported | Shows the editor status line and the plugin log. No toast UI. |
 | `figma.closePlugin` | supported | Flushes pending edits, then stops the script. The message is returned to the host. |
-| `figma.showUI` | partial | Accepts __html__ or an HTML string up to 512 KiB. Desktop shows a sandboxed design-app://plugin frame. Web shows a sandboxed srcdoc iframe. visible, width, height, and title are honored. themeColors is ignored. |
+| `figma.showUI` | partial | Accepts __html__, a manifest page from __uiFiles__, or an HTML string up to 512 KiB. The desktop panel opens a sandboxed window without UI network access. themeColors is ignored. |
 | `figma.ui.show` | supported | Shows the plugin iframe after hide or showUI({ visible: false }). |
 | `figma.ui.hide` | supported | Hides the iframe. The plugin keeps running. |
 | `figma.ui.close` | partial | Hides the iframe. The plugin keeps running until closePlugin. show() can open it again. |

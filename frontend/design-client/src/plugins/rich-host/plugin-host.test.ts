@@ -367,6 +367,40 @@ describe('Figma plugin host', () => {
     run.close()
   })
 
+  it('loads named UI files from folders and archives and selects them by command', async () => {
+    const manifest = {
+      name: 'Import or export', id: 'multiple-ui.plugin', api: '1.0.0', main: 'code.js',
+      ui: { import: 'panels/import.html', export: 'export.html', main: 'main.html' },
+      menu: [{ name: 'Import', command: 'import' }, { name: 'Export', command: 'export' }],
+    }
+    const entries = {
+      'Demo/manifest.json': JSON.stringify(manifest),
+      'Demo/code.js': "figma.showUI(figma.command ? __uiFiles__[figma.command] : __html__)",
+      'Demo/panels/import.html': '<p>Import</p>',
+      'Demo/export.html': '<p>Export</p>',
+      'Demo/main.html': '<p>Default</p>',
+    }
+    const folder = await pluginBundleFromFiles(Object.entries(entries).map(([path, source]) => ({
+      name: path.split('/').at(-1)!, webkitRelativePath: path, size: Buffer.byteLength(source), text: async () => source,
+    })))
+    const archive = pluginBundleFromZip(zipSync(Object.fromEntries(Object.entries(entries).map(([path, source]) => [path, strToU8(source)]))))
+    for (const loaded of [folder, archive]) {
+      const current = editor()
+      for (const [command, html] of [['import', '<p>Import</p>'], ['export', '<p>Export</p>'], [undefined, '<p>Default</p>']] as const) {
+        const run = await openPlugin(current, loaded, { command })
+        expect(run.ui?.html).toBe(html)
+        run.close()
+      }
+    }
+    expect(() => parsePluginManifest({ ...manifest, ui: { import: '../another-folder.html' } })).toThrow(/folder/)
+    expect(() => pluginBundleFromZip(zipSync({
+      'manifest.json': strToU8(JSON.stringify({ ...manifest, ui: { import: 'a.html', export: 'b.html' } })),
+      'code.js': strToU8('figma.closePlugin()'),
+      'a.html': strToU8('测'.repeat(100_000)),
+      'b.html': strToU8('测'.repeat(100_000)),
+    }))).toThrow(/too large/)
+  })
+
   it('stores clientStorage outside the document and plugin data inside one undo', async () => {
     const storage = memoryPluginStorage()
     const current = editor()

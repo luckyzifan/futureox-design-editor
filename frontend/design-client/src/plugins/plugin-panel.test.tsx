@@ -44,7 +44,7 @@ test('declared plugin records keep the manifest identity and drop paths', () => 
   expect(accepted).toEqual([{ grant, id: 'local.declared', name: 'Declared', displayName: 'Declared', manifestText }])
   const many = Array.from({ length: 40 }, (_, index) => ({
     grant: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
-    manifestText: JSON.stringify({ name: `N${index}`, id: `local.n${index}`, api: '1', main: 'code.js' }),
+    manifestText: JSON.stringify({ name: `N${index}`, id: `local.n${index}`, api: '1.0.0', main: 'code.js' }),
   }))
   expect(acceptedDeclaredPlugins(many)).toHaveLength(32)
   expect(acceptedDeclaredPlugins(many).some(plugin => JSON.stringify(plugin).includes('root'))).toBe(false)
@@ -173,6 +173,51 @@ test('a plugin UI crosses the desktop bridge with only the contracted keys', asy
       await vi.waitFor(() => { if (opened.length === 0) throw new Error('openUi was not called') })
     })
     expect(opened).toEqual([{ html: uiHtml, width: 320, height: 200, title: 'QA UI' }])
+  } finally {
+    current.dispose()
+  }
+})
+
+test('a desktop folder loads named UI files before running the selected command', async () => {
+  interfacePreference.set({ locale: 'en' })
+  const manifest = JSON.stringify({
+    ...JSON.parse(manifestText), ui: { import: 'import.html', export: 'export.html' },
+    menu: [{ name: 'Import variables', command: 'import' }, { name: 'Export variables', command: 'export' }],
+  })
+  const files: Record<string, string> = {
+    'code.js': 'figma.showUI(__uiFiles__[figma.command])',
+    'import.html': '<p>Import</p>',
+    'export.html': '<p>Export</p>',
+  }
+  const opened: unknown[] = []
+  const reads: string[][] = []
+  const desktop = {
+    plugins: {
+      list: async () => ({ status: 'ok' as const, plugins: [{ grant, manifestText: manifest }] }),
+      read: async ({ paths }: { paths: string[] }) => {
+        reads.push(paths)
+        return { status: 'ok' as const, files: Object.fromEntries(paths.map(path => [path, files[path]])) }
+      },
+      openUi: async (request: unknown) => { opened.push(request); return { status: 'ok' as const } },
+      closeUi: async () => ({ status: 'ok' as const }),
+      onUiMessage: () => () => {},
+      onUiClosed: () => () => {},
+    },
+  } as unknown as DesktopBridge
+  const { Editor: EditorClass } = await import('../engine')
+  const { blank } = await import('../model')
+  const current = new EditorClass(blank('Named panels'))
+  const button = (label: string) => [...document.querySelectorAll('button')].find(element => element.textContent === label)
+  try {
+    await act(async () => { root.render(<PluginPanel editor={current} desktop={desktop} onClose={() => {}} />) })
+    await act(async () => { button('Run')!.click() })
+    expect(reads).toEqual([['code.js', 'import.html'], ['export.html']])
+    expect(opened).toEqual([])
+    await act(async () => {
+      button('Export variables')!.click()
+      await vi.waitFor(() => expect(opened).toHaveLength(1))
+    })
+    expect(opened[0]).toMatchObject({ html: '<p>Export</p>' })
   } finally {
     current.dispose()
   }

@@ -1,6 +1,7 @@
 export const PLUGIN_LIMITS = {
   mainBytes: 2 * 1024 * 1024,
   uiBytes: 512 * 1024,
+  uiFiles: 16,
   manifestBytes: 64 * 1024,
   runtimeMs: 8_000,
   timerDelayMs: 5_000,

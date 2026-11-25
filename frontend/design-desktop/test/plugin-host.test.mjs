@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { createPluginDirectoryHost, parseDeclaredPluginManifest, readPluginFile, scanDeclaredPlugins } from '../src/plugin-package.mjs'
+import { PLUGIN_UI_BYTES, createPluginDirectoryHost, parseDeclaredPluginManifest, readPluginFile, scanDeclaredPlugins } from '../src/plugin-package.mjs'
 import { createPluginUiHost, jsonPluginMessage, pluginUiSize, wrapPluginUiDocument } from '../src/plugin-ui.mjs'
 
 test('plugin folder reads stay inside the selected directory', async () => {
@@ -45,6 +45,8 @@ test('plugin ui window is sandboxed and only its messages reach the editor', asy
   const sent = []
   const windows = []
   const listeners = new Map()
+  let requestPolicy
+  let permissionPolicy
   const host = createPluginUiHost({
     BrowserWindow: class extends EventEmitter {
       constructor(options) {
@@ -60,7 +62,10 @@ test('plugin ui window is sandboxed and only its messages reach the editor', asy
       loadURL(url) { this.url = url; return Promise.resolve() }
       close() { this.destroyed = true; this.emit('closed') }
     },
-    session: { fromPartition() { return { setPermissionRequestHandler() {}, webRequest: { onBeforeRequest() {} } } } },
+    session: { fromPartition() { return {
+      setPermissionRequestHandler: handler => { permissionPolicy = handler },
+      webRequest: { onBeforeRequest: handler => { requestPolicy = handler } },
+    } } },
     ipcMain: { on: (name, fn) => listeners.set(name, fn) },
     preloadPath: '/plugin-ui-preload.cjs',
     send: (channel, value) => sent.push([channel, value]),
@@ -71,6 +76,9 @@ test('plugin ui window is sandboxed and only its messages reach the editor', asy
   assert.equal(window.options.webPreferences.nodeIntegration, false)
   assert.equal(window.options.webPreferences.contextIsolation, true)
   assert.match(window.url, /^data:text\/html/)
+  requestPolicy({ url: 'https://example.test/plugin' }, result => assert.deepEqual(result, { cancel: true }))
+  requestPolicy({ url: 'about:blank' }, result => assert.deepEqual(result, { cancel: false }))
+  permissionPolicy(window.webContents, 'media', allowed => assert.equal(allowed, false))
   const listener = listeners.get('design-desktop:plugin-ui-message')
   listener({ sender: { id: 'other' } }, { pluginMessage: { type: 'nope' } })
   assert.equal(sent.some(entry => entry[0] === 'design-desktop:plugin-ui-message'), false)
@@ -80,6 +88,13 @@ test('plugin ui window is sandboxed and only its messages reach the editor', asy
   assert.deepEqual(sent.at(-1), ['design-desktop:plugin-ui-deliver', { pluginMessage: { type: 'created' } }])
   host.close()
   assert.equal(sent.some(entry => entry[0] === 'design-desktop:plugin-ui-closed'), false)
+  const exact = '测'.repeat(Math.floor(PLUGIN_UI_BYTES / 3)) + 'x'.repeat(PLUGIN_UI_BYTES % 3)
+  assert.equal(Buffer.byteLength(exact, 'utf8'), PLUGIN_UI_BYTES)
+  await host.open({ html: exact })
+  const encoded = windows.at(-1).url.split(',')[1]
+  assert.ok(Buffer.from(encoded, 'base64').toString('utf8').includes(exact))
+  assert.throws(() => wrapPluginUiDocument(exact + '!'), /UTF-8 bytes/)
+  host.close()
 })
 
 test('startup scan enables declared plugins and ignores symlinks, FigJam, duplicates and escapes', async () => {
@@ -156,3 +171,26 @@ async function writePlugin(dir, manifest, files = { 'code.js': 'figma.closePlugi
     await writeFile(file, body)
   }
 }
+
+test('desktop scan admits named UI and requires every declared page within its shared byte budget', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'futureox-plugin-ui-'))
+  const manifest = { name: 'Named pages', id: 'named.pages', api: '1.0.0', main: 'code.js', ui: { import: 'nested/import.html', export: 'export.html' } }
+  const files = { 'code.js': 'figma.closePlugin()', 'nested/import.html': '<p>Import</p>', 'export.html': '<p>Export</p>' }
+  try {
+    assert.deepEqual(parseDeclaredPluginManifest(JSON.stringify(manifest)).uiFiles, manifest.ui)
+    assert.throws(() => parseDeclaredPluginManifest(JSON.stringify({ ...manifest, ui: { import: '../out.html' } })))
+    await writePlugin(path.join(root, 'valid'), manifest, files)
+    await writePlugin(path.join(root, 'missing'), { ...manifest, id: 'named.missing' }, { 'code.js': files['code.js'] })
+    const page = '测'.repeat(100_000)
+    await writePlugin(path.join(root, 'large'), { ...manifest, id: 'named.large' }, { ...files, 'nested/import.html': page, 'export.html': page })
+    const scanned = await scanDeclaredPlugins(root)
+    assert.deepEqual(scanned.plugins.map(plugin => plugin.id), ['named.pages'])
+    assert.equal(scanned.skipped, 2)
+    const host = createPluginDirectoryHost()
+    const [enabled] = host.enableDeclared(scanned.plugins)
+    const loaded = await host.read(enabled.grant, ['nested/import.html', 'export.html'])
+    assert.deepEqual(loaded.files, { 'nested/import.html': '<p>Import</p>', 'export.html': '<p>Export</p>' })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

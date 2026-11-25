@@ -39,7 +39,7 @@ export const PLUGIN_API_COVERAGE: readonly PluginApiEntry[] = [
   { api: 'figma.root', status: 'supported', notes: 'Document name and page children. The root is not a frame.' },
   { api: 'figma.notify', status: 'supported', notes: 'Shows the editor status line and the plugin log. No toast UI.' },
   { api: 'figma.closePlugin', status: 'supported', notes: 'Flushes pending edits, then stops the script. The message is returned to the host.' },
-  { api: 'figma.showUI', status: 'partial', notes: 'Accepts __html__ or an HTML string up to 512 KiB. Desktop shows a sandboxed design-app://plugin frame. Web shows a sandboxed srcdoc iframe. visible, width, height, and title are honored. themeColors is ignored.' },
+  { api: 'figma.showUI', status: 'partial', notes: 'Accepts __html__, a manifest page from __uiFiles__, or an HTML string up to 512 KiB. The desktop panel opens a sandboxed window without UI network access. themeColors is ignored.' },
   { api: 'figma.ui.postMessage', status: 'supported', notes: 'Delivers a JSON value as event.data.pluginMessage. The frame also receives pluginId.' },
   { api: 'figma.ui.onmessage', status: 'supported', notes: 'Called when the UI posts { pluginMessage }.' },
   { api: 'figma.ui.on', status: 'partial', notes: "Only the 'message' event is accepted." },

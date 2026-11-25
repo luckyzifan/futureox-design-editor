@@ -4,9 +4,11 @@ import { randomUUID } from 'node:crypto'
 
 export const PLUGIN_MANIFEST_BYTES = 64 * 1024
 export const PLUGIN_FILE_BYTES = 1024 * 1024
+export const PLUGIN_UI_BYTES = 512 * 1024
 export const LOCAL_PLUGIN_SCAN_LIMIT = 64
 export const LOCAL_PLUGIN_ENABLE_LIMIT = 32
 const suffixes = new Set(['js', 'mjs', 'html', 'json', 'css', 'svg'])
+const NAMED_UI_LIMIT = 16
 
 export function pluginRelativeParts(value) {
   if (typeof value !== 'string' || value.length < 1 || value.length > 128) throw new Error('Invalid plugin file')
@@ -30,6 +32,22 @@ function requiredText(value, max) {
   return text
 }
 
+function uiPath(value) {
+  const file = pluginRelativeParts(value).join('/')
+  if (!file.endsWith('.html')) throw new Error('Invalid plugin UI file')
+  return file
+}
+
+function namedUiFiles(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const entries = Object.entries(value)
+  if (entries.length === 0 || entries.length > NAMED_UI_LIMIT) throw new Error('Invalid plugin UI file count')
+  return Object.fromEntries(entries.map(([name, file]) => {
+    if (requiredText(name, 80) !== name) throw new Error('Invalid plugin UI name')
+    return [name, uiPath(file)]
+  }))
+}
+
 /** Same declaration rules as the client manifest parser. A valid manifest enables a plugin; it does not run it. */
 export function parseDeclaredPluginManifest(text) {
   if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > PLUGIN_MANIFEST_BYTES) throw new Error('Invalid plugin manifest')
@@ -41,12 +59,13 @@ export function parseDeclaredPluginManifest(text) {
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id)) throw new Error('Invalid plugin manifest')
   requiredText(value.api, 32)
   const main = pluginRelativeParts(value.main).join('/')
-  const ui = value.ui === undefined ? undefined : pluginRelativeParts(value.ui).join('/')
+  const uiFiles = namedUiFiles(value.ui)
+  const ui = uiFiles ? uiFiles.main : value.ui === undefined ? undefined : uiPath(value.ui)
   const editorType = value.editorType === undefined ? ['figma'] : value.editorType
   if (!Array.isArray(editorType) || editorType.some(item => typeof item !== 'string') || !editorType.includes('figma')) {
     throw new Error('Invalid plugin manifest')
   }
-  return { id, name, main, ui }
+  return { id, name, main, ui, ...(uiFiles ? { uiFiles } : {}) }
 }
 
 function limitOption(value, max) {
@@ -93,7 +112,12 @@ export async function scanDeclaredPlugins(root, options = {}) {
       const manifest = parseDeclaredPluginManifest(manifestText)
       if (seen.has(manifest.id)) { skipped += 1; continue }
       await readPluginFile(folderReal, manifest.main)
-      if (manifest.ui) await readPluginFile(folderReal, manifest.ui)
+      const uiFiles = manifest.uiFiles ? Object.values(manifest.uiFiles) : manifest.ui ? [manifest.ui] : []
+      let remaining = PLUGIN_UI_BYTES
+      for (const ui of uiFiles) {
+        remaining -= Buffer.byteLength(await readPluginFile(folderReal, ui), 'utf8')
+        if (remaining < 0) throw new Error('Plugin UI is too large')
+      }
       seen.add(manifest.id)
       plugins.push({ id: manifest.id, name: manifest.name, manifestText, root: folderReal })
     } catch { skipped += 1 }
@@ -111,7 +135,8 @@ export async function readPluginFile(root, relative) {
   if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) throw new Error('Plugin file escapes its folder')
   const stat = await lstat(fileReal)
   if (!stat.isFile()) throw new Error('Plugin file is not a file')
-  if (stat.size > (relative === 'manifest.json' ? PLUGIN_MANIFEST_BYTES : PLUGIN_FILE_BYTES)) throw new Error('Plugin file is too large')
+  const limit = relative === 'manifest.json' ? PLUGIN_MANIFEST_BYTES : relative.endsWith('.html') ? PLUGIN_UI_BYTES : PLUGIN_FILE_BYTES
+  if (stat.size > limit) throw new Error('Plugin file is too large')
   return readFile(fileReal, 'utf8')
 }
 

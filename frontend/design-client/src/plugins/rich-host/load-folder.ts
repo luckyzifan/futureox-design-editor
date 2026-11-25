@@ -1,6 +1,6 @@
 import { PluginApiError } from './errors'
 import { PLUGIN_LIMITS } from './limits'
-import { assertPluginBundle, parsePluginManifest, type PluginBundle } from './manifest'
+import { assertPluginSource, parsePluginManifest, pluginBundleFromSources, pluginUiPaths, type PluginBundle } from './manifest'
 
 export type PluginFile = {
   name: string
@@ -14,7 +14,7 @@ function relativePath(file: PluginFile): string {
   return path.replaceAll('\\', '/')
 }
 
-/** Read manifest.json plus the main and optional UI file from a folder the user picked. Other files are ignored. */
+/** Read only the manifest, entry point, and declared UI files from a user-picked folder. */
 export async function pluginBundleFromFiles(files: Iterable<PluginFile>): Promise<PluginBundle> {
   const list = [...files]
   if (!list.length) throw new PluginApiError('invalid_plugin', 'Choose a plugin folder')
@@ -33,11 +33,12 @@ export async function pluginBundleFromFiles(files: Iterable<PluginFile>): Promis
     if (file.size > limit) throw new PluginApiError('plugin_too_large', `${path} is too large`)
     return file.text()
   }
-  const bundle: PluginBundle = {
-    manifest,
-    main: await read(manifest.main, PLUGIN_LIMITS.mainBytes),
-    ui: manifest.ui ? await read(manifest.ui, PLUGIN_LIMITS.uiBytes) : null,
+  const sources = new Map([[manifest.main, await read(manifest.main, PLUGIN_LIMITS.mainBytes)]])
+  let remaining = PLUGIN_LIMITS.uiBytes
+  for (const path of pluginUiPaths(manifest)) {
+    const source = await read(path, remaining)
+    remaining -= assertPluginSource(source, path, remaining)
+    sources.set(path, source)
   }
-  assertPluginBundle(bundle)
-  return bundle
+  return pluginBundleFromSources(manifest, sources)
 }

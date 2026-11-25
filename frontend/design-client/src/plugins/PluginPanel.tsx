@@ -5,6 +5,8 @@ import { useInterfacePreferences } from '../interface-preference'
 import { modalKeyDown, useModalOwnership } from '../modal-keyboard'
 import { acceptedDeclaredPlugins, type DeclaredPlugin } from './catalog'
 import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, pluginEditorEvents, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
+import { PLUGIN_LIMITS } from './rich-host/limits'
+import { assertPluginSource, pluginBundleFromSources, pluginUiPaths } from './rich-host/manifest'
 import { samplePlugin } from './sample-plugin'
 import './plugin-panel.css'
 
@@ -239,11 +241,22 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     const plugins = desktop?.plugins
     if (!plugins) return
     const manifest = parseRichManifest(JSON.parse(manifestText))
-    const paths = manifest.ui ? [manifest.main, manifest.ui] : [manifest.main]
-    const read = await plugins.read({ grant, paths })
-    if (read.status === 'cancelled') return
-    if (read.status !== 'ok') { setError(read.message); return }
-    await run(manifestText, read.files[manifest.main] ?? '', manifest.ui ? read.files[manifest.ui] ?? '' : '', [])
+    const paths = [manifest.main, ...pluginUiPaths(manifest)]
+    const files = new Map<string, string>()
+    let remaining = PLUGIN_LIMITS.uiBytes
+    for (let first = 0; first < paths.length; first += 2) {
+      const requested = paths.slice(first, first + 2)
+      const read = await plugins.read({ grant, paths: requested })
+      if (read.status === 'cancelled') return
+      if (read.status !== 'ok') { setError(read.message); return }
+      for (const path of requested) {
+        const content = read.files[path]
+        if (typeof content !== 'string') throw new Error(`Missing ${path}`)
+        if (path !== manifest.main) remaining -= assertPluginSource(content, path, remaining)
+        files.set(path, content)
+      }
+    }
+    await runBundle(pluginBundleFromSources(manifest, files), [])
   }
 
   async function runListed(plugin: DeclaredPlugin) {

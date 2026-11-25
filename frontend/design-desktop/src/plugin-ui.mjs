@@ -1,3 +1,5 @@
+import { PLUGIN_UI_BYTES } from './plugin-package.mjs'
+
 export function jsonPluginMessage(value) {
   const text = JSON.stringify(value)
   if (typeof text !== 'string' || text.length > 65536) throw new Error('Plugin message must be JSON up to 64 KiB')
@@ -11,7 +13,7 @@ export function pluginUiSize(width, height) {
 
 export function wrapPluginUiDocument(html) {
   if (typeof html !== 'string') throw new TypeError('Plugin UI must be a string')
-  if (html.length > 200_000) throw new Error('Plugin UI exceeds 200000 characters')
+  if (Buffer.byteLength(html, 'utf8') > PLUGIN_UI_BYTES) throw new Error(`Plugin UI exceeds ${PLUGIN_UI_BYTES} UTF-8 bytes`)
   const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'">`
   if (/<head[\s>]/i.test(html)) return html.replace(/<head([^>]*)>/i, `<head$1>${csp}`)
   if (/<html[\s>]/i.test(html)) return html.replace(/<html([^>]*)>/i, `<html$1><head>${csp}</head>`)
@@ -43,8 +45,7 @@ export function createPluginUiHost({ BrowserWindow, session, ipcMain, preloadPat
       this.close()
       const size = pluginUiSize(width, height)
       const document = wrapPluginUiDocument(html)
-      const url = `data:text/html;charset=utf-8,${encodeURIComponent(document)}`
-      if (url.length > 1_500_000) throw new Error('Plugin UI is too large to open')
+      const url = `data:text/html;charset=utf-8;base64,${Buffer.from(document, 'utf8').toString('base64')}`
       const opened = new BrowserWindow({
         parent: parent && !parent.isDestroyed() ? parent : undefined,
         width: size.width,

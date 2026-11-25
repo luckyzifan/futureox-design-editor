@@ -117,6 +117,16 @@ export class PluginController {
     const html = context.newString(bundle.ui ?? '')
     context.setProp(context.global, '__html__', html)
     html.dispose()
+    if (bundle.uiFiles) {
+      const uiFiles = context.newObject(context.null)
+      for (const [name, content] of Object.entries(bundle.uiFiles)) {
+        const file = context.newString(content)
+        context.setProp(uiFiles, name, file)
+        file.dispose()
+      }
+      context.setProp(context.global, '__uiFiles__', uiFiles)
+      uiFiles.dispose()
+    }
     try {
       const pending = controller.evaluate(PLUGIN_PRELUDE + '\n' + bundle.main)
       if (pending) await pending
