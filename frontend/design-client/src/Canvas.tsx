@@ -9,6 +9,8 @@ import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
 import { selectionSizeLabel } from './selection-size-label'
 import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_MEMBER_STROKE_PX, SELECTION_UNION_STROKE_PX, SIZE_PILL_TEXT } from './selection-blue'
+import { SpatialCanvasControls, spatialPivotPoint, spatialPoseAfterDrag, type SpatialHandle } from './spatial-canvas-controls'
+import { kernelSpatialPivotPlane, type SpatialPivotPlane } from './kernel/picking'
 import { rotationChromeHeldToTexture, rotationDocumentChromeSuppressed, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
 import { selectionMemberCorners, sharedRotationFrame } from './selection-outline'
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
@@ -254,6 +256,7 @@ type Drag = {
   creationTool?: Tool
   hotspotBounds?: Bounds
   parameter?: 'points' | 'innerRadius' | 'arcStart' | 'arcSweep' | 'arcInner' | 'cornerRadius' | 'rectangleCorner' | 'glassLight' | 'gradientAngle' | 'gradientStop' | 'blurEndpoint' | 'blurStop' | 'zoomBlurCenter'
+  spatial?: { handle: SpatialHandle; plane: SpatialPivotPlane; pivot: Point }
   materialFill?: number
   materialStop?: number
   blurEndpoint?: 'start' | 'end'
@@ -1385,6 +1388,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     (ownedDrag?.kind === 'pan' || !ownedDrag && !editor.interactionActive)
   const showSelectionChrome = !hidePanChrome && (uiMode !== 'figma' || !editingBlur)
   const showTransformHandles = !hidePanChrome && canTransform && !editingBlur && !hasSpatialSelection
+  const spatialId = state.selection.length === 1 ? state.selection[0] : undefined
+  const shownSpatialDocument = displayedSnapshot?.document
+  const shownPose = spatialId && shownSpatialDocument?.nodes[spatialId]?.spatial?.pose
+  const spatialPlane = uiMode === 'figma' && state.tool === 'select' && !selectionFeedback.readOnly &&
+    canTransform && !editingBlur && !nativeSource && !openingSource && (!ownedDrag || ownedDrag.spatial) &&
+    spatialId && shownSpatialDocument && shownPose && shownPose.visible && state.doc.nodes[spatialId]?.visible
+    ? kernelSpatialPivotPlane(shownSpatialDocument, spatialId) : undefined
+  const spatialPivot = spatialPlane && shownPose ? spatialPivotPoint(spatialPlane, shownPose.origin) : null
   const showPixelGrid = !hidePanChrome && state.pixelGrid
   const frameTitles = useMemo(() => entries.filter(e => {
     const n = state.doc.nodes[e.id]
@@ -2734,6 +2745,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       )
     if (vertex) editor.set({ editingVertex: vertex, editingVertices:drag.current?.vertices||[vertex] })
   }
+  function startSpatialGesture(event: React.PointerEvent<SVGGElement>, handle: SpatialHandle) {
+    event.stopPropagation()
+    if (event.button !== 0 || editor.interactionActive || !spatialId || !spatialPlane || !spatialPivot ||
+        editor.state.doc !== shownSpatialDocument || !commitPendingEdits(editor) ||
+        editor.state.doc !== shownSpatialDocument) return
+    start(event, 'parameter', undefined, spatialId)
+    const gesture = drag.current
+    if (gesture?.kind !== 'parameter' || gesture.node?.id !== spatialId) return
+    gesture.spatial = { handle, plane: spatialPlane, pivot: spatialPivot }
+    editor.begin(handle === 'origin' ? '移动 3D 原点' : '旋转 3D 图层')
+  }
   function resizeArgs(d: Drag, e: { shiftKey: boolean; ctrlKey: boolean; altKey: boolean }, p: Point): Parameters<typeof resizeInBasis> | null {
     if (d.kind !== 'resize' && d.kind !== 'scale') return null
     if (d.basis && d.localBox) {
@@ -3085,6 +3107,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if(d.kind==='pivot'){setOrigin(originFromWorld(p),true);return}
     if (d.kind === 'parameter' && d.node) {
       if (!d.sampledMovement) return
+      if (d.spatial && d.node.spatial?.pose) {
+        if (p.x === d.start.x && p.y === d.start.y) { editor.preview({}); return }
+        const { handle, plane, pivot } = d.spatial
+        const pose = spatialPoseAfterDrag(d.node.spatial.pose, handle, plane, pivot, d.start, p, d.view.zoom, e.shiftKey)
+        if (pose) editor.preview({ [d.node.id]: { spatial: { ...d.node.spatial, pose } } })
+        return
+      }
       if (d.parameter?.startsWith('arc')) {
         const local = apply(inverse(d.matrices[d.node.id]), p)
         const origin = apply(inverse(d.matrices[d.node.id]), d.start)
@@ -4631,6 +4660,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               ))}
             </g>
           )}
+          {spatialPivot && <SpatialCanvasControls pivot={spatialPivot} zoom={zoom} locale={locale} onStart={startSpatialGesture} />}
           {!selectionChromeOn && <MeasurementGuides measurements={measurements} labels={measurementLabels} zoom={zoom}
             hidden={!!gpuOverlay} crisp={overlay.commands.crispMeasurements} />}
         </g>

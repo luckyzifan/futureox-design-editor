@@ -133,6 +133,8 @@ pub(crate) struct Projection {
     pub(crate) hide_strokes: bool,
     #[serde(skip_serializing_if = "is_false")]
     pub(crate) composed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) pivot_plane: Option<PivotPlane>,
     #[serde(skip)]
     pub(crate) appearances: Vec<Appearance>,
     #[serde(skip)]
@@ -142,25 +144,48 @@ pub(crate) struct Projection {
 impl Projection {
     pub(crate) fn new(transform: Transform, visible: bool) -> Self {
         Self { transform, visible, hide_fills: false, vector_geometry: None,
-            hide_strokes: false, composed: false, appearances: Vec::new(), inset: None }
+            hide_strokes: false, composed: false, pivot_plane: None, appearances: Vec::new(), inset: None }
     }
+}
+
+/// Page-space homogeneous samples of possible origins (0,0), (1,0) and
+/// (0,1). An origin lies on the unrotated plane at the authored depth.
+pub(crate) type PivotPlane = [[f64; 3]; 3];
+
+pub(crate) fn pivot_plane(
+    node: &Node,
+    page_from_local: Transform,
+    point: impl Fn(Point) -> Result<(Point, f64), String>,
+) -> Option<PivotPlane> {
+    let [tl, tr, _, bl] = corners(node);
+    let mut result = [[0.; 3]; 3];
+    for (sample, local) in result.iter_mut().zip([tl, tr, bl]) {
+        let (projected, w) = point(local).ok()?;
+        let page = page_from_local.point(projected);
+        *sample = [page.x * w, page.y * w, w];
+        if !sample.iter().all(|value| value.is_finite()) { return None; }
+    }
+    Some(result)
 }
 
 fn corners(node: &Node) -> [Point; 4] {
     [Point::new(0., 0.), Point::new(node.width, 0.), Point::new(node.width, node.height), Point::new(0., node.height)]
 }
 
+pub(crate) fn supports_projected_outline(node: &Node) -> bool {
+    matches!(node.kind.as_str(), "rectangle" | "ellipse" | "vector" | "polygon" | "star")
+        || node.kind == "frame" && node.children.is_empty() && !node.graphic
+}
+
 fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transform, color_managed: bool) -> Result<Projection, String> {
     let plane = Plane::new(node, pose);
     let affine = node.transform.concat(plane.xy);
-    let fallback = Projection::new(node.transform, false);
+    let mut fallback = Projection::new(node.transform, false);
     if !node.visible { return Ok(fallback); }
     let basis = camera.map(|c| c.parent_to_scene.inverse()).transpose()?;
-    let point = |p: Point| -> Result<(Point, f64), String> {
-        let local = affine.point(p);
+    let project_depth = |local: Point, depth: f64| -> Result<(Point, f64), String> {
         let Some(c) = camera else { return Ok((local, 1.)) };
         let original = c.parent_to_scene.point(local);
-        let depth = plane.depth + plane.zx * (p.x - plane.pivot.x) + plane.zy * (p.y - plane.pivot.y);
         let w = 1. - depth / c.distance;
         if !w.is_finite() || w < 1. / 32. {
             return Err("The layer crosses the perspective camera's near plane".into());
@@ -172,6 +197,9 @@ fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transf
         }
         Ok((p, w))
     };
+    let point = |p: Point| project_depth(affine.point(p),
+        plane.depth + plane.zx * (p.x - plane.pivot.x) + plane.zy * (p.y - plane.pivot.y));
+    fallback.pivot_plane = pivot_plane(node, page_parent, |p| project_depth(node.transform.point(p), pose.depth));
     let projective = camera.is_some() && (plane.zx != 0. || plane.zy != 0.);
     let [tl, tr, br, bl] = corners(node);
     let [tl, tr, _br, bl] = [point(tl)?.0, point(tr)?.0, point(br)?.0, point(bl)?.0];
@@ -188,13 +216,15 @@ fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transf
             Transform([(tr.x - tl.x) / node.width, (tr.y - tl.y) / node.width,
                 (bl.x - tl.x) / node.height, (bl.y - tl.y) / node.height, tl.x, tl.y])
         };
-        return Ok(Projection::new(transform, true));
+        let mut patch = Projection::new(transform, true);
+        patch.pivot_plane = fallback.pivot_plane;
+        return Ok(patch);
     }
 
     // The outline projects independently from the paint. Paints and styles
     // that need inverse projective sampling keep their explicit admission gate.
-    if !matches!(node.kind.as_str(), "rectangle" | "ellipse" | "vector" | "polygon" | "star")
-        || !node.children.is_empty() || node.mask || node.clip || node.path_offset != 0.
+    if !supports_projected_outline(node)
+        || !node.children.is_empty() || node.mask || node.clip && node.kind != "frame" || node.path_offset != 0.
         || node.vector_brush.is_some() || node.repeat.is_some()
         || !node.bindings.is_empty() || !node.style_refs.is_empty()
         || node.fills.iter().any(|p| p.visible && p.kind != "solid")
@@ -205,6 +235,7 @@ fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transf
     let inverse = node.transform.inverse()?;
     let tolerance = PAGE_TOLERANCE / page_parent.max_scale().max(1.);
     let mut patch=Projection::new(node.transform,true);
+    patch.pivot_plane = fallback.pivot_plane;
     if spatial_material::has_strokes(node) {
         if color_managed || node.blend != "normal" {
             return Err("Projected strokes require normal SDR compositing".into());
@@ -323,6 +354,11 @@ fn apply_projection(doc: &mut Document, patches: BTreeMap<String, Projection>) -
         }
         if projection.hide_strokes { node.strokes.clear(); }
         if let Some(geometry) = projection.vector_geometry {
+            // An empty frame lends its own outline only. Its authored clip
+            // controls children, so it is inert in the projected appearance.
+            if node.kind == "frame" && node.children.is_empty() {
+                node.clip = false;
+            }
             node.kind = "vector".into();
             node.network = None;
             node.vector_geometry = Some(Arc::new(geometry));
@@ -451,6 +487,54 @@ mod tests {
                         "origin":[0.5,0.5],"visible":true,"backfaceVisible":true}}}
             }
         })
+    }
+
+    #[test]
+    fn pivot_plane_anchors_the_authored_origin_in_flat_and_shared_perspective() {
+        let mut input = fixture();
+        input["schemaVersion"] = json!(25);
+        input["nodes"]["parent"]["transform"] = json!([1., 0., 0., 1., 30., -12.]);
+        input["nodes"]["shape"]["spatial"]["pose"]["origin"] = json!([0.2, 0.3]);
+        for shared in [false, true] {
+            input["nodes"]["parent"]["spatial"]["preserve3d"] = json!(shared);
+            let document: crate::scene::Document = serde_json::from_value(input.clone()).unwrap();
+            let patches = super::projections(&document).unwrap();
+            let [a, b, c] = patches["shape"].pivot_plane.expect("projected pivot plane");
+            let [x, y, w] = std::array::from_fn(|i| a[i] + (b[i] - a[i]) * 0.2 + (c[i] - a[i]) * 0.3);
+            let distance = 1. - 40. / 540.;
+            let expected_x = 30. + 150. + (60. + 20. - 150.) / distance;
+            let expected_y = -12. + 100. + (80. + 18. - 100.) / distance;
+            assert!((x / w - expected_x).abs() < 1e-10, "shared {shared}: {x} / {w}");
+            assert!((y / w - expected_y).abs() < 1e-10, "shared {shared}: {y} / {w}");
+        }
+    }
+
+    #[test]
+    fn an_empty_frame_under_perspective_keeps_its_authored_kind_and_rectangle_pixels() {
+        let mut input = fixture();
+        input["schemaVersion"] = json!(25);
+        let request = json!({"pageId":"p", "width":300, "height":200, "transparent":true,
+            "rasterProfile":"figma", "view":{"x":0,"y":0,"zoom":1}});
+        let options: RenderOptions = serde_json::from_value(request.clone()).unwrap();
+        for shared in [false, true] {
+            input["nodes"]["parent"]["spatial"]["preserve3d"] = json!(shared);
+            input["nodes"]["shape"]["kind"] = json!("rectangle");
+            input["nodes"]["shape"]["clip"] = json!(false);
+            let mut rectangle = Engine::new();
+            rectangle.load_document(&input.to_string()).unwrap();
+            input["nodes"]["shape"]["kind"] = json!("frame");
+            input["nodes"]["shape"]["clip"] = json!(true);
+            let mut frame = Engine::new();
+            frame.load_document(&input.to_string()).unwrap();
+            assert!(frame.render(&options).unwrap() == rectangle.render(&options).unwrap(),
+                "frame and rectangle CPU pixels differ, shared {shared}");
+            let packet = |engine: &mut Engine| engine.compile_gpu_request(&request.to_string()).unwrap().into_packet().unwrap();
+            assert!(packet(&mut frame) == packet(&mut rectangle),
+                "frame and rectangle GPU plans differ, shared {shared}");
+            let bytes = crate::binfmt::encode_authored_json(&input.to_string()).unwrap();
+            let decoded: Value = serde_json::from_str(&crate::binfmt::decode_authored_json(&bytes).unwrap()).unwrap();
+            assert_eq!(decoded["nodes"]["shape"], input["nodes"]["shape"]);
+        }
     }
 
     #[test]

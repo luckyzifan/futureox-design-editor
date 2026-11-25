@@ -6,7 +6,7 @@ use crate::{
     math::{Point, Transform},
     path::Contour,
     scene::{Document, Node},
-    spatial::{Camera, Pose, Projection, outline_geometry, sin_cos},
+    spatial::{Camera, PivotPlane, Pose, Projection, outline_geometry, pivot_plane, sin_cos, supports_projected_outline},
     spatial_curve::PAGE_TOLERANCE,
     spatial_material::{self, INTERSECTION_BUDGET, Material, MaterialPlane},
 };
@@ -180,6 +180,7 @@ struct Face<'a> {
     depth: PlaneDepth,
     even_odd: bool,
     paints: Vec<Material>,
+    pivot_plane: Option<PivotPlane>,
 }
 
 fn bounded_boolean(
@@ -258,6 +259,7 @@ fn accepts_container(node: &Node) -> bool {
 
 struct Collector<'a> {
     doc: &'a Document,
+    page_from_frame: Transform,
     tolerance: f64,
     faces: Vec<Face<'a>>,
     points: usize,
@@ -280,9 +282,9 @@ impl<'a> Collector<'a> {
             .spatial
             .as_ref()
             .and_then(|effects| effects.pose.filter(|pose| pose.visible));
-        let world = parent
-            .concat(SpatialMatrix::embed(node.transform))
-            .concat(SpatialMatrix::pose(node, pose));
+        let node_basis = parent.concat(SpatialMatrix::embed(node.transform));
+        let world = node_basis.concat(SpatialMatrix::pose(node, pose));
+        let pivot = pose.and_then(|pose| projected_pivot(node, self.page_from_frame, node_basis, pose));
         let placement = placement.concat(node.transform);
         if !node.children.is_empty() {
             let keep_depth = node
@@ -318,6 +320,7 @@ impl<'a> Collector<'a> {
             if node.spatial.is_some() {
                 let mut patch = Projection::new(node.transform, true);
                 patch.hide_fills = keep_depth;
+                patch.pivot_plane = pivot;
                 self.patches.insert(id.into(), patch);
             }
             for child in &node.children {
@@ -339,18 +342,16 @@ impl<'a> Collector<'a> {
             }
             // Prevent a second pass processing a 3D setting on an empty face.
             if node.spatial.is_some() {
-                self.patches
-                    .insert(id.into(), Projection::new(node.transform, node.visible));
+                let mut patch = Projection::new(node.transform, node.visible);
+                patch.pivot_plane = pivot;
+                self.patches.insert(id.into(), patch);
             }
             return Ok(());
         }
         if self.faces.len() >= 32 {
             return Err("Shared 3D space exceeds 32 visible faces".into());
         }
-        if !matches!(
-            node.kind.as_str(),
-            "rectangle" | "ellipse" | "vector" | "polygon" | "star"
-        ) || !accepts_flat_style(node)
+        if !supports_projected_outline(node) || !accepts_flat_style(node)
             || node.blend != "normal"
         {
             return Err(
@@ -366,8 +367,9 @@ impl<'a> Collector<'a> {
         if orientation.abs() < 1e-12
             || orientation < 0. && pose.is_some_and(|pose| !pose.backface_visible)
         {
-            self.patches
-                .insert(id.into(), Projection::new(node.transform, false));
+            let mut patch = Projection::new(node.transform, false);
+            patch.pivot_plane = pivot;
+            self.patches.insert(id.into(), patch);
             return Ok(());
         }
         let depth = depth_plane(a, b, c, za, zb, zc);
@@ -387,13 +389,20 @@ impl<'a> Collector<'a> {
                 depth,
                 even_odd: shape.even_odd,
                 paints,
+                pivot_plane: pivot,
             });
         } else {
-            self.patches
-                .insert(id.into(), Projection::new(node.transform, false));
+            let mut patch = Projection::new(node.transform, false);
+            patch.pivot_plane = pivot;
+            self.patches.insert(id.into(), patch);
         }
         Ok(())
     }
+}
+
+fn projected_pivot(node: &Node, page_from_frame: Transform, basis: SpatialMatrix, pose: Pose) -> Option<PivotPlane> {
+    let at_depth = basis.concat(SpatialMatrix::offset(0., 0., pose.depth));
+    pivot_plane(node, page_from_frame, |point| at_depth.point(point).map(|(p, w, _)| (p, w)))
 }
 
 pub(crate) fn project_scene(
@@ -410,20 +419,27 @@ pub(crate) fn project_scene(
         );
     }
     let mut local = SpatialMatrix::pose(frame, pose);
-    if let Some(camera) = camera {
-        local = SpatialMatrix::embed(camera.parent_to_scene.inverse()?)
+    let frame_basis = if let Some(camera) = camera {
+        let basis = SpatialMatrix::embed(camera.parent_to_scene.inverse()?)
             .concat(SpatialMatrix::perspective(camera.distance, camera.center))
-            .concat(SpatialMatrix::embed(camera.parent_to_scene))
-            .concat(local);
-    }
+            .concat(SpatialMatrix::embed(camera.parent_to_scene));
+        local = basis.concat(local);
+        basis
+    } else {
+        SpatialMatrix::embed(Transform::default())
+    };
     let mut collector = Collector {
         doc,
+        page_from_frame,
         tolerance: PAGE_TOLERANCE / page_from_frame.max_scale().max(1.),
         faces: Vec::new(),
         points: 0,
         remaining: INTERSECTION_BUDGET,
         patches: BTreeMap::new(),
     };
+    let mut frame_patch = Projection::new(frame.transform, frame.visible);
+    frame_patch.hide_fills = true;
+    frame_patch.pivot_plane = pose.and_then(|pose| projected_pivot(frame, page_from_frame, frame_basis, pose));
     for child in &frame.children {
         collector.visit(child, local, Transform::default())?;
     }
@@ -445,18 +461,16 @@ pub(crate) fn project_scene(
                 opacity: face.node.opacity,
             })
             .collect::<Vec<_>>();
-        let mut patch = Projection::new(frame.transform, frame.visible);
-        patch.hide_fills = true;
-        patch.composed = true;
-        patch.appearances =
+        frame_patch.composed = true;
+        frame_patch.appearances =
             spatial_material::appearances(&planes, Transform::default(), &mut remaining)?;
         if let [face] = collector.faces.as_slice() {
-            patch.inset = spatial_material::inset_appearance(
-                face.node, &patch.appearances, &face.paints, Transform::default(),
+            frame_patch.inset = spatial_material::inset_appearance(
+                face.node, &frame_patch.appearances, &face.paints, Transform::default(),
             )?;
         }
-        collector.patches.insert(frame.id.clone(), patch);
     }
+    collector.patches.insert(frame.id.clone(), frame_patch);
     // For opaque rendering and for picking, cut a later face only where
     // the preceding face is closer. Leave authored IDs and hierarchy intact.
     for (i, face) in collector.faces.iter().enumerate() {
@@ -489,6 +503,7 @@ pub(crate) fn project_scene(
         let mut patch = Projection::new(face.node.transform, geometry.is_some());
         patch.vector_geometry = geometry;
         patch.hide_strokes = spatial_material::has_strokes(face.node);
+        patch.pivot_plane = face.pivot_plane;
         collector.patches.insert(face.node.id.clone(), patch);
     }
     Ok(collector.patches)
