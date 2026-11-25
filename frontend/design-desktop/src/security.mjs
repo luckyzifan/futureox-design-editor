@@ -129,6 +129,8 @@ export function resultError(error) {
     PLUGIN_STORAGE_BUSY: 'Plugin storage is busy.',
     PLUGIN_STORAGE_FAILED: 'Local plugin storage is unavailable.',
     PLUGIN_STORAGE_INVALID: 'The plugin storage request was invalid.',
+    PLUGIN_SOURCE_LIMIT: 'The plugin TypeScript entry exceeds the source limit.',
+    PLUGIN_SOURCE_UNSUPPORTED: 'This TypeScript entry needs a built JavaScript bundle.',
   }
   return {
     status: code === 'CONFLICT' || code === 'WORKSPACE_CONFLICT' ? 'conflict' : 'error',

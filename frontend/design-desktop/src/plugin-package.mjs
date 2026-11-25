@@ -1,7 +1,8 @@
-import { lstat, readFile, readdir, realpath } from 'node:fs/promises'
-import { watch } from 'node:fs'
+import { lstat, open, readdir, realpath } from 'node:fs/promises'
+import { constants, watch } from 'node:fs'
 import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
+import { compilePluginTypeScript, PLUGIN_SOURCE_BYTES } from './plugin-source.mjs'
 
 export const PLUGIN_MANIFEST_BYTES = 64 * 1024
 export const PLUGIN_FILE_BYTES = 1024 * 1024
@@ -13,13 +14,13 @@ const suffixes = new Set(['js', 'mjs', 'html', 'json', 'css', 'svg'])
 const NAMED_UI_LIMIT = 16
 const LOCAL_FOLDER_ID_PREFIX = 'futureox.local.folder:'
 
-export function pluginRelativeParts(value) {
+export function pluginRelativeParts(value, typeSource = false) {
   if (typeof value !== 'string' || value.length < 1 || value.length > 128) throw new Error('Invalid plugin file')
   if (value.includes('\\') || value.includes('\0') || path.isAbsolute(value)) throw new Error('Invalid plugin file')
   const parts = value.split('/')
   if (parts.some(part => part === '' || part === '.' || part === '..')) throw new Error('Invalid plugin file')
   const suffix = parts.at(-1).split('.').pop().toLowerCase()
-  if (!suffixes.has(suffix)) throw new Error('Invalid plugin file')
+  if (!(suffixes.has(suffix) || typeSource && suffix === 'ts')) throw new Error('Invalid plugin file')
   return parts
 }
 
@@ -133,7 +134,7 @@ export async function scanDeclaredPlugins(root, options = {}) {
           await watchSourceParent(folderReal, file, options.watchFolders)
         }
       }
-      await readPluginFile(folderReal, manifest.main)
+      await readPluginEntry(folderReal, manifest.main, false)
       const uiFiles = manifest.uiFiles ? Object.values(manifest.uiFiles) : manifest.ui ? [manifest.ui] : []
       let remaining = PLUGIN_UI_BYTES
       for (const ui of uiFiles) {
@@ -210,11 +211,29 @@ export function createPluginCatalogWatcher(profile, refresh) {
   }
 }
 
-export async function readPluginFile(root, relative) {
+async function readPluginEntry(root, main, compile) {
+  try { return await readPluginFile(root, main) }
+  catch (error) {
+    if (error?.code !== 'PLUGIN_FILE_MISSING' || !main.endsWith('.js')) throw error
+    let source
+    try { source = await readPackageFile(root, main.slice(0, -3) + '.ts', true) }
+    catch (sourceError) {
+      if (sourceError?.code === 'PLUGIN_FILE_MISSING') throw error
+      throw sourceError
+    }
+    return compile ? compilePluginTypeScript(source) : source
+  }
+}
+
+export function readPluginFile(root, relative) {
+  return readPackageFile(root, relative, false)
+}
+
+async function readPackageFile(root, relative, typeSource) {
   const rootReal = await realpath(root)
   const rootStat = await lstat(rootReal)
   if (!rootStat.isDirectory()) throw new Error('Plugin folder is not a directory')
-  const candidate = path.resolve(rootReal, ...pluginRelativeParts(relative))
+  const candidate = path.resolve(rootReal, ...pluginRelativeParts(relative, typeSource))
   let fileReal
   try { fileReal = await realpath(candidate) }
   catch (error) {
@@ -228,9 +247,24 @@ export async function readPluginFile(root, relative) {
   if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) throw new Error('Plugin file escapes its folder')
   const stat = await lstat(fileReal)
   if (!stat.isFile()) throw new Error('Plugin file is not a file')
-  const limit = relative === 'manifest.json' ? PLUGIN_MANIFEST_BYTES : relative.endsWith('.html') ? PLUGIN_UI_BYTES : PLUGIN_FILE_BYTES
+  const limit = typeSource ? PLUGIN_SOURCE_BYTES
+    : relative === 'manifest.json' ? PLUGIN_MANIFEST_BYTES : relative.endsWith('.html') ? PLUGIN_UI_BYTES : PLUGIN_FILE_BYTES
   if (stat.size > limit) throw new Error('Plugin file is too large')
-  return readFile(fileReal, 'utf8')
+  const file = await open(fileReal, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
+  try {
+    const admitted = await file.stat()
+    if (!admitted.isFile() || admitted.dev !== stat.dev || admitted.ino !== stat.ino || admitted.size > limit)
+      throw new Error('Plugin file changed while being read')
+    const data = Buffer.allocUnsafe(admitted.size + 1)
+    let size = 0
+    while (size < data.length) {
+      const read = await file.read(data, size, data.length - size, size)
+      if (!read.bytesRead) break
+      size += read.bytesRead
+    }
+    if (size > admitted.size) throw new Error('Plugin file changed while being read')
+    return data.toString('utf8', 0, size)
+  } finally { await file.close() }
 }
 
 export function createPluginDirectoryHost() {
@@ -272,8 +306,12 @@ export function createPluginDirectoryHost() {
       const entry = grants.get(id)
       if (!entry) throw Object.assign(new Error('Plugin folder is no longer authorized'), { code: 'PLUGIN_GRANT' })
       if (!Array.isArray(paths) || paths.length < 1 || paths.length > 2) throw new Error('Invalid plugin read')
+      let main
+      try { main = parseDeclaredPluginManifest(entry.manifestText).main } catch { /* Existing file reads still validate paths. */ }
       const files = {}
-      for (const relative of paths) files[relative] = await readPluginFile(entry.root, relative)
+      for (const relative of paths) files[relative] = relative === main
+        ? await readPluginEntry(entry.root, relative, true)
+        : await readPluginFile(entry.root, relative)
       if (grants.get(id) !== entry) throw Object.assign(new Error('Plugin folder is no longer authorized'), { code: 'PLUGIN_GRANT' })
       return { files }
     },

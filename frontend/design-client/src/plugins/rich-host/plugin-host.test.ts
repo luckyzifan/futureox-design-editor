@@ -422,6 +422,21 @@ describe('Figma plugin host', () => {
       .toThrow(/Missing built plugin entry dist\/code\.js/)
   })
 
+  it('runs a desktop standalone TypeScript entry after bounded type stripping', async () => {
+    const filename = new URL('../../../../design-desktop/src/plugin-source.mjs', import.meta.url)
+    const { compilePluginTypeScript } = await import(filename.href)
+    const script = await compilePluginTypeScript(`
+      const label: string = 'From a typed entry'
+      figma.createRectangle().name = label
+      figma.closePlugin('typed')
+    `)
+    const current = editor()
+    const run = await openPlugin(current, bundle('TypedEntry', script))
+    expect(run.closeMessage).toBe('typed')
+    expect(named(current, 'From a typed entry')?.kind).toBe('rectangle')
+    run.close()
+  })
+
   it('reads the requested styled text fields across actual UTF-16 runs', async () => {
     const current = editor()
     current.change('Styled text', doc => {
