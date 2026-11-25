@@ -171,15 +171,9 @@ describe('CSS export of paint, stroke, flow, text, and blur', () => {
     document.nodes = { [frame.id]: frame }
     document.pages[0].children = [frame.id]
     const result = exportDesignCode(document)
-    // The node rule holds what every engine parses: the node opacity and the
-    // fill that needs no fade. A fade written here would take that fill down
-    // with it wherever the fade is not understood.
     const rule = ruleFor(result.css, '#design-node-1')
     expect(rule).toContain('opacity:1')
-    expect(rule).not.toContain('opacity:25%')
-    expect(rule).toContain('background-image:linear-gradient(#00ff00,#00ff00)')
-    expect(rule).not.toContain('cross-fade(')
-    expect(rule).not.toContain('color-mix(in srgb, #00ff00')
+    expect(rule).not.toContain('background-image:')
     expect(rule).not.toContain('border:')
     // Chromium and WebKit fade one layer only through the prefixed
     // three-argument form. No tested engine parses the unprefixed one, and
@@ -189,13 +183,11 @@ describe('CSS export of paint, stroke, flow, text, and blur', () => {
     expect(exact).toContain(`-webkit-cross-fade(${ESCAPED_IMAGE},linear-gradient(transparent,transparent),75%),linear-gradient(#00ff00,#00ff00)`)
     expect(exact).not.toMatch(/(^|[^-])cross-fade\(/)
     expect(exact).toContain('background-size:contain,auto;background-position:center;background-repeat:no-repeat')
-    // Firefox has no cross-fade: the image moves to a box above the other
-    // fill and below the children, while the stroke keeps ::before.
     const fallback = blockFor(result.css, '@supports not (')
-    expect(fallback).toContain('@supports not (background-image:-webkit-cross-fade(url(a.png),url(b.png),0%)){#design-node-1::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;')
-    expect(fallback).toContain(`background-image:${ESCAPED_IMAGE};background-size:contain;background-position:center;background-repeat:no-repeat;opacity:25%}`)
-    expect(fallback).not.toContain('#00ff00')
-    expect(fallback).not.toContain('::before')
+    expect(fallback).toContain('.design-fallback-fill{display:block;position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none}')
+    expect(result.css).toContain('.design-node-1-fill-0{background-image:linear-gradient(#00ff00,#00ff00)}')
+    expect(result.css).toContain(`.design-node-1-fill-1{background-image:${ESCAPED_IMAGE};background-size:contain;background-position:center;background-repeat:no-repeat;opacity:25%}`)
+    expect(result.html).toContain('class="design-fallback-fill design-node-1-fill-0" aria-hidden="true"></span><span class="design-fallback-fill design-node-1-fill-1"')
     expect(ruleFor(result.css, '#design-node-1::before')).toContain('border:4px solid #ff0000')
     expect(result.warnings.some(warning => warning.code === 'PAINT_COMPOSITING' && warning.nodeId === frame.id)).toBe(true)
     expect(result.warnings.some(warning => warning.code === 'IMAGE_OPACITY_FALLBACK')).toBe(false)
@@ -221,33 +213,30 @@ describe('CSS export of paint, stroke, flow, text, and blur', () => {
     expect(ruleFor(result.css, '#design-node-1')).not.toContain('background-image')
     const veil = 'background-image:linear-gradient(color-mix(in srgb, #ff0000 50%, transparent),color-mix(in srgb, #ff0000 50%, transparent))'
     expect(blockFor(result.css, '@supports (')).toContain(`${veil},-webkit-cross-fade(${ESCAPED_IMAGE},linear-gradient(transparent,transparent),75%)`)
-    const fallback = blockFor(result.css, '@supports not (')
-    const imageBox = fallback.indexOf('#design-node-1::before{'), veilBox = fallback.indexOf('#design-node-1::after{')
-    expect(imageBox).toBeGreaterThanOrEqual(0)
-    // ::after follows ::before in tree order, so the veil still covers the image.
-    expect(veilBox).toBeGreaterThan(imageBox)
-    expect(fallback.slice(imageBox, veilBox)).toContain(`background-image:${ESCAPED_IMAGE};background-size:100% 100%;background-position:center;background-repeat:no-repeat;opacity:25%}`)
-    expect(fallback.slice(veilBox)).toContain(`${veil}}`)
-    expect(result.warnings.some(warning => warning.code === 'IMAGE_OPACITY_FALLBACK')).toBe(false)
+    expect(result.css).toContain(`.design-node-1-fill-0{background-image:${ESCAPED_IMAGE};background-size:100% 100%;background-position:center;background-repeat:no-repeat;opacity:25%}`)
+    expect(result.css).toContain(`.design-node-1-fill-1{${veil}}`)
+    const fills = result.html.match(/class="design-fallback-fill design-node-1-fill-\d"/g)
+    expect(fills).toEqual(['class="design-fallback-fill design-node-1-fill-0"', 'class="design-fallback-fill design-node-1-fill-1"'])
+    expect(result.html.indexOf('design-node-1-fill-1')).toBeLessThan(result.html.indexOf('id="design-node-2"'))
   })
 
-  it('keeps the other fills and warns when a faded image sits between them', () => {
+  it('paints multiple faded images in authored order around solid fills', () => {
     const document = blank('Image between')
     document.schemaVersion = 31
     const rectangle = node('rectangle', 0, 0, 80, 40)
     const image = paint('#fff', 'image')
     image.opacity = 0.25
     image.image = FADED_IMAGE
-    rectangle.fills = [paint('#00ff00'), image, paint('#0000ff')]
+    const top = { ...paint('#fff', 'image'), image: FADED_IMAGE, opacity: 0.5 }
+    rectangle.fills = [paint('#00ff00'), image, paint('#0000ff'), top]
     document.nodes = { [rectangle.id]: rectangle }
     document.pages[0].children = [rectangle.id]
     const result = exportDesignCode(document)
-    expect(ruleFor(result.css, '#design-node-1')).toContain('background-image:linear-gradient(#0000ff,#0000ff),linear-gradient(#00ff00,#00ff00)')
-    const fallback = blockFor(result.css, '@supports not (')
-    expect(fallback).toContain('#design-node-1::after{')
-    expect(fallback).toContain('opacity:25%}')
-    expect(fallback).not.toContain('::before')
-    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'IMAGE_OPACITY_FALLBACK', nodeId: rectangle.id }))
+    expect(result.css).toContain('.design-node-1-fill-0{background-image:linear-gradient(#00ff00,#00ff00)}')
+    expect(result.css).toMatch(/\.design-node-1-fill-1\{[^}]+;opacity:25%\}/)
+    expect(result.css).toContain('.design-node-1-fill-2{background-image:linear-gradient(#0000ff,#0000ff)}')
+    expect(result.css).toMatch(/\.design-node-1-fill-3\{[^}]+;opacity:50%\}/)
+    expect([...result.html.matchAll(/class="design-fallback-fill design-node-1-fill-(\d)"/g)].map(match => match[1])).toEqual(['0', '1', '2', '3'])
   })
 
   it('places inside, center, and outside strokes on different sides of the box', () => {

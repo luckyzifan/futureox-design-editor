@@ -313,8 +313,8 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
   }
   let right = 1, bottom = 1
   const strokeRules: { css: string; scss: string }[] = []
-  // Feature-tested rules for fills that need a fade; they follow the node rules.
   const supportRules: { css: string; scss: string }[] = []
+  const fallbackFillMarkup = new Map<string, string>()
   for (const [index, { node, parentId }] of entries.entries()) {
     const n = node, selector = nodeIdMap[n.id].selector, declarations: string[] = [], scssDeclarations: string[] = []
     const decl = (...css: string[]) => { declarations.push(...css); if (scssSession) scssDeclarations.push(...css) }
@@ -361,9 +361,6 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     const strokes = n.strokes.filter(s => s.visible && s.paint.visible)
     const stroke = strokes[0]
     const strokeOutline = stroke?.paint.kind === 'solid' && (stroke.align === 'center' || stroke.align === 'outside')
-    const strokeColor = stroke?.paint.kind === 'solid' ? paintCss(stroke.paint, n.id, n.width, n.height) : undefined
-    // An inner or centred stroke paints on the node's ::before.
-    const beforeIsStroke = !!strokeColor?.css && stroke!.align !== 'outside'
     if (['vector', 'polygon', 'star', 'line'].includes(n.kind)) {
       warn('UNSUPPORTED_SHAPE', `${n.kind} geometry uses a bounding-box placeholder; use native SVG/image export for its exact shape.`, n.id)
       if (!strokeOutline) decl('outline:1px dashed #999')
@@ -389,36 +386,33 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
       })
       if (layers.length) {
         layers.reverse()
-        const faded = layers.filter(item => item.fade)
-        if (!faded.length) {
+        if (!layers.some(item => item.fade)) {
           declPair(`background-image:${layers.map(item => item.css).join(',')}`, `background-image:${layers.map(item => item.scss).join(',')}`)
         } else {
-          // Every node carries a transform, so it is its own stacking context
-          // and a positioned pseudo-element at z-index -1 paints above the
-          // node's fills and below its children. That places one faded image
-          // exactly when it is the top fill, or the bottom fill below fills
-          // that can move to a second pseudo-element. Anything else keeps the
-          // node's other fills and paints the topmost faded image above them.
           type Layer = typeof layers[number]
           const listing = (items: Layer[], pick: (item: Layer) => string) => [
             `background-image:${items.map(pick).join(',')}`,
             ...(items.some(item => item.size !== 'auto') ? [`background-size:${items.map(item => item.size).join(',')}`, 'background-position:center', 'background-repeat:no-repeat'] : []),
           ].join(';')
-          const box = (part: string, body: string) => `${selector}${part}{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;${body}}`
-          const only = faded.length === 1 ? layers.indexOf(faded[0]!) : -1
-          const under = only > 0 && only === layers.length - 1 && !beforeIsStroke
-          if (only !== 0 && !under) warn('IMAGE_OPACITY_FALLBACK', 'Without cross-fade support only the topmost faded image fill is painted, above the other fills of the node.', n.id)
-          const own = layers.filter((item, index) => !item.fade && !(under && index < only))
-          const lifted = under ? layers.slice(0, only) : []
-          if (own.length) declPair(listing(own, item => item.css), listing(own, item => item.scss))
-          const image = faded[0]!, fade = image.fade!
-          const fadedPaint = (opacity: string) => `background-image:${image.css};background-size:${image.size}${image.size === 'auto' ? '' : ';background-position:center;background-repeat:no-repeat'};opacity:${opacity}`
           const exactCss = listing(layers, item => item.prefixed ?? item.css)
           const exactScss = listing(layers, item => item.prefixedScss ?? item.prefixed ?? item.scss)
+          // Each transformed node is a stacking context. Absolutely positioned
+          // fill boxes paint from bottom to top below the stroke and children.
+          const fallback = layers.slice().reverse().map((item, index) => {
+            const className = `${nodeIdMap[n.id].elementId}-fill-${index}`
+            const opacity = item.fade ? `;opacity:${item.fade.opacity}` : ''
+            const opacityScss = item.fade ? `;opacity:${item.fade.opacityScss ?? item.fade.opacity}` : ''
+            return {
+              markup: `<span class="design-fallback-fill ${className}" aria-hidden="true"></span>`,
+              css: `.${className}{${listing([item], layer => layer.css)}${opacity}}`,
+              scss: `.${className}{${listing([item], layer => layer.scss)}${opacityScss}}`,
+            }
+          })
+          fallbackFillMarkup.set(n.id, fallback.map(item => item.markup).join(''))
           supportRules.push(
             { css: `@supports (${CROSS_FADE}){${selector}{${exactCss}}}`, scss: `@supports (${CROSS_FADE}){${selector}{${exactScss}}}` },
-            { css: `@supports not (${CROSS_FADE}){${box(under ? '::before' : '::after', fadedPaint(fade.opacity))}${lifted.length ? box('::after', listing(lifted, item => item.css)) : ''}}`,
-              scss: `@supports not (${CROSS_FADE}){${box(under ? '::before' : '::after', fadedPaint(fade.opacityScss ?? fade.opacity))}${lifted.length ? box('::after', listing(lifted, item => item.scss)) : ''}}` },
+            { css: `@supports not (${CROSS_FADE}){${fallback.map(item => item.css).join('')}}`,
+              scss: `@supports not (${CROSS_FADE}){${fallback.map(item => item.scss).join('')}}` },
           )
         }
       }
@@ -426,8 +420,8 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
         decl(`background-size:${layers.map(layer => layer.size).join(',')}`, 'background-position:center', 'background-repeat:no-repeat')
       }
     }
-    if (stroke?.paint.kind === 'solid' && strokeColor) {
-      const color = strokeColor
+    if (stroke?.paint.kind === 'solid') {
+      const color = paintCss(stroke.paint, n.id, n.width, n.height)
       if (color.css) {
         const strokeIndex = n.strokes.indexOf(stroke)
         const widthCss = px(stroke.width)
@@ -508,6 +502,10 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     pushRule(`${selector}{${declarations.join(';')}}`, scssSession ? `${selector}{${scssDeclarations.join(';')}}` : undefined, n.id)
   }
   for (const rule of strokeRules) pushRule(rule.css, rule.scss)
+  if (fallbackFillMarkup.size) {
+    pushRule('.design-fallback-fill{display:none}')
+    pushRule(`@supports not (${CROSS_FADE}){.design-fallback-fill{display:block;position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none}}`)
+  }
   for (const rule of supportRules) pushRule(rule.css, rule.scss)
   pushRule(`.design-scene{width:${px(right)};height:${px(bottom)};background:${cssColor(page.background) ?? 'transparent'}}`)
   const renderText = (n: DesignNode) => {
@@ -536,7 +534,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
   // Post-order assembly avoids recursive calls on arbitrary document objects.
   const markup = new Map<string, string>()
   for (const { node: n } of [...entries].reverse()) {
-    const content = (n.kind === 'text' ? renderText(n) : '') + n.children.filter(id => included.has(id)).map(id => markup.get(id) ?? '').join('')
+    const content = (fallbackFillMarkup.get(n.id) ?? '') + (n.kind === 'text' ? renderText(n) : '') + n.children.filter(id => included.has(id)).map(id => markup.get(id) ?? '').join('')
     markup.set(n.id, `<div id="${nodeIdMap[n.id].elementId}" class="design-node${n.kind === 'text' ? ' design-text' : ''}" data-node-id="${htmlEscape(n.id)}" data-node-kind="${htmlEscape(n.kind)}" aria-label="${htmlEscape(n.name)}">${content}</div>`)
   }
   const html = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self' data: https: http:; script-src 'none'; object-src 'none'; base-uri 'none'"><title>${htmlEscape(document.name)}</title><link rel="stylesheet" href="styles.css"></head><body><main class="design-scene">${roots.map(id => markup.get(id) ?? '').join('')}</main></body></html>`

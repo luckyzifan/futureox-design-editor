@@ -382,15 +382,15 @@ describe('selection SCSS color variables', () => {
     expect(output.scss).toContain('#{(1 - $Image-Opacity) * 100%}')
     // The feature-tested rules are plain rules to the Sass pass: nothing nests into them.
     expect(output.scss).toContain('@supports (background-image:-webkit-cross-fade(url(a.png),url(b.png),0%)){#design-node-1{')
-    expect(output.scss).toContain('@supports not (background-image:-webkit-cross-fade(url(a.png),url(b.png),0%)){#design-node-1::after{')
+    expect(output.scss).toContain('@supports not (background-image:-webkit-cross-fade(url(a.png),url(b.png),0%)){.design-node-1-fill-0{')
     expectCompiles(output)
     // A faded image below another fill splits over two boxes in the fallback.
     const veil = paint('#ff0000')
     veil.opacity = 0.5
     box.fills = [fill, veil]
     const split = exportDesignCode(document, { syntax: 'scss' })
-    expect(split.css).toContain('::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;')
-    expect(split.css).toContain(';opacity:25%}#design-node-1::after{')
+    expect(split.css).toContain('.design-fallback-fill{display:block;position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none}')
+    expect(split.css).toContain(';opacity:25%}.design-node-1-fill-1{')
     expectCompiles(split)
   })
 })

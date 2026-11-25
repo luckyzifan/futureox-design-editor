@@ -2067,12 +2067,21 @@ impl Fonts {
         // painted outline only: the glyph table that caret and selection
         // geometry read keeps the authored text alone.
         let paragraph_count = paragraphs.len();
-        let mut list_items = vec![None::<ListItem>; paragraph_count];
-        let mut list_glyphs = (0..paragraph_count).map(|_| Vec::<Glyph>::new()).collect::<Vec<_>>();
+        let mut list_items = Vec::<Option<ListItem>>::new();
+        let mut list_glyphs = Vec::<Vec<Glyph>>::new();
         let mut list_marker_glyphs = Vec::<Glyph>::new();
         let mut list_markers = Vec::<ListMarker>::new();
-        let list_layout = style.writing_mode == "horizontal" && baseline.is_none() && style.direction != "rtl";
+        let is_list = |kind: &str| matches!(kind, "bullet" | "ordered");
+        let list_layout = style.writing_mode == "horizontal"
+            && baseline.is_none()
+            && style.direction != "rtl"
+            && (is_list(&style.list)
+                || runs.iter().any(|run| {
+                    run.paragraph.as_ref().is_some_and(|paragraph| is_list(&paragraph.list))
+                }));
         if list_layout {
+            list_items.resize_with(paragraph_count, || None);
+            list_glyphs.resize_with(paragraph_count, Vec::new);
             // Numbering continues through consecutive ordered items of one
             // level. A bullet or a paragraph outside a list restarts every level.
             let mut ordinals = [0usize; 5];
@@ -2082,7 +2091,7 @@ impl Fonts {
                 // An empty paragraph list inherits the layer's list style.
                 let own = attributes.map(|p| p.list.as_str()).unwrap_or("");
                 let kind = if own.is_empty() { style.list.as_str() } else { own };
-                if kind != "bullet" && kind != "ordered" {
+                if !is_list(kind) {
                     ordinals = [0; 5];
                     prepared.push(None);
                     continue;
@@ -2191,7 +2200,7 @@ impl Fonts {
             } else {
                 style
             };
-            let list_item = list_items[paragraph_index].as_ref();
+            let list_item = list_items.get(paragraph_index).and_then(Option::as_ref);
             let list_indent = list_item.map_or(0., |item| item.indent);
             let value = &text[paragraph.clone()];
             let initial = self.shape(value, paragraph.start, size, style, runs, &utf16, sketch_display_fallback)?;
@@ -2376,7 +2385,7 @@ impl Fonts {
                 let figma_auto = style.line_height_auto && style.line_box_baseline == "figma-font-metrics";
                 // An empty list item has no text to give its line a font
                 // metric, so its marker stands in for the text of the item.
-                let metrics: &[Glyph] = if shaped.is_empty() && range.start == paragraph.start {
+                let metrics: &[Glyph] = if list_item.is_some() && shaped.is_empty() && range.start == paragraph.start {
                     &list_glyphs[paragraph_index]
                 } else {
                     &shaped
@@ -4514,4 +4523,3 @@ mod list_tests {
         assert!(rtl.list_markers.is_empty());
     }
 }
-
