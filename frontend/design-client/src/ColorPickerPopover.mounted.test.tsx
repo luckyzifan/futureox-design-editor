@@ -5,8 +5,9 @@ import React, { act, useSyncExternalStore } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { ColorInput } from './ColorInput'
+import { Inspector } from './Inspector'
 import { Editor } from './engine'
-import { blank, node } from './model'
+import { blank, node, stroke } from './model'
 import { defaultColorSettings } from './color'
 import { PendingEditContext } from './pending-edit-context'
 import { dispatchEditorCommand } from './editor-commands'
@@ -42,6 +43,13 @@ function Fixture() {
 const field = (label: string) => document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!
 const button = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === label || b.getAttribute('aria-label') === label)!
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
+test('fill and stroke opacity rows render a compact percentage', async () => {
+  const border = stroke('#345678', 1)
+  border.paint.opacity = .4
+  editor.set({ doc: { ...editor.state.doc, nodes: { [id]: { ...editor.state.doc.nodes[id], strokes: [border] } } } })
+  await act(async () => root.render(<PendingEditContext.Provider value={editor}><Inspector editor={editor} /></PendingEditContext.Provider>))
+  expect([...mount.querySelectorAll('.paint-opacity-trigger')].map(button => button.textContent)).toEqual(['60%', '40%'])
+})
 async function type(input: HTMLInputElement, value: string) { await act(async () => { input.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })) }) }
 async function key(input: Element, key: string, options: object = {}) { await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options }))) }
 async function click(element: Element) { await act(async () => element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))) }

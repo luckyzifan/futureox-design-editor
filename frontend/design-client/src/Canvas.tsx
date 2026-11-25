@@ -62,14 +62,14 @@ import { createPortal, flushSync } from 'react-dom'
 import { scheduleCanvasView } from './canvas-view-schedule'
 import { gridOverlayRectangles, layoutGridRectangles } from './grid-overlay'
 import { canvasDropFrame, insideParentFrame } from './canvas-drop'
-import { dispatchEditorCommand } from './editor-commands'
+import { dispatchEditorCommand, fitEditorCamera } from './editor-commands'
 import { commitPendingEdits, pendingOperationEpoch, registerPendingEdit, pendingEditsChanged } from './pending-edits'
 import { lockedSelectionIds } from './canvas-menu-model'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { ViewControls } from './ViewControls'
 import { CanvasTextEditor } from './TextEditor'
 import { createBox, localClockwiseAfter, resizeBasisIsAxisAligned, resizeInBasis, resizeSnapEnd, snapLocalClockwise, snapMove, selectionLocalBounds, vectorPointSnaps } from './canvas-view'
-import { fitBounds, fitSelectedBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
+import { fitBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
 import { WheelCameraGesture } from './wheel-camera-gesture'
 import { desktopBridge,type LocalPeer } from './desktop'
 import {
@@ -2259,10 +2259,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (pencil.current || drag.current) return
     flushView()
     if(nativeSource||openingSource){editor.set({view:fitBounds((openingSource||nativeSource)!.bounds,size)});return}
-    const relevant = onlySelection ? selected : entries.filter((e) => e.depth === 0)
-    if (!relevant.length) return
-    const b = unionBounds(relevant.map((e) => e.bounds))
-    editor.set({ view: onlySelection ? fitSelectedBounds(b, size, uiMode) : fitBounds(b, size) })
+    fitEditorCamera(editor, size, onlySelection, uiMode)
   }
   function creationPointer(d: Drag, p: Point) {
     if (space.current && d.spaceAnchor && d.spacePointer)

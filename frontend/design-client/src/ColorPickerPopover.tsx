@@ -36,7 +36,7 @@ export function SolidFillColorInput({ target, value, label, opacity = false, kin
     <button ref={trigger} type="button" className={opacity ? 'paint-opacity-trigger' : 'color-swatch-trigger'}
       aria-label={label} aria-haspopup="dialog" aria-expanded={!!session?.active}
       style={opacity ? undefined : { background: value }} onClick={open}>
-      {buttonText ?? (opacity ? `${value} %` : <span className="sr-only">{label}</span>)}
+      {buttonText ?? (opacity ? `${value}%` : <span className="sr-only">{label}</span>)}
     </button>
     {error && <span role="alert">{tr(error)}</span>}
     {session && <ColorPickerPopover session={session} trigger={trigger} focusOpacity={opacity} kind={kind} onKind={onKind} onClose={() => setSession(null)} />}
@@ -70,7 +70,7 @@ export function LoosePaintColor({ label, color, opacity, hex, kind, onChange, on
       style={{ background: color }} onClick={() => show(false)}><span className="sr-only">{label}</span></button>
     <span className="paint-hex">{hex}</span>
     <button ref={alpha} type="button" className="paint-opacity-trigger" aria-label={tr('填充不透明度')} aria-haspopup="dialog" aria-expanded={!!open?.focusOpacity}
-      onClick={() => show(true)}>{Math.round(opacity * 100)} %</button>
+      onClick={() => show(true)}>{Math.round(opacity * 100)}%</button>
     {open && <MacColorDialog trigger={open.focusOpacity ? alpha : swatch} focusOpacity={open.focusOpacity} preview={false}
       color={draft.color} opacity={draft.opacity} valid={valid} error={error} kind={kind}
       onUpdate={patch => { setError(''); setDraft(value => ({ ...value, ...patch })) }}

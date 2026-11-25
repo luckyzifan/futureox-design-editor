@@ -24,7 +24,7 @@ import { selectionParentBounds } from './canvas-view'
 import { sketchAutoPin } from './sketch-auto-pin'
 import { swapSelectionPaints, toggleSketchPaintVisibility } from './sketch-paint-commands'
 import { canFitFrameContents, editableFrameCrop, frameCropPatches } from './selection-properties'
-import { interfacePreference } from './interface-preference'
+import { interfacePreference, type UiMode } from './interface-preference'
 import { interactivePath } from './selection-hierarchy'
 import {querySelection,type SelectionQuery} from './selection-queries'
 import { dimensionNudgeCommands, isDimensionNudgeCommand, nudgeSelectionDimensions, selectAllCanvasIds, selectAllForceCanvasIds, selectTopLevelCanvasIds, type DimensionNudgeCommand } from './canvas-workflow-shortcuts'
@@ -86,6 +86,14 @@ export function selectionCameraBox(editor: Editor): Bounds | undefined {
   }
   return finiteBox(direct) ? direct : finiteBox(sceneBox) ? sceneBox : undefined
 }
+export function fitEditorCamera(editor: Editor, size: { width: number; height: number }, onlySelection: boolean, uiMode: UiMode) {
+  const selected = onlySelection ? new Set(editor.state.selection) : undefined
+  const entries = editor.entries().filter(entry => selected ? selected.has(entry.id) : entry.depth === 0)
+  if (!entries.length) return
+  const box = unionBounds(entries.map(entry => entry.bounds))
+  editor.set({ view: onlySelection ? fitSelectedBounds(box, size, uiMode) : fitBounds(box, size) })
+}
+
 type PaintStack = 'fills' | 'strokes'
 function nodeHasRemovablePaint(node: DesignNode | undefined, stack: PaintStack): boolean {
   return !!node && (node[stack].length > 0 || node.styleRefs?.[stack] !== undefined)
@@ -250,6 +258,10 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
           assertSize(content.text)
           const doc = blank('粘贴的文字'), n = node('text', 0, 0, 240, 32)
           n.text = content.text; doc.nodes[n.id] = n; doc.pages[0].children.push(n.id); normalized = packet(doc)
+        } else if (command === 'paste-here' || command === 'paste-to-replace') {
+          action.result(ActionOutcome.rejected, ActionReason.validation)
+          editor.notifyEmptyClipboard()
+          return
         } else return
       }
       if (command === 'paste-over-selection') {
@@ -297,15 +309,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       // would let the next rAF commit roll this command's zoom back.
       const view = editor.flushPendingView()
       if (command === 'zoom-fit' || command === 'zoom-selection') {
-        const entries = editor.entries().filter(e => command === 'zoom-fit' ? e.depth === 0 : editor.state.selection.includes(e.id))
-        if (entries.length) {
-          const box = unionBounds(entries.map(entry => entry.bounds))
-          const size = { width, height }
-          const view = command === 'zoom-selection'
-            ? fitSelectedBounds(box, size, interfacePreference.getSnapshot().uiMode)
-            : fitBounds(box, size)
-          editor.set({ view })
-        }
+        fitEditorCamera(editor, { width, height }, command === 'zoom-selection', interfacePreference.getSnapshot().uiMode)
       } else {
         const anchor = options.zoomAnchor && Number.isFinite(options.zoomAnchor.x) && Number.isFinite(options.zoomAnchor.y) ? options.zoomAnchor : { x: width / 2, y: height / 2 }
         editor.set({ view: zoomAt(view, command === 'zoom-100' ? 1 : zoomStep(view.zoom, command === 'zoom-in' ? 1 : -1), anchor) })

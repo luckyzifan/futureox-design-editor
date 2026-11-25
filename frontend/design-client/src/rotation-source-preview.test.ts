@@ -95,7 +95,7 @@ test('a viewport slice cannot supply the pixel that rotates onto screen (3, 3)',
     else if (start.y > 3 && end.y <= 3 && cross < 0) winding -= 1
   }
   expect(winding).not.toBe(0)
-  expect(host.querySelector('[data-testid="rotation-feedback"]')?.textContent).toBe('45.00°')
+  expect(host.querySelector('[data-testid="rotation-feedback"]')).toBeNull()
   layer!.destroy()
   expect(host.querySelector('[data-testid="rotation-source-preview"]')).toBeNull()
 })
