@@ -344,6 +344,9 @@ try {
       }, { timeout: 45000 }).toBe(true)
       await record('source-autosave-reopen', { source: saved, ...await ready(), pixelHash: await shot('source-autosave-reopen') })
     } else {
+      // The native desktop serializes file operations. Check autosave first
+      // so this read cannot acquire its operation slot ahead of the writer.
+      await expect(page.locator('.save-status-label')).toHaveText('已自动保存到工作副本', { timeout: 45000 })
       const reopen = () => page.evaluate(async ({ documentId, nodeId }) => {
         const list = await window.coreDesktop.workspace.list()
         const entry = list.documents?.find(document => document.id === documentId)
@@ -380,6 +383,7 @@ try {
   console.error(JSON.stringify(result.error))
   if (page) {
     result.visibleError = await page.locator('[role="alert"]').allTextContents().catch(() => [])
+    result.saveStatus = await page.locator('.save-status').getAttribute('title', { timeout: 1000 }).catch(() => null)
     result.diagnostic = await canvas?.evaluate(element => {
       let fiber = element[Object.keys(element).find(key => key.startsWith('__reactFiber$'))]
       while (fiber && !fiber.memoizedProps?.editor) fiber = fiber.return
