@@ -14,7 +14,7 @@ export async function main(argv = process.argv.slice(2)) {
   const operation = await socket.connect()
   const backend = new FigmaFacade({
     execute: (request, context) => operation.execute(request, context),
-    methods: operation.capabilities.methods,
+    methods: [...operation.methods.values()],
     scope: operation.scope,
     target: operation.target,
     terminalSignal: socket.terminalSignal,

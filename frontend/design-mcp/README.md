@@ -161,6 +161,14 @@ Real-Editor tests use existing WASM/font setup: native node creation, layout/tex
 
 The ordinary integration suite creates real temporary Unix sockets and a stdio CLI subprocess against a deterministic bridge fixture; it does not launch Electron or a real Editor/SQLite backend. Official-SDK stdio tests are separate and skip when `MCP_OFFICIAL_SDK_ROOT` is absent; a skip is not acceptance. [Local test commands](../../testing/README.md) · [Historical validation](../../docs/verification/HISTORICAL_ACCEPTANCE_202610.zh-CN.md)
 
+Run both official SDK suites with a temporary dependency directory from `frontend/design-mcp`. They exercise auto negotiation, pinned modern, and legacy stdio against the protocol fixture and the production desktop bridge with a deterministic editor fixture. [Official SDK 2.4.0](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/v2.4.0)
+
+```sh
+sdk_root="$(mktemp -d)"
+npm install --prefix "$sdk_root" --ignore-scripts --save-exact @modelcontextprotocol/client@2.4.0
+MCP_OFFICIAL_SDK_ROOT="$sdk_root" node --test test/modern-official-stdio.test.mjs test/modern-official-sdk.test.mjs
+```
+
 ### Reproduce the original example
 
 The optional example authors complete synthetic login/dashboard pages through real MCP requests, imports the repository's actual Noto Sans SC font, checks/fine-edits the design, and explicitly reads resources to save HTML/CSS/SVG plus native JSON/FD. Tool responses stay below 256 KiB; file bytes are read only by the packager. It uses existing frontend dependencies and writes only to the explicitly supplied output directory:

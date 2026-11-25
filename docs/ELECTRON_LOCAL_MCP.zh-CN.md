@@ -44,13 +44,15 @@
 
 ## Figma 风格客户端或 HTTP
 
-需要 `get_metadata`、`get_design_context`、`get_screenshot`、`use_figma` 等八项兼容工具时，在「复制连接详情」中取 **原样的 `figmaMcp.url`**，给每次 HTTP POST 设置 `Authorization: Bearer <本次 token>`。这是仅监听回环地址的 JSON-RPC 入口；不提供 SSE 订阅、云端 Figma 文件或任意插件 JS。该入口目前一次服务一个 HTTP 客户端会话；不同客户端优先各用独立 stdio。需要兼容目录的 stdio 时，只将复制配置中 `args[0]` 的最后一个文件名从 `cli.mjs` 改为同目录 `figma-cli.mjs`。
+需要 `get_metadata`、`get_design_context`、`get_screenshot` 等兼容工具时，在 MCP 连接与权限面板选 **复制 Figma 兼容 stdio 配置**。JSON 中的 `futureox_design_figma` 会启动随应用打包的 `figma-cli.mjs`。只有具备编辑权限的连接才会列出 `use_figma`，打开已保存文档还需要工作区写入授权。
+
+HTTP 客户端可从「复制连接详情」取 **原样的 `figmaMcp.url`**，每次请求带 `Authorization: Bearer <本次 token>`。回环监听器以 JSON 响应 MCP POST 请求，GET 事件流返回 `405`。该入口一次服务一个 HTTP 客户端会话，不同客户端可各用独立 stdio。 [Figma 兼容入口的工具和参数](FIGMA_MCP_FACADE.md)
 
 ## 包内位置和排错
 
 | 现象 | 处理 |
 |---|---|
-| 客户端只看到 8 个工具 | 当前选了 Figma 兼容入口；完整目录使用 stdio 和 `cli.mjs`。 |
+| 客户端看到 `get_metadata` 等工具 | 当前使用 Figma 兼容入口。要使用完整的 `design_*` 目录，可选「复制 stdio 客户端配置」。 |
 | 出现另一个编辑器窗口或客户端没有收到握手 | 检查 MCP **子进程**的 `ELECTRON_RUN_AS_NODE=1`，以及分开的 `command` 和 `args`。也可将 command 改为本机 Node 22+ 的绝对路径，删除该变量，保留脚本路径和另外三个变量。 |
 | 无法连接、旧资源过期、权限不足 | 确认编辑器和客户端同机、同账户，文档未切换。重新启用所需范围，更换整份会话配置；已超时的写请求应先读回版本，再决定是否重试。 |
 | 只有浏览器版、原生 Sketch 源预览或大文档源视图 | 浏览器不监听 MCP；请在桌面版打开支持普通 Editor 编辑的文档。 |

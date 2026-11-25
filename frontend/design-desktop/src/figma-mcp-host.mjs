@@ -27,13 +27,16 @@ export function packagedElectronLaunchEnv(baseEnv = process.env, platform = proc
   return env
 }
 
-export function desktopMcpClientConfig(connection, cli, executable = process.execPath, options = {}) {
-  const baseEnv = options.env ?? process.env
-  const platform = options.platform ?? process.platform
-  return { mcpServers: { futureox_design: {
-    command: executable, args: [cli],
+export function desktopMcpClientConfig(connection, {
+  resourcesPath, format, executable = process.execPath, env = process.env, platform = process.platform,
+} = {}) {
+  const paths = desktopMcpPaths(resourcesPath)
+  const figma = format === 'figma-stdio'
+  const name = figma ? 'futureox_design_figma' : 'futureox_design'
+  return { mcpServers: { [name]: {
+    command: executable, args: [figma ? paths.figmaCli : paths.cli],
     env: {
-      ...packagedElectronLaunchEnv(baseEnv, platform),
+      ...packagedElectronLaunchEnv(env, platform),
       FUTUREOX_DESIGN_SOCKET: connection.endpoint,
       FUTUREOX_DESIGN_SESSION: connection.sessionId,
       FUTUREOX_DESIGN_BRIDGE_TOKEN: connection.token,

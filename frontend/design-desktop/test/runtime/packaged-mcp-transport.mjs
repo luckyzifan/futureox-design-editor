@@ -218,7 +218,8 @@ export async function verifyPackagedMcpTransport({ resources, executable, hostSo
     assert.equal(createHash('sha256').update(await readFile(figmaReal)).digest('hex'), createHash('sha256').update(await readFile(sourceFigmaCli)).digest('hex'))
     assert.notEqual(endpoints.cli, cliReal, 'The launched adapter path must be able to traverse a symlink')
     assert.notEqual(executableLink, await realpath(executableLink))
-    const config = desktopMcpClientConfig(grant, endpoints.cli, executableLink).mcpServers.futureox_design
+    const config = desktopMcpClientConfig(grant, { resourcesPath: resourceLink, executable: executableLink }).mcpServers.futureox_design
+    assert.deepEqual(config.args, [endpoints.cli])
     assert.equal(config.env.ELECTRON_RUN_AS_NODE, '1')
     assert.equal(config.env.NODE_OPTIONS, undefined)
     assert.equal('LD_PRELOAD' in config.env, false)
@@ -234,7 +235,7 @@ export async function verifyPackagedMcpTransport({ resources, executable, hostSo
       const document = (await call(client, 'design_document_get', {})).structuredContent
       return { documentId: document.documentId, session: document.session, expectedRevision: document.revision }
     }
-    const design = stdioClient(config.command, [endpoints.cli], config.env, { cwd })
+    const design = stdioClient(config.command, config.args, config.env, { cwd })
     clients.push(design)
     await design.init(); mark('handshake', 'cli.mjs')
     const designTools = (await design.rpc('tools/list')).result.tools.map(tool => tool.name)
@@ -258,11 +259,15 @@ export async function verifyPackagedMcpTransport({ resources, executable, hostSo
     await call(design, 'design_history_undo', { params: {}, ...(await fence(design)) })
     assert.deepEqual((await call(design, 'design_node_get', { params: { id } })).structuredContent.result.node.transform.slice(4), [0, 0])
     mark('undo', 'cli.mjs')
-    const figma = stdioClient(config.command, [endpoints.figmaCli], { ...config.env }, { cwd })
+    const figmaConfig = desktopMcpClientConfig(grant, { format: 'figma-stdio', resourcesPath: resourceLink, executable: executableLink }).mcpServers.futureox_design_figma
+    assert.deepEqual(figmaConfig.args, [endpoints.figmaCli])
+    assert.deepEqual(figmaConfig.env, config.env)
+    const figma = stdioClient(figmaConfig.command, figmaConfig.args, figmaConfig.env, { cwd })
     clients.push(figma)
     await figma.init(); mark('handshake', 'figma-cli.mjs')
     const figmaTools = (await figma.rpc('tools/list')).result.tools.map(tool => tool.name)
     for (const name of ['get_selection', 'use_figma', 'get_screenshot', 'download_assets']) assert.ok(figmaTools.includes(name), name)
+    assert.equal(figmaTools.includes('open_document'), false)
     const selection = await call(figma, 'get_selection', {})
     assert.equal(selection.structuredContent.result.nodes[0].name, 'External MCP card')
     mark('read', 'figma-cli.mjs')
