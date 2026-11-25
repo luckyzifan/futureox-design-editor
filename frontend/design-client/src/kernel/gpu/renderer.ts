@@ -5080,7 +5080,7 @@ export class GpuRenderer {
       // opacity, then blend it over the destination once.
       const gradientNode = this.scene.resolve && !this.scene.softwareRaster && !this.driver.managed &&
         n.clip && !maskId && !n.mask && !n.passthrough && n.blend === 'normal' &&
-        Math.fround(n.opacity) > 0 && n.opacity < 1 &&
+        Math.fround(n.opacity) >= 2 ** -126 && n.opacity < 1 &&
         !n.effects.length && !n.strokes.length && !n.fills.length && n.children.length === 1
         ? this.scene.nodes[n.children[0]] : undefined
       const gradient = gradientNode?.fills[0]

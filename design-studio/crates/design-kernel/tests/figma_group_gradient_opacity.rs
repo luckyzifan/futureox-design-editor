@@ -207,6 +207,23 @@ fn translucent_gradient_and_fractional_camera_keep_software_arithmetic() {
 }
 
 #[test]
+fn group_opacity_below_binary32_normal_range_keeps_software_arithmetic() {
+    let path = repo().join("testing/fixtures/design/figma-phase-controls-2026-10-08.json");
+    let fixture: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let isolated = fixture["records"].as_array().unwrap()
+        .iter().find(|record| record["name"] == "PhaseQA-isolated-282x270").unwrap();
+    let (width, height, mut document) = phase_document(isolated);
+    let mut engine = Engine::new();
+    let options = phase_options(width, height, RasterProfile::FigmaSoftware);
+    for opacity in [1e-50_f64, 1e-40] {
+        document["nodes"]["g"]["opacity"] = json!(opacity);
+        engine.load_document(&document.to_string()).unwrap();
+        assert!(engine.compile_gpu(&options).unwrap().software_raster);
+        assert!(engine.render(&options).unwrap().iter().all(|byte| *byte == 255));
+    }
+}
+
+#[test]
 fn paint_opacity_gradient_and_direct_composites_stay_exact() {
     let path = repo().join("frontend/design-client/public/fidelity/browser-2026-10-07/cases.json");
     let cases: Vec<Value> = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();

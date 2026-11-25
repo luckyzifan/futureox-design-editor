@@ -142,7 +142,11 @@ fn measured_phase_gradient(doc: &crate::scene::Document, options: &RenderOptions
     let mut leaf = &doc.nodes[child];
     if leaf.kind == "frame" {
         let [child] = leaf.children.as_slice() else { return false };
-        if !plain_box(leaf) || !leaf.clip || !(0. < leaf.opacity && leaf.opacity < 1.)
+        // The shader uses zero as its sentinel for painting without group
+        // scaling. The measured isolation pass needs a normal positive
+        // uniform even on hardware that flushes subnormal values to zero.
+        let opacity = leaf.opacity as f32;
+        if !plain_box(leaf) || !leaf.clip || !opacity.is_normal() || !(0. < opacity && opacity < 1.)
             || leaf.fills.iter().any(|paint| visible_paint(&paint))
         {
             return false;
