@@ -273,6 +273,7 @@ type Drag = {
   rotationDegrees?: number
   /** This gesture's own-paint image failed to load. Do not mount it again. */
   rotationSourceRejected?: boolean
+  renderRotationRaster?: boolean
   rotationCenter?: Point
   originalPivot?: Point
 }
@@ -426,6 +427,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const overviewAnchor=useRef<Point|undefined>(undefined)
   const sourceWheel = useRef<{token:string; view:CanvasCamera} | undefined>(undefined)
   const gpuMove = useRef<GpuMoveControl | null>(null)
+  const drag = useRef<Drag | null>(null)
   const gestureFollow = useRef<GestureFollowLayer | null>(null)
   const sourceRotation = useRef(false)
   const [sourceRotationPaint, setSourceRotationPaint] = useState(false)
@@ -503,12 +505,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   // Filter parameters change paint. The canvas planner supplies their native
   // footprint and avoids a concurrent transform capture of the same page.
   const gpuPreviewAvailable = !canvasFilterEdit && !!gpuMove.current?.covers(state.doc, state.selection, state.view)
+  const exactRotation = drag.current?.kind === 'rotate' && !!drag.current.renderRotationRaster
   const vectorPreviewSupport = useMemo(() => ({ document: state.doc, pageId: state.page,
-    supported: !canvasFilterEdit && !gpuPreviewAvailable && supportsEditPreview(state.doc, state.page) }),
-    [state.doc, state.page, gpuPreviewAvailable, canvasFilterEdit])
+    supported: !canvasFilterEdit && !gpuPreviewAvailable && !exactRotation && supportsEditPreview(state.doc, state.page) }),
+    [state.doc, state.page, gpuPreviewAvailable, canvasFilterEdit, exactRotation])
   const vectorPreviewSupported = vectorPreviewSupport.supported
   const editPreviewSupported = !canvasFilterEdit &&
-    (gpuPreviewAvailable || vectorPreviewSupported || !!retainedMove.current?.covers(state.doc, state.selection, state.view))
+    (gpuPreviewAvailable || vectorPreviewSupported || !exactRotation && !!retainedMove.current?.covers(state.doc, state.selection, state.view))
   const editPreviewVisible = presentationScopeMatches &&
     (gpuPreviewAvailable && !!gpuMove.current?.isActive() || editPreviewSupported && presented.document !== state.doc)
   const editInputAt = useRef(0)
@@ -732,7 +735,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       alive = false
     }
   }, [editor])
-  const drag = useRef<Drag | null>(null)
   const [gradientKeyboardTarget, setGradientKeyboardTarget] = useState<GradientStopKeyboardTarget | null>(null)
   const handleTap = useRef<CanvasHandleTap | null>(null)
   const guideIndex = useRef<{ drag: Drag; rulers: boolean | undefined; ids: string; spacing: boolean;
@@ -2887,7 +2889,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
   }
   function placeRotationSource(d: Drag, matrix: Matrix, screen: Point, degrees?: number) {
-    if (d.rotationSourceRejected || d.duplicating || d.ids.length !== 1 || !host.current) { dropGestureFollow(); return }
+    if (d.renderRotationRaster || d.rotationSourceRejected || d.duplicating || d.ids.length !== 1 || !host.current) {
+      dropGestureFollow()
+      return
+    }
     if (gestureFollow.current?.holding) dropGestureFollow()
     const id = d.ids[0]
     const source = d.sourceDocument || state.doc
@@ -2918,6 +2923,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       grid: state.grid, checkerboard: state.checkerboard, pixelPreview: state.pixelPreview !== 0,
     }) : null
     if (!plan) { dropGestureFollow(); return }
+    // A browser transform gives solid edges different coverage. Use the
+    // document renderer throughout this gesture when Figma sampling is set.
+    if (plan.paint.kind === 'solid' && (source.rasterProfile === 'figma' || source.rasterProfile === 'figmaSoftware')) {
+      d.renderRotationRaster = true
+      dropGestureFollow()
+      return
+    }
     let layer = gestureFollow.current
     if (!layer) {
       const mounted = mountRotationSource(host.current, {
