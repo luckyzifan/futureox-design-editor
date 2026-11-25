@@ -3463,8 +3463,10 @@ fn foreign_symbol_import(
         let mut source=entry.clone();
         if let Some(map) = source.get_mut("remoteToLocalIDMap").and_then(Value::as_object_mut) {
             let mut scoped_ids = BTreeMap::new();
+            let mut visited = std::collections::BTreeSet::new();
             let mut pending = vec![id.as_str()];
-            while let Some(node) = pending.pop().and_then(|id| importer.nodes.get(id)) {
+            while let Some(id) = pending.pop() {
+                let Some(node) = importer.nodes.get(id).filter(|_| visited.insert(id)) else { continue };
                 if let Some(wire) = node.bindings.get("sketchLayerFromLibraryObjectID") {
                     scoped_ids.insert(wire.to_ascii_uppercase(), node.id.as_str());
                 }
