@@ -100,6 +100,7 @@ export function NativeSourceSurface(props:Props){
     const projection=new CameraReprojection(element,host.current!,()=>schedulePaint())
     projection.history.bind(source)
     let backing:ResidentAcknowledgement|undefined,completeBacking:ResidentAcknowledgement|undefined
+    let certifiedBacking: ResidentAcknowledgement | undefined
     let shownMaterials:readonly OverviewMaterial[]|undefined
     let partialMaterials:readonly OverviewMaterial[]|undefined
     let startupPreview: {scale:number} | undefined
@@ -528,7 +529,18 @@ export function NativeSourceSurface(props:Props){
         }
         const mixed=refining||(continuity&&!certify&&certify!==complete)
         if(previous?.demand===demand && previous.complete===certify && previous.mixed===mixed && previous.scale===raster.scale &&
-            previous.ids.size===ids.size && [...ids].every(tile=>previous.ids.has(tile)))return
+            previous.ids.size===ids.size && [...ids].every(tile=>previous.ids.has(tile))){
+          // A round trip without an intervening bitmap can make the last
+          // certified frame current again after navigation reset its status.
+          // Restore the status of that displayed frame without submitting it.
+          if (certify && !mixed && certifiedBacking && backing === certifiedBacking &&
+              certifiedBacking.presentationId === previous.id && !p.hidden &&
+              p.source?.token === source.token && p.source.revision === source.revision &&
+              element.dataset.cameraReprojected !== 'true') {
+            emit({phase:'ready',done,total:tiles.length})
+          }
+          return
+        }
         const sequence=++submission,id=`${prefix}:${sequence}`
         for(const tile of visible){tile.lastSubmission=sequence;tile.used=++tick}
         const zoomUnderlay=inwardHold && visible.some(tile=>tile.zoom>backing!.view.zoom*ratio*(1+1e-9))
@@ -922,6 +934,7 @@ export function NativeSourceSurface(props:Props){
           emit({phase:'refining',done:arrived,total:planned.tiles.length})
           schedulePaint();void run()
         }else if(complete && clarityReady){
+          if (bitmapApplied) certifiedBacking = actual
           const scale=actual.view.zoom*actual.dpr
           const tierKeys=new Set(shownTiles.map(t=>t.key))
           // Overview canvases have no material keys. They still need the wide
