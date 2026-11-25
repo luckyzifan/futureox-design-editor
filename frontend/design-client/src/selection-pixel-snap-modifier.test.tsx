@@ -223,6 +223,30 @@ test('shift-resize snap keeps aspect while the dragged edge meets the target', a
   expect(layer.transform[4]).toBeCloseTo(0, 6)
 })
 
+test('shift-resize snaps the edge aspect lock moves and leaves the pixel grid alone', async () => {
+  const moving = node('rectangle', 0, 0, 50, 40)
+  const target = node('rectangle', -20, 80.4, 300, 20)
+  await render([moving, target], { snap: true, snapPixels: true })
+  await act(async () => editor.select([moving.id]))
+  const edge = () => mount.querySelector('[data-testid="resize-edge-1"]')!
+  const before = editor.state.doc
+  await act(async () => pointer('pointerdown', 50, 20, { shiftKey: true }, edge()))
+  await act(async () => pointer('pointermove', 145, 20, { shiftKey: true }))
+  await flushFrames()
+  const guide = mount.querySelector('[data-testid="canvas-alignment-guide"][data-axis="y"]')
+  expect(Number(guide?.getAttribute('data-position'))).toBeCloseTo(80.4, 6)
+  await act(async () => pointer('pointerup', 145, 20, { shiftKey: true }))
+  const layer = editor.state.doc.nodes[moving.id]
+  expect(layer.width).toBeCloseTo(151, 6)
+  expect(layer.height).toBeCloseTo(120.8, 6)
+  expect(layer.transform[4]).toBeCloseTo(0, 6)
+  expect(layer.transform[5]).toBeCloseTo(-40.4, 6)
+  expect(layer.width / layer.height).toBeCloseTo(50 / 40, 6)
+  expect(mount.querySelector('[data-testid="canvas-alignment-guide"]')).toBeNull()
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+})
+
 test('rotated resize snaps the moving extent without shifting the opposite edge', async () => {
   const moving = node('rectangle', 20, 30, 50, 40)
   const [a, b, c, d] = rotate(30)
