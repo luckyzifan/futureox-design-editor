@@ -105,6 +105,61 @@ fn named<'a>(files: &'a BTreeMap<String, Value>, name: &str) -> Vec<&'a Value> {
     found
 }
 
+fn assert_image_references_resolve(files: &BTreeMap<String, Vec<u8>>) -> usize {
+    let mut count = 0;
+    for (name, bytes) in files.iter().filter(|(name, _)| name.ends_with(".json")) {
+        let part: Value = serde_json::from_slice(bytes).unwrap();
+        let mut pending = vec![&part];
+        while let Some(value) = pending.pop() {
+            match value {
+                Value::Array(entries) => pending.extend(entries),
+                Value::Object(entries) => pending.extend(entries.values()),
+                _ => {}
+            }
+            if value["_ref_class"] == "MSImageData" && let Some(reference) = value["_ref"].as_str() {
+                assert!(files.contains_key(reference) || files.contains_key(&format!("images/{reference}")),
+                    "{name} has a dangling image reference: {reference}");
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+#[test]
+fn wfp_assets_keep_exact_archive_images_and_old_fd_drops_dangling_refs() {
+    let bytes = fixture("../../../testing/fixtures/sketch-public-20261105/ui-design-kit/[Legacy] WFP Template.sketch");
+    let source = interop::read_zip_public(&bytes).unwrap();
+    assert_eq!(assert_image_references_resolve(&source), 30);
+    let source_document: Value = serde_json::from_slice(&source["document.json"]).unwrap();
+    let source_assets = &source_document["assets"]["images"];
+    assert_eq!(source_assets.as_array().unwrap().len(), 5);
+
+    let mut doc = interop::import_sketch(&bytes).unwrap();
+    let exported = interop::read_zip_public(&interop::export_sketch(&doc).unwrap()).unwrap();
+    assert_eq!(assert_image_references_resolve(&exported), 30);
+    let export_document: Value = serde_json::from_slice(&exported["document.json"]).unwrap();
+    assert_eq!(&export_document["assets"]["images"], source_assets);
+    assert!(export_document.get("sketchAssetImageBytes").is_none());
+    for image in source_assets.as_array().unwrap() {
+        let reference = image["_ref"].as_str().unwrap();
+        assert_eq!(exported[reference], source[reference], "{reference}");
+    }
+
+    // Reopen the shape of an FD saved before the archive bytes were retained.
+    let metadata = &mut doc.design_system.as_mut().unwrap().sketch_containers;
+    assert!(metadata.remove("sketchAssetImageBytes").is_some());
+    let legacy = interop::read_zip_public(&interop::export_sketch(&doc).unwrap()).unwrap();
+    assert_eq!(assert_image_references_resolve(&legacy), 25);
+    let legacy_document: Value = serde_json::from_slice(&legacy["document.json"]).unwrap();
+    assert_eq!(legacy_document["assets"]["images"], json!([]));
+    for (key, source_value) in export_document["assets"].as_object().unwrap() {
+        if key != "images" {
+            assert_eq!(&legacy_document["assets"][key], source_value);
+        }
+    }
+}
+
 #[test]
 fn wfp_page_masters_survive_embedded_library_copy_ids() {
     let bytes = fixture("../../../testing/fixtures/sketch-public-20261105/ui-design-kit/[Legacy] WFP Template.sketch");

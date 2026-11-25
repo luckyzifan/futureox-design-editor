@@ -3125,6 +3125,96 @@ impl<'a> Importer<'a> {
 }
 
 const SKETCH_USER_JSON_BUDGET: usize = 1_048_576;
+const SKETCH_ASSET_IMAGE_BYTES: &str = "sketchAssetImageBytes";
+
+fn is_asset_image_file_reference(entry: &Value) -> bool {
+    entry["_class"] == "MSJSONFileReference" && entry["_ref_class"] == "MSImageData"
+}
+
+fn sketch_asset_image_member(entry: &Value) -> Option<std::borrow::Cow<'_, str>> {
+    use std::borrow::Cow;
+    let reference = entry["_ref"].as_str()?;
+    let member = if reference.starts_with("images/") {
+        Cow::Borrowed(reference)
+    } else {
+        Cow::Owned(format!("images/{reference}"))
+    };
+    crate::sketch::archive::safe_path(&member).then_some(member)
+}
+
+fn retain_sketch_asset_images(
+    document: &Value,
+    files: &BTreeMap<String, Vec<u8>>,
+    containers: &mut BTreeMap<String, Value>,
+) -> Result<()> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let Some(assets) = document.pointer("/assets/images").and_then(Value::as_array) else {
+        return Ok(());
+    };
+    let mut retained = Map::new();
+    let mut remaining = crate::capacity::document_byte_limit();
+    for asset in assets.iter().filter(|entry| is_asset_image_file_reference(entry)) {
+        if let Some(member) = sketch_asset_image_member(asset)
+            && !retained.contains_key(member.as_ref())
+            && let Some(bytes) = files.get(member.as_ref())
+        {
+            let encoded_bytes = bytes.len().div_ceil(3).saturating_mul(4);
+            remaining = remaining.checked_sub(encoded_bytes)
+                .ok_or_else(|| archive_limit("document asset representation bytes"))?;
+            retained.insert(member.into_owned(), Value::String(STANDARD.encode(bytes)));
+        }
+    }
+    if !retained.is_empty() {
+        containers.insert(SKETCH_ASSET_IMAGE_BYTES.into(), Value::Object(retained));
+    }
+    Ok(())
+}
+
+fn export_sketch_asset_images(
+    document: &mut Value,
+    doc: &Document,
+    output: &mut ExportedImages,
+) -> Result<()> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let Some(assets) = document.pointer_mut("/assets/images").and_then(Value::as_array_mut) else {
+        return Ok(());
+    };
+    if !assets.iter().any(is_asset_image_file_reference) {
+        return Ok(());
+    }
+    let retained = doc.design_system.as_ref()
+        .and_then(|system| system.sketch_containers.get(SKETCH_ASSET_IMAGE_BYTES));
+    let mut emitted: BTreeSet<_> = output.entries.iter().map(|(path, _)| path.clone()).collect();
+    let limits = archive_limits();
+    let modeled_bytes: u64 = output.entries.iter().map(|(_, bytes)| bytes.len() as u64).sum();
+    let mut remaining = limits.total.saturating_sub(modeled_bytes);
+    for asset in std::mem::take(assets) {
+        if is_asset_image_file_reference(&asset) {
+            let Some(member) = sketch_asset_image_member(&asset) else { continue };
+            if !emitted.contains(member.as_ref()) {
+                if let Some(encoded) = retained.and_then(|files| files.get(member.as_ref())).and_then(Value::as_str) {
+                    if encoded.len() as u64 > limits.entry.min(remaining).div_ceil(3).saturating_mul(4) {
+                        return Err(archive_limit("document asset expanded bytes"));
+                    }
+                    let Ok(bytes) = STANDARD.decode(encoded) else { continue };
+                    if bytes.len() as u64 > limits.entry {
+                        return Err(archive_limit("document asset entry expanded bytes"));
+                    }
+                    remaining = remaining.checked_sub(bytes.len() as u64)
+                        .ok_or_else(|| archive_limit("document asset total expanded bytes"))?;
+                    emitted.insert(member.to_string());
+                    output.entries.push((member.into_owned(), bytes));
+                } else {
+                    // Older FD documents may hold the raw JSON inventory
+                    // alone. Do not publish a reference to an absent member.
+                    continue;
+                }
+            }
+        }
+        assets.push(asset);
+    }
+    Ok(())
+}
 
 fn sketch_bool(value: Option<&Value>) -> Option<bool> {
     match value? {
@@ -4017,6 +4107,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
             }
         }
     }
+    retain_sketch_asset_images(document, files, &mut sketch_containers)?;
     if !ruler_pages.is_empty() {
         sketch_containers.insert(
             "rulerData".into(),
@@ -9408,6 +9499,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     | "sketchUser"
                     | "sketchCurrentPageId"
                     | "currentPageIndex"
+                    | SKETCH_ASSET_IMAGE_BYTES
             ) {
                 continue;
             }
@@ -9428,6 +9520,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
     if !foreign_symbols.is_empty() {
         document["foreignSymbols"] = Value::Array(foreign_symbols);
     }
+    export_sketch_asset_images(&mut document, doc, &mut images)?;
     validate_sketch_shared_style_ids(&document)?;
     let has_glass = doc.nodes.values().any(|n| n.effects.iter().any(|e|e.glass.is_some())) ||
         doc.design_system.as_ref().is_some_and(|s|s.styles.values().any(|style|style.effects.iter().any(|e|e.glass.is_some())));
