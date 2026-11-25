@@ -72,6 +72,7 @@ impl Fixture {
             sketch_reduced_group: None,
             clipped_export_target: false,
             png_region: false,
+            png_frame: None,
             flush_backdrop_frame: None,
             compact_export_groups: false,
             post_byte_opacity: None,
