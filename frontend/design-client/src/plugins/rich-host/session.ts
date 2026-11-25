@@ -320,11 +320,13 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   const networkJobs: { id: number; url: string; method: string; headers: Record<string, string>; body: string | null }[] = []
   const fontJobs: PluginFontJob[] = []
   const exportJobs: PluginExportJob[] = []
+  const timers = new Map<number, number>()
   const systemFonts = options.systemFonts
   const systemFontAliases = new Map<string, string>()
   const systemFaceImports = new Map<string, string>()
   let fontJobSerial = 0
   let exportJobSerial = 0
+  let timerSerial = 0
   const documentId = editor.state.doc.id
   const sessionId = editor.sessionGeneration
   const commands: Command[] = []
@@ -1125,7 +1127,18 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     abandonTurn() {
       commands.splice(0)
       pluginStoreDirty = false
+      timers.clear()
     },
+    assertCurrent: failIfReplaced,
+    hasTimers: () => timers.size > 0,
+    nextTimer() {
+      let next: { id: number; due: number } | null = null
+      for (const [id, due] of timers) {
+        if (!next || due < next.due) next = { id, due }
+      }
+      return next
+    },
+    consumeTimer: (id: number) => timers.delete(id),
     hasNetwork: () => networkJobs.length > 0,
     takeNetwork: () => networkJobs.shift() ?? null,
     hasFontJobs: () => fontJobs.length > 0,
@@ -1149,6 +1162,18 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         logs.length = 0
         return null
       }
+      if (op === 'timerSchedule') {
+        failIfReplaced()
+        const delay = finite(body.delay, 'Timer delay', 0, PLUGIN_LIMITS.timerDelayMs)
+        if (timers.size >= PLUGIN_LIMITS.pendingTimers) throw new PluginApiError('plugin_limit', 'Too many pending plugin timers')
+        const id = ++timerSerial
+        timers.set(id, performance.now() + delay)
+        return id
+      }
+      if (op === 'timerCancel') {
+        if (typeof body.id === 'number') timers.delete(body.id)
+        return null
+      }
       if (op === 'notify') {
         const message = shortText(body.message ?? '', 'notify', PLUGIN_LIMITS.notifyChars)
         notifications.push(message)
@@ -1159,6 +1184,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       if (op === 'close') {
         flush()
         closed = true
+        timers.clear()
         closeMessage = shortText(body.message ?? '', 'closePlugin', PLUGIN_LIMITS.notifyChars)
         options.hooks?.onClose?.(closeMessage)
         throw new PluginClosed(closeMessage)

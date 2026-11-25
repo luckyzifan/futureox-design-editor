@@ -68,6 +68,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   const [pending, setPending] = useState<PluginBundle | null>(null)
   const [enabled, setEnabled] = useState<DeclaredPlugin[] | null>(null)
   const controller = useRef<PluginController | null>(null)
+  const runAbort = useRef<AbortController | null>(null)
   const backdrop = useRef<HTMLDivElement>(null)
   const closeButton = useRef<HTMLButtonElement>(null)
   useModalOwnership(backdrop, closeButton, returnFocus)
@@ -81,6 +82,8 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
 
   function stop() {
     generation.current += 1
+    runAbort.current?.abort()
+    runAbort.current = null
     controller.current?.close()
     controller.current = null
     uiOpen.current = false
@@ -113,17 +116,16 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
         return
       }
       const events = pluginEditorEvents(previous, next, active.applying)
+      const failed = (failure: unknown) => {
+        if (controller.current !== active) return
+        setError(failure instanceof Error ? failure.message : String(failure))
+        stopRef.current()
+      }
       for (const event of events) {
         try {
           const delivered = active.emit(event)
-          if (delivered) void Promise.resolve(delivered).catch(failure => {
-            setError(failure instanceof Error ? failure.message : String(failure))
-            stopRef.current()
-          })
-        } catch (failure) {
-          setError(failure instanceof Error ? failure.message : String(failure))
-          stopRef.current()
-        }
+          if (delivered) void delivered.catch(failed)
+        } catch (failure) { failed(failure) }
       }
     })
   }, [editor])
@@ -167,10 +169,18 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     }
     setPending(null)
     setRunning(true)
+    const abort = new AbortController()
+    runAbort.current = abort
+    const failed = (failure: unknown) => {
+      if (token !== generation.current) return
+      setError(failure instanceof Error ? failure.message : String(failure))
+      stop()
+    }
     try {
       const manifest = bundle.manifest
       const next = await openPlugin(editor, bundle, {
         command,
+        signal: abort.signal,
         systemFonts: desktop?.fonts ? {
           list: async () => { const listed = await desktop.fonts!.list(); return listed.status === 'ok' ? listed.fonts : null },
           read: async request => { const read = await desktop.fonts!.read(request); return read.status === 'ok' ? { face: read.font, data: read.data } : null },
@@ -190,7 +200,9 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
             })
           } else setStatus(text.webUi)
         },
-        onPostMessage: message => { void desktop?.plugins?.postUi({ pluginMessage: message }) },
+        onPostMessage: message => {
+          if (token === generation.current) void desktop?.plugins?.postUi({ pluginMessage: message })
+        },
         onClose: message => {
           // closePlugin runs inside a guest host call; finalize the panel only
           // after that turn returns, so a finished plugin frees its window,
@@ -206,13 +218,17 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
       controller.current = next
       setStatus(manifest.name)
       if (desktop?.plugins) {
-        const offMessage = desktop.plugins.onUiMessage(message => { void next.deliver(message.pluginMessage) })
+        const offMessage = desktop.plugins.onUiMessage(message => {
+          if (token !== generation.current) return
+          try {
+            const delivered = next.deliver(message.pluginMessage)
+            if (delivered) void delivered.catch(failed)
+          } catch (failure) { failed(failure) }
+        })
         const offClosed = desktop.plugins.onUiClosed(() => { if (token === generation.current) stop() })
         unlisten.current = () => { offMessage(); offClosed() }
       }
-    } catch (cause) {
-      if (token === generation.current) { setError(cause instanceof Error ? cause.message : String(cause)); stop() }
-    }
+    } catch (cause) { failed(cause) }
   }
 
   async function runSample() {

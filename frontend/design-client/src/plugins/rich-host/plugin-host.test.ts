@@ -482,21 +482,84 @@ describe('Figma plugin host', () => {
     run.close()
   })
 
-  it('runs a zero-delay timer and rejects fetch', async () => {
+  it('runs a requested delay, clears a queued timer and rejects unavailable capabilities', async () => {
     const current = editor()
     const run = await openPlugin(current, bundle('Later', `
       ;(async function () {
         await new Promise(function (resolve) { setTimeout(resolve, 0) })
-        figma.createRectangle().name = 'Later'
+        const cancelled = setTimeout(function () { throw new Error('cancelled timer ran') }, 10)
+        clearTimeout(cancelled)
+        const label = await new Promise(function (resolve) { setTimeout(resolve, 15, 'Later') })
+        figma.createRectangle().name = label
         var blocked = false
-        try { setTimeout(function () {}, 10) } catch (error) { blocked = String(error).indexOf('unsupported_api') >= 0 }
-        if (!blocked) throw new Error('delay accepted')
+        try { setTimeout(function () {}, 10000) } catch (error) { blocked = String(error).indexOf('invalid_value') >= 0 }
+        if (!blocked) throw new Error('unbounded delay')
+        try { setInterval(function () {}, 10) } catch (error) { blocked = String(error).indexOf('unsupported_api') >= 0 }
+        if (!blocked) throw new Error('interval accepted')
+        blocked = false
         try { await fetch('https://example.com/secret') } catch (error) { blocked = String(error).indexOf('network_denied') >= 0 }
         if (!blocked) throw new Error('fetch accepted')
       })()
     `))
     expect(named(current, 'Later')?.kind).toBe('rectangle')
     run.close()
+  })
+
+  it('posts a delayed UI response and serializes other messages behind it', async () => {
+    const posted: unknown[] = []
+    const run = await openPlugin(editor(), bundle('DelayedUi', `
+      figma.showUI('<p>panel</p>')
+      figma.ui.onmessage = function (message) {
+        if (message === 'first') setTimeout(function () { figma.ui.postMessage('delayed') }, 500)
+        else figma.ui.postMessage(message)
+      }
+    `), { onPostMessage: message => posted.push(message) })
+    const first = run.deliver('first')
+    const second = run.deliver('second')
+    expect(posted).toEqual([])
+    await Promise.all([first, second])
+    expect(posted).toEqual(['delayed', 'second'])
+    run.close()
+  })
+
+  it('disposes a suspended timer turn when the plugin is stopped', async () => {
+    const current = editor()
+    const run = await openPlugin(current, bundle('StopTimer', `
+      figma.showUI('<p>panel</p>')
+      figma.ui.onmessage = async function () {
+        figma.createRectangle().name = 'Uncommitted'
+        await new Promise(function (resolve) { setTimeout(resolve, 3000) })
+        figma.createRectangle().name = 'Cancelled'
+      }
+    `))
+    const pending = run.deliver('start')
+    run.close()
+    await pending
+    expect(named(current, 'Uncommitted')).toBeUndefined()
+    expect(named(current, 'Cancelled')).toBeUndefined()
+  })
+
+  it('cancels startup timers before returning a stopped plugin', async () => {
+    const abort = new AbortController()
+    const current = editor()
+    const starting = openPlugin(current, bundle('StopStartup', `
+      setTimeout(function () { figma.createRectangle().name = 'Cancelled' }, 3000)
+      figma.notify('started')
+    `), { signal: abort.signal, onNotify: () => abort.abort() })
+    await expect(starting).rejects.toMatchObject({ name: 'AbortError' })
+    expect(named(current, 'Cancelled')).toBeUndefined()
+  })
+
+  it('reports asynchronous timer callback errors and discards their uncommitted edits', async () => {
+    const current = editor()
+    await expect(openPlugin(current, bundle('BadTimer', `
+      setTimeout(async function () {
+        await new Promise(function (resolve) { setTimeout(resolve, 0) })
+        figma.createRectangle().name = 'Uncommitted'
+        throw new Error('timer callback failed')
+      }, 0)
+    `))).rejects.toThrow(/timer callback failed/)
+    expect(named(current, 'Uncommitted')).toBeUndefined()
   })
 
   it('imports SVG, finds by type, and writes the sizing and text fields community plugins use', async () => {

@@ -12,7 +12,8 @@ function unsupported(api) {
 }
 function host(op, payload) {
   const reading = {
-    readNode: 1, readDocument: 1, children: 1, fonts: 1, log: 1, notify: 1, postMessage: 1,
+    readNode: 1, readDocument: 1, children: 1, fonts: 1, log: 1, logClear: 1, notify: 1, postMessage: 1,
+    timerSchedule: 1, timerCancel: 1,
     showUI: 1, uiResize: 1, uiShow: 1, uiHide: 1, uiClose: 1, loadFont: 1, meta: 1, listen: 1,
     viewportRead: 1, clientStorageGet: 1, clientStorageKeys: 1,
     pluginDataGet: 1, pluginDataKeys: 1, sharedPluginDataGet: 1, sharedPluginDataKeys: 1,
@@ -563,7 +564,7 @@ const figma = {
   },
 }
 globalThis.__deliverPluginMessage = function (message) {
-  if (typeof figma.ui.onmessage === 'function') figma.ui.onmessage(message)
+  if (typeof figma.ui.onmessage === 'function') return figma.ui.onmessage(message)
 }
 globalThis.__deliverPluginEvent = function (type) {
   const event = type === 'documentchange' ? { documentChanges: [] } : undefined
@@ -638,13 +639,22 @@ globalThis.__finishFetch = function (id, payload) {
   }
   waiter.resolve(response)
 }
-globalThis.setTimeout = function (fn, ms) {
-  if (typeof fn !== 'function') throw new Error('invalid_value: setTimeout expects a function')
-  if (ms !== undefined && ms !== 0) unsupported('setTimeout delay')
-  Promise.resolve().then(function () { fn() })
-  return 0
+const pluginTimers = new Map()
+globalThis.setTimeout = function (callback, delay, ...args) {
+  if (typeof callback !== 'function') throw new Error('invalid_value: setTimeout expects a function')
+  const id = host('timerSchedule', { delay: Math.max(0, Number(delay) || 0) })
+  pluginTimers.set(id, { callback: callback, args: args })
+  return id
 }
-globalThis.clearTimeout = function () {}
+globalThis.clearTimeout = function (id) {
+  const timerId = Number(id)
+  if (pluginTimers.delete(timerId)) host('timerCancel', { id: timerId })
+}
+globalThis.__deliverPluginTimer = function (id) {
+  const timer = pluginTimers.get(id)
+  pluginTimers.delete(id)
+  if (timer) return timer.callback.apply(undefined, timer.args)
+}
 globalThis.setInterval = function () { unsupported('setInterval') }
 globalThis.clearInterval = function () {}
 `
