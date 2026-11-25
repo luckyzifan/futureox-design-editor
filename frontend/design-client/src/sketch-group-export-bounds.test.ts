@@ -184,6 +184,16 @@ test('sketch group layer export uses native integer-point bounds at every measur
   plain.nodes = { [group.id]: group, [child.id]: child }
   plain.pages[0].children = [group.id]
   expect((await pngOf(plain, group.id, 2)).size).toEqual({ width: 83, height: 58 })
+  const fractionalPlain = blank('本地小数编组')
+  const fractionalChild = node('rectangle', 0, 0, LAYER.width, LAYER.height)
+  const fractionalGroup = node('group', 2.5, -1.5, LAYER.width, LAYER.height)
+  fractionalGroup.children = [fractionalChild.id]
+  fractionalPlain.nodes = { [fractionalGroup.id]: fractionalGroup, [fractionalChild.id]: fractionalChild }
+  fractionalPlain.pages[0].children = [fractionalGroup.id]
+  expect(rasterExportBounds(fractionalPlain, fractionalPlain.pages[0].id, { kind: 'selection', nodeIds: [fractionalGroup.id] })).toEqual(
+    targetBounds(fractionalPlain, fractionalPlain.pages[0].id, { kind: 'selection', nodeIds: [fractionalGroup.id] }),
+  )
+  expect((await pngOf(fractionalPlain, fractionalGroup.id, 2)).size).toEqual({ width: 83, height: 58 })
   const slice = await exportImage(plain, plain.pages[0].id, 'png', 1, undefined, undefined, {
     kind: 'slice', bounds: { x: -4.5, y: 2.25, width: 12.25, height: 9.5 },
   })

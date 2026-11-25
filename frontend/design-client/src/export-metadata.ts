@@ -12,6 +12,18 @@ export function defaultLayerExportSetting(): ExportSetting {
   return { id: uid(), format: 'png', scale: 1, suffix: '' }
 }
 
+const DOCUMENT_POINT_SLOP = 1e-8
+
+/** Pull a document edge out to an integer point. A value already within
+ * 1e-8 of an integer is that integer: real Sketch frames carry binary dust
+ * such as 819.9999999999999, and flooring the dust adds a full empty point. */
+function outwardDocumentEdge(value: number, direction: 'floor' | 'ceil') {
+  const nearest = Math.round(value)
+  const aligned = Math.abs(value - nearest) <= DOCUMENT_POINT_SLOP ? nearest : value
+  const edge = direction === 'floor' ? Math.floor(aligned) : Math.ceil(aligned)
+  return edge === 0 ? 0 : edge
+}
+
 /** Sketch snaps the document bounds of a group out to whole points before
  * applying the PNG scale. Preserve the fractional position of its contents. */
 export function sketchGroupPngBounds(doc: DesignDocument, target: ExportTarget, bounds: Bounds): Bounds {
@@ -22,8 +34,12 @@ export function sketchGroupPngBounds(doc: DesignDocument, target: ExportTarget, 
   const sources = doc.designSystem?.sketchContainers?.nodeMetadata as
     Record<string, { bindings?: Record<string, string> }> | undefined
   if (sources?.[id]?.bindings?.sketchSourceGroup !== 'true') return bounds
-  const x = Math.floor(bounds.x), y = Math.floor(bounds.y)
-  return { x, y, width: Math.ceil(bounds.x + bounds.width) - x, height: Math.ceil(bounds.y + bounds.height) - y }
+  const x = outwardDocumentEdge(bounds.x, 'floor')
+  const y = outwardDocumentEdge(bounds.y, 'floor')
+  const width = outwardDocumentEdge(bounds.x + bounds.width, 'ceil') - x
+  const height = outwardDocumentEdge(bounds.y + bounds.height, 'ceil') - y
+  if (!(width > 0) || !(height > 0) || !Number.isFinite(width) || !Number.isFinite(height)) return bounds
+  return { x, y, width, height }
 }
 
 /** An authored slice exports in its own axes; an AABB would change its
