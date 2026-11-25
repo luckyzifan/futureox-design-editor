@@ -642,21 +642,24 @@ globalThis.__finishFetch = function (id, payload) {
   waiter.resolve(response)
 }
 const pluginTimers = new Map()
-globalThis.setTimeout = function (callback, delay, ...args) {
-  if (typeof callback !== 'function') throw new Error('invalid_value: setTimeout expects a function')
-  const id = host('timerSchedule', { delay: Math.max(0, Number(delay) || 0) })
-  pluginTimers.set(id, { callback: callback, args: args })
+function schedulePluginTimer(callback, delay, args, repeat) {
+  if (typeof callback !== 'function') throw new Error('invalid_value: Plugin timers require a function')
+  const id = host('timerSchedule', { delay: Math.max(0, Number(delay) || 0), repeat: repeat })
+  pluginTimers.set(id, { callback: callback, args: args, repeat: repeat })
   return id
 }
-globalThis.clearTimeout = function (id) {
+function clearPluginTimer(id) {
   const timerId = Number(id)
   if (pluginTimers.delete(timerId)) host('timerCancel', { id: timerId })
 }
+globalThis.setTimeout = function (callback, delay, ...args) { return schedulePluginTimer(callback, delay, args, false) }
+globalThis.setInterval = function (callback, delay, ...args) { return schedulePluginTimer(callback, delay, args, true) }
+globalThis.clearTimeout = clearPluginTimer
+globalThis.clearInterval = clearPluginTimer
 globalThis.__deliverPluginTimer = function (id) {
   const timer = pluginTimers.get(id)
-  pluginTimers.delete(id)
-  if (timer) return timer.callback.apply(undefined, timer.args)
+  if (!timer) return
+  if (!timer.repeat) pluginTimers.delete(id)
+  return timer.callback.apply(undefined, timer.args)
 }
-globalThis.setInterval = function () { unsupported('setInterval') }
-globalThis.clearInterval = function () {}
 `

@@ -154,7 +154,7 @@ export const PLUGIN_API_COVERAGE: readonly PluginApiEntry[] = [
   { api: 'figma.util.solidPaint', status: 'supported', notes: 'SOLID paint from #RGB, #RRGGBB, #RRGGBBAA, or an {r, g, b} object.' },
   { api: 'figma.on', status: 'partial', notes: 'The Plugins panel forwards selectionchange, currentpagechange, and documentchange for editor changes outside the plugin. documentchange has an empty documentChanges list. The plugin’s own edits do not emit them. Listeners stop when the panel closes or the document session changes. close runs inside closePlugin. run and other events throw.' },
   { api: 'figma.skipInvisibleInstanceChildren', status: 'partial', notes: 'The flag is stored. findAll does not skip invisible instance children.' },
-  { api: 'setTimeout', status: 'partial', notes: 'One-shot timers allow delays up to five seconds, callback arguments, and clearTimeout. The plugin turn limits the queue and total callbacks. setInterval is unavailable.' },
+  { api: 'setTimeout', status: 'partial', notes: 'One-shot and repeating timers accept callback arguments, cancellation, and delays up to five seconds. setInterval uses a minimum 10 ms period and a bounded per-run callback budget.' },
   { api: 'console', status: 'partial', notes: 'log, info, debug, warn, error, and clear operate on the current plugin log, with bounded output.' },
   { api: 'fetch', status: 'partial', notes: 'Main-thread fetch only, and only to origins declared in networkAccess. https except an explicit localhost origin. Private networks, metadata hosts, credentials, and the UI frame stay blocked. No collaboration server.' },
   { api: 'figma.loadAllPagesAsync', status: 'supported', notes: 'Resolves immediately; every page of the local document is always loaded.' },

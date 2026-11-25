@@ -16,7 +16,7 @@ Choose **载入插件文件夹** / **Load plugin folder** and pick a directory t
 
 If the manifest has a `menu`, the panel lists those commands and runs the one you pick. `figma.command` is that command, or `undefined` when there is no menu.
 
-The desktop app scans its local `plugins` folder at startup and when the plugin panel requests the catalog. Installed folders without an ID get a stable local identity based on the folder. IDs written as JSON numbers must be positive safe integers. Larger IDs can be written as strings.
+The desktop app updates the native Plugins menu when its local `plugins` folder changes. It also scans the folder at startup and when the plugin panel opens. Installed folders without an ID get a stable local identity based on the folder. IDs written as JSON numbers must be positive safe integers. Larger IDs can be written as strings.
 
 `frontend/design-client/src/plugins/sample-ui/` is a small UI plugin. Its `ui.html` posts `{ pluginMessage: { type: "create-label", text } }`. The host answers with `{ pluginMessage, pluginId }`.
 
@@ -37,7 +37,7 @@ Plugin JavaScript runs in QuickJS. The only bridge is a fixed set of host operat
 
 Desktop content security policy still has no `unsafe-eval`. The plugin UI window uses `connect-src 'none'`. Main-thread `fetch` reaches only domains declared in `networkAccess`. `figma.clientStorage` is local to this client (5 MB, including JSON, `undefined`, and `Uint8Array`). Node `getPluginData` / `setPluginData` is stored in the inert FD extension `design.futureox/plugin-data` and shares the undo step of that flush. A file that carries the extension cannot be appended into another document until the extension is removed; open it on its own to keep the data.
 
-Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host calls, and 2,000 nodes in one `findAll`. One-shot timers allow delays up to five seconds and up to 64 pending timers and 128 callbacks in a turn. Stopping the plugin cancels pending timers.
+Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host calls, and 2,000 nodes in one `findAll`. Timers allow delays up to five seconds and share 64 pending slots. A turn can run up to 128 one-shot callbacks. Repeating timers have a 10 ms minimum period and allow up to 2,000 callbacks per plugin run. Stopping the plugin cancels pending timers.
 
 ## What a real .zip or .figma plugin can do
 
@@ -62,7 +62,7 @@ Behavior follows the [Figma Plugin API](https://www.figma.com/plugin-docs/api/ap
 
 ## Still blocked
 
-These calls still throw or are absent: `createImageAsync`, vector networks, remote variable libraries, `importStyleByKeyAsync`, payment transactions, parameters, codegen, annotations, styled text range writes, reactions, relaunch buttons, `strokeStyleId`, UI-frame network, and `setInterval`. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. `documentchange` does not list the changed nodes. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
+These calls still throw or are absent: `createImageAsync`, vector networks, remote variable libraries, `importStyleByKeyAsync`, payment transactions, parameters, codegen, annotations, styled text range writes, reactions, relaunch buttons, `strokeStyleId`, and UI-frame network. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. `documentchange` does not list the changed nodes. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
 
 ## API coverage
 
@@ -197,7 +197,7 @@ These calls still throw or are absent: `createImageAsync`, vector networks, remo
 | `figma.util.solidPaint` | supported | SOLID paint from #RGB, #RRGGBB, #RRGGBBAA, or an {r, g, b} object. |
 | `figma.on` | partial | The Plugins panel forwards selectionchange, currentpagechange, and documentchange for editor changes outside the plugin. documentchange has an empty documentChanges list. The plugin’s own edits do not emit them. Listeners stop when the panel closes or the document session changes. close runs inside closePlugin. run and other events throw. |
 | `figma.skipInvisibleInstanceChildren` | partial | The flag is stored. findAll does not skip invisible instance children. |
-| `setTimeout` | partial | One-shot timers allow delays up to five seconds, callback arguments, and clearTimeout. The plugin turn limits the queue and total callbacks. setInterval is unavailable. |
+| `setTimeout` | partial | One-shot and repeating timers accept callback arguments, cancellation, and delays up to five seconds. setInterval uses a minimum 10 ms period and a bounded per-run callback budget. |
 | `console` | partial | log, info, debug, warn, error, and clear operate on the current plugin log, with bounded output. |
 | `fetch` | partial | Main-thread fetch only, and only to origins declared in networkAccess. https except an explicit localhost origin. Private networks, metadata hosts, credentials, and the UI frame stay blocked. |
 | `figma.loadAllPagesAsync` | supported | Resolves immediately; every page of the local document is always loaded. |

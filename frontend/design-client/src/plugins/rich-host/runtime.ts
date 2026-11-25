@@ -38,6 +38,7 @@ export type PluginHooks = {
   onNotify?: (message: string) => void
   onUi?: (ui: PluginUiState) => void
   onPostMessage?: (message: unknown) => void
+  onError?: (error: unknown) => void
   /** The guest finished itself with closePlugin. Host-initiated stop does not fire it. */
   onClose?: (message: string) => void
   /** Manifest menu command. Omitted when the plugin has no menu. */
@@ -56,10 +57,13 @@ export class PluginController {
   private runtime: QuickJSRuntime | null
   private context: QuickJSContext | null
   private readonly asyncResults = new Set<QuickJSHandle>()
+  private readonly intervalResults = new Set<QuickJSHandle>()
   private readonly exportAbort = new AbortController()
   private currentTurn: Promise<void> | null = null
   private queuedTurns = 0
   private cancelTimerWait: (() => void) | null = null
+  private intervalWakeup: ReturnType<typeof setTimeout> | null = null
+  private intervalTurnPending = false
   private readonly stopOnAbort = () => { queueMicrotask(() => this.close()) }
   private systemFaces: Promise<readonly import('./session').PluginSystemFontFace[] | null> | null = null
   private constructor(
@@ -70,6 +74,7 @@ export class PluginController {
     private readonly networkDomains: readonly string[],
     private readonly systemFonts: PluginSystemFonts | undefined,
     private readonly signal: AbortSignal | undefined,
+    private readonly onError: PluginHooks['onError'],
   ) {
     this.runtime = runtime
     this.context = context
@@ -98,7 +103,7 @@ export class PluginController {
       systemFonts: hooks?.systemFonts,
       hooks,
     })
-    const controller = new PluginController(session, runtime, context, hooks?.fetch, bundle.manifest.networkDomains, hooks?.systemFonts, hooks?.signal)
+    const controller = new PluginController(session, runtime, context, hooks?.fetch, bundle.manifest.networkDomains, hooks?.systemFonts, hooks?.signal, hooks?.onError)
     const host = context.newFunction('__host', (opHandle, payloadHandle) => {
       try {
         const op = context.getString(opHandle)
@@ -133,8 +138,7 @@ export class PluginController {
       const pending = controller.evaluate(PLUGIN_PRELUDE + '\n' + bundle.main)
       if (pending) await pending
       hooks?.signal?.throwIfAborted()
-      session.flush()
-      if (session.closed || (!session.uiShown && !session.listening)) controller.release()
+      controller.finishTurn()
       return controller
     } catch (error) {
       // A failed turn drops only the unflushed queue. commitUndo, closePlugin,
@@ -168,19 +172,15 @@ export class PluginController {
     this.release()
   }
 
-  private dispatch(code: string): Promise<void> | void {
+  private dispatch(code: string | (() => string | undefined)): Promise<void> | void {
     const run = () => {
       if (!this.context || this.session.closed) return
-      const finish = () => {
-        if (!this.context) return
-        this.session.flush()
-        if (this.session.closed) this.release()
-      }
       const fail = (error: unknown) => { this.close(); throw error }
       try {
-        const pending = this.evaluate(code)
-        if (pending) return pending.then(finish).catch(fail)
-        finish()
+        const source = typeof code === 'function' ? code() : code
+        const pending = source === undefined ? undefined : this.evaluate(source)
+        if (pending) return pending.then(() => this.finishTurn()).catch(fail)
+        this.finishTurn()
       } catch (error) { fail(error) }
     }
     const previous = this.currentTurn
@@ -195,6 +195,33 @@ export class PluginController {
     const clear = () => { if (this.currentTurn === completion) this.currentTurn = null }
     void completion.then(clear, clear)
     return completion
+  }
+
+  private finishTurn() {
+    if (!this.context) return
+    this.session.flush()
+    if (this.session.closed || (!this.session.uiShown && !this.session.listening && !this.session.nextInterval())) this.release()
+    else this.scheduleInterval()
+  }
+
+  private scheduleInterval() {
+    if (this.intervalWakeup !== null) clearTimeout(this.intervalWakeup)
+    this.intervalWakeup = null
+    if (!this.context || this.session.closed || this.intervalTurnPending) return
+    const next = this.session.nextInterval()
+    if (!next) return
+    this.intervalWakeup = setTimeout(() => {
+      this.intervalWakeup = null
+      this.intervalTurnPending = true
+      const complete = () => { this.intervalTurnPending = false; this.scheduleInterval() }
+      const fail = (error: unknown) => { this.close(); this.onError?.(error) }
+      try {
+        const turn = this.dispatch(() => this.session.advanceInterval(next.id)
+          ? `globalThis.__deliverPluginTimer(${next.id})` : undefined)
+        if (turn) void turn.then(complete, fail)
+        else complete()
+      } catch (error) { fail(error) }
+    }, Math.max(0, Math.ceil(next.due - performance.now())))
   }
 
   private waitForTimer(delay: number) {
@@ -217,17 +244,22 @@ export class PluginController {
     if (!result) return
     try {
       this.drain()
-      this.failIfRejected(result)
+      this.observeIntervalResults()
+      const waiting = this.completionPending(result)
       if (!this.session.closed && (this.session.hasNetwork() || this.session.hasFontJobs() || this.session.hasExportJobs() || this.session.hasTimers())) {
         // Hold completion promises so an asynchronous throw reaches the
         // caller, and dispose them before closing a suspended QuickJS turn.
         this.asyncResults.add(result)
         return this.finishAsync(deadline).then(() => {
-          for (const completion of this.asyncResults) this.failIfRejected(completion)
+          this.observeIntervalResults()
+          for (const completion of this.asyncResults) {
+            if (this.completionPending(completion) && this.retainForInterval(completion)) this.asyncResults.delete(completion)
+          }
         }).finally(() => this.disposeAsyncResults())
       }
+      if (waiting) this.retainForInterval(result)
     } finally {
-      if (result.alive && !this.asyncResults.has(result)) result.dispose()
+      if (result.alive && !this.asyncResults.has(result) && !this.intervalResults.has(result)) result.dispose()
     }
   }
 
@@ -246,17 +278,34 @@ export class PluginController {
 
   /** The script completion promise is the host-visible channel for an async rejection.
    * A caught rejection fulfills. closePlugin's sentinel is a normal stop, not a failure. */
-  private failIfRejected(result: QuickJSHandle) {
-    if (!this.context || !result.alive) return
+  private completionPending(result: QuickJSHandle): boolean {
+    if (!this.context || !result.alive) return false
     const state = this.context.getPromiseState(result)
     if (state.type !== 'rejected') {
       if (state.type === 'fulfilled' && !state.notAPromise) state.value.dispose()
-      return
+      return state.type === 'pending'
     }
     const message = guestText(this.context, state.error)
     state.error.dispose()
-    if (closedNotice(message) != null) return
+    if (closedNotice(message) != null) return false
     throw errorFromGuest(message)
+  }
+
+  private retainForInterval(result: QuickJSHandle) {
+    if (!this.session.nextInterval()) return false
+    if (this.intervalResults.size >= PLUGIN_LIMITS.pendingTimers)
+      throw new PluginApiError('plugin_limit', 'Too many outstanding interval promises')
+    this.intervalResults.add(result)
+    return true
+  }
+
+  private observeIntervalResults() {
+    const intervals = this.session.nextInterval()
+    for (const result of this.intervalResults) {
+      if (this.completionPending(result) && intervals) continue
+      this.intervalResults.delete(result)
+      result.dispose()
+    }
   }
 
   private async finishAsync(deadline: number) {
@@ -307,7 +356,8 @@ export class PluginController {
         const result = this.evalGuest(`globalThis.__deliverPluginTimer(${timer.id})`, 'plugin-timer.js')
         if (result) this.asyncResults.add(result)
         this.drain()
-        if (result) this.failIfRejected(result)
+        this.observeIntervalResults()
+        if (result) this.completionPending(result)
       }
     }
   }
@@ -359,6 +409,10 @@ export class PluginController {
     this.signal?.removeEventListener('abort', this.stopOnAbort)
     this.exportAbort.abort()
     this.cancelTimerWait?.()
+    if (this.intervalWakeup !== null) clearTimeout(this.intervalWakeup)
+    this.intervalWakeup = null
+    for (const completion of this.intervalResults) completion.dispose()
+    this.intervalResults.clear()
     this.disposeAsyncResults()
     if (context) context.dispose()
     runtime?.dispose()

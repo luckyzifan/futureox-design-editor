@@ -581,8 +581,6 @@ describe('Figma plugin host', () => {
         var blocked = false
         try { setTimeout(function () {}, 10000) } catch (error) { blocked = String(error).indexOf('invalid_value') >= 0 }
         if (!blocked) throw new Error('unbounded delay')
-        try { setInterval(function () {}, 10) } catch (error) { blocked = String(error).indexOf('unsupported_api') >= 0 }
-        if (!blocked) throw new Error('interval accepted')
         blocked = false
         try { await fetch('https://example.com/secret') } catch (error) { blocked = String(error).indexOf('network_denied') >= 0 }
         if (!blocked) throw new Error('fetch accepted')
@@ -606,6 +604,56 @@ describe('Figma plugin host', () => {
     expect(posted).toEqual([])
     await Promise.all([first, second])
     expect(posted).toEqual(['delayed', 'second'])
+    run.close()
+  })
+
+  it('runs recurring callbacks across turns with arguments and cancellation', async () => {
+    const posted: unknown[] = []
+    const run = await openPlugin(editor(), bundle('Repeat', `
+      ;(async function () {
+        let ticks = 0
+        await new Promise(function (resolve) {
+          const handle = setInterval(function (label) {
+            figma.ui.postMessage(label + (++ticks))
+            if (ticks === 2) {
+              clearInterval(handle)
+              resolve()
+            }
+          }, 10, 'tick-')
+        })
+        figma.closePlugin('done')
+      })()
+    `), { onPostMessage: message => posted.push(message) })
+    expect(posted).toEqual([])
+    await vi.waitFor(() => expect(run.closeMessage).toBe('done'))
+    expect(posted).toEqual(['tick-1', 'tick-2'])
+    run.close()
+  })
+
+  it('cancels future interval callbacks when the plugin is stopped', async () => {
+    const posted: unknown[] = []
+    const run = await openPlugin(editor(), bundle('StopRepeating', `
+      setInterval(function () { figma.ui.postMessage('tick') }, 10)
+    `), { onPostMessage: message => posted.push(message) })
+    await vi.waitFor(() => expect(posted.length).toBeGreaterThan(0))
+    run.close()
+    const stoppedCount = posted.length
+    await new Promise(resolve => setTimeout(resolve, 35))
+    expect(posted).toHaveLength(stoppedCount)
+  })
+
+  it('reports a completion that rejects after a recurring callback', async () => {
+    const errors: unknown[] = []
+    const run = await openPlugin(editor(), bundle('RepeatError', `
+      ;(async function () {
+        await new Promise(function (resolve) {
+          const timer = setInterval(function () { clearTimeout(timer); resolve() }, 10)
+        })
+        throw new Error('interval continuation')
+      })()
+    `), { onError: error => errors.push(error) })
+    await vi.waitFor(() => expect(errors[0]).toMatchObject({ message: 'interval continuation' }))
+    expect(() => run.deliver(null)).toThrow(/finished/)
     run.close()
   })
 

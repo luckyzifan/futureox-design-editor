@@ -7,6 +7,8 @@ export const PLUGIN_LIMITS = {
   timerDelayMs: 5_000,
   pendingTimers: 64,
   timerCallbacksPerTurn: 128,
+  minIntervalMs: 10,
+  intervalCallbacksPerRun: 2_000,
   pendingTurns: 64,
   hostCalls: 20_000,
   guestMemoryBytes: 64 * 1024 * 1024,

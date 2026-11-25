@@ -56,7 +56,7 @@ import { planLegacyUserDataMigration, runLegacyUserDataMigration } from './legac
 import { renderCheckConfig, renderCheckHandler } from './render-check.mjs'
 import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
 import { selectGpuWorkingBudgetMiB } from './gpu-working-budget.mjs'
-import { createPluginDirectoryHost, scanDeclaredPlugins } from './plugin-package.mjs'
+import { createPluginCatalogWatcher, createPluginDirectoryHost, scanDeclaredPlugins } from './plugin-package.mjs'
 import { createPluginUiHost } from './plugin-ui.mjs'
 
 let interfaceLocale = 'zh-CN'
@@ -419,6 +419,7 @@ let pluginDirectories = null
 let pluginUi = null
 let localPlugins = []
 let pluginScan = null
+let pluginCatalogWatcher = null
 let pendingPluginLaunch = null
 function pluginDirectoryHost() {
   if (!pluginDirectories) pluginDirectories = createPluginDirectoryHost()
@@ -430,12 +431,21 @@ function publicDeclaredPlugin(plugin) {
 function loadDeclaredPlugins() {
   if (pluginScan) return pluginScan
   pluginScan = (async () => {
+    const profile = app.getPath('userData')
+    pluginCatalogWatcher ??= createPluginCatalogWatcher(profile, async () => {
+      try {
+        await pluginScan
+        if (!quitRequested) await loadDeclaredPlugins()
+      } catch { console.warn('Local plugin refresh skipped') }
+    })
+    const watchFolders = new Set()
     let scanned
-    try { scanned = await scanDeclaredPlugins(path.join(app.getPath('userData'), 'plugins')) }
+    try { scanned = await scanDeclaredPlugins(path.join(profile, 'plugins'), { watchFolders }) }
     catch {
       scanned = { plugins: [], skipped: 0, truncated: false }
       console.warn('Local plugin scan skipped')
     }
+    pluginCatalogWatcher.update(watchFolders)
     const next = pluginDirectoryHost().enableDeclared(scanned.plugins)
     const changed = next.length !== localPlugins.length || next.some((plugin, index) => plugin.grant !== localPlugins[index]?.grant)
     localPlugins = next
@@ -1607,6 +1617,7 @@ else {
     })
     .catch(async (error) => {
       console.error('Desktop startup failed:', error.message)
+      pluginCatalogWatcher?.close()
       await backend?.stop()
       await sqliteCodec.close()
       app.exit(1)
@@ -1616,6 +1627,7 @@ else {
 async function shutdown() {
   if (!shutdownPromise)
     shutdownPromise = (async () => {
+      pluginCatalogWatcher?.close()
       petHost?.dispose()
       await automationBridge.close()
       await windowStateWrites
