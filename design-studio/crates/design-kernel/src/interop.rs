@@ -2162,13 +2162,16 @@ impl<'a> Importer<'a> {
             // parameters from static geometry but has no authored storage
             // slot, so the payload rides bindings verbatim and the static
             // child frames — which Sketch itself laid out — are preserved.
-            let payload = json!({
+            let mut payload = json!({
                 "_class": "MSImmutableInferredGroupLayout",
                 "axis": group_layout.get("axis").cloned().unwrap_or(json!(1)),
                 "layoutAnchor": group_layout.get("layoutAnchor").cloned().unwrap_or(json!(0)),
-                "minSize": group_layout.get("minSize").cloned().unwrap_or(Value::Null),
-                "maxSize": group_layout.get("maxSize").cloned().unwrap_or(Value::Null),
             });
+            for key in ["minSize", "maxSize"] {
+                if let Some(value) = group_layout.get(key).filter(|value| !value.is_null()) {
+                    payload[key] = value.clone();
+                }
+            }
             node.bindings.insert(
                 "sketchInferredGroupLayout".into(),
                 serde_json::to_string(&payload).unwrap_or_default(),
@@ -8191,13 +8194,18 @@ fn export_layer_impl(
                 note_lossy(&mut lossy, "stack-line-gap-omitted");
             }
         } else if n.layout.is_none()
-            && let Some(payload) = n
+            && let Some(mut payload) = n
                 .bindings
                 .get("sketchInferredGroupLayout")
                 .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
         {
-            // Imported inferred (smart) group layouts return verbatim; the
-            // kernel keeps the static child frames they produced.
+            // Older FD bindings stored absent sizes as JSON null, which Sketch's
+            // native inferred-layout reader rejects. Keep all actual size values.
+            if let Some(fields) = payload.as_object_mut() {
+                fields.retain(|key, value| {
+                    !matches!(key.as_str(), "minSize" | "maxSize") || !value.is_null()
+                });
+            }
             layer.insert("groupLayout".into(), payload);
         } else if let Some(l) = &n.layout
             && !matches!(l.mode, crate::layout::Flow::None)
