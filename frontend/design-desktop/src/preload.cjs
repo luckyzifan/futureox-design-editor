@@ -71,6 +71,7 @@ contextBridge.exposeInMainWorld(
       pick: () => invoke('plugins-pick'),
       list: () => invoke('plugins-list'),
       read: value => invoke('plugins-read', value),
+      compileSource: value => invoke('plugins-compile-source', value),
       storage: Object.freeze({
         begin: value => invoke('plugins-storage-begin', value),
         call: value => invoke('plugins-storage-call', value),

@@ -468,6 +468,36 @@ describe('Figma plugin host', () => {
     run.close()
   })
 
+  it('runs a source-only desktop archive through the same bounded parser and QuickJS', async () => {
+    const filename = new URL('../../../../design-desktop/src/plugin-source.mjs', import.meta.url)
+    const { compilePluginTypeScript } = await import(filename.href)
+    const compile = vi.fn((source: string) => compilePluginTypeScript(source) as Promise<string>)
+    const archive = (source: string, built?: string) => zipSync({
+      'Plugin/manifest.json': strToU8(JSON.stringify({
+        name: 'Typed archive', id: 'typed.archive', api: '1.0.0', main: 'code.js', ui: 'ui.html',
+      })),
+      'Plugin/code.ts': strToU8(source),
+      'Plugin/ui.html': strToU8('<p>Archive UI</p>'),
+      ...(built ? { 'Plugin/code.js': strToU8(built) } : {}),
+    })
+    const typed = archive("const label: string = 'Typed archive'; figma.createRectangle().name = label; figma.showUI(__html__)")
+    const current = editor()
+    const run = await openPlugin(current, await pluginBundleFromZip(typed, compile))
+    expect(named(current, 'Typed archive')?.kind).toBe('rectangle')
+    expect(run.ui?.html).toBe('<p>Archive UI</p>')
+    run.close()
+    expect(compile).toHaveBeenCalledTimes(1)
+
+    const imported = "import { run } from './helper.js'; run()"
+    const built = await pluginBundleFromZip(archive(imported, 'figma.closePlugin("built")'), compile)
+    expect(built.main).toBe('figma.closePlugin("built")')
+    expect(compile).toHaveBeenCalledTimes(1)
+    await expect(pluginBundleFromZip(archive(imported), compile)).rejects.toThrow(/built JavaScript bundle/)
+    await expect(pluginBundleFromZip(archive(' '.repeat(256 * 1024 + 1)), compile)).rejects.toThrow(/too large/)
+    await expect(pluginBundleFromZip(new Uint8Array([1, 2, 3]), compile)).rejects.toThrow(/valid zip/)
+    expect(compile).toHaveBeenCalledTimes(2)
+  })
+
   it('reads the requested styled text fields across actual UTF-16 runs', async () => {
     const current = editor()
     current.change('Styled text', doc => {

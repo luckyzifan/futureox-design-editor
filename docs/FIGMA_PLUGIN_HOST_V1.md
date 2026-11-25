@@ -18,7 +18,7 @@ If the manifest has a `menu`, the panel lists those commands and runs the one yo
 
 The desktop app updates the native Plugins menu when its local `plugins` folder changes. It also scans the folder at startup and when the plugin panel opens. Installed folders without an ID get a stable local identity based on the folder. IDs written as JSON numbers must be positive safe integers. Larger IDs can be written as strings.
 
-For a desktop folder with a missing `main.js` entry, the loader can strip types from a same-directory `main.ts` file of up to 256 KiB. The resulting standalone script runs in QuickJS. Packages with runtime imports, build dependencies, or TypeScript features that require transformation need a compiled JavaScript entry.
+For a desktop folder or archive with a missing `main.js` entry, the loader can strip types from a same-directory `main.ts` file of up to 256 KiB. The resulting standalone script runs in QuickJS. A packaged JavaScript entry takes precedence. Packages with runtime imports, build dependencies, or TypeScript features that require transformation need a compiled JavaScript entry.
 
 `frontend/design-client/src/plugins/sample-ui/` is a small UI plugin. Its `ui.html` posts `{ pluginMessage: { type: "create-label", text } }`. The host answers with `{ pluginMessage, pluginId }`.
 

@@ -324,7 +324,12 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   async function loadArchive(file: File) {
     try {
       const bytes = new Uint8Array(await file.arrayBuffer())
-      const bundle = pluginBundleFromZip(bytes)
+      const compileSource = desktop?.plugins?.compileSource
+      const bundle = compileSource ? await pluginBundleFromZip(bytes, async source => {
+        const compiled = await compileSource({ source })
+        if (compiled.status === 'ok') return compiled.script
+        throw new PluginApiError('invalid_plugin', compiled.status === 'cancelled' ? 'Plugin source compilation cancelled' : compiled.message)
+      }) : pluginBundleFromZip(bytes)
       let source: PluginStorageOrigin | undefined
       if (desktop?.plugins?.storage) {
         const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))

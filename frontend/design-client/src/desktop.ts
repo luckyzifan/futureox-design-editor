@@ -16,6 +16,7 @@ export interface PluginBridge {
   /** Refreshes plugins declared in the desktop plugins folder. No filesystem paths. */
   list(): Promise<DesktopResult<{ plugins: DeclaredPlugin[] }>>
   read(request: { grant: string; paths: string[] }): Promise<DesktopResult<{ files: Record<string, string> }>>
+  compileSource?(request: { source: string }): Promise<DesktopResult<{ script: string }>>
   storage?: {
     begin(request: { source: PluginStorageOrigin }): Promise<DesktopResult<{ token: string }>>
     call(request: { token: string; operation: PluginStorageOperation }): Promise<DesktopResult<{ value: unknown }>>
