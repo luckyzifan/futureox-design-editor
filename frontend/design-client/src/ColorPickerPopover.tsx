@@ -197,7 +197,7 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
     place()
     window.addEventListener('resize', place)
     return () => window.removeEventListener('resize', place)
-  }, [trigger, tab, notation])
+  }, [trigger, tab, notation, variablesOpen, namingStyle])
   useLayoutEffect(() => {
     (focusOpacity ? opacity : color).current?.focus({ preventScroll: true })
     return () => { if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true }) }
