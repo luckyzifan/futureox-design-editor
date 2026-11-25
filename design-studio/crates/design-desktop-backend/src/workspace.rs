@@ -220,7 +220,7 @@ async fn opened(
     Ok(Opened { entry, document })
 }
 
-fn prepare_database_file(path: &Path) -> Result<()> {
+pub(crate) fn prepare_database_file(path: &Path) -> Result<()> {
     if !path.is_absolute() || path.as_os_str().len() > MAX_PATH_BYTES {
         return Err(invalid(
             "Workspace requires a bounded absolute app-owned path",

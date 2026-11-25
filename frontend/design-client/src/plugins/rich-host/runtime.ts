@@ -1,6 +1,6 @@
 import { getQuickJS, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSHandle, type QuickJSRuntime } from 'quickjs-emscripten'
 import { AutomationError } from '../../automation/types'
-import type { PluginStorage } from './client-storage'
+import type { PluginStorage, PluginStorageRequest } from './client-storage'
 import { PluginApiError, PluginClosed } from './errors'
 import { matchNetworkAccess, type PluginFetch } from './network'
 import { PLUGIN_LIMITS } from './limits'
@@ -45,6 +45,7 @@ export type PluginHooks = {
   command?: string
   signal?: AbortSignal
   storage?: PluginStorage
+  storageRequest?: PluginStorageRequest
   /** Test double for declared-domain fetch. Production uses the platform fetch. */
   fetch?: PluginFetch
   /** Host font catalog. Production reads the desktop `fonts` bridge; the web build has none. */
@@ -98,6 +99,7 @@ export class PluginController {
       command: hooks?.command,
       uiHtml: bundle.ui,
       storage: hooks?.storage,
+      storageRequest: hooks?.storageRequest,
       networkDomains: bundle.manifest.networkDomains,
       fetch: hooks?.fetch,
       systemFonts: hooks?.systemFonts,
@@ -246,7 +248,7 @@ export class PluginController {
       this.drain()
       this.observeIntervalResults()
       const waiting = this.completionPending(result)
-      if (!this.session.closed && (this.session.hasNetwork() || this.session.hasFontJobs() || this.session.hasExportJobs() || this.session.hasTimers())) {
+      if (!this.session.closed && (this.session.hasNetwork() || this.session.hasFontJobs() || this.session.hasExportJobs() || this.session.hasTimers() || this.session.hasStorageJobs())) {
         // Hold completion promises so an asynchronous throw reaches the
         // caller, and dispose them before closing a suspended QuickJS turn.
         this.asyncResults.add(result)
@@ -311,6 +313,20 @@ export class PluginController {
   private async finishAsync(deadline: number) {
     let firedTimers = 0
     while (this.context && !this.session.closed) {
+      const storage = this.session.takeStorageJob()
+      if (storage) {
+        let payload: Record<string, unknown>
+        try { payload = { ok: true, value: await this.session.performStorage(storage.operation) } }
+        catch (error) {
+          payload = {
+            ok: false, code: error instanceof PluginApiError ? error.code : 'storage_failed',
+            message: (error instanceof Error ? error.message : String(error)).slice(0, 300),
+          }
+        }
+        this.inject(`globalThis.__finishPluginStorage(${storage.id}, ${JSON.stringify(payload)})`)
+        this.drain()
+        continue
+      }
       if (this.session.hasNetwork()) {
         const job = this.session.takeNetwork()
         if (!job) break
@@ -406,6 +422,7 @@ export class PluginController {
     const context = this.context
     const runtime = this.runtime
     this.context = null
+    this.session.abandonTurn()
     this.signal?.removeEventListener('abort', this.stopOnAbort)
     this.exportAbort.abort()
     this.cancelTimerWait?.()

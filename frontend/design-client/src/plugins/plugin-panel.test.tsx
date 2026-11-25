@@ -227,11 +227,18 @@ test('a plugin that finishes itself with closePlugin restores the panel load ent
   // #207: after the guest called closePlugin the panel kept running=true, so
   // every load entry stayed disabled until the user pressed Stop plugin.
   interfacePreference.set({ locale: 'en' })
-  const code = "const r = figma.createRectangle(); r.name = 'QA closed cleanly'; figma.closePlugin('QA done')"
+  const code = "figma.clientStorage.setAsync('done', true).then(() => { figma.createRectangle().name = 'QA closed cleanly'; figma.closePlugin('QA done') })"
+  const storageCalls: unknown[] = []
+  const token = 'storage-lease'
   const desktop = {
     plugins: {
       list: async () => ({ status: 'ok' as const, plugins: [{ grant, name: 'QA', id: 'qa', displayName: 'QA', manifestText, root: '/tmp/qa' }] }),
       read: async () => ({ status: 'ok' as const, files: { 'code.js': code, 'ui.html': '<!doctype html><p></p>' } }),
+      storage: {
+        begin: async (request: unknown) => { storageCalls.push(request); return { status: 'ok' as const, token } },
+        call: async (request: unknown) => { storageCalls.push(request); return { status: 'ok' as const, value: null } },
+        end: async (request: unknown) => { storageCalls.push(request); return { status: 'ok' as const } },
+      },
       openUi: async () => ({ status: 'ok' as const }),
       closeUi: async () => ({ status: 'ok' as const }),
       postUi: async () => ({ status: 'ok' as const }),
@@ -264,6 +271,11 @@ test('a plugin that finishes itself with closePlugin restores the panel load ent
     const stop = [...document.querySelectorAll('button')].find(button => button.textContent === 'Stop plugin') as HTMLButtonElement
     expect(stop.disabled).toBe(true)
     expect(document.body.textContent).toContain('QA done')
+    expect(storageCalls).toEqual([
+      { source: { folderGrant: grant } },
+      { token, operation: { kind: 'set', key: '0064006f006e0065', value: { kind: 'json', json: 'true' } } },
+      { token },
+    ])
   } finally {
     current.dispose()
   }

@@ -285,6 +285,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
   source = source.replace("from './native-locale.mjs'", `from ${JSON.stringify(new URL('../src/native-locale.mjs', import.meta.url).href)}`)
   source = source.replace("from './design-ai.mjs'", `from ${JSON.stringify(new URL('../src/design-ai.mjs', import.meta.url).href)}`)
   source = source.replace("from './plugin-package.mjs'", `from ${JSON.stringify(new URL('../src/plugin-package.mjs', import.meta.url).href)}`)
+  source = source.replace("from './plugin-storage-host.mjs'", `from ${JSON.stringify(new URL('../src/plugin-storage-host.mjs', import.meta.url).href)}`)
   source = source.replace("from './plugin-ui.mjs'", `from ${JSON.stringify(new URL('../src/plugin-ui.mjs', import.meta.url).href)}`)
   source = source.replace("from './clipboard.mjs'", `from ${JSON.stringify(new URL('../src/clipboard.mjs', import.meta.url).href)}`)
   source = source.replace("import { spawn } from 'node:child_process'", `const { spawn } = globalThis[${JSON.stringify(key)}]`)

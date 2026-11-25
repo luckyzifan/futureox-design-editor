@@ -124,6 +124,11 @@ export function resultError(error) {
     RECOVERY_LIMIT:
       'The recovery store is full. Recover and save an earlier snapshot to free space, or save this design manually.',
     BUSY: 'Another file operation is in progress. Please try again after it finishes.',
+    PLUGIN_STORAGE_SESSION: 'The plugin storage session has ended.',
+    PLUGIN_STORAGE_LIMIT: 'Plugin storage is full.',
+    PLUGIN_STORAGE_BUSY: 'Plugin storage is busy.',
+    PLUGIN_STORAGE_FAILED: 'Local plugin storage is unavailable.',
+    PLUGIN_STORAGE_INVALID: 'The plugin storage request was invalid.',
   }
   return {
     status: code === 'CONFLICT' || code === 'WORKSPACE_CONFLICT' ? 'conflict' : 'error',

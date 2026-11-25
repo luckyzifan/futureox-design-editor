@@ -7,7 +7,11 @@ import {
   defaultLayout, defaultSizing, defaultTextStyle, effect, paint, stroke,
   type AutoLayout, type Constraints, type DesignNode, type Effect, type Kind, type Matrix, type Paint, type Sizing, type Stroke, type TextStyle,
 } from '../../model'
-import { clientStorageDelete, clientStorageGet, clientStorageKeys, clientStorageSet, defaultPluginStorage, type PluginStorage } from './client-storage'
+import {
+  clientStorageDelete, clientStorageGet, clientStorageKeys, clientStorageSet, createClientStorageWriter, defaultPluginStorage,
+  encodedStorageKey, memoryPluginStorage, pluginStorageResult, storageKey,
+  type ClientStorageWrite, type PluginStorage, type PluginStorageOperation, type PluginStorageRequest,
+} from './client-storage'
 import { bytesFromDataUrl, dataUrlForImage, imageContentId, imageMime, imageSize } from './images'
 import { PLUGIN_FETCH_METHODS, matchNetworkAccess, pluginFetchHeaders, type PluginFetch } from './network'
 import { figmaColorToHex, hexToFigmaColor } from './colors'
@@ -70,6 +74,7 @@ export type PluginSessionOptions = {
   command?: string
   uiHtml: string | null
   storage?: PluginStorage
+  storageRequest?: PluginStorageRequest
   networkDomains?: readonly string[]
   fetch?: PluginFetch
   hooks?: Hooks
@@ -314,7 +319,11 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   const api = createEditorDesignAutomation(editor, undefined, [pluginDataExtension])
   const pluginName = options.name
   const pluginId = options.pluginId
-  const storage = options.storage ?? defaultPluginStorage()
+  const storage = options.storage ?? (options.storageRequest ? memoryPluginStorage() : defaultPluginStorage())
+  const storageWriter = createClientStorageWriter()
+  const storageJobs: { id: number; operation: PluginStorageOperation; bytes: number }[] = []
+  let storageBytes = 0
+  let storageSerial = 0
   const networkDomains = options.networkDomains ?? []
   const images = new Map<string, PluginImage>()
   const imageUrls = new Map<string, string>()
@@ -1127,6 +1136,52 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return next
   }
 
+  function queueStorage(operation: PluginStorageOperation) {
+    let bytes = 256
+    if (operation.kind === 'set') {
+      if (operation.value.kind === 'json') bytes += new TextEncoder().encode(operation.value.json).byteLength
+      if (operation.value.kind === 'bytes') bytes += operation.value.parts.reduce((sum, part) => sum + part.length, 0)
+    }
+    if (storageJobs.length >= 64 || storageBytes + bytes > 8 * 1024 * 1024)
+      throw new PluginApiError('plugin_limit', 'Too much pending clientStorage work')
+    const id = ++storageSerial
+    storageJobs.push({ id, operation, bytes })
+    storageBytes += bytes
+    return { storageJob: id }
+  }
+
+  function clientStorageOperation(op: string, body: Record<string, unknown>) {
+    const native = options.storageRequest
+    if (op === 'clientStorageKeys') return native ? queueStorage({ kind: 'keys' }) : clientStorageKeys(storage, pluginId)
+    const name = storageKey(body.key)
+    if (op === 'clientStorageGet') return native
+      ? queueStorage({ kind: 'get', key: encodedStorageKey(name) }) : clientStorageGet(storage, pluginId, name)
+    if (op === 'clientStorageDelete') {
+      if (native) {
+        storageWriter.cancel(name)
+        return queueStorage({ kind: 'delete', key: encodedStorageKey(name) })
+      }
+      clientStorageDelete(storage, pluginId, name)
+      return null
+    }
+    let write: string | ClientStorageWrite
+    if (body.kind === 'undefined') write = { kind: 'undefined' }
+    else if (body.kind === 'bytes') {
+      if (typeof body.part !== 'number' || typeof body.parts !== 'number' || typeof body.rawBytes !== 'number')
+        throw new PluginApiError('invalid_value', 'clientStorage bytes are incomplete')
+      write = { kind: 'bytes', part: body.part, parts: body.parts, rawBytes: body.rawBytes, base64: shortText(body.base64, 'clientStorage', 200_000) }
+    } else {
+      if (typeof body.json !== 'string') throw new PluginApiError('invalid_value', 'clientStorage value must be JSON')
+      write = body.json
+    }
+    if (native) {
+      const value = storageWriter.prepare(name, write)
+      return value ? queueStorage({ kind: 'set', key: encodedStorageKey(name), value }) : null
+    }
+    clientStorageSet(storage, pluginId, name, write)
+    return null
+  }
+
   return {
     notifications, logs,
     get ui() { return ui }, get uiShown() { return uiShown }, get listening() { return listening }, get applying() { return applying > 0 },
@@ -1137,6 +1192,19 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       commands.splice(0)
       pluginStoreDirty = false
       timers.clear()
+      storageJobs.splice(0)
+      storageBytes = 0
+      storageWriter.clear()
+    },
+    hasStorageJobs: () => storageJobs.length > 0,
+    takeStorageJob() {
+      const job = storageJobs.shift()
+      if (job) storageBytes -= job.bytes
+      return job
+    },
+    async performStorage(operation: PluginStorageOperation) {
+      if (!options.storageRequest) throw new PluginApiError('storage_failed', 'Client storage is unavailable')
+      return pluginStorageResult(operation, await options.storageRequest(operation))
     },
     assertCurrent: failIfReplaced,
     hasTimers: () => nextTimer(false) !== null,
@@ -1261,24 +1329,8 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         editor.requestReveal(ids(body.ids, 'scrollAndZoomIntoView'))
         return null
       }
-      if (op === 'clientStorageGet') return clientStorageGet(storage, pluginId, body.key)
-      if (op === 'clientStorageKeys') return clientStorageKeys(storage, pluginId)
-      if (op === 'clientStorageSet') {
-        if (body.kind === 'undefined') clientStorageSet(storage, pluginId, body.key, { kind: 'undefined' })
-        else if (body.kind === 'bytes') {
-          if (typeof body.part !== 'number' || typeof body.parts !== 'number' || typeof body.rawBytes !== 'number')
-            throw new PluginApiError('invalid_value', 'clientStorage bytes are incomplete')
-          clientStorageSet(storage, pluginId, body.key, {
-            kind: 'bytes', part: body.part, parts: body.parts, rawBytes: body.rawBytes,
-            base64: shortText(body.base64, 'clientStorage', 200_000),
-          })
-        } else {
-          if (typeof body.json !== 'string') throw new PluginApiError('invalid_value', 'clientStorage value must be JSON')
-          clientStorageSet(storage, pluginId, body.key, body.json)
-        }
-        return null
-      }
-      if (op === 'clientStorageDelete') { clientStorageDelete(storage, pluginId, body.key); return null }
+      if (op === 'clientStorageGet' || op === 'clientStorageKeys' || op === 'clientStorageSet' || op === 'clientStorageDelete')
+        return clientStorageOperation(op, body)
       if (op === 'pluginDataGet' || op === 'pluginDataKeys' || op === 'pluginDataSet' || op === 'sharedPluginDataGet' || op === 'sharedPluginDataKeys' || op === 'sharedPluginDataSet') {
         const scope = dataScope(body.scope)
         const id = shortText(body.id, 'id', 80)

@@ -244,7 +244,7 @@ export function createPluginDirectoryHost() {
       const manifestText = await readLocalPluginManifest(rootReal)
       if (picked) grants.delete(picked)
       picked = id
-      grants.set(id, { root: rootReal })
+      grants.set(id, { root: rootReal, manifestText })
       return { grant: id, manifestText, displayName: path.basename(rootReal) }
     },
     /** Refresh declarations and retain grants for unchanged packages and the picked folder. */
@@ -258,7 +258,7 @@ export function createPluginDirectoryHost() {
         const previous = declared.get(plugin.id)
         const unchanged = previous?.root === plugin.root && previous.manifestText === plugin.manifestText
         const grant = unchanged ? previous.grant : randomUUID()
-        if (!unchanged) grants.set(grant, { root: plugin.root })
+        if (!unchanged) grants.set(grant, { root: plugin.root, manifestText: plugin.manifestText })
         next.set(plugin.id, { grant, root: plugin.root, manifestText: plugin.manifestText })
         enabled.push({ grant, id: plugin.id, name: plugin.name, displayName: plugin.name, manifestText: plugin.manifestText })
       }
@@ -276,6 +276,12 @@ export function createPluginDirectoryHost() {
       for (const relative of paths) files[relative] = await readPluginFile(entry.root, relative)
       if (grants.get(id) !== entry) throw Object.assign(new Error('Plugin folder is no longer authorized'), { code: 'PLUGIN_GRANT' })
       return { files }
+    },
+    storageScope(id) {
+      const entry = grants.get(id)
+      if (!entry) throw Object.assign(new Error('Plugin folder is no longer authorized'), { code: 'PLUGIN_GRANT' })
+      const plugin = parseDeclaredPluginManifest(entry.manifestText)
+      return createHash('sha256').update('folder-plugin\0').update(entry.root).update('\0').update(plugin.id).digest('hex')
     },
     clear() {
       if (!picked) return

@@ -55,13 +55,22 @@ type Stored = { __v: 2; items: Record<string, Entry> }
 export type ClientStorageWrite =
   | { kind: 'undefined' }
   | { kind: 'bytes'; part: number; parts: number; rawBytes: number; base64: string }
+export type PluginStoredValue =
+  | { kind: 'undefined' }
+  | { kind: 'json'; json: string }
+  | { kind: 'bytes'; rawBytes: number; parts: string[] }
+export type PluginStorageOperation =
+  | { kind: 'get' | 'delete'; key: string }
+  | { kind: 'keys' }
+  | { kind: 'set'; key: string; value: PluginStoredValue }
+export type PluginStorageRequest = (operation: PluginStorageOperation) => Promise<unknown>
 
 const BYTE_PARTS = 48
 const BYTE_PART_CHARS = 200_000
-type PendingBytes = { parts: string[]; lengths: number[]; rawBytes: number; expected: number; next: number }
-const pendingBytes = new Map<string, PendingBytes>()
+type PendingBytes = { parts: string[]; length: number; rawBytes: number; expected: number }
+const writers = new WeakMap<PluginStorage, ReturnType<typeof createClientStorageWriter>>()
 
-function storageKey(value: unknown): string {
+export function storageKey(value: unknown): string {
   if (typeof value !== 'string' || !value || value.length > PLUGIN_LIMITS.clientStorageKeyChars || /[\u0000-\u001f]/.test(value))
     throw new PluginApiError('invalid_value', `clientStorage key must be 1–${PLUGIN_LIMITS.clientStorageKeyChars} characters`)
   if (value === '__proto__' || value === 'constructor' || value === 'prototype')
@@ -69,8 +78,26 @@ function storageKey(value: unknown): string {
   return value
 }
 
-function pendingId(pluginId: string, key: string) {
-  return `${pluginId}\0${key}`
+export function encodedStorageKey(key: string) {
+  let result = ''
+  for (let index = 0; index < key.length; index++) result += key.charCodeAt(index).toString(16).padStart(4, '0')
+  return result
+}
+
+function decodedStorageKey(key: string) {
+  let result = ''
+  for (let index = 0; index < key.length; index += 4) result += String.fromCharCode(Number.parseInt(key.slice(index, index + 4), 16))
+  return result
+}
+
+export function pluginStorageResult(operation: PluginStorageOperation, result: unknown) {
+  if (operation.kind === 'keys') return (result as string[]).map(decodedStorageKey)
+  if (operation.kind !== 'get') return null
+  const entry = result as PluginStoredValue | null
+  if (!entry) return { found: false, value: null }
+  if (entry.kind === 'json') return { found: true, kind: 'json', value: JSON.parse(entry.json) }
+  if (entry.kind === 'bytes') return { found: true, kind: 'bytes', parts: entry.parts, value: null }
+  return { found: true, kind: 'undefined', value: null }
 }
 
 function readItems(storage: PluginStorage, pluginId: string): Record<string, Entry> {
@@ -128,41 +155,69 @@ export function clientStorageKeys(storage: PluginStorage, pluginId: string): str
 
 export function clientStorageSet(storage: PluginStorage, pluginId: string, key: unknown, write: string | ClientStorageWrite) {
   const name = storageKey(key)
-  const id = pendingId(pluginId, name)
+  const value = storageWriter(storage).prepare(`${pluginId}\0${name}`, write)
+  if (!value) return
   const items = readItems(storage, pluginId)
-  if (typeof write === 'string' || write.kind === 'undefined') {
-    pendingBytes.delete(id)
-    if (typeof write === 'string') {
-      let value: unknown
-      try { value = JSON.parse(write) } catch { throw new PluginApiError('invalid_value', 'clientStorage value must be JSON') }
-      items[name] = { t: 'j', v: value }
-    } else items[name] = { t: 'u' }
-    writeItems(storage, pluginId, items)
-    return
-  }
-  if (!Number.isInteger(write.part) || !Number.isInteger(write.parts) || !Number.isInteger(write.rawBytes))
-    throw new PluginApiError('invalid_value', 'clientStorage bytes are incomplete')
-  if (write.parts < 1 || write.parts > BYTE_PARTS || write.rawBytes < 0 || write.rawBytes > PLUGIN_LIMITS.clientStorageBytes)
-    throw new PluginApiError('plugin_limit', `clientStorage is limited to ${PLUGIN_LIMITS.clientStorageBytes} bytes per plugin`)
-  if (write.part === 0) pendingBytes.set(id, { parts: [], lengths: [], rawBytes: write.rawBytes, expected: write.parts, next: 0 })
-  const pending = pendingBytes.get(id)
-  if (!pending || write.part !== pending.next || write.parts !== pending.expected || write.rawBytes !== pending.rawBytes)
-    throw new PluginApiError('invalid_value', 'clientStorage byte upload is out of order')
-  pending.lengths.push(decodedLength(write.base64))
-  pending.parts.push(write.base64)
-  pending.next += 1
-  if (pending.next < pending.expected) return
-  pendingBytes.delete(id)
-  const total = pending.lengths.reduce((sum, length) => sum + length, 0)
-  if (total !== pending.rawBytes) throw new PluginApiError('invalid_value', 'clientStorage bytes do not match the declared length')
-  items[name] = { t: 'b', n: pending.rawBytes, parts: pending.parts }
+  if (value.kind === 'json') items[name] = { t: 'j', v: JSON.parse(value.json) }
+  else if (value.kind === 'undefined') items[name] = { t: 'u' }
+  else items[name] = { t: 'b', n: value.rawBytes, parts: value.parts }
   writeItems(storage, pluginId, items)
 }
 
 export function clientStorageDelete(storage: PluginStorage, pluginId: string, key: unknown) {
   const name = storageKey(key)
-  pendingBytes.delete(pendingId(pluginId, name))
+  storageWriter(storage).cancel(`${pluginId}\0${name}`)
   const items = readItems(storage, pluginId)
   delete items[name]
   writeItems(storage, pluginId, items)
+}
+
+function storageWriter(storage: PluginStorage) {
+  let writer = writers.get(storage)
+  if (!writer) { writer = createClientStorageWriter(); writers.set(storage, writer) }
+  return writer
+}
+
+export function createClientStorageWriter() {
+  const uploads = new Map<string, PendingBytes>()
+  return {
+    clear: () => uploads.clear(),
+    cancel: (key: string) => uploads.delete(key),
+    prepare(key: string, write: string | ClientStorageWrite): PluginStoredValue | undefined {
+      if (typeof write === 'string') {
+        uploads.delete(key)
+        try { JSON.parse(write) } catch { throw new PluginApiError('invalid_value', 'clientStorage value must be JSON') }
+        return { kind: 'json', json: write }
+      }
+      if (write.kind === 'undefined') { uploads.delete(key); return write }
+      if (!Number.isInteger(write.part) || !Number.isInteger(write.parts) || !Number.isInteger(write.rawBytes))
+        throw new PluginApiError('invalid_value', 'clientStorage bytes are incomplete')
+      if (write.parts < 1 || write.parts > BYTE_PARTS || write.rawBytes < 0 || write.rawBytes > PLUGIN_LIMITS.clientStorageBytes)
+        throw new PluginApiError('plugin_limit', `clientStorage is limited to ${PLUGIN_LIMITS.clientStorageBytes} bytes per plugin`)
+      if (write.part === 0) {
+        uploads.delete(key)
+        let reserved = write.rawBytes
+        for (const upload of uploads.values()) reserved += upload.rawBytes
+        if (reserved > PLUGIN_LIMITS.clientStorageBytes || uploads.size >= BYTE_PARTS)
+          throw new PluginApiError('plugin_limit', 'Too many pending clientStorage uploads')
+        uploads.set(key, { parts: [], length: 0, rawBytes: write.rawBytes, expected: write.parts })
+      }
+      const pending = uploads.get(key)
+      if (!pending || write.part !== pending.parts.length || write.parts !== pending.expected || write.rawBytes !== pending.rawBytes)
+        throw new PluginApiError('invalid_value', 'clientStorage byte upload is out of order')
+      try {
+        pending.length += decodedLength(write.base64)
+        pending.parts.push(write.base64)
+        if (pending.length > pending.rawBytes ||
+            pending.parts.length === pending.expected && pending.length !== pending.rawBytes)
+          throw new PluginApiError('invalid_value', 'clientStorage bytes do not match the declared length')
+        if (pending.parts.length < pending.expected) return
+        uploads.delete(key)
+        return { kind: 'bytes', rawBytes: pending.rawBytes, parts: pending.parts }
+      } catch (error) {
+        uploads.delete(key)
+        throw error
+      }
+    },
+  }
 }
