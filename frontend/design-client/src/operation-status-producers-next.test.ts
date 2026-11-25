@@ -12,6 +12,7 @@ const sources: Record<OperationStatus['key'], string> = {
  imageImportFailed: app, saveFailedCanvasRetained: app, kernelStartupFailed: app, recoveryFailedAutosavePaused: app, closeFailedDocumentRetained: app, workspaceSwitchFailedDocumentRetained: app,
  operationFailedCanvasRetained: readFileSync(new URL('./desktop-session.ts', import.meta.url), 'utf8'),
  finishOrCancelDrag: commands, propertiesCopied: commands, toolUnavailable: commands, unknownToolCommand: commands, sharedFontStyleNeedsLocalOverride: fonts,
+ emptyClipboard: readFileSync(new URL('./engine.ts', import.meta.url), 'utf8'),
  importInputTooLarge: readFileSync(new URL('./import-input-policy.ts', import.meta.url), 'utf8'),
  importInputInvalid: readFileSync(new URL('./import-input-policy.ts', import.meta.url), 'utf8'),
  openCanvasBeforeImageImport: app,
