@@ -610,6 +610,82 @@ pub(crate) fn backdrop_padding(
     checked_backdrop_padding(total, density)
 }
 
+/// Certify a smaller physical extent for a Figma viewport rejected by the
+/// summed admission rule. A uniform Sketch backdrop samples the complete
+/// shape capture, never an unbounded region outside that capture.
+pub(crate) fn sketch_viewport_backdrop_extent(
+    engine: &Engine,
+    options: &RenderOptions,
+    viewport: crate::math::Rect,
+) -> Result<crate::math::Rect, String> {
+    use crate::{math::{Rect, Transform}, scene::Document};
+
+    fn collect(
+        doc: &Document,
+        id: &str,
+        parent: Transform,
+        captures: &mut Vec<Rect>,
+    ) -> Result<i32, String> {
+        let node = &doc.nodes[id];
+        if !node.visible || node.opacity <= 0. { return Ok(0); }
+        let matrix = parent.concat(node.transform);
+        if node.effects.iter().any(|effect| effect.visible && effect.kind == "zoom-blur") {
+            return Err(BACKDROP_PADDING_BUDGET_ERROR.into());
+        }
+        if let Some(effect) = node.backdrop_effect() {
+            if !effect.sketch_backdrop || effect.gradient_blur.is_some()
+                || !matches!(node.kind.as_str(), "rectangle" | "ellipse" | "vector")
+            {
+                return Err(BACKDROP_PADDING_BUDGET_ERROR.into());
+            }
+            let (path, _) = node.paths()?;
+            let bounds = path.control_bounds(matrix);
+            if bounds.empty() || bounds.checked_right().is_none() || bounds.checked_bottom().is_none() {
+                return Err(BACKDROP_PADDING_BUDGET_ERROR.into());
+            }
+            captures.push(bounds);
+        }
+        let mut children_halo = 0;
+        // Boolean operand geometry is folded into its parent. The painter
+        // does not render the operands' effects as separate layers.
+        for child in node.render_children() {
+            children_halo = children_halo.max(collect(doc, child, matrix, captures)?);
+        }
+        Ok(crate::geometry_snapshot::effect_halo(node, matrix).saturating_add(children_halo))
+    }
+
+    let doc = engine.doc.as_ref().ok_or("Load a document before rendering")?;
+    let page = doc.pages.iter().find(|page| page.id == options.page_id).ok_or("Page not found")?;
+    let v = options.view;
+    let camera = Transform([v.zoom * 2., 0., 0., v.zoom * 2., v.x * 2., v.y * 2.]);
+    let mut captures = Vec::new();
+    let mut halo = 0;
+    for (i, id) in page.children.iter().enumerate() {
+        if i % 64 == 0 { crate::render_cancellation::checkpoint()?; }
+        halo = halo.max(collect(doc, id, camera, &mut captures)?);
+    }
+    if captures.is_empty() { return Err(BACKDROP_PADDING_BUDGET_ERROR.into()); }
+    checked_backdrop_padding(f64::from(halo), 1.)?;
+    let mut required = viewport.expand(halo);
+    loop {
+        crate::render_cancellation::checkpoint()?;
+        let before = required;
+        for &capture in &captures {
+            // Include the capture's rounded edge and bilinear neighbours.
+            if capture.intersect(required.expand(2)).empty() { continue; }
+            let margin = [
+                i64::from(viewport.x) - i64::from(capture.x),
+                i64::from(viewport.y) - i64::from(capture.y),
+                i64::from(capture.right()) - i64::from(viewport.right()),
+                i64::from(capture.bottom()) - i64::from(viewport.bottom()),
+            ].into_iter().max().unwrap_or_default();
+            checked_backdrop_padding((margin + i64::from(halo) + 2) as f64, 1.)?;
+            required = required.union(capture.expand(halo + 2));
+        }
+        if before == required { return Ok(required); }
+    }
+}
+
 /// Reduce the working extent of an unmanaged analytic display tile. Keep
 /// the existing budget check and allow later backdrop readers to grow the
 /// region needed from earlier paints.
