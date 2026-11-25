@@ -326,3 +326,89 @@ fn distant_zoom_blur_does_not_retarget_figma_export_samples() {
     assert_eq!(inside_png.len(), 6740);
     assert_eq!(fnv(&inside_png), 0x5d8025f11895b508, "in-bounds zoom blur export changed sample graph");
 }
+
+fn scaled_zoom_document(neighbor: serde_json::Value, children: Vec<&str>) -> serde_json::Value {
+    let mut nodes = serde_json::Map::new();
+    nodes.insert("ellipse".into(), json!({
+        "id": "ellipse", "kind": "ellipse", "width": 5.0, "height": 5.0,
+        "transform": [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        "fills": [{ "kind": "solid", "color": "#3366b3" }],
+        "effects": [{ "kind": "zoom-blur", "radius": 0.0, "color": "#000000", "visible": true,
+            "zoomBlur": { "amount": 24.0, "center": [0.5, 0.5] } }]
+    }));
+    nodes.insert(neighbor["id"].as_str().unwrap().to_string(), neighbor);
+    json!({
+        "schemaVersion": 19, "id": "scaled-zoom", "name": "scaled zoom",
+        "pages": [{ "id": "p", "name": "p", "background": "#ffffff", "children": children }],
+        "nodes": nodes
+    })
+}
+
+fn gaussian(id: &str, transform: [f64; 6], width: f64, height: f64) -> serde_json::Value {
+    json!({
+        "id": id, "kind": "rectangle", "width": width, "height": height, "transform": transform,
+        "fills": [{ "kind": "solid", "color": "#c04040" }],
+        "effects": [{ "kind": "gaussian-blur", "radius": 2.5, "color": "#000000", "visible": true }]
+    })
+}
+
+fn admits(document: &serde_json::Value, width: u32, height: u32, zoom: f64) -> Result<(), String> {
+    let mut engine = Engine::new();
+    engine.load_document(&serde_json::to_string(document).unwrap()).unwrap();
+    engine.compile_gpu_request(&json!({
+        "pageId": "p", "width": width, "height": height, "rasterProfile": "analytic",
+        "view": { "x": 0.0, "y": 0.0, "zoom": zoom }, "transparent": false, "grid": false
+    }).to_string()).map(|_| ())
+}
+
+#[test]
+fn zoom_source_halo_follows_placed_node_scale() {
+    let neighbor = gaussian("neighbor", [1.0, 0.0, 0.0, 1.0, 10.0, 0.2], 1.5, 1.5);
+    let identity = scaled_zoom_document(neighbor, vec!["ellipse", "neighbor"]);
+    let wide = admits(&identity, 2410, 904, 301.2).unwrap_err();
+    assert!(wide.contains("Zoom source filter halo exceeds 2048"), "{wide}");
+    let tile = json!({
+        "pageId": "p", "width": 514, "height": 514, "rasterProfile": "analytic",
+        "gpuAnalyticRegions": true, "gpuViewport": { "x": 0, "y": 0, "w": 514, "h": 514 },
+        "view": { "x": 0.0, "y": 0.0, "zoom": 301.2 }, "transparent": false, "grid": false
+    });
+    let mut engine = Engine::new();
+    engine.load_document(&serde_json::to_string(&identity).unwrap()).unwrap();
+    engine.compile_gpu_request(&tile.to_string()).expect("exact tile stays admitted");
+
+    let up = scaled_zoom_document(gaussian("neighbor", [2.0, 0.0, 0.0, 2.0, 10.0, 0.2], 1.5, 1.5), vec!["ellipse", "neighbor"]);
+    let rejected = admits(&up, 800, 600, 150.0).unwrap_err();
+    assert!(rejected.contains("Zoom source filter halo exceeds 2048"), "{rejected}");
+    let flat = scaled_zoom_document(gaussian("neighbor", [1.0, 0.0, 0.0, 1.0, 10.0, 0.2], 1.5, 1.5), vec!["ellipse", "neighbor"]);
+    admits(&flat, 800, 600, 150.0).expect("unscaled neighbor at zoom 150 stays inside 2048");
+    let down = scaled_zoom_document(gaussian("neighbor", [0.25, 0.0, 0.0, 0.25, 10.0, 0.2], 1.5, 1.5), vec!["ellipse", "neighbor"]);
+    admits(&down, 2410, 904, 301.2).expect("scaled-down neighbor at 15060% stays inside 2048");
+    let mut guarded = Engine::new();
+    guarded.load_document(&serde_json::to_string(&down).unwrap()).unwrap();
+    guarded.compile_gpu_request(&json!({
+        "pageId": "p", "width": 3680, "height": 2174, "rasterProfile": "analytic",
+        "view": { "x": 0.0, "y": 0.0, "zoom": 301.2 }, "transparent": false, "grid": false,
+        "captureViewport": { "x": -635, "y": -635, "w": 3680, "h": 2174 }
+    }).to_string()).expect("scaled-down interaction capture stays inside 2048");
+
+    let grouped = |scale: f64| {
+        let mut document = scaled_zoom_document(gaussian("neighbor", [1.0, 0.0, 0.0, 1.0, 0.0, 0.0], 20.0, 20.0), vec!["ellipse", "group"]);
+        document["nodes"]["group"] = json!({
+            "id": "group", "kind": "group", "width": 40.0, "height": 40.0,
+            "transform": [scale, 0.0, 0.0, scale, 0.0, 0.0], "children": ["neighbor"]
+        });
+        document
+    };
+    let parent = admits(&grouped(2.0), 800, 600, 150.0).unwrap_err();
+    assert!(parent.contains("Zoom source filter halo exceeds 2048"), "{parent}");
+    admits(&grouped(1.0), 800, 600, 150.0).expect("unscaled parent stays inside 2048");
+
+    let turn = 2.0 * std::f64::consts::FRAC_PI_6.cos();
+    let rise = 2.0 * std::f64::consts::FRAC_PI_6.sin();
+    let rotated = scaled_zoom_document(
+        gaussian("neighbor", [turn, rise, -rise, turn, 0.0, 0.0], 20.0, 20.0),
+        vec!["ellipse", "neighbor"],
+    );
+    let turned = admits(&rotated, 800, 600, 150.0).unwrap_err();
+    assert!(turned.contains("Zoom source filter halo exceeds 2048"), "{turned}");
+}

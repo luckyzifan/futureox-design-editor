@@ -45,6 +45,16 @@ function exceedsDeviceHalo(value: number) {
   return !Number.isFinite(value) || Math.ceil(value) > MAX_DEVICE_HALO
 }
 
+/** Same singular value as `Transform::max_scale`. The camera scale is applied
+ * separately; this is only the placed node matrix. */
+function matrixMaxScale(matrix: Matrix) {
+  const [a, b, c, d] = matrix
+  const sum = a * a + b * b + c * c + d * d
+  const det = a * d - b * c
+  const span = sum * sum - 4 * det * det
+  return Math.sqrt((sum + Math.sqrt(span > 0 ? span : 0)) * 0.5)
+}
+
 function boundsOf(matrix: Matrix, width: number, height: number, pad: number): WorldRect {
   const corners = [apply(matrix, { x: 0, y: 0 }), apply(matrix, { x: width, y: 0 }),
     apply(matrix, { x: 0, y: height }), apply(matrix, { x: width, y: height })]
@@ -72,9 +82,12 @@ export function zoomSourcePreviewExceedsDeviceHalo(document: DesignDocument, pag
     const node = document.nodes[id]
     if (!node?.visible || node.opacity <= 0) return
     const matrix = multiply(parent, node.transform)
+    const placed = matrixMaxScale(matrix)
     for (const effect of node.effects) {
       if (zoomSamples(effect)) zoom = true
-      const support = zoomSourceFilterHaloDevicePixels(effect, scale)
+      // `finite_support` uses the device matrix, camera scale times the placed
+      // node scale. The world pad is that device halo divided by camera scale.
+      const support = zoomSourceFilterHaloDevicePixels(effect, placed * scale)
       if (!exceedsDeviceHalo(support)) continue
       const pad = support / scale
       if (!viewport || intersects(boundsOf(matrix, node.width, node.height, pad), viewport)) halo = true
