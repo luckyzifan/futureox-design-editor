@@ -137,11 +137,11 @@ fn partial_opacity_linear_gradient_matches_frozen_chrome_png() {
                 .all(|(_, pixels, max)| *pixels == 0 && *max == 0),
         "linear-gradient {linear:?}"
     );
-    // Ties-even of the white tent half moves BlurThreshold-0p251-2x from 704
-    // differing pixels to 430 in both manifests. Every other frozen row stays
-    // put, and both linear gradients stay exact.
+    // False export halves on five layer-blur rows move closer to the frozen
+    // PNGs. Every other strict row, including glass, shadow, and backdrop,
+    // stays put, and both linear gradients stay exact.
     assert_eq!(
-        others_sha, "0c19ce4b5ebf5ab528a1266b0411e862da48a9ecdd710c0d054c0b30ffd48ac5",
+        others_sha, "e8fec43408f0835085f722feecca363367fbd2345022059f6e7c8b18bb107724",
         "other frozen figma references moved"
     );
 }

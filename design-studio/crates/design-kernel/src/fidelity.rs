@@ -322,6 +322,94 @@ pub fn source(
     })
 }
 
+/// One export 2×2 of straight RGBA8 pixels, in the same order as
+/// [`downsample`]: top-left, top-right, bottom-left, bottom-right.
+pub(crate) fn export_pair_straight(straight: [[u8; 4]; 4]) -> [u8; 4] {
+    let pixels = straight.map(|pixel| {
+        let alpha = u32::from(pixel[3]);
+        [
+            (u32::from(pixel[0]) * alpha + 127) / 255,
+            (u32::from(pixel[1]) * alpha + 127) / 255,
+            (u32::from(pixel[2]) * alpha + 127) / 255,
+            alpha,
+        ]
+    });
+    let resolved = if let Some(adjusted) = ties_even_white_tent_half(pixels) {
+        adjusted.map(|value| u32::from(crate::figma_sampling::encode_unorm8(value)))
+    } else {
+        let sum = std::array::from_fn(|channel| pixels.iter().map(|pixel| pixel[channel]).sum::<u32>());
+        sum.map(|value| u32::from(crate::figma_sampling::normalized_resolve_sum(value)))
+    };
+    let mut out = [0u8; 4];
+    let alpha = resolved[3];
+    if alpha > 0 {
+        for channel in 0..3 {
+            // Public PNGs use straight alpha; same half-up conversion as the
+            // GPU readback path, after resolving premultiplication.
+            out[channel] = ((resolved[channel] * 255 * 2 + alpha) / (alpha * 2)).min(255) as u8;
+        }
+    }
+    out[3] = alpha as u8;
+    out
+}
+
+/// Device-pixel 2×2 whose unrounded tent mean is not the byte average.
+/// `expected` is the straight RGBA8 of that 2×2 on an opaque black backdrop.
+/// The export pixel is rewritten only when every sample plane still shows it.
+#[derive(Clone, Debug)]
+pub(crate) struct FalseHalfFix {
+    pub x: i32,
+    pub y: i32,
+    pub expected: [[u8; 4]; 4],
+    pub output: [u8; 4],
+}
+
+pub(crate) fn apply_false_half_fixes(
+    output: &mut [u8],
+    planes: [&[u8]; 4],
+    width: u32,
+    height: u32,
+    origin_x: i32,
+    origin_y: i32,
+    fixes: &[FalseHalfFix],
+) {
+    let plane_w = width.saturating_mul(2) as i32;
+    let plane_h = height.saturating_mul(2) as i32;
+    let plane_stride = width as usize * 2;
+    for fix in fixes {
+        let lx = fix.x - origin_x;
+        let ly = fix.y - origin_y;
+        if lx < 0 || ly < 0 || lx % 2 != 0 || ly % 2 != 0 || lx + 1 >= plane_w || ly + 1 >= plane_h {
+            continue;
+        }
+        let ox = (lx / 2) as usize;
+        let oy = (ly / 2) as usize;
+        if ox >= width as usize || oy >= height as usize {
+            continue;
+        }
+        let mut intact = true;
+        for plane in planes {
+            for (index, (dx, dy)) in [(0i32, 0i32), (1, 0), (0, 1), (1, 1)].into_iter().enumerate() {
+                let byte = ((ly as usize + dy as usize) * plane_stride + lx as usize + dx as usize) * 4;
+                if plane.len() < byte + 4 || plane[byte..byte + 4] != fix.expected[index] {
+                    intact = false;
+                    break;
+                }
+            }
+            if !intact {
+                break;
+            }
+        }
+        if !intact {
+            continue;
+        }
+        let dst = (oy * width as usize + ox) * 4;
+        if dst + 4 <= output.len() {
+            output[dst..dst + 4].copy_from_slice(&fix.output);
+        }
+    }
+}
+
 pub fn downsample(bytes: &[u8], width: u32, height: u32) -> Vec<u8> {
     let mut out = vec![0; width as usize * height as usize * 4];
     for y in 0..height as usize {
@@ -332,35 +420,9 @@ pub fn downsample(bytes: &[u8], width: u32, height: u32) -> Vec<u8> {
                 ((y * 2 + 1) * width as usize * 2 + x * 2) * 4,
                 ((y * 2 + 1) * width as usize * 2 + x * 2 + 1) * 4,
             ];
-            // Reconstruct the exact premultiplied UNORM8 bytes produced by
-            // render_scene, then reproduce the normalized 2x texture filter.
-            let pixels = indices.map(|i| {
-                let alpha = u32::from(bytes[i + 3]);
-                [
-                    (u32::from(bytes[i]) * alpha + 127) / 255,
-                    (u32::from(bytes[i + 1]) * alpha + 127) / 255,
-                    (u32::from(bytes[i + 2]) * alpha + 127) / 255,
-                    alpha,
-                ]
-            });
-            let resolved = if let Some(adjusted) = ties_even_white_tent_half(pixels) {
-                adjusted.map(|value| u32::from(crate::figma_sampling::encode_unorm8(value)))
-            } else {
-                let sum = std::array::from_fn(|channel| {
-                    pixels.iter().map(|pixel| pixel[channel]).sum::<u32>()
-                });
-                sum.map(|v| u32::from(crate::figma_sampling::normalized_resolve_sum(v)))
-            };
+            let straight = indices.map(|i| [bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]);
             let dst = (y * width as usize + x) * 4;
-            let alpha = resolved[3];
-            if alpha > 0 {
-                for c in 0..3 {
-                    // Public PNGs use straight alpha; same half-up conversion
-                    // as the GPU readback path, after resolving premultiplication.
-                    out[dst + c] = ((resolved[c] * 255 * 2 + alpha) / (alpha * 2)).min(255) as u8;
-                }
-            }
-            out[dst + 3] = alpha as u8;
+            out[dst..dst + 4].copy_from_slice(&export_pair_straight(straight));
         }
     }
     out
