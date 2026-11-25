@@ -105,6 +105,59 @@ fn named<'a>(files: &'a BTreeMap<String, Value>, name: &str) -> Vec<&'a Value> {
     found
 }
 
+#[test]
+fn wfp_page_masters_survive_embedded_library_copy_ids() {
+    let bytes = fixture("../../../testing/fixtures/sketch-public-20261105/ui-design-kit/[Legacy] WFP Template.sketch");
+    let source = json_files(&bytes);
+    // The WFP corpus uses the archival codec for this round trip. Other
+    // advanced overrides in this file are outside editable-session admission.
+    let doc = interop::import_sketch(&bytes).unwrap();
+    let round_tripped = export_document("WFP Template", &doc);
+    let page_masters = |files: &BTreeMap<String, Value>| -> BTreeMap<String, Value> {
+        let mut fields = BTreeMap::new();
+        for page in pages(files) {
+            let mut children = Vec::new();
+            descendants(page, &mut children);
+            for node in children {
+                if node["_class"] == "symbolMaster" && node["resizesContent"] == true {
+                    fields.insert(node["do_objectID"].as_str().unwrap().to_owned(),
+                        node["symbolID"].clone());
+                }
+            }
+        }
+        fields
+    };
+    let expected = page_masters(&source);
+    let actual = page_masters(&round_tripped);
+    assert_eq!(expected.len(), 118);
+    assert_eq!(actual.len(), 118);
+    assert_eq!(actual, expected);
+
+    let foreign = round_tripped["document.json"]["foreignSymbols"].as_array().unwrap();
+    assert_eq!(foreign.len(), 2);
+    for entry in foreign {
+        let mutable = &entry["symbolMaster"];
+        let original = &entry["originalMaster"];
+        assert_ne!(mutable["do_objectID"], original["do_objectID"]);
+        assert_ne!(mutable["symbolID"], original["symbolID"]);
+        assert_eq!(mutable["resizesContent"], true);
+        let definition = &doc.nodes[mutable["do_objectID"].as_str().unwrap()];
+        assert_eq!(definition.bindings.get("symbolID").map(String::as_str),
+            mutable["symbolID"].as_str());
+        assert!(doc.nodes.values().any(|node| node.instance.as_ref()
+            .is_some_and(|instance| Some(instance.component_id.as_str()) == mutable["symbolID"].as_str())));
+        for property in mutable["overrideProperties"].as_array().unwrap() {
+            let path = property["overrideName"].as_str().unwrap();
+            let target = path.split(['/', '_']).next().unwrap();
+            assert!(mutable["layers"].as_array().unwrap().iter()
+                .any(|child| child["do_objectID"] == target), "{path}");
+        }
+    }
+    let exported = interop::export_sketch(&doc).unwrap();
+    let reopened = interop::import_sketch(&exported).unwrap();
+    assert_eq!(page_masters(&export_document("reopened WFP Template", &reopened)), expected);
+}
+
 fn authored_document() -> Vec<u8> {
     let user = serde_json::to_vec(&json!({
         "document": {

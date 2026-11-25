@@ -1734,6 +1734,11 @@ impl<'a> Importer<'a> {
     }
 
     fn layer(&mut self, layer: &Value, inside_artboard: bool, stack_item: bool) -> String {
+        self.layer_in_library(layer, inside_artboard, stack_item, None)
+    }
+
+    fn layer_in_library(&mut self, layer: &Value, inside_artboard: bool, stack_item: bool,
+        library_copy: Option<&str>) -> String {
         let class = match layer
             .get("_class")
             .and_then(Value::as_str)
@@ -1742,7 +1747,7 @@ impl<'a> Importer<'a> {
             "MSImmutableHotspotLayer" => "hotspot",
             class => class,
         };
-        let id = layer
+        let source_id = layer
             .get("userInfo")
             .and_then(|u| u.get("com.futureox.design-kernel"))
             .and_then(|u| u.get("originalId"))
@@ -1755,12 +1760,23 @@ impl<'a> Importer<'a> {
                     .map(str::to_string)
             })
             .unwrap_or_else(|| format!("sketch-{}/{}", class, self.nodes.len()));
+        // A library embed can reuse the page master's object IDs, including
+        // descendants, while binding instances through a distinct symbol ID.
+        let renamed = library_copy.filter(|_| self.nodes.contains_key(&source_id)).map(|copy| {
+            (0..).map(|attempt| sketch_id(&format!("{copy}/{source_id}/{attempt}")))
+                .find(|candidate| !self.nodes.contains_key(candidate)).expect("unclaimed library layer ID")
+        });
+        let id = renamed.as_ref().unwrap_or(&source_id).clone();
         let clipping = layer.get("clippingBehavior").and_then(Value::as_i64);
         let modern_frame = class == "group"
             && (matches!(layer.get("groupBehavior").and_then(Value::as_i64), Some(1 | 2))
                 || clipping == Some(1));
         let kind = if modern_frame { "frame" } else { kind_for_class(class) };
         let mut node = crate::facet::sample_node(&id, kind);
+        if renamed.is_some() {
+            let wire = layer.get("do_objectID").and_then(Value::as_str).unwrap_or(&source_id);
+            node.bindings.insert("sketchLayerFromLibraryObjectID".into(), wire.into());
+        }
         node.graphic = kind == "frame" && layer.get("groupBehavior").and_then(Value::as_i64) == Some(2);
         node.sketch_template = kind == "frame" && class != "symbolMaster" && bool_at(layer, "isTemplate");
         if kind == "frame" {
@@ -3054,7 +3070,7 @@ impl<'a> Importer<'a> {
         let mut children = Vec::new();
         if let Some(layers) = layer.get("layers").and_then(Value::as_array) {
             for child in layers {
-                children.push(self.layer(child, inside_artboard || class == "artboard", child_stack));
+                children.push(self.layer_in_library(child, inside_artboard || class == "artboard", child_stack, library_copy));
             }
         }
         let reverse_archive = node.layout.as_ref().and_then(|layout| layout.stacking_order)
@@ -3090,7 +3106,12 @@ impl<'a> Importer<'a> {
             );
         }
         if let Some(uuid) = layer.get("do_objectID").and_then(Value::as_str) {
-            self.uuids.insert(uuid.to_ascii_uppercase(), id.clone());
+            let uuid = uuid.to_ascii_uppercase();
+            if renamed.is_some() {
+                self.uuids.entry(uuid).or_insert_with(|| id.clone());
+            } else {
+                self.uuids.insert(uuid, id.clone());
+            }
         }
         if let Some(info)=layer.get("userInfo").and_then(Value::as_object) {
             let plugin:Map<String,Value>=info.iter().filter(|(key,_)|key.as_str()!="com.futureox.design-kernel").map(|(k,v)|(k.clone(),v.clone())).collect();
@@ -3431,20 +3452,35 @@ fn foreign_symbol_import(
             unresolved.push(entry.clone());
             continue;
         };
-        let id = importer.layer(master, false, false);
         let library_id = entry
             .get("libraryID")
             .and_then(Value::as_str)
             .unwrap_or_default();
+        let entry_id = entry.get("do_objectID").and_then(Value::as_str).unwrap_or_default();
+        let symbol_id = master.get("symbolID").and_then(Value::as_str).unwrap_or_default();
+        let copy = format!("sketch/foreign/{library_id}/{entry_id}/{symbol_id}");
+        let id = importer.layer_in_library(master, false, false, Some(&copy));
+        let mut source=entry.clone();
+        if let Some(map) = source.get_mut("remoteToLocalIDMap").and_then(Value::as_object_mut) {
+            let mut scoped_ids = BTreeMap::new();
+            let mut pending = vec![id.as_str()];
+            while let Some(node) = pending.pop().and_then(|id| importer.nodes.get(id)) {
+                if let Some(wire) = node.bindings.get("sketchLayerFromLibraryObjectID") {
+                    scoped_ids.insert(wire.to_ascii_uppercase(), node.id.as_str());
+                }
+                pending.extend(node.children.iter().map(String::as_str));
+            }
+            for local in map.values_mut() {
+                if let Some(wire) = local.as_str().map(str::to_ascii_uppercase)
+                    && let Some(mapped) = scoped_ids.get(&wire).copied()
+                        .or_else(|| importer.uuids.get(&wire).map(String::as_str)) {
+                    *local = json!(mapped);
+                }
+            }
+        }
         if let Some(node) = importer.nodes.get_mut(&id) {
             node.bindings
                 .insert("sketchForeignLibraryID".into(), library_id.into());
-            let mut source=entry.clone();
-            if let Some(map)=source.get_mut("remoteToLocalIDMap").and_then(Value::as_object_mut) {
-                for local in map.values_mut() {
-                    if let Some(id)=local.as_str().and_then(|id|importer.uuids.get(&id.to_ascii_uppercase())) { *local=json!(id); }
-                }
-            }
             if let Ok(raw) = serde_json::to_string(&source) {
                 node.bindings.insert("sketchForeignSymbolRaw".into(), raw);
             }
@@ -4475,7 +4511,9 @@ fn native_override_path(document: &Document, root: &str, path: &str) -> std::res
             let Some(node) = document.nodes.get(&id) else {
                 return Err((*part).to_owned());
             };
-            if id.eq_ignore_ascii_case(part) {
+            if id.eq_ignore_ascii_case(part) ||
+                sketch_binding(document, node, "sketchLayerFromLibraryObjectID")
+                    .is_some_and(|wire| wire.eq_ignore_ascii_case(part)) {
                 found = Some(node);
                 break;
             }
@@ -8406,6 +8444,19 @@ fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Result<
             map.insert("symbolID".into(), json!(symbol_id));
             map.entry("allowsOverrides").or_insert_with(|| json!(true));
             map.entry("overrideProperties").or_insert_with(|| json!([]));
+            // An archived inventory uses native paths, whereas admitted
+            // instance overrides have already been resolved to component keys.
+            if let Some(properties) = map.get_mut("overrideProperties").and_then(Value::as_array_mut) {
+                for property in properties {
+                    if let Some(name) = property.get("overrideName").and_then(Value::as_str)
+                        && let Some((path, field)) = name.rsplit_once('_')
+                        && let Ok(key) = native_override_path(doc, id, path)
+                        && let Some(native) = exported_override_path(doc, id, &key)
+                        && native != path {
+                        property["overrideName"] = json!(format!("{native}_{field}"));
+                    }
+                }
+            }
         }
         if !entry.contains_key("originalMaster") {
             entry.insert("originalMaster".into(), master.clone());
