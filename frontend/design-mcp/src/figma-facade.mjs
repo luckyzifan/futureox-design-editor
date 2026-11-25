@@ -60,7 +60,7 @@ export const FIGMA_MCP_TOOLS = Object.freeze([
   }),
   tool('get_selection', 'Read the active page and current selection. Up to 20 nodes include id, name, kind, size, and world bounds. Desktop Figma MCP often implies this selection; call this tool to read it.', {}),
   tool('get_design_context', 'Bounded design context for nodeId or the current selection, from context.get. When code.export is available, HTML/CSS is attached as resources. Output is Futureox HTML/CSS, not Figma React and Tailwind. clientFrameworks is ignored.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
-  tool('get_screenshot', 'PNG export of nodeId, the current selection, or the active page when nothing is selected. Uses preview.capture: a CPU raster of design content, not an application or GPU screenshot. scale is 0.1–4.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, scale: { type: 'number', minimum: 0.1, maximum: 4 } }),
+  tool('get_screenshot', 'CPU PNG of the local node, selection or active page. maxDimension fits the rendered size. Set contentsOnly to false to include background and other page layers inside the crop. Set enableBase64Response to false for a resource link without inline image content.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, scale: { type: 'number', minimum: 0.1, maximum: 4 }, maxDimension: { type: 'integer', minimum: 1, maximum: 65536 }, contentsOnly: { type: 'boolean' }, enableBase64Response: { type: 'boolean' } }),
   tool('get_variable_defs', 'Local variable definitions and their alias dependencies, plus shared styles referenced by nodeId or the first 20 selected nodes. An empty selection returns a bounded document catalog.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
   tool('download_assets', 'Export up to 20 local nodes as individual MCP resources in png, jpeg, webp, svg, or bitmap pdf. Set rawImagesOnly to read up to 20 original embedded image fills in the selected subtrees instead.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, nodeIds: { type: 'array', minItems: 1, maxItems: FIGMA_ASSET_LIMIT, items: { type: 'string', minLength: 1, maxLength: 128 } }, defaultFormat: { type: 'string', enum: ['png', 'jpeg', 'jpg', 'webp', 'svg', 'pdf'] }, defaultScale: { type: 'number', minimum: ASSET_MIN_SCALE, maximum: 4 }, rawImagesOnly: { type: 'boolean' } }),
   tool('use_figma', 'Write the open document. Preferred input is operations (at most 40), applied as one Design API batch and one undo step: create {kind,parentId?,x?,y?,width?,height?,name?,text?,fontSize?,fill?}, update {nodeId,name?,x?,y?,width?,height?,text?,fill?,transform?}, delete {nodeId|nodeIds}, select {nodeIds}, move {nodeId,parentId,index?}. fill is #RRGGBB. Coordinates are parent-local document units. code is plugin JavaScript and runs only when a plugin bridge is registered; otherwise the result is plugin_host_unavailable and the source is not evaluated. description is required.', { description: { type: 'string', minLength: 1, maxLength: 400 }, operations: { type: 'array', maxItems: 40 }, code: { type: 'string', maxLength: 100000 }, mutationId: { type: 'string', minLength: 1, maxLength: 128 } }, ['description']),
@@ -355,13 +355,25 @@ export class FigmaFacade {
   }
 
   async screenshot(args, context) {
-    const invalid = unknownArguments(args, new Set(['nodeId', 'scale', 'cursor']))
+    const invalid = unknownArguments(args, new Set(['nodeId', 'scale', 'maxDimension', 'contentsOnly', 'enableBase64Response', 'cursor']))
     if (invalid) return failure('get_screenshot', 'invalid_params', invalid)
-    if (args.scale !== undefined && (typeof args.scale !== 'number' || args.scale < 0.1 || args.scale > 4)) return failure('get_screenshot', 'invalid_params', 'scale must be a number from 0.1 to 4')
+    if (args.scale !== undefined && (!Number.isFinite(args.scale) || args.scale < 0.1 || args.scale > 4)) return failure('get_screenshot', 'invalid_params', 'scale must be a number from 0.1 to 4')
+    const { maxDimension, contentsOnly, enableBase64Response, scale } = args
+    if (maxDimension !== undefined && (!Number.isSafeInteger(maxDimension) || maxDimension < 1 || maxDimension > 65536))
+      return failure('get_screenshot', 'invalid_params', 'maxDimension must be an integer from 1 to 65536')
+    if ([contentsOnly, enableBase64Response].some(value => value !== undefined && typeof value !== 'boolean'))
+      return failure('get_screenshot', 'invalid_params', 'contentsOnly and enableBase64Response must be booleans')
     const target = await this.resolveNodes(args, context, 'get_screenshot')
     if (!target.ok) return target
-    const params = { format: 'png', ...(args.scale === undefined ? {} : { scale: args.scale }), ...(target.ids?.length ? { nodeIds: target.ids.slice(0, 256) } : {}) }
-    return this.call('preview.capture', params, context)
+    const params = { format: 'png', ...(scale === undefined ? {} : { scale }),
+      ...(maxDimension === undefined ? {} : { maxDimension }),
+      ...(contentsOnly === undefined ? {} : { contentsOnly }),
+      ...(target.pageId ? { pageId: target.pageId } : {}),
+      ...(target.ids?.length ? { nodeIds: target.ids.slice(0, 256) } : {}),
+    }
+    const captured = await this.call('preview.capture', params, context, target.identity)
+    if (!captured.ok || enableBase64Response !== false) return captured
+    return { ...captured, result: { ...captured.result, inlineImage: false } }
   }
 
   async variables(args, context) {

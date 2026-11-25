@@ -10,10 +10,11 @@ import { captureRaster, rasterMethods, rasterParams, RASTER_LIMITS } from './ras
 const MAX_MESSAGE_BYTES = 32 * 1024 * 1024
 const STANDARD_MESSAGE_BYTES = 8 * 1024 * 1024
 const previewMethod: AutomationMethod = {
-  name: 'preview.capture', description: 'Capture PNG, JPEG, WebP, or bitmap PDF through the real product CPU exporter with document/page/node/revision metadata. Defaults to the active page. At most 16 megapixels and 8 MiB including base64. PDF bytes are delivered as an MCP resource. The requested resolution is preserved.', mutates: false,
+  name: 'preview.capture', description: 'Capture PNG, JPEG, WebP, or bitmap PDF through the real product CPU exporter with document/page/node/revision metadata. Defaults to the active page. maxDimension fits within the requested size. Set contentsOnly to false for a page crop including overlapping layers. At most 16 megapixels and 8 MiB including base64. PDF bytes are delivered as an MCP resource.', mutates: false,
   inputSchema: { type: 'object', additionalProperties: false, properties: {
     pageId: { type: 'string', minLength: 1, maxLength: 512 }, nodeIds: { type: 'array', minItems: 1, maxItems: 256, items: { type: 'string', minLength: 1, maxLength: 512 } },
     format: { type: 'string', enum: PREVIEW_FORMATS }, scale: { type: 'number', minimum: PREVIEW_LIMITS.minScale, maximum: PREVIEW_LIMITS.maxScale },
+    maxDimension: { type: 'integer', minimum: 1, maximum: 65536 }, contentsOnly: { type: 'boolean' },
   } },
 }
 export interface DesktopAutomationRequest {
@@ -259,10 +260,13 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
       }
       if (request.expectedRevision !== undefined && (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision !== revision)) throw bridgeError('REVISION_CONFLICT', 'The design revision changed')
       const params = request.params ?? {}
-      if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => !['pageId', 'nodeIds', 'format', 'scale'].includes(key))) throw bridgeError('INVALID_PARAMS', 'Invalid preview arguments')
+      if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => !['pageId', 'nodeIds', 'format', 'scale', 'maxDimension', 'contentsOnly'].includes(key))) throw bridgeError('INVALID_PARAMS', 'Invalid preview arguments')
       if (params.pageId !== undefined && (typeof params.pageId !== 'string' || !params.pageId.length || params.pageId.length > 512)) throw bridgeError('INVALID_PARAMS', 'pageId must be a string')
       if (params.nodeIds !== undefined && (!Array.isArray(params.nodeIds) || !params.nodeIds.length || params.nodeIds.length > 256 || params.nodeIds.some(value => typeof value !== 'string' || !value.length || value.length > 512))) throw bridgeError('INVALID_PARAMS', 'nodeIds must contain at most 256 node ids')
       if (params.format !== undefined && !PREVIEW_FORMATS.some(format => format === params.format)) throw bridgeError('INVALID_PARAMS', 'Unsupported preview format')
+      if (params.maxDimension !== undefined && (typeof params.maxDimension !== 'number' || !Number.isSafeInteger(params.maxDimension) || params.maxDimension < 1 || params.maxDimension > 65536))
+        throw bridgeError('INVALID_PARAMS', 'maxDimension must be an integer from 1 to 65536')
+      if (params.contentsOnly !== undefined && typeof params.contentsOnly !== 'boolean') throw bridgeError('INVALID_PARAMS', 'contentsOnly must be a boolean')
       if (params.scale !== undefined && (typeof params.scale !== 'number' || !Number.isFinite(params.scale) || params.scale < PREVIEW_LIMITS.minScale || params.scale > PREVIEW_LIMITS.maxScale))
         throw bridgeError('INVALID_PARAMS', `Preview scale must be between ${PREVIEW_LIMITS.minScale} and ${PREVIEW_LIMITS.maxScale}`)
       // Export sees a detached immutable snapshot, never a subsequently edited
