@@ -207,3 +207,68 @@ test('a large source reopens its edited checkpoint when the working volume canno
   assert.equal(await readFile(source, 'utf8'), sourceBytes)
   console.log('SOURCE_FULL_VOLUME readRevision=1 writeFailed=SOURCE_STORAGE_FULL nextRevision=2 temporaryIndexRemoved=true')
 })
+
+test('a full-volume v5 upgrade preserves its asset and retries the migration after space is freed',
+  volumeTestOptions, async t => {
+  const { scope, mount, start, stop } = await fullVolumeFixture(t)
+  const config = { workspaceDb: path.join(mount, 'workspace.sqlite3'),
+    recoveryDir: path.join(mount, 'recovery'), catalogDb: path.join(scope, 'catalog.sqlite3') }
+  const binary = randomBytes(1024 * 1024).toString('base64')
+  const document = { schemaVersion: 6, id: randomUUID(), name: 'Before migration',
+    pages: [{ id: randomUUID(), name: 'Page', children: [], background: '#ffffff' }], nodes: {},
+    fonts: { embedded: { family: 'Migration fixture', data: binary } } }
+  let child = start(config).child
+  const committed = await child.request('workspace.commit', { document, expectedRevision: null, mutationId: 'original-v5-receipt' })
+  assert.equal(committed.revision, 1)
+  await stop(child)
+
+  const sqlite = async script => {
+    const { stdout } = await exec('python3', ['-c', 'import json, sqlite3, sys, hashlib\ndb=sqlite3.connect(sys.argv[1])\n' + script, config.workspaceDb])
+    return JSON.parse(stdout)
+  }
+  const state = `
+print(json.dumps({
+  "version": db.execute("PRAGMA user_version").fetchone()[0],
+  "tables": db.execute("SELECT count(*) FROM sqlite_master WHERE name IN ('assets_v6','revision_assets_v6')").fetchone()[0],
+  "receipts": db.execute("SELECT count(*) FROM mutations WHERE mutation_id='original-v5-receipt'").fetchone()[0],
+  "assets": [(name, length, hashlib.sha256(value).hexdigest()) for name, length, value in db.execute("SELECT hash, byte_length, value FROM assets ORDER BY hash")],
+}))
+`
+  const versionFive = await sqlite(`
+db.executescript("""
+BEGIN IMMEDIATE;
+CREATE TABLE assets_v5(hash TEXT PRIMARY KEY CHECK(length(hash)=64),kind TEXT NOT NULL CHECK(kind IN('font','image')),value BLOB NOT NULL,byte_length INTEGER NOT NULL CHECK(byte_length>=0 AND byte_length<=33554432));
+INSERT INTO assets_v5 SELECT * FROM assets;
+CREATE TABLE revision_assets_v5(document_id TEXT NOT NULL,revision INTEGER NOT NULL,asset_hash TEXT NOT NULL REFERENCES assets_v5(hash),PRIMARY KEY(document_id,revision,asset_hash),FOREIGN KEY(document_id,revision) REFERENCES revisions(document_id,revision));
+INSERT INTO revision_assets_v5 SELECT * FROM revision_assets;
+DROP TABLE revision_assets;
+DROP TABLE assets;
+ALTER TABLE assets_v5 RENAME TO assets;
+ALTER TABLE revision_assets_v5 RENAME TO revision_assets;
+PRAGMA user_version=5;
+COMMIT;
+""")
+` + state)
+  assert.equal(versionFive.version, 5)
+  assert.equal(versionFive.assets.length, 1)
+  assert.equal(versionFive.assets[0][1], binary.length)
+  await fillVolume(mount)
+  child = start(config).child
+  try {
+    const health = await child.request('health')
+    assert.equal(health.workspaceAvailable, false)
+    assert.equal(health.workspaceError.code, 'WORKSPACE_STORAGE_FULL')
+  } finally { await stop(child) }
+  await rm(path.join(mount, 'test-filler'))
+  assert.deepEqual(await sqlite(state), versionFive)
+
+  child = start(config).child
+  try {
+    const restored = await child.request('workspace.open', { id: document.id })
+    assert.equal(restored.revision, 1)
+    assert.equal(restored.hash, committed.hash)
+    assert.equal(restored.document.fonts.embedded.data, binary)
+  } finally { await stop(child) }
+  assert.deepEqual(await sqlite(state), { ...versionFive, version: 6 })
+  console.log('WORKSPACE_FULL_VOLUME v5Preserved=true resumedSchema=6 assetHashUnchanged=true')
+})
