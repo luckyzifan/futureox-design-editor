@@ -11,7 +11,7 @@ export type DesktopCommand = 'settings' | 'automation-settings' | 'plugins' | 'c
 export type PluginDirectoryGrant = { grant: string; manifestText: string; displayName: string }
 export interface PluginBridge {
   pick(): Promise<DesktopResult<PluginDirectoryGrant>>
-  /** Plugins declared in the desktop plugins folder and enabled at startup. No filesystem paths. */
+  /** Refreshes plugins declared in the desktop plugins folder. No filesystem paths. */
   list(): Promise<DesktopResult<{ plugins: DeclaredPlugin[] }>>
   read(request: { grant: string; paths: string[] }): Promise<DesktopResult<{ files: Record<string, string> }>>
   openUi(request: { html: string; width?: number; height?: number; title?: string }): Promise<DesktopResult>

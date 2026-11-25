@@ -1,7 +1,7 @@
 import { strFromU8, unzipSync } from 'fflate'
 import { PluginApiError } from './errors'
 import { PLUGIN_LIMITS } from './limits'
-import { assertPluginBundle, parsePluginManifest, type PluginBundle } from './manifest'
+import { assertPluginSource, missingPluginSource, parsePluginManifest, pluginBundleFromSources, pluginUiPaths, type PluginBundle } from './manifest'
 
 function safeZipPath(name: string): string | null {
   const path = name.replaceAll('\\', '/').replace(/^\.\//, '')
@@ -51,7 +51,7 @@ export function pluginBundleFromZip(bytes: Uint8Array): PluginBundle {
   const root = manifestPath.slice(0, -'manifest.json'.length)
   const read = (relative: string, limit: number) => {
     const data = files.get(`${root}${relative}`)
-    if (!data) throw new PluginApiError('invalid_plugin', `Missing ${relative}`)
+    if (!data) throw missingPluginSource(manifest, relative)
     if (data.byteLength > limit) throw new PluginApiError('plugin_too_large', `${relative} is too large`)
     return textFile(data, relative)
   }
@@ -61,11 +61,12 @@ export function pluginBundleFromZip(bytes: Uint8Array): PluginBundle {
     if (error instanceof PluginApiError) throw error
     throw new PluginApiError('invalid_manifest', 'manifest.json is not valid JSON')
   }
-  const bundle: PluginBundle = {
-    manifest,
-    main: read(manifest.main, PLUGIN_LIMITS.mainBytes),
-    ui: manifest.ui ? read(manifest.ui, PLUGIN_LIMITS.uiBytes) : null,
+  const sources = new Map([[manifest.main, read(manifest.main, PLUGIN_LIMITS.mainBytes)]])
+  let remaining = PLUGIN_LIMITS.uiBytes
+  for (const path of pluginUiPaths(manifest)) {
+    const source = read(path, remaining)
+    remaining -= assertPluginSource(source, path, remaining)
+    sources.set(path, source)
   }
-  assertPluginBundle(bundle)
-  return bundle
+  return pluginBundleFromSources(manifest, sources)
 }

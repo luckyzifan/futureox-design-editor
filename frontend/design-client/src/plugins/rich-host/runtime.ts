@@ -1,4 +1,5 @@
 import { getQuickJS, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSHandle, type QuickJSRuntime } from 'quickjs-emscripten'
+import { AutomationError } from '../../automation/types'
 import type { PluginStorage } from './client-storage'
 import { PluginApiError, PluginClosed } from './errors'
 import { matchNetworkAccess, type PluginFetch } from './network'
@@ -41,6 +42,7 @@ export type PluginHooks = {
   onClose?: (message: string) => void
   /** Manifest menu command. Omitted when the plugin has no menu. */
   command?: string
+  signal?: AbortSignal
   storage?: PluginStorage
   /** Test double for declared-domain fetch. Production uses the platform fetch. */
   fetch?: PluginFetch
@@ -53,6 +55,12 @@ export class PluginController {
   readonly logs: readonly string[]
   private runtime: QuickJSRuntime | null
   private context: QuickJSContext | null
+  private readonly asyncResults = new Set<QuickJSHandle>()
+  private readonly exportAbort = new AbortController()
+  private currentTurn: Promise<void> | null = null
+  private queuedTurns = 0
+  private cancelTimerWait: (() => void) | null = null
+  private readonly stopOnAbort = () => { queueMicrotask(() => this.close()) }
   private systemFaces: Promise<readonly import('./session').PluginSystemFontFace[] | null> | null = null
   private constructor(
     private readonly session: ReturnType<typeof createPluginSession>,
@@ -61,16 +69,20 @@ export class PluginController {
     private readonly fetchImpl: PluginFetch | undefined,
     private readonly networkDomains: readonly string[],
     private readonly systemFonts: PluginSystemFonts | undefined,
+    private readonly signal: AbortSignal | undefined,
   ) {
     this.runtime = runtime
     this.context = context
     this.notifications = session.notifications
     this.logs = session.logs
+    this.signal?.addEventListener('abort', this.stopOnAbort, { once: true })
   }
 
   static async open(bundle: PluginBundle, editor: Parameters<typeof createPluginSession>[0], hooks?: PluginHooks) {
     assertPluginBundle(bundle)
+    hooks?.signal?.throwIfAborted()
     const quick = await quickJs()
+    hooks?.signal?.throwIfAborted()
     const runtime = quick.newRuntime()
     runtime.setMemoryLimit(PLUGIN_LIMITS.guestMemoryBytes)
     runtime.setMaxStackSize(PLUGIN_LIMITS.guestStackBytes)
@@ -86,7 +98,7 @@ export class PluginController {
       systemFonts: hooks?.systemFonts,
       hooks,
     })
-    const controller = new PluginController(session, runtime, context, hooks?.fetch, bundle.manifest.networkDomains, hooks?.systemFonts)
+    const controller = new PluginController(session, runtime, context, hooks?.fetch, bundle.manifest.networkDomains, hooks?.systemFonts, hooks?.signal)
     const host = context.newFunction('__host', (opHandle, payloadHandle) => {
       try {
         const op = context.getString(opHandle)
@@ -107,9 +119,20 @@ export class PluginController {
     const html = context.newString(bundle.ui ?? '')
     context.setProp(context.global, '__html__', html)
     html.dispose()
+    if (bundle.uiFiles) {
+      const uiFiles = context.newObject(context.null)
+      for (const [name, content] of Object.entries(bundle.uiFiles)) {
+        const file = context.newString(content)
+        context.setProp(uiFiles, name, file)
+        file.dispose()
+      }
+      context.setProp(context.global, '__uiFiles__', uiFiles)
+      uiFiles.dispose()
+    }
     try {
       const pending = controller.evaluate(PLUGIN_PRELUDE + '\n' + bundle.main)
       if (pending) await pending
+      hooks?.signal?.throwIfAborted()
       session.flush()
       if (session.closed || (!session.uiShown && !session.listening)) controller.release()
       return controller
@@ -130,79 +153,95 @@ export class PluginController {
   get applying() { return this.session.applying }
 
   emit(type: 'selectionchange' | 'currentpagechange' | 'documentchange') {
-    if (!this.context || this.session.closed) return
-    const finish = () => { this.session.flush(); if (this.session.closed) this.release() }
-    try {
-      const pending = this.evaluate(`globalThis.__deliverPluginEvent(${JSON.stringify(type)})`)
-      if (pending) return pending.then(finish, (error: unknown) => { this.session.abandonTurn(); throw error })
-    } catch (error) {
-      this.session.abandonTurn()
-      throw error
-    }
-    finish()
+    return this.dispatch(`globalThis.__deliverPluginEvent(${JSON.stringify(type)})`)
   }
 
   deliver(message: unknown) {
     if (!this.context) throw new PluginApiError('plugin_closed', 'The plugin has finished')
     const json = JSON.stringify(message ?? null)
     if (json.length > PLUGIN_LIMITS.messageBytes) throw new PluginApiError('message_too_large', 'Plugin UI message is too large')
-    const payload = this.context.newString(json)
-    this.context.setProp(this.context.global, '__pluginMessageJson', payload)
-    payload.dispose()
-    const finish = () => { this.session.flush(); if (this.session.closed) this.release() }
-    try {
-      const pending = this.evaluate('globalThis.__deliverPluginMessage(JSON.parse(globalThis.__pluginMessageJson))')
-      if (pending) return pending.then(finish, (error: unknown) => { this.session.abandonTurn(); throw error })
-    } catch (error) {
-      this.session.abandonTurn()
-      throw error
-    }
-    finish()
+    return this.dispatch(`globalThis.__deliverPluginMessage(JSON.parse(${JSON.stringify(json)}))`)
   }
 
-  close() { this.release() }
+  close() {
+    this.session.abandonTurn()
+    this.release()
+  }
 
-  private arm() {
-    this.runtime?.setInterruptHandler(shouldInterruptAfterDeadline(Date.now() + PLUGIN_LIMITS.runtimeMs))
+  private dispatch(code: string): Promise<void> | void {
+    const run = () => {
+      if (!this.context || this.session.closed) return
+      const finish = () => {
+        if (!this.context) return
+        this.session.flush()
+        if (this.session.closed) this.release()
+      }
+      const fail = (error: unknown) => { this.close(); throw error }
+      try {
+        const pending = this.evaluate(code)
+        if (pending) return pending.then(finish).catch(fail)
+        finish()
+      } catch (error) { fail(error) }
+    }
+    const previous = this.currentTurn
+    let completion
+    if (previous) {
+      if (this.queuedTurns >= PLUGIN_LIMITS.pendingTurns) throw new PluginApiError('plugin_limit', 'Too many pending plugin messages')
+      this.queuedTurns += 1
+      completion = previous.then(run).finally(() => { this.queuedTurns -= 1 })
+    } else completion = run()
+    if (!completion) return
+    this.currentTurn = completion
+    const clear = () => { if (this.currentTurn === completion) this.currentTurn = null }
+    void completion.then(clear, clear)
+    return completion
+  }
+
+  private waitForTimer(delay: number) {
+    return new Promise<void>(resolve => {
+      const finish = () => {
+        clearTimeout(handle)
+        this.cancelTimerWait = null
+        resolve()
+      }
+      const handle = setTimeout(finish, Math.max(0, delay))
+      this.cancelTimerWait = finish
+    })
   }
 
   private evaluate(code: string): Promise<void> | void {
-    if (!this.context) throw new PluginApiError('plugin_closed', 'The plugin has finished')
-    this.arm()
-    const evaluated = this.context.evalCode(code, 'plugin.js', { type: 'global' })
+    if (!this.context || !this.runtime) throw new PluginApiError('plugin_closed', 'The plugin has finished')
+    const deadline = performance.now() + PLUGIN_LIMITS.runtimeMs
+    this.runtime.setInterruptHandler(shouldInterruptAfterDeadline(Date.now() + PLUGIN_LIMITS.runtimeMs))
+    const result = this.evalGuest(code)
+    if (!result) return
+    try {
+      this.drain()
+      this.failIfRejected(result)
+      if (!this.session.closed && (this.session.hasNetwork() || this.session.hasFontJobs() || this.session.hasExportJobs() || this.session.hasTimers())) {
+        // Hold completion promises so an asynchronous throw reaches the
+        // caller, and dispose them before closing a suspended QuickJS turn.
+        this.asyncResults.add(result)
+        return this.finishAsync(deadline).then(() => {
+          for (const completion of this.asyncResults) this.failIfRejected(completion)
+        }).finally(() => this.disposeAsyncResults())
+      }
+    } finally {
+      if (result.alive && !this.asyncResults.has(result)) result.dispose()
+    }
+  }
+
+  private evalGuest(code: string, filename = 'plugin.js') {
+    const context = this.context
+    if (!context) return
+    const evaluated = context.evalCode(code, filename, { type: 'global' })
     if (evaluated.error) {
-      const message = guestText(this.context, evaluated.error)
+      const message = guestText(context, evaluated.error)
       evaluated.dispose()
       if (closedNotice(message) != null) return
       throw errorFromGuest(message)
     }
-    // QuickJS reports an async throw as a rejected completion promise, not as
-    // an eval error and not as an executePendingJobs error. Keep the handle
-    // until host jobs (fonts, fetch, export) have resumed the same promise.
-    const result = evaluated.value
-    let settled = false
-    const settle = () => {
-      if (settled) return
-      settled = true
-      try { this.failIfRejected(result) }
-      finally { if (result.alive) result.dispose() }
-    }
-    try {
-      this.drain()
-      if (this.session.hasNetwork() || this.session.hasFontJobs() || this.session.hasExportJobs()) {
-        return this.finishAsync().then(() => {
-          try { this.drain(); settle() }
-          catch (error) { if (!settled && result.alive) result.dispose(); throw error }
-        }, (error: unknown) => {
-          if (!settled && result.alive) result.dispose()
-          throw error
-        })
-      }
-      settle()
-    } catch (error) {
-      if (!settled && result.alive) result.dispose()
-      throw error
-    }
+    return evaluated.value
   }
 
   /** The script completion promise is the host-visible channel for an async rejection.
@@ -220,8 +259,9 @@ export class PluginController {
     throw errorFromGuest(message)
   }
 
-  private async finishAsync() {
-    while (this.session.hasNetwork() || this.session.hasFontJobs() || this.session.hasExportJobs()) {
+  private async finishAsync(deadline: number) {
+    let firedTimers = 0
+    while (this.context && !this.session.closed) {
       if (this.session.hasNetwork()) {
         const job = this.session.takeNetwork()
         if (!job) break
@@ -243,14 +283,32 @@ export class PluginController {
         continue
       }
       const job = this.session.takeExportJobs()
-      if (!job) break
-      let payload: Record<string, unknown>
-      try { payload = { ok: true, ...(await this.session.captureRasterExport(job)) } }
-      catch (error) {
-        payload = { ok: false, code: error instanceof PluginApiError ? error.code : 'export_failed', message: (error instanceof Error ? error.message : String(error)).slice(0, 500) }
+      if (job) {
+        let payload: Record<string, unknown>
+        try { payload = { ok: true, ...(await this.session.captureRasterExport(job, this.exportAbort.signal)) } }
+        catch (error) {
+          const code = error instanceof PluginApiError || error instanceof AutomationError && error.code === 'export_limit' ? error.code : 'export_failed'
+          payload = { ok: false, code, message: (error instanceof Error ? error.message : String(error)).slice(0, 500) }
+        }
+        this.inject(`globalThis.__finishExport(${JSON.stringify(job.id)}, ${JSON.stringify(payload)})`)
+        this.drain()
+        continue
       }
-      this.inject(`globalThis.__finishExport(${JSON.stringify(job.id)}, ${JSON.stringify(payload)})`)
-      this.drain()
+      const timer = this.session.nextTimer()
+      if (!timer) break
+      if (++firedTimers > PLUGIN_LIMITS.timerCallbacksPerTurn || timer.due > deadline || performance.now() >= deadline) {
+        throw new PluginApiError('plugin_limit', 'Plugin timer work exceeded its turn budget')
+      }
+      await this.waitForTimer(Math.ceil(timer.due - performance.now()))
+      if (!this.context || this.session.closed) break
+      if (performance.now() >= deadline) throw new PluginApiError('plugin_limit', 'Plugin timer work exceeded its turn budget')
+      this.session.assertCurrent()
+      if (this.session.consumeTimer(timer.id)) {
+        const result = this.evalGuest(`globalThis.__deliverPluginTimer(${timer.id})`, 'plugin-timer.js')
+        if (result) this.asyncResults.add(result)
+        this.drain()
+        if (result) this.failIfRejected(result)
+      }
     }
   }
   /** Resolves one loadFontAsync miss: catalog match, byte read, then the same
@@ -265,6 +323,7 @@ export class PluginController {
       const face = this.session.matchSystemFont(faces, job.family, job.style)
       if (!face) return { ok: false, code: 'font_unavailable', message: `Font ${job.family} ${job.style} is not installed` }
       const bytes = await this.systemFonts.read({ id: face.id })
+      if (!this.context || this.session.closed) return { ok: false, code: 'plugin_closed', message: 'The plugin has finished' }
       if (!bytes) return { ok: false, code: 'font_unavailable', message: `Font ${job.family} could not be read` }
       this.session.importSystemFont(job, bytes.data, bytes.face ?? face)
       return { ok: true }
@@ -276,14 +335,7 @@ export class PluginController {
   }
 
   private inject(code: string) {
-    if (!this.context) return
-    const evaluated = this.context.evalCode(code, 'plugin-fetch.js', { type: 'global' })
-    try {
-      if (evaluated.error) {
-        const message = guestText(this.context, evaluated.error)
-        if (closedNotice(message) == null) throw errorFromGuest(message)
-      }
-    } finally { evaluated.dispose() }
+    this.evalGuest(code, 'plugin-async.js')?.dispose()
   }
 
   private drain() {
@@ -304,9 +356,18 @@ export class PluginController {
     const context = this.context
     const runtime = this.runtime
     this.context = null
+    this.signal?.removeEventListener('abort', this.stopOnAbort)
+    this.exportAbort.abort()
+    this.cancelTimerWait?.()
+    this.disposeAsyncResults()
     if (context) context.dispose()
     runtime?.dispose()
     this.runtime = null
+  }
+
+  private disposeAsyncResults() {
+    for (const completion of this.asyncResults) completion.dispose()
+    this.asyncResults.clear()
   }
 }
 

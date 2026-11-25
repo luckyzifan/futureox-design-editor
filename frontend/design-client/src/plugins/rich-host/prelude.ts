@@ -12,7 +12,8 @@ function unsupported(api) {
 }
 function host(op, payload) {
   const reading = {
-    readNode: 1, readDocument: 1, children: 1, fonts: 1, log: 1, notify: 1, postMessage: 1,
+    readNode: 1, readDocument: 1, children: 1, fonts: 1, log: 1, logClear: 1, notify: 1, postMessage: 1,
+    timerSchedule: 1, timerCancel: 1, textSegments: 1,
     showUI: 1, uiResize: 1, uiShow: 1, uiHide: 1, uiClose: 1, loadFont: 1, meta: 1, listen: 1,
     viewportRead: 1, clientStorageGet: 1, clientStorageKeys: 1,
     pluginDataGet: 1, pluginDataKeys: 1, sharedPluginDataGet: 1, sharedPluginDataKeys: 1,
@@ -157,7 +158,7 @@ function wrap(id) {
           for (let i = 0; i < encoded.length; i++) bytes[i] = encoded.charCodeAt(i)
           return bytes
         })
-        if (normalized === 'PNG' || normalized === 'JPG') {
+        if (normalized === 'PNG' || normalized === 'JPG' || normalized === 'PDF') {
           return new Promise(function (resolve, reject) {
             let result
             try { result = host('exportBegin', { id: nodeId, format: normalized, scale: scale }) }
@@ -169,7 +170,7 @@ function wrap(id) {
             return new Uint8Array(figma.base64Decode(payload.base64 || ''))
           })
         }
-        throw new Error('unsupported_api: exportAsync supports SVG, PNG and JPG in this host')
+        throw new Error('unsupported_api: exportAsync supports SVG, PNG, JPG and bitmap PDF')
       }
       if (prop === 'setBoundVariable') return function (field, variable) {
         host('variableBind', { id: nodeId, field: field, variableId: variable ? variable.id : null })
@@ -180,8 +181,10 @@ function wrap(id) {
         for (const key in snap) if (snap[key]) bound[key] = variableProxy(snap[key])
         return bound
       }
-      if (prop === 'setRelaunchData' || prop === 'getStyledTextSegments')
-        return function () { unsupported('SceneNode.' + prop) }
+      if (prop === 'getStyledTextSegments' && read(nodeId).type === 'TEXT') return function (fields, start, end) {
+        return host('textSegments', { id: nodeId, fields: fields, start: start, end: end })
+      }
+      if (prop === 'setRelaunchData') return function () { unsupported('SceneNode.setRelaunchData') }
       const snap = read(nodeId)
       if (Object.prototype.hasOwnProperty.call(snap, prop)) return snap[prop]
       return undefined
@@ -260,6 +263,7 @@ function variableProxy(id) {
     set name(value) { host('variableRename', { id: id, name: String(value) }) },
     get resolvedType() { return host('variableRead', { id: id }).resolvedType },
     get variableCollectionId() { return host('variableRead', { id: id }).collectionId },
+    get valuesByMode() { return host('variableRead', { id: id, includeValues: true }).valuesByMode },
     setValueForMode: function (modeId, value) { host('variableSet', { id: id, mode: String(modeId), value: value }) },
     remove: function () { host('variableDelete', { id: id }) },
   }
@@ -305,7 +309,9 @@ function hexChannels(input) {
     alpha: hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1,
   }
 }
+const payments = Object.freeze({ status: Object.freeze({ type: 'NOT_SUPPORTED' }) })
 const figma = {
+  get payments() { return payments },
   mixed: Object.freeze({ kind: 'mixed' }),
   createRectangle: function () { return create('rectangle') },
   createEllipse: function () { return create('ellipse') },
@@ -484,10 +490,29 @@ const figma = {
   variables: {
     getLocalVariableCollections: function () { return host('collectionList', null).map(function (item) { return collectionProxy(item.id) }) },
     getLocalVariables: function (type) { return host('variableList', { type: type || null }).map(function (item) { return variableProxy(item.id) }) },
+    getVariableCollectionById: function (id) {
+      if (id == null) return null
+      const snap = host('collectionRead', { id: String(id) })
+      return snap ? collectionProxy(snap.id) : null
+    },
     getVariableById: function (id) {
       if (id == null) return null
       const snap = host('variableRead', { id: String(id) })
       return snap ? variableProxy(snap.id) : null
+    },
+    getLocalVariableCollectionsAsync: async function () { return figma.variables.getLocalVariableCollections() },
+    getLocalVariablesAsync: async function (type) { return figma.variables.getLocalVariables(type) },
+    getVariableCollectionByIdAsync: async function (id) { return figma.variables.getVariableCollectionById(id) },
+    getVariableByIdAsync: async function (id) { return figma.variables.getVariableById(id) },
+    createVariableAlias: function (variable) {
+      const target = figma.variables.getVariableById(variable && variable.id)
+      if (!target) throw new Error('not_found: Variable alias target does not exist')
+      return { type: 'VARIABLE_ALIAS', id: target.id }
+    },
+    createVariableAliasByIdAsync: async function (id) {
+      const target = figma.variables.getVariableById(id)
+      if (!target) throw new Error('not_found: Variable alias target does not exist')
+      return { type: 'VARIABLE_ALIAS', id: target.id }
     },
     createVariableCollection: function (name) { return collectionProxy(host('collectionCreate', { name: String(name) }).id) },
     createVariable: function (name, collection, resolvedType) {
@@ -541,7 +566,7 @@ const figma = {
   },
 }
 globalThis.__deliverPluginMessage = function (message) {
-  if (typeof figma.ui.onmessage === 'function') figma.ui.onmessage(message)
+  if (typeof figma.ui.onmessage === 'function') return figma.ui.onmessage(message)
 }
 globalThis.__deliverPluginEvent = function (type) {
   const event = type === 'documentchange' ? { documentChanges: [] } : undefined
@@ -551,8 +576,11 @@ globalThis.__deliverPluginEvent = function (type) {
 globalThis.figma = figma
 globalThis.console = {
   log: function () { host('log', { level: 'log', message: Array.prototype.join.call(arguments, ' ') }) },
+  info: function () { host('log', { level: 'info', message: Array.prototype.join.call(arguments, ' ') }) },
+  debug: function () { host('log', { level: 'debug', message: Array.prototype.join.call(arguments, ' ') }) },
   warn: function () { host('log', { level: 'warn', message: Array.prototype.join.call(arguments, ' ') }) },
   error: function () { host('log', { level: 'error', message: Array.prototype.join.call(arguments, ' ') }) },
+  clear: function () { host('logClear', null) },
 }
 const fetchWaiters = {}
 const exportWaiters = {}
@@ -613,13 +641,22 @@ globalThis.__finishFetch = function (id, payload) {
   }
   waiter.resolve(response)
 }
-globalThis.setTimeout = function (fn, ms) {
-  if (typeof fn !== 'function') throw new Error('invalid_value: setTimeout expects a function')
-  if (ms !== undefined && ms !== 0) unsupported('setTimeout delay')
-  Promise.resolve().then(function () { fn() })
-  return 0
+const pluginTimers = new Map()
+globalThis.setTimeout = function (callback, delay, ...args) {
+  if (typeof callback !== 'function') throw new Error('invalid_value: setTimeout expects a function')
+  const id = host('timerSchedule', { delay: Math.max(0, Number(delay) || 0) })
+  pluginTimers.set(id, { callback: callback, args: args })
+  return id
 }
-globalThis.clearTimeout = function () {}
+globalThis.clearTimeout = function (id) {
+  const timerId = Number(id)
+  if (pluginTimers.delete(timerId)) host('timerCancel', { id: timerId })
+}
+globalThis.__deliverPluginTimer = function (id) {
+  const timer = pluginTimers.get(id)
+  pluginTimers.delete(id)
+  if (timer) return timer.callback.apply(undefined, timer.args)
+}
 globalThis.setInterval = function () { unsupported('setInterval') }
 globalThis.clearInterval = function () {}
 `

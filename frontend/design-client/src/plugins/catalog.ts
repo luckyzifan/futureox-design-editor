@@ -1,4 +1,4 @@
-import { parsePluginManifest, type FilePluginManifest } from './manifest'
+import { parsePluginManifest, type PluginManifest } from './rich-host/manifest'
 
 export type DeclaredPlugin = {
   grant: string
@@ -10,7 +10,7 @@ export type DeclaredPlugin = {
 
 const grantPattern = /^[0-9a-f-]{36}$/
 
-/** Keep startup plugins the manifest actually declares. Drop paths and mismatched names. */
+/** Keep the plugins the desktop grants. Derive their names and identities from the manifest. */
 export function acceptedDeclaredPlugins(value: unknown): DeclaredPlugin[] {
   if (!Array.isArray(value)) return []
   const plugins: DeclaredPlugin[] = []
@@ -23,14 +23,14 @@ export function acceptedDeclaredPlugins(value: unknown): DeclaredPlugin[] {
     const manifestText = record.manifestText
     if (typeof grant !== 'string' || !grantPattern.test(grant) || seen.has(grant)) continue
     if (typeof manifestText !== 'string' || new TextEncoder().encode(manifestText).byteLength > 64 * 1024) continue
-    let parsed: {manifest: FilePluginManifest; warnings: string[]}
-    try { parsed = parsePluginManifest(manifestText) } catch { continue }
+    let manifest: PluginManifest
+    try { manifest = parsePluginManifest(JSON.parse(manifestText), { desktopFolder: true }) } catch { continue }
     seen.add(grant)
     plugins.push({
       grant,
-      id: parsed.manifest.id,
-      name: parsed.manifest.name,
-      displayName: parsed.manifest.name,
+      id: manifest.id,
+      name: manifest.name,
+      displayName: manifest.name,
       manifestText,
     })
   }

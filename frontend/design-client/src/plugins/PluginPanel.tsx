@@ -5,6 +5,8 @@ import { useInterfacePreferences } from '../interface-preference'
 import { modalKeyDown, useModalOwnership } from '../modal-keyboard'
 import { acceptedDeclaredPlugins, type DeclaredPlugin } from './catalog'
 import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, pluginEditorEvents, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
+import { PLUGIN_LIMITS } from './rich-host/limits'
+import { assertPluginSource, missingPluginSource, pluginBundleFromSources, pluginUiPaths } from './rich-host/manifest'
 import { samplePlugin } from './sample-plugin'
 import './plugin-panel.css'
 
@@ -16,15 +18,15 @@ const copy = {
     load: '加载插件文件夹…',
     archive: '加载插件压缩包…',
     stop: '停止插件',
-    intro: '示例会在当前页面创建三个带标签的矩形。桌面版在启动时启用本机 plugins 文件夹里已声明的插件，也可以手动加载含 manifest.json 的文件夹，或一个 .zip / .figma 压缩包。启动扫描不会改画布，也不会执行压缩包。',
+    intro: '示例会在当前页面创建三个带标签的矩形。桌面版会扫描本机 plugins 文件夹。也可以手动加载含 manifest.json 的文件夹或 .zip / .figma 压缩包。',
     desktopUi: '插件界面在单独的沙箱窗口中打开。',
     webUi: '插件主程序已运行。插件界面窗口只在桌面版提供。',
     matrix: 'API 覆盖',
     path: '示例文件夹：frontend/design-client/plugins/labeled-rectangles',
-    enabled: '启动时已启用',
+    enabled: '本机插件',
     run: '运行',
     commands: '选择要运行的命令',
-    none: '这次启动没有启用本机插件。放入插件文件夹后重新打开桌面应用。',
+    none: '未找到本机插件。放入插件文件夹后重新打开此面板。',
     missing: '这个本机插件已不再启用。',
   },
   en: {
@@ -34,15 +36,15 @@ const copy = {
     load: 'Load plugin folder…',
     archive: 'Load plugin archive…',
     stop: 'Stop plugin',
-    intro: 'The sample creates three labeled rectangles on the current page. The desktop app enables declared plugins from its local plugins folder at startup, and can also load a folder that contains manifest.json or a .zip / .figma archive. The startup scan does not change the canvas and does not run an archive.',
+    intro: 'The sample creates three labeled rectangles on the current page. The desktop app scans its local plugins folder. You can also load a folder with manifest.json or a .zip / .figma archive.',
     desktopUi: 'The plugin interface opens in its own sandboxed window.',
     webUi: 'The plugin main script ran. The plugin UI window is available in the desktop app.',
     matrix: 'API coverage',
     path: 'Sample folder: frontend/design-client/plugins/labeled-rectangles',
-    enabled: 'Enabled at startup',
+    enabled: 'Local plugins',
     run: 'Run',
     commands: 'Choose a command',
-    none: 'No local plugins were enabled at startup. Add a plugin folder and reopen the desktop app.',
+    none: 'No local plugins found. Add a plugin folder and reopen this panel.',
     missing: 'That local plugin is no longer enabled.',
   },
 } as const
@@ -68,6 +70,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   const [pending, setPending] = useState<PluginBundle | null>(null)
   const [enabled, setEnabled] = useState<DeclaredPlugin[] | null>(null)
   const controller = useRef<PluginController | null>(null)
+  const runAbort = useRef<AbortController | null>(null)
   const backdrop = useRef<HTMLDivElement>(null)
   const closeButton = useRef<HTMLButtonElement>(null)
   useModalOwnership(backdrop, closeButton, returnFocus)
@@ -81,6 +84,8 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
 
   function stop() {
     generation.current += 1
+    runAbort.current?.abort()
+    runAbort.current = null
     controller.current?.close()
     controller.current = null
     uiOpen.current = false
@@ -113,17 +118,16 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
         return
       }
       const events = pluginEditorEvents(previous, next, active.applying)
+      const failed = (failure: unknown) => {
+        if (controller.current !== active) return
+        setError(failure instanceof Error ? failure.message : String(failure))
+        stopRef.current()
+      }
       for (const event of events) {
         try {
           const delivered = active.emit(event)
-          if (delivered) void Promise.resolve(delivered).catch(failure => {
-            setError(failure instanceof Error ? failure.message : String(failure))
-            stopRef.current()
-          })
-        } catch (failure) {
-          setError(failure instanceof Error ? failure.message : String(failure))
-          stopRef.current()
-        }
+          if (delivered) void delivered.catch(failed)
+        } catch (failure) { failed(failure) }
       }
     })
   }, [editor])
@@ -167,10 +171,18 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     }
     setPending(null)
     setRunning(true)
+    const abort = new AbortController()
+    runAbort.current = abort
+    const failed = (failure: unknown) => {
+      if (token !== generation.current) return
+      setError(failure instanceof Error ? failure.message : String(failure))
+      stop()
+    }
     try {
       const manifest = bundle.manifest
       const next = await openPlugin(editor, bundle, {
         command,
+        signal: abort.signal,
         systemFonts: desktop?.fonts ? {
           list: async () => { const listed = await desktop.fonts!.list(); return listed.status === 'ok' ? listed.fonts : null },
           read: async request => { const read = await desktop.fonts!.read(request); return read.status === 'ok' ? { face: read.font, data: read.data } : null },
@@ -190,7 +202,9 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
             })
           } else setStatus(text.webUi)
         },
-        onPostMessage: message => { void desktop?.plugins?.postUi({ pluginMessage: message }) },
+        onPostMessage: message => {
+          if (token === generation.current) void desktop?.plugins?.postUi({ pluginMessage: message })
+        },
         onClose: message => {
           // closePlugin runs inside a guest host call; finalize the panel only
           // after that turn returns, so a finished plugin frees its window,
@@ -206,13 +220,17 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
       controller.current = next
       setStatus(manifest.name)
       if (desktop?.plugins) {
-        const offMessage = desktop.plugins.onUiMessage(message => { void next.deliver(message.pluginMessage) })
+        const offMessage = desktop.plugins.onUiMessage(message => {
+          if (token !== generation.current) return
+          try {
+            const delivered = next.deliver(message.pluginMessage)
+            if (delivered) void delivered.catch(failed)
+          } catch (failure) { failed(failure) }
+        })
         const offClosed = desktop.plugins.onUiClosed(() => { if (token === generation.current) stop() })
         unlisten.current = () => { offMessage(); offClosed() }
       }
-    } catch (cause) {
-      if (token === generation.current) { setError(cause instanceof Error ? cause.message : String(cause)); stop() }
-    }
+    } catch (cause) { failed(cause) }
   }
 
   async function runSample() {
@@ -222,12 +240,23 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   async function runManifest(grant: string, manifestText: string) {
     const plugins = desktop?.plugins
     if (!plugins) return
-    const manifest = parseRichManifest(JSON.parse(manifestText))
-    const paths = manifest.ui ? [manifest.main, manifest.ui] : [manifest.main]
-    const read = await plugins.read({ grant, paths })
-    if (read.status === 'cancelled') return
-    if (read.status !== 'ok') { setError(read.message); return }
-    await run(manifestText, read.files[manifest.main] ?? '', manifest.ui ? read.files[manifest.ui] ?? '' : '', [])
+    const manifest = parseRichManifest(JSON.parse(manifestText), { desktopFolder: true })
+    const paths = [manifest.main, ...pluginUiPaths(manifest)]
+    const files = new Map<string, string>()
+    let remaining = PLUGIN_LIMITS.uiBytes
+    for (let first = 0; first < paths.length; first += 2) {
+      const requested = paths.slice(first, first + 2)
+      const read = await plugins.read({ grant, paths: requested })
+      if (read.status === 'cancelled') return
+      if (read.status !== 'ok') { setError(read.message); return }
+      for (const path of requested) {
+        const content = read.files[path]
+        if (typeof content !== 'string') throw missingPluginSource(manifest, path)
+        if (path !== manifest.main) remaining -= assertPluginSource(content, path, remaining)
+        files.set(path, content)
+      }
+    }
+    await runBundle(pluginBundleFromSources(manifest, files), [])
   }
 
   async function runListed(plugin: DeclaredPlugin) {

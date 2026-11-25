@@ -1,5 +1,6 @@
 import { createEditorDesignAutomation } from '../../automation'
-import { captureDesignPreview } from '../../automation/export'
+import { capturePluginRegion } from '../../automation/export'
+import type { DesignSystem } from '../../design-system'
 import { apply, bounds, worldMatrix } from '../../geometry'
 import type { Editor } from '../../engine'
 import {
@@ -12,6 +13,7 @@ import { PLUGIN_FETCH_METHODS, matchNetworkAccess, pluginFetchHeaders, type Plug
 import { figmaColorToHex, hexToFigmaColor } from './colors'
 import { PluginApiError, PluginClosed } from './errors'
 import { PLUGIN_LIMITS } from './limits'
+import { styledTextSegments } from './text-segments'
 import {
   pluginDataEmpty, pluginDataGet, pluginDataKeys, pluginDataSet, readPluginData, sharedPluginDataGet, sharedPluginDataKeys, sharedPluginDataSet,
   pluginDataExtension, type PluginDataScope, type PluginDataStore,
@@ -81,7 +83,7 @@ export type PluginSystemFonts = {
   read(request: { id: string }): Promise<{ face: PluginSystemFontFace; data: string } | null>
 }
 export type PluginFontJob = { id: string; family: string; style: string }
-export type PluginExportJob = { id: string; nodeId: string; pageId: string; format: 'png' | 'jpeg'; scale: number }
+export type PluginExportJob = { id: string; nodeId: string; pageId: string; format: 'png' | 'jpeg' | 'pdf'; scale: number }
 
 const KINDS = new Set<Kind>(['slice', 'frame', 'section', 'group', 'rectangle', 'ellipse', 'polygon', 'star', 'line', 'vector', 'text'])
 const TRANSFORM_KEYS = new Set(['x', 'y', 'rotation'])
@@ -319,11 +321,13 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   const networkJobs: { id: number; url: string; method: string; headers: Record<string, string>; body: string | null }[] = []
   const fontJobs: PluginFontJob[] = []
   const exportJobs: PluginExportJob[] = []
+  const timers = new Map<number, number>()
   const systemFonts = options.systemFonts
   const systemFontAliases = new Map<string, string>()
   const systemFaceImports = new Map<string, string>()
   let fontJobSerial = 0
   let exportJobSerial = 0
+  let timerSerial = 0
   const documentId = editor.state.doc.id
   const sessionId = editor.sessionGeneration
   const commands: Command[] = []
@@ -466,14 +470,13 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   }
   /** Product CPU raster export (the same path as the export panel preview).
    * The QuickJS transport caps the base64 payload, so large rasters reject. */
-  async function captureRasterExport(job: PluginExportJob) {
+  async function captureRasterExport(job: PluginExportJob, signal: AbortSignal) {
     failIfReplaced()
-    const preview = await captureDesignPreview(editor.state.doc, { pageId: job.pageId, nodeIds: [job.nodeId], format: job.format, scale: job.scale })
-    const dataUrl = String(preview?.dataUrl ?? '')
-    const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
-    if (!base64) throw new PluginApiError('export_failed', 'Raster export did not return image bytes')
-    if (base64.length > PLUGIN_LIMITS.payloadBytes / 2) throw new PluginApiError('export_limit', `Raster export exceeds the plugin transport; lower the scale or use SVG`)
-    return { base64 }
+    const result = await capturePluginRegion(editor.state.doc, {
+      pageId: job.pageId, nodeIds: [job.nodeId], format: job.format, scale: job.scale, signal,
+    }, PLUGIN_LIMITS.payloadBytes / 2)
+    failIfReplaced()
+    return result
   }
   function requireFont(family: string, style: string) {
     if (/italic/i.test(style)) throw new PluginApiError('unsupported_api', `Italic styles are not available (${style})`)
@@ -1050,6 +1053,9 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return ''
   }
   function variableValue(value: unknown, kind: 'color' | 'number' | 'boolean' | 'string') {
+    if (value && typeof value === 'object' && 'type' in value && value.type === 'VARIABLE_ALIAS') {
+      return { alias: shortText('id' in value ? value.id : null, 'alias id', 128) }
+    }
     if (kind === 'color') return typeof value === 'string' ? shortText(value, 'color', 32) : figmaColorToHex(value).hex
     if (kind === 'number') return finite(value, 'value', -1e7, 1e7)
     if (kind === 'boolean') return boolean(value, 'value')
@@ -1064,8 +1070,6 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return found.modes
   }
   function variableKindOf(id: string) {
-    const pending = commands.find(command => command.type === 'variableCreate' && command.id === id)
-    if (pending?.type === 'variableCreate') return pending.kind
     return (execute('variable.get', { variableId: id }, false) as { kind: 'color' | 'number' | 'boolean' | 'string' }).kind
   }
   function collectionView(id: string) {
@@ -1083,14 +1087,18 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     const variables = execute('variable.list', { collectionId: id }, false) as { id: string }[]
     return { id, name: found.name, defaultModeId: found.defaultMode, modes: found.modes.map(name => ({ modeId: name, name })), variableIds: variables.map(item => item.id) }
   }
-  function variableView(id: string) {
-    const pending = commands.find(command => command.type === 'variableCreate' && command.id === id)
-    if (pending?.type === 'variableCreate') {
-      return { id, name: pending.name, collectionId: pending.collectionId, resolvedType: pending.kind === 'color' ? 'COLOR' : pending.kind === 'number' ? 'FLOAT' : pending.kind === 'boolean' ? 'BOOLEAN' : 'STRING' }
-    }
+  function variableView(id: string, includeValues: boolean) {
     try {
-      const record = execute('variable.get', { variableId: id }, false) as { id: string; name: string; collection: string; kind: string }
-      return { id: record.id, name: record.name, collectionId: record.collection, resolvedType: record.kind === 'color' ? 'COLOR' : record.kind === 'number' ? 'FLOAT' : record.kind === 'boolean' ? 'BOOLEAN' : 'STRING' }
+      const record = execute('variable.get', { variableId: id }, false) as DesignSystem['variables'][string] & { id: string }
+      const resolvedType = { color: 'COLOR', number: 'FLOAT', boolean: 'BOOLEAN', string: 'STRING' }[record.kind]
+      const info = { id: record.id, name: record.name, collectionId: record.collection, resolvedType }
+      if (!includeValues) return info
+      const valuesByMode = Object.fromEntries(Object.entries(record.values).map(([mode, value]) => {
+        if (typeof value === 'object') return [mode, { type: 'VARIABLE_ALIAS', id: value.alias }]
+        if (record.kind === 'color' && typeof value === 'string') return [mode, hexToFigmaColor(value)]
+        return [mode, value]
+      }))
+      return { ...info, valuesByMode }
     } catch (error) {
       if (error instanceof PluginApiError && error.message.includes('Unknown variable')) return null
       throw error
@@ -1119,7 +1127,18 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     abandonTurn() {
       commands.splice(0)
       pluginStoreDirty = false
+      timers.clear()
     },
+    assertCurrent: failIfReplaced,
+    hasTimers: () => timers.size > 0,
+    nextTimer() {
+      let next: { id: number; due: number } | null = null
+      for (const [id, due] of timers) {
+        if (!next || due < next.due) next = { id, due }
+      }
+      return next
+    },
+    consumeTimer: (id: number) => timers.delete(id),
     hasNetwork: () => networkJobs.length > 0,
     takeNetwork: () => networkJobs.shift() ?? null,
     hasFontJobs: () => fontJobs.length > 0,
@@ -1134,9 +1153,30 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       calls += 1
       if (calls > PLUGIN_LIMITS.hostCalls) throw new PluginApiError('plugin_limit', `Plugin exceeded ${PLUGIN_LIMITS.hostCalls} host calls`)
       const body = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
+      if (op === 'textSegments') {
+        flush()
+        const result = execute('node.get', { id: shortText(body.id, 'id', 80) }, false) as { node: DesignNode }
+        return styledTextSegments(result.node, body.fields, body.start, body.end)
+      }
       if (op === 'log') {
         const message = String(body.message ?? '').slice(0, PLUGIN_LIMITS.logChars)
         if (logs.length < PLUGIN_LIMITS.logLines) logs.push(message)
+        return null
+      }
+      if (op === 'logClear') {
+        logs.length = 0
+        return null
+      }
+      if (op === 'timerSchedule') {
+        failIfReplaced()
+        const delay = finite(body.delay, 'Timer delay', 0, PLUGIN_LIMITS.timerDelayMs)
+        if (timers.size >= PLUGIN_LIMITS.pendingTimers) throw new PluginApiError('plugin_limit', 'Too many pending plugin timers')
+        const id = ++timerSerial
+        timers.set(id, performance.now() + delay)
+        return id
+      }
+      if (op === 'timerCancel') {
+        if (typeof body.id === 'number') timers.delete(body.id)
         return null
       }
       if (op === 'notify') {
@@ -1149,6 +1189,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       if (op === 'close') {
         flush()
         closed = true
+        timers.clear()
         closeMessage = shortText(body.message ?? '', 'closePlugin', PLUGIN_LIMITS.notifyChars)
         options.hooks?.onClose?.(closeMessage)
         throw new PluginClosed(closeMessage)
@@ -1463,20 +1504,21 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         flush()
         const id = shortText(body.id, 'id', 80)
         const format = String(body.format || 'PNG').toUpperCase()
-        if (format !== 'PNG' && format !== 'JPG') throw new PluginApiError('unsupported_api', 'Raster exportAsync supports PNG and JPG. PDF is not available.')
+        if (format !== 'PNG' && format !== 'JPG' && format !== 'PDF') throw new PluginApiError('unsupported_api', 'Renderer exportAsync supports PNG, JPG and PDF')
         const scale = body.scale === undefined ? 1 : finite(body.scale, 'scale', 0.1, 4)
         const result = execute('node.get', { id }, false) as { pageId?: string } | null
         if (!result || typeof result.pageId !== 'string') throw new PluginApiError('invalid_value', `Node ${id} was not found`)
         exportJobSerial += 1
         const jobId = `export-${exportJobSerial}`
-        exportJobs.push({ id: jobId, nodeId: id, pageId: result.pageId, format: format === 'JPG' ? 'jpeg' : 'png', scale })
+        const output = format === 'JPG' ? 'jpeg' : format === 'PDF' ? 'pdf' : 'png'
+        exportJobs.push({ id: jobId, nodeId: id, pageId: result.pageId, format: output, scale })
         return { pending: jobId }
       }
       if (op === 'export') {
         flush()
         const id = shortText(body.id, 'id', 80)
         const format = String(body.format || 'PNG').toUpperCase()
-        if (format !== 'SVG') throw new PluginApiError('unsupported_api', 'exportAsync supports SVG in this host. PNG, JPG, and PDF use the editor export panel.')
+        if (format !== 'SVG') throw new PluginApiError('unsupported_api', 'This export operation requires SVG')
         const scale = body.scale === undefined ? undefined : finite(body.scale, 'scale', 0.01, 4)
         const exported = operationResult(execute('vector.export', { nodeIds: [id], textMode: 'outlines', fontMode: 'references', ...(scale === undefined ? {} : { scale }) }, false))
         const text = exported.content
@@ -1540,7 +1582,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       }
       if (op === 'variableRead') {
         flush()
-        return variableView(shortText(body.id, 'id', 128))
+        return variableView(shortText(body.id, 'id', 128), body.includeValues === true)
       }
       if (op === 'variableCreate') {
         const kind = variableKind(body.resolvedType)
@@ -1561,8 +1603,20 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         const id = shortText(body.id, 'id', 128)
         const mode = shortText(body.mode, 'mode', 80)
         const pending = commands.find(command => command.type === 'variableCreate' && command.id === id)
-        const value = variableValue(body.value, pending && pending.type === 'variableCreate' ? pending.kind : variableKindOf(id))
-        if (pending && pending.type === 'variableCreate') { pending.values[mode] = value; return null }
+        const value = variableValue(body.value, pending?.type === 'variableCreate' ? pending.kind : variableKindOf(id))
+        if (pending?.type === 'variableCreate') {
+          const setter = commands.find(command => command.type === 'variableSet' && command.id === id && command.mode === mode)
+          if (setter?.type === 'variableSet') {
+            setter.value = value
+            return null
+          }
+          // A target created later in the same batch must exist before its
+          // alias is checked by the shared document operation.
+          if (typeof value !== 'object') {
+            pending.values[mode] = value
+            return null
+          }
+        }
         ensureRoom()
         commands.push({ type: 'variableSet', id, mode, value })
         return null
