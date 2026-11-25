@@ -599,7 +599,8 @@ vec4 figmaSpatialResolve(vec2 p){
   bool coverage=u[9].w>0.5&&recordOpaqueCoverageEndpoints(a,first,second)&&recordOpaqueCoverageEndpoints(b,first,second)&&
    recordOpaqueCoverageEndpoints(c,first,second)&&recordOpaqueCoverageEndpoints(d,first,second);
   bool chromatic=first.r!=first.g||first.g!=first.b||second.r!=second.g||second.g!=second.b;
-  if(coverage&&any(notEqual(second,first))&&chromatic){return figmaFourPass(exportTapSum(a),exportTapSum(b),exportTapSum(c),exportTapSum(d),false);}
+  bool blackWhite=min(first.r,second.r)==0u&&max(first.r,second.r)==255u;
+  if(coverage&&any(notEqual(second,first))&&(chromatic||blackWhite)){return figmaFourPass(exportTapSum(a),exportTapSum(b),exportTapSum(c),exportTapSum(d),false);}
   return figmaFourPass(softwareSpatialSample(a),softwareSpatialSample(b),softwareSpatialSample(c),softwareSpatialSample(d),true);
  }
  uvec4 a=uvec4(0u);uvec4 b=uvec4(0u);uvec4 c=uvec4(0u);uvec4 d=uvec4(0u);

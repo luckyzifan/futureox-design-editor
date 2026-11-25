@@ -653,7 +653,8 @@ fn opaqueColorEndpoints(planes:array<array<vec4<u32>,4>,4>)->bool{
   }
  }
  let chromatic=first.r!=first.g||first.g!=first.b||second.r!=second.g||second.g!=second.b;
- return any(second!=first)&&chromatic;
+ let blackWhite=min(first.r,second.r)==0u&&max(first.r,second.r)==255u;
+ return any(second!=first)&&(chromatic||blackWhite);
 }
 fn exportTapSum(taps:array<vec4<u32>,4>)->vec4<f32>{
  return figmaQuarterSum(taps[0]+taps[1]+taps[2]+taps[3]);
