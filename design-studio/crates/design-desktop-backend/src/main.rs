@@ -43,14 +43,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     // Startup filesystem work is bounded too; no async worker blocks on fsync.
     let backend = tokio::task::spawn_blocking(move || Backend::new(&directory)).await??;
-    let handle = tokio::runtime::Handle::current();
-    let catalog =
-        tokio::task::spawn_blocking(move || handle.block_on(Catalog::open(&catalog_path))).await;
-    let backend = match catalog {
-        Ok(Ok(catalog)) => backend.with_catalog(catalog),
-        Ok(Err(error)) => backend.with_catalog_unavailable(error.code),
-        Err(_) => backend.with_catalog_unavailable("CATALOG_ERROR"),
-    };
+    // The workspace owns the recovery reserve. Let it recover SQLite before
+    // opening the separate catalog on the same volume.
     let backend = if let Some(path) = workspace_path {
         let handle = tokio::runtime::Handle::current();
         match tokio::task::spawn_blocking(move || handle.block_on(WorkspaceStore::open(&path)))
@@ -62,6 +56,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     } else {
         backend
+    };
+    let handle = tokio::runtime::Handle::current();
+    let catalog =
+        tokio::task::spawn_blocking(move || handle.block_on(Catalog::open(&catalog_path))).await;
+    let backend = match catalog {
+        Ok(Ok(catalog)) => backend.with_catalog(catalog),
+        Ok(Err(error)) => backend.with_catalog_unavailable(error.code),
+        Err(_) => backend.with_catalog_unavailable("CATALOG_ERROR"),
     };
     let backend = Arc::new(backend);
     let result = runtime::serve(backend.clone(), tokio::io::stdin(), tokio::io::stdout()).await;

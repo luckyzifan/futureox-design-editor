@@ -14,6 +14,9 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+#[path = "workspace_reserve.rs"]
+mod reserve;
+
 pub const SCHEMA_VERSION: i64 = 6;
 pub const MAX_DOCUMENTS: i64 = 10_000;
 const MAX_REVISION: i64 = 9_007_199_254_740_991;
@@ -339,20 +342,33 @@ impl WorkspaceStore {
                 )
             })??;
         match Self::open_prepared(path).await {
-            Err(error) if error.code == "WORKSPACE_WRITE_FAILED" => {
+            Ok(store) => {
+                let database = path.to_path_buf();
+                // Best effort on a healthy volume. A failure must not make a
+                // valid workspace unavailable.
+                let _ = tokio::task::spawn_blocking(move || reserve::replenish(&database)).await;
+                Ok(store)
+            }
+            Err(error) if matches!(error.code, "WORKSPACE_WRITE_FAILED" | "WORKSPACE_STORAGE_FULL") => {
                 // On a full volume SQLite can report a refused WAL open or a
-                // read-only database instead of SQLITE_FULL. Check the actual
-                // volume only on this error path.
-                let directory = path.parent().expect("validated workspace parent").to_path_buf();
-                let full = tokio::task::spawn_blocking(move || {
-                    matches!(fs2::available_space(directory), Ok(0))
-                })
-                .await
-                .unwrap_or(false);
-                if full {
-                    return Err(BackendError::new("WORKSPACE_STORAGE_FULL", error.message));
+                // read-only database instead of SQLITE_FULL. Retry ordinary
+                // SQLite recovery once after reclaiming our reserved space.
+                let database = path.to_path_buf();
+                let released = tokio::task::spawn_blocking(move || reserve::release_if_full(&database))
+                    .await
+                    .ok()
+                    .flatten();
+                match released {
+                    Some(true) => Self::open_prepared(path).await.map_err(|retry| {
+                        if retry.code == "WORKSPACE_WRITE_FAILED" {
+                            BackendError::new("WORKSPACE_STORAGE_FULL", retry.message)
+                        } else {
+                            retry
+                        }
+                    }),
+                    Some(false) => Err(BackendError::new("WORKSPACE_STORAGE_FULL", error.message)),
+                    None => Err(error),
                 }
-                Err(error)
             }
             result => result,
         }
