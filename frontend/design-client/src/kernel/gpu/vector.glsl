@@ -329,8 +329,7 @@ uint figmaEncodeUnorm8(float value) {
 // HDR and all legacy passes keep this branch disabled.
 // Texture replay keeps its independently verified source/clip-alpha contract.
 // Its Q4 alpha residual table is not a software UNORM8 sampler table.
-// Mode 24 resolves four composited 2× sample planes with the export box mean.
-bool softwareRasterByte(){int mode=int(u[4].x);return BYTE_SURFACE&&u[63].y>0.5&&mode!=24&&(mode<43||mode>45);}
+bool softwareRasterByte(){int mode=int(u[4].x);return BYTE_SURFACE&&u[63].y>0.5&&(mode<43||mode>45);}
 uint softwareLerpByte(uint a,uint b,uint weight){
  int product=(int(b)-int(a))*int(weight);uint magnitude=uint(abs(product));
  uint quotient=magnitude>>8u;uint remainder=magnitude&255u;
@@ -563,7 +562,17 @@ vec4 figmaFourPass(vec4 a,vec4 b,vec4 c,vec4 d){
 vec4 figmaQuarterSum(uvec4 sum){
  return vec4(figmaNormalizeQ4(sum.x*4u),figmaNormalizeQ4(sum.y*4u),figmaNormalizeQ4(sum.z*4u),figmaNormalizeQ4(sum.w*4u));
 }
+vec4 softwareSpatialSample(highp sampler2D tex,vec2 p,vec4 r){
+ uvec4 a=softwareEncodeBytes(at(tex,p,r));
+ uvec4 b=softwareEncodeBytes(at(tex,p+vec2(1,0),r));
+ uvec4 c=softwareEncodeBytes(at(tex,p+vec2(0,1),r));
+ uvec4 d=softwareEncodeBytes(at(tex,p+vec2(1,1),r));
+ return softwareByteValue(softwareSampleBytes(a,b,c,d,128u,128u));
+}
 vec4 figmaSpatialResolve(vec2 p){
+ if(softwareRasterByte()){
+  return figmaFourPass(softwareSpatialSample(sourceA,p,u[1]),softwareSpatialSample(sourceB,p,u[2]),softwareSpatialSample(sourceC,p,u[3]),softwareSpatialSample(sourceD,p,u[1]));
+ }
  uvec4 a=uvec4(0u);uvec4 b=uvec4(0u);uvec4 c=uvec4(0u);uvec4 d=uvec4(0u);
  for(uint y=0u;y<2u;y=y+1u){for(uint x=0u;x<2u;x=x+1u){
   vec2 q=p+vec2(float(x),float(y));

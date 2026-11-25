@@ -388,10 +388,9 @@ fn figmaEncodeUnorm8(value:f32)->u32 {
 }
 // Explicit byte-domain compatibility. Index 253 is reserved by the drivers;
 // HDR and all legacy passes keep this branch disabled.
-// Mode 24 resolves four composited 2× sample planes with the export box mean.
 // Texture replay keeps its independently verified source/clip-alpha contract.
 // Its Q4 alpha residual table is not a software UNORM8 sampler table.
-fn softwareRasterByte()->bool{let mode:i32=i32(u(4).x);return BYTE_SURFACE&&u(63).y>0.5&&mode!=24&&(mode<43||mode>45);}
+fn softwareRasterByte()->bool{let mode:i32=i32(u(4).x);return BYTE_SURFACE&&u(63).y>0.5&&(mode<43||mode>45);}
 fn softwareLerpByte(a:u32,b:u32,weight:u32)->u32{
  let product:i32=(i32(b)-i32(a))*i32(weight);let magnitude:u32=u32(abs(product));
  let quotient:u32=magnitude>>8u;let remainder:u32=magnitude&255u;
@@ -624,7 +623,17 @@ fn figmaFourPass(a:vec4<f32>,b:vec4<f32>,c:vec4<f32>,d:vec4<f32>)->vec4<f32>{
 fn figmaQuarterSum(sum:vec4<u32>)->vec4<f32>{
  return vec4<f32>(figmaNormalizeQ4(sum.x*4u),figmaNormalizeQ4(sum.y*4u),figmaNormalizeQ4(sum.z*4u),figmaNormalizeQ4(sum.w*4u));
 }
+fn softwareSpatialSample(tex:texture_2d<f32>,p:vec2<f32>,r:vec4<f32>)->vec4<f32>{
+ let a:vec4<u32>=softwareEncodeBytes(at(tex,p,r));
+ let b:vec4<u32>=softwareEncodeBytes(at(tex,p+vec2<f32>(1,0),r));
+ let c:vec4<u32>=softwareEncodeBytes(at(tex,p+vec2<f32>(0,1),r));
+ let d:vec4<u32>=softwareEncodeBytes(at(tex,p+vec2<f32>(1,1),r));
+ return softwareByteValue(softwareSampleBytes(a,b,c,d,128u,128u));
+}
 fn figmaSpatialResolve(p:vec2<f32>)->vec4<f32>{
+ if(softwareRasterByte()){
+  return figmaFourPass(softwareSpatialSample(sourceA,p,u(1)),softwareSpatialSample(sourceB,p,u(2)),softwareSpatialSample(sourceC,p,u(3)),softwareSpatialSample(sourceD,p,u(1)));
+ }
  var a:vec4<u32>=vec4<u32>(0u);var b:vec4<u32>=vec4<u32>(0u);var c:vec4<u32>=vec4<u32>(0u);var d:vec4<u32>=vec4<u32>(0u);
  for(var y:u32=0u;y<2u;y=y+1u){for(var x:u32=0u;x<2u;x=x+1u){
   let q:vec2<f32>=p+vec2<f32>(f32(x),f32(y));
