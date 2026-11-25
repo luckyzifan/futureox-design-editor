@@ -1,4 +1,5 @@
 import { PLUGIN_UI_BYTES } from './plugin-package.mjs'
+import { createPluginUiNetwork } from './plugin-ui-network.mjs'
 
 export function jsonPluginMessage(value) {
   const text = JSON.stringify(value)
@@ -20,11 +21,12 @@ export function wrapPluginUiDocument(html) {
   return `<!doctype html><html><head>${csp}</head><body>${html}</body></html>`
 }
 
-export function createPluginUiHost({ BrowserWindow, session, ipcMain, preloadPath, send }) {
+export function createPluginUiHost({ BrowserWindow, session, ipcMain, preloadPath, send, network = createPluginUiNetwork }) {
   let child = null
   let pluginSession = null
   let listening = false
   const silent = new WeakSet()
+  const scopes = new WeakMap()
   function ensure() {
     if (listening) return
     listening = true
@@ -38,13 +40,26 @@ export function createPluginUiHost({ BrowserWindow, session, ipcMain, preloadPat
       if (!child || child.isDestroyed() || event.sender !== child.webContents) return
       try { send('design-desktop:plugin-ui-message', { pluginMessage: jsonPluginMessage(value?.pluginMessage) }) } catch { /* Drop malformed UI messages. */ }
     })
+    ipcMain.handle('design-desktop:plugin-ui-fetch', async (event, value) => {
+      const owner = child
+      if (!owner || owner.isDestroyed() || event.sender !== owner.webContents ||
+          event.senderFrame !== owner.webContents.mainFrame) return { ok: false, error: 'Plugin UI network permission denied' }
+      try {
+        const response = await scopes.get(owner).fetch(value)
+        if (owner === child && !owner.isDestroyed()) return { ok: true, response }
+      } catch (error) {
+        return { ok: false, error: (error instanceof Error ? error.message : 'Plugin UI request failed').slice(0, 180) }
+      }
+      return { ok: false, error: 'Plugin UI closed during the request' }
+    })
   }
   return {
-    open({ html, width, height, title, parent }) {
+    open({ html, width, height, title, parent, allowedDomains }) {
       ensure()
       this.close()
       const size = pluginUiSize(width, height)
       const document = wrapPluginUiDocument(html)
+      const scope = network(allowedDomains)
       const url = `data:text/html;charset=utf-8;base64,${Buffer.from(document, 'utf8').toString('base64')}`
       const opened = new BrowserWindow({
         parent: parent && !parent.isDestroyed() ? parent : undefined,
@@ -63,9 +78,11 @@ export function createPluginUiHost({ BrowserWindow, session, ipcMain, preloadPat
         },
       })
       child = opened
+      scopes.set(opened, scope)
       opened.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
       opened.webContents.on('will-navigate', (event, next) => { if (!String(next).startsWith('data:')) event.preventDefault() })
       opened.on('closed', () => {
+        scope.close()
         if (child === opened) child = null
         if (!silent.has(opened)) send('design-desktop:plugin-ui-closed', { closed: true })
       })
@@ -80,6 +97,7 @@ export function createPluginUiHost({ BrowserWindow, session, ipcMain, preloadPat
       silent.add(child)
       const closing = child
       child = null
+      scopes.get(closing)?.close()
       closing.close()
     },
   }

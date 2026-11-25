@@ -133,7 +133,7 @@ function wrap(id) {
       if (prop === 'mainComponent') { const main = read(nodeId).mainComponentId; return main ? wrap(main) : null }
       if (prop === 'cornerRadius') { const radius = read(nodeId).cornerRadius; return radius === null ? figma.mixed : radius }
       if (prop === 'resize' || prop === 'resizeWithoutConstraints') return function (width, height) { host('resize', { id: nodeId, width: width, height: height }) }
-      if (prop === 'remove') return function () { dead.add(nodeId); host('remove', { id: nodeId }) }
+      if (prop === 'remove') return function () { host('remove', { id: nodeId }); dead.add(nodeId) }
       if (prop === 'clone') return function () { return wrap(host('clone', { id: nodeId }).id) }
       if (prop === 'appendChild') return function (child) { host('move', { id: child.id, parentId: nodeId }); return child }
       if (prop === 'insertChild') return function (index, child) { host('move', { id: child.id, parentId: nodeId, index: index }); return child }
@@ -371,8 +371,8 @@ const figma = {
       getSharedPluginDataKeys: data.getSharedPluginDataKeys,
     }
   },
-  get editorType() { return 'figma' },
-  get mode() { return 'default' },
+  get editorType() { return host('meta', null).editorType },
+  get mode() { return host('meta', null).mode },
   get pluginId() { return __pluginMeta.pluginId },
   get fileKey() { return null },
   get command() { return __pluginMeta.command == null ? undefined : __pluginMeta.command },
@@ -399,15 +399,18 @@ const figma = {
     })
   },
   on: function (type, callback) {
-    if (!listeners[type] || typeof callback !== 'function') unsupported('figma.on(' + type + ')')
+    if (!Object.prototype.hasOwnProperty.call(listeners, type) || typeof callback !== 'function') unsupported('figma.on(' + type + ')')
     listeners[type].push(callback)
-    if (type !== 'close') host('listen', { type: type })
+    if (type !== 'close' && listeners[type].length === 1) host('listen', { type: type, active: true })
   },
   off: function (type, callback) {
+    if (!Object.prototype.hasOwnProperty.call(listeners, type)) unsupported('figma.off(' + type + ')')
     const list = listeners[type]
-    if (!list) unsupported('figma.off(' + type + ')')
     const index = list.indexOf(callback)
-    if (index >= 0) list.splice(index, 1)
+    if (index >= 0) {
+      list.splice(index, 1)
+      if (type !== 'close' && !list.length) host('listen', { type: type, active: false })
+    }
   },
   viewport: {
     get zoom() { return host('viewportRead', null).zoom },
@@ -501,7 +504,12 @@ const figma = {
     if (!data || typeof data.length !== 'number') throw new Error('invalid_value: createImage expects bytes')
     return imageObject(host('imageCreate', { base64: figma.base64Encode(data) }).hash)
   },
-  createImageAsync: function () { unsupported('figma.createImageAsync') },
+  createImageAsync: async function (url) {
+    if (typeof url !== 'string') throw new Error('invalid_value: createImageAsync expects a URL')
+    const response = await fetch(url)
+    if (!response.ok) throw new Error('image_fetch_failed: Image request returned ' + response.status)
+    return figma.createImage(new Uint8Array(await response.arrayBuffer()))
+  },
   getImageByHash: function (hash) {
     const found = host('imageFind', { hash: String(hash) })
     return found ? imageObject(found.hash) : null
@@ -570,6 +578,7 @@ const figma = {
   getLocalTextStylesAsync: function () { return Promise.resolve(figma.getLocalTextStyles()) },
   getLocalEffectStylesAsync: function () { return Promise.resolve(figma.getLocalEffectStyles()) },
   importComponentByKeyAsync: function () { unsupported('figma.importComponentByKeyAsync') },
+  importStyleByKeyAsync: async function () { unsupported('figma.importStyleByKeyAsync') },
   createGridStyle: function () { unsupported('figma.createGridStyle') },
   ui: {
     onmessage: null,
@@ -587,9 +596,20 @@ const figma = {
 globalThis.__deliverPluginMessage = function (message) {
   if (typeof figma.ui.onmessage === 'function') return figma.ui.onmessage(message)
 }
-globalThis.__deliverPluginEvent = function (type) {
-  const event = type === 'documentchange' ? { documentChanges: [] } : undefined
+globalThis.__deliverPluginEvent = function (type, changes) {
   const list = (listeners[type] || []).slice()
+  if (!list.length) return
+  cache.clear()
+  documentCache = null
+  let event
+  if (type === 'documentchange') {
+    dead.clear()
+    event = changes || { documentChanges: [] }
+    event.documentChanges = event.documentChanges.map(function (change) {
+      const node = change.type === 'DELETE' ? { id: change.id, removed: true } : wrap(change.id)
+      return Object.assign(change, { node: node, origin: 'LOCAL' })
+    })
+  }
   for (let i = 0; i < list.length; i++) list[i](event)
 }
 globalThis.figma = figma

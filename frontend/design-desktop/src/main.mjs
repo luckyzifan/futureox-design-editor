@@ -58,6 +58,7 @@ import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
 import { selectGpuWorkingBudgetMiB } from './gpu-working-budget.mjs'
 import { createPluginCatalogWatcher, createPluginDirectoryHost, scanDeclaredPlugins } from './plugin-package.mjs'
 import { createPluginStorageHost } from './plugin-storage-host.mjs'
+import { compilePluginTypeScript } from './plugin-source.mjs'
 import { createPluginUiHost } from './plugin-ui.mjs'
 
 let interfaceLocale = 'zh-CN'
@@ -492,6 +493,10 @@ register('plugins-read', async value => {
   record(value, ['grant', 'paths'])
   return { status: 'ok', ...await pluginDirectoryHost().read(value.grant, value.paths) }
 }, false)
+register('plugins-compile-source', async value => {
+  const { source } = record(value, ['source'])
+  return { status: 'ok', script: await compilePluginTypeScript(source) }
+}, false)
 register('plugins-storage-begin', async value => {
   const { source } = record(value, ['source'])
   return { status: 'ok', token: pluginStorage.begin(source) }
@@ -505,7 +510,7 @@ register('plugins-storage-end', async value => {
   return { status: 'ok' }
 }, false)
 register('plugins-ui-open', async value => {
-  record(value, ['html', 'width', 'height', 'title'])
+  record(value, ['html', 'width', 'height', 'title', 'allowedDomains'])
   await pluginUiHost().open({ ...value, parent: window })
   return { status: 'ok' }
 }, false)

@@ -16,12 +16,13 @@ export interface PluginBridge {
   /** Refreshes plugins declared in the desktop plugins folder. No filesystem paths. */
   list(): Promise<DesktopResult<{ plugins: DeclaredPlugin[] }>>
   read(request: { grant: string; paths: string[] }): Promise<DesktopResult<{ files: Record<string, string> }>>
+  compileSource?(request: { source: string }): Promise<DesktopResult<{ script: string }>>
   storage?: {
     begin(request: { source: PluginStorageOrigin }): Promise<DesktopResult<{ token: string }>>
     call(request: { token: string; operation: PluginStorageOperation }): Promise<DesktopResult<{ value: unknown }>>
     end(request: { token: string }): Promise<DesktopResult>
   }
-  openUi(request: { html: string; width?: number; height?: number; title?: string }): Promise<DesktopResult>
+  openUi(request: { html: string; width?: number; height?: number; title?: string; allowedDomains?: string[] }): Promise<DesktopResult>
   postUi(request: { pluginMessage: unknown }): Promise<DesktopResult>
   closeUi(): Promise<DesktopResult>
   onUiMessage(callback: (message: { pluginMessage: unknown }) => void): () => void

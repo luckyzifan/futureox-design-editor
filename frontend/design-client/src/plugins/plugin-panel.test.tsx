@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { DesktopBridge } from '../desktop'
 import type { Editor } from '../engine'
 import { interfacePreference } from '../interface-preference'
+import { resetFigmaDevMode, setFigmaDevMode } from '../figma-dev-mode'
 import { acceptedDeclaredPlugins } from './catalog'
 import { PluginPanel } from './PluginPanel'
 
@@ -31,6 +32,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await act(async () => root.unmount())
   interfacePreference.reset()
+  resetFigmaDevMode()
   vi.unstubAllGlobals()
   dom.window.close()
 })
@@ -48,6 +50,41 @@ test('declared plugin records keep the manifest identity and drop paths', () => 
   }))
   expect(acceptedDeclaredPlugins(many)).toHaveLength(32)
   expect(acceptedDeclaredPlugins(many).some(plugin => JSON.stringify(plugin).includes('root'))).toBe(false)
+  const onlyDev = JSON.stringify({ ...JSON.parse(manifestText), editorType: ['dev'] })
+  expect(acceptedDeclaredPlugins([{ grant, manifestText: onlyDev }])).toEqual([])
+  expect(acceptedDeclaredPlugins([{ grant, manifestText: onlyDev }], 'dev')).toHaveLength(1)
+})
+
+test('the live Dev toggle changes the plugin catalog and launches its inspection context', async () => {
+  interfacePreference.set({ locale: 'en', uiMode: 'figma' })
+  const dev = JSON.stringify({ ...JSON.parse(manifestText), name: 'Only Dev', editorType: ['dev'] })
+  const opened: unknown[] = []
+  const desktop = {
+    plugins: {
+      list: async () => ({ status: 'ok' as const, plugins: [{ grant, manifestText: dev }] }),
+      read: async () => ({ status: 'ok' as const, files: { 'code.js': 'figma.showUI(figma.editorType + ":" + figma.mode)', 'ui.html': '' } }),
+      closeUi: async () => ({ status: 'ok' as const }),
+      openUi: async (request: unknown) => { opened.push(request); return { status: 'ok' as const } },
+      onUiMessage: () => () => {},
+      onUiClosed: () => () => {},
+    },
+  } as unknown as DesktopBridge
+  const { Editor: EditorClass } = await import('../engine')
+  const { blank } = await import('../model')
+  const current = new EditorClass(blank('Dev plugin panel'))
+  try {
+    await act(async () => { root.render(<PluginPanel editor={current} desktop={desktop} onClose={() => {}} />) })
+    expect(document.body.textContent).not.toContain('Only Dev')
+    await act(async () => { setFigmaDevMode(true) })
+    expect(document.body.textContent).toContain('Only Dev')
+    const run = [...document.querySelectorAll('button')].find(button => button.textContent === 'Run')
+    await act(async () => {
+      run!.click()
+      await vi.waitFor(() => expect(opened[0]).toMatchObject({ html: 'dev:inspect' }))
+    })
+    await act(async () => { setFigmaDevMode(false) })
+    expect(document.body.textContent).not.toContain('Only Dev')
+  } finally { current.dispose() }
 })
 
 test('plugin host lists startup plugins and runs only the declared files', async () => {
@@ -144,9 +181,13 @@ test('a plugin UI crosses the desktop bridge with only the contracted keys', asy
   const opened: unknown[] = []
   const uiHtml = '<!doctype html><p>QA UI</p>'
   const code = "figma.showUI(__html__, { width: 320, height: 200, title: 'QA UI' }); figma.notify('QA ready')"
+  const manifest = JSON.stringify({
+    ...JSON.parse(manifestText),
+    networkAccess: { allowedDomains: ['https://cdn.example.test'], devAllowedDomains: ['http://localhost:3000'] },
+  })
   const desktop = {
     plugins: {
-      list: async () => ({ status: 'ok' as const, plugins: [{ grant, name: 'QA', id: 'qa', displayName: 'QA', manifestText, root: '/tmp/qa' }] }),
+      list: async () => ({ status: 'ok' as const, plugins: [{ grant, manifestText: manifest }] }),
       read: async () => ({ status: 'ok' as const, files: { 'code.js': code, 'ui.html': uiHtml } }),
       openUi: async (request: unknown) => { opened.push(request); return { status: 'ok' as const } },
       closeUi: async () => ({ status: 'ok' as const }),
@@ -172,7 +213,7 @@ test('a plugin UI crosses the desktop bridge with only the contracted keys', asy
       run!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
       await vi.waitFor(() => { if (opened.length === 0) throw new Error('openUi was not called') })
     })
-    expect(opened).toEqual([{ html: uiHtml, width: 320, height: 200, title: 'QA UI' }])
+    expect(opened).toEqual([{ html: uiHtml, width: 320, height: 200, title: 'QA UI', allowedDomains: ['https://cdn.example.test'] }])
   } finally {
     current.dispose()
   }
@@ -221,6 +262,60 @@ test('a desktop folder loads named UI files before running the selected command'
   } finally {
     current.dispose()
   }
+})
+
+test('mounted plugin documentchange reports local authored nodes and their changed properties', async () => {
+  interfacePreference.set({ locale: 'en' })
+  const code = `
+    figma.on('documentchange', function (event) {
+      const changes = event.documentChanges.map(function (change) {
+        return change.type + ':' + change.origin + ':' + (change.node.removed ? 'removed' : change.node.name) +
+          (change.properties ? ':' + change.properties.join(',') : '')
+      })
+      figma.notify(changes.join('|'))
+    })
+  `
+  const desktop = {
+    plugins: {
+      list: async () => ({ status: 'ok' as const, plugins: [{ grant, manifestText }] }),
+      read: async () => ({ status: 'ok' as const, files: { 'code.js': code, 'ui.html': '' } }),
+      closeUi: async () => ({ status: 'ok' as const }),
+      onUiMessage: () => () => {},
+      onUiClosed: () => () => {},
+    },
+  } as unknown as DesktopBridge
+  const { Editor: EditorClass } = await import('../engine')
+  const { blank, node } = await import('../model')
+  const current = new EditorClass(blank('Document changes'))
+  const status = () => document.querySelector('[role="status"]')?.textContent
+  try {
+    await act(async () => { root.render(<PluginPanel editor={current} desktop={desktop} onClose={() => {}} />) })
+    const run = [...document.querySelectorAll('button')].find(button => button.textContent === 'Run')
+    await act(async () => { run!.click() })
+    await vi.waitFor(() => expect(status()).toBe('Declared'))
+    const frame = node('frame', 0, 0, 80, 80)
+    const child = node('rectangle', 5, 8, 10, 10)
+    frame.name = 'Initial'
+    frame.children = [child.id]
+    await act(async () => {
+      current.change('Create a subtree', doc => {
+        doc.nodes[frame.id] = frame
+        doc.nodes[child.id] = child
+        doc.pages[0].children.push(frame.id)
+      })
+    })
+    expect(status()).toBe('CREATE:LOCAL:Initial')
+    await act(async () => { current.change('Rename', doc => { doc.nodes[frame.id].name = 'Renamed' }) })
+    expect(status()).toBe('PROPERTY_CHANGE:LOCAL:Renamed:name')
+    await act(async () => {
+      current.change('Delete subtree', doc => {
+        delete doc.nodes[child.id]
+        delete doc.nodes[frame.id]
+        doc.pages[0].children = []
+      })
+    })
+    expect(status()).toBe('DELETE:LOCAL:removed')
+  } finally { current.dispose() }
 })
 
 test('a plugin that finishes itself with closePlugin restores the panel load entries', async () => {

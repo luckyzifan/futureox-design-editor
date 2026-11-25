@@ -410,6 +410,37 @@ describe('Figma plugin host', () => {
     expect(parsePluginManifest({ ...manifest, id }, { desktopFolder: true }).id).toBe(id)
   })
 
+  it('runs a Dev-only plugin in read-only inspection and allows its metadata', async () => {
+    const current = editor()
+    current.change('Seed inspected node', doc => {
+      const rectangle = node('rectangle', 0, 0, 40, 30)
+      rectangle.name = 'Inspected'
+      doc.nodes[rectangle.id] = rectangle
+      doc.pages[0].children.push(rectangle.id)
+    })
+    const plugin = {
+      manifest: parsePluginManifest({ name: 'Inspector', id: 'inspect.plugin', api: '1.0.0', main: 'code.js', editorType: ['dev'] }),
+      main: `
+        if (figma.editorType !== 'dev' || figma.mode !== 'inspect') throw new Error('Wrong plugin mode')
+        const found = figma.currentPage.children[0]
+        if (found.name !== 'Inspected') throw new Error('Missing inspection data')
+        for (const edit of [() => figma.createRectangle(), () => { found.name = 'Changed' }, () => found.remove()]) {
+          try { edit(); throw new Error('Edit was accepted') }
+          catch (error) { if (!String(error).includes('permission_denied')) throw error }
+        }
+        if (found.name !== 'Inspected') throw new Error('Inspection proxy lost the node after a denied edit')
+        found.setPluginData('inspected', 'yes')
+        figma.closePlugin(found.getPluginData('inspected'))
+      `,
+      ui: null,
+    }
+    await expect(openPlugin(current, plugin)).rejects.toMatchObject({ code: 'unsupported_editor_type' })
+    const run = await openPlugin(current, plugin, { mode: 'inspect' })
+    expect(run.closeMessage).toBe('yes')
+    expect(nodes(current).map(node => node.name)).toEqual(['Inspected'])
+    run.close()
+  })
+
   it('identifies a missing bundle entry without reading its uncompiled source', async () => {
     const manifest = JSON.stringify({ name: 'Source only', id: 'source-only.plugin', api: '1.0.0', main: 'dist/code.js' })
     const readTypeScript = vi.fn(async () => 'const name: string = "uncompiled"')
@@ -435,6 +466,36 @@ describe('Figma plugin host', () => {
     expect(run.closeMessage).toBe('typed')
     expect(named(current, 'From a typed entry')?.kind).toBe('rectangle')
     run.close()
+  })
+
+  it('runs a source-only desktop archive through the same bounded parser and QuickJS', async () => {
+    const filename = new URL('../../../../design-desktop/src/plugin-source.mjs', import.meta.url)
+    const { compilePluginTypeScript } = await import(filename.href)
+    const compile = vi.fn((source: string) => compilePluginTypeScript(source) as Promise<string>)
+    const archive = (source: string, built?: string) => zipSync({
+      'Plugin/manifest.json': strToU8(JSON.stringify({
+        name: 'Typed archive', id: 'typed.archive', api: '1.0.0', main: 'code.js', ui: 'ui.html',
+      })),
+      'Plugin/code.ts': strToU8(source),
+      'Plugin/ui.html': strToU8('<p>Archive UI</p>'),
+      ...(built ? { 'Plugin/code.js': strToU8(built) } : {}),
+    })
+    const typed = archive("const label: string = 'Typed archive'; figma.createRectangle().name = label; figma.showUI(__html__)")
+    const current = editor()
+    const run = await openPlugin(current, await pluginBundleFromZip(typed, compile))
+    expect(named(current, 'Typed archive')?.kind).toBe('rectangle')
+    expect(run.ui?.html).toBe('<p>Archive UI</p>')
+    run.close()
+    expect(compile).toHaveBeenCalledTimes(1)
+
+    const imported = "import { run } from './helper.js'; run()"
+    const built = await pluginBundleFromZip(archive(imported, 'figma.closePlugin("built")'), compile)
+    expect(built.main).toBe('figma.closePlugin("built")')
+    expect(compile).toHaveBeenCalledTimes(1)
+    await expect(pluginBundleFromZip(archive(imported), compile)).rejects.toThrow(/built JavaScript bundle/)
+    await expect(pluginBundleFromZip(archive(' '.repeat(256 * 1024 + 1)), compile)).rejects.toThrow(/too large/)
+    await expect(pluginBundleFromZip(new Uint8Array([1, 2, 3]), compile)).rejects.toThrow(/valid zip/)
+    expect(compile).toHaveBeenCalledTimes(2)
   })
 
   it('reads the requested styled text fields across actual UTF-16 runs', async () => {
@@ -920,6 +981,36 @@ describe('Figma plugin host', () => {
       },
     })
     expect(seen).toEqual(['POST https://api.example.test/icons', 'GET http://localhost:3000/dev'])
+    run.close()
+  })
+
+  it('creates images asynchronously through the declared-domain and image admission paths', async () => {
+    const current = editor()
+    const seen: string[] = []
+    const manifest = parsePluginManifest({
+      name: 'Image fetch', id: 'image.fetch', api: '1.0.0', main: 'code.js',
+      networkAccess: { allowedDomains: ['https://images.example.test'] },
+    })
+    const run = await openPlugin(current, { manifest, ui: null, main: `
+      ;(async function () {
+        try { await figma.createImageAsync('https://other.example.test/unlisted'); throw new Error('called disallowed host') }
+        catch (error) { if (!String(error).includes('network_denied')) throw error }
+        const image = await figma.createImageAsync('https://images.example.test/icon.png')
+        const size = await image.getSizeAsync()
+        if (size.width !== 2 || size.height !== 3) throw new Error('image dimensions')
+        figma.closePlugin('image ready')
+      })()
+    ` }, {
+      fetch: async url => {
+        seen.push(url)
+        return {
+          status: 200, url, headers: { 'content-type': 'image/png' },
+          body: new Uint8Array([137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,3,8,2,0,0,0,0,0,0,0]),
+        }
+      },
+    })
+    expect(run.closeMessage).toBe('image ready')
+    expect(seen).toEqual(['https://images.example.test/icon.png'])
     run.close()
   })
 

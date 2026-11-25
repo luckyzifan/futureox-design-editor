@@ -4,9 +4,11 @@ import type { PluginStorage, PluginStorageRequest } from './client-storage'
 import { PluginApiError, PluginClosed } from './errors'
 import { matchNetworkAccess, type PluginFetch } from './network'
 import { PLUGIN_LIMITS } from './limits'
-import { assertPluginBundle, type PluginBundle } from './manifest'
+import { assertPluginBundle, pluginEditorType, type PluginBundle, type PluginLaunchMode } from './manifest'
 import { PLUGIN_PRELUDE } from './prelude'
 import { createPluginSession, type PluginFontJob, type PluginSystemFonts, type PluginUiState } from './session'
+import type { PluginDocumentChanges } from './document-changes'
+import type { PluginEditorEvent } from './ui-document'
 
 const CLOSED_PREFIX = '__futureox_plugin_closed__:'
 let quickJsModule: ReturnType<typeof getQuickJS> | null = null
@@ -43,6 +45,8 @@ export type PluginHooks = {
   onClose?: (message: string) => void
   /** Manifest menu command. Omitted when the plugin has no menu. */
   command?: string
+  mode?: PluginLaunchMode
+  isModeCurrent?: () => boolean
   signal?: AbortSignal
   storage?: PluginStorage
   storageRequest?: PluginStorageRequest
@@ -86,9 +90,15 @@ export class PluginController {
 
   static async open(bundle: PluginBundle, editor: Parameters<typeof createPluginSession>[0], hooks?: PluginHooks) {
     assertPluginBundle(bundle)
+    const mode = hooks?.mode ?? 'default'
+    const editorType = pluginEditorType(mode)
+    if (!bundle.manifest.editorType.includes(editorType))
+      throw new PluginApiError('unsupported_editor_type', `Plugin does not support the ${editorType === 'dev' ? 'Dev inspection' : 'Figma design'} context`)
     hooks?.signal?.throwIfAborted()
     const quick = await quickJs()
     hooks?.signal?.throwIfAborted()
+    if (hooks?.isModeCurrent && !hooks.isModeCurrent())
+      throw new PluginApiError('editor_mode_changed', 'The editor mode changed before the plugin started')
     const runtime = quick.newRuntime()
     runtime.setMemoryLimit(PLUGIN_LIMITS.guestMemoryBytes)
     runtime.setMaxStackSize(PLUGIN_LIMITS.guestStackBytes)
@@ -97,6 +107,8 @@ export class PluginController {
       name: bundle.manifest.name,
       pluginId: bundle.manifest.id,
       command: hooks?.command,
+      mode,
+      isModeCurrent: hooks?.isModeCurrent,
       uiHtml: bundle.ui,
       storage: hooks?.storage,
       storageRequest: hooks?.storageRequest,
@@ -158,8 +170,10 @@ export class PluginController {
   get pluginId() { return this.session.pluginId }
   get applying() { return this.session.applying }
 
-  emit(type: 'selectionchange' | 'currentpagechange' | 'documentchange') {
-    return this.dispatch(`globalThis.__deliverPluginEvent(${JSON.stringify(type)})`)
+  watches(type: PluginEditorEvent) { return this.session.watches(type) }
+
+  emit(type: PluginEditorEvent, change?: PluginDocumentChanges) {
+    return this.dispatch(`globalThis.__deliverPluginEvent(${JSON.stringify(type)}, ${JSON.stringify(change ?? null)})`)
   }
 
   deliver(message: unknown) {

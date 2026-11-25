@@ -67,7 +67,8 @@ export function parseDeclaredPluginManifest(text) {
   const uiFiles = namedUiFiles(value.ui)
   const ui = uiFiles ? uiFiles.main : value.ui === undefined ? undefined : uiPath(value.ui)
   const editorType = value.editorType === undefined ? ['figma'] : value.editorType
-  if (!Array.isArray(editorType) || editorType.some(item => typeof item !== 'string') || !editorType.includes('figma')) {
+  if (!Array.isArray(editorType) || editorType.some(item => typeof item !== 'string') ||
+      !editorType.includes('figma') && !editorType.includes('dev')) {
     throw new Error('Invalid plugin manifest')
   }
   return { id, name, main, ui, ...(uiFiles ? { uiFiles } : {}) }
