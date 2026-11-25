@@ -279,6 +279,71 @@ function rotatedResizeSnapEnd(
   return pack(nearest.pointer, nearest.pose)
 }
 
+/** Aspect lock on an edge also moves the other axis. The dragged handle does
+ * not lie on those edges, so handle snapping never sees them. */
+function aspectEdgePassiveSnap(
+  basis: Matrix,
+  box: Bounds,
+  start: Point,
+  end: Point,
+  corner: number,
+  center: boolean,
+  threshold: number,
+  query: ResizeSnapQuery,
+  proposed: Bounds,
+  preliminary: Matrix,
+): { pointerDelta: number; axis: 'x' | 'y'; guide: ResizeSnapGuide; span: readonly [number, number] | null } | null {
+  const edge = corner - 4
+  if (edge < 0 || edge > 3) return null
+  const primary: 'x' | 'y' = edge % 2 === 1 ? 'x' : 'y'
+  const passive: 'x' | 'y' = primary === 'x' ? 'y' : 'x'
+  const anchorLocal = center
+    ? { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    : resizeHandlePoint(box, ((edge + 2) % 4) + 4)
+  const anchorOf = (matrix: Matrix) => apply(matrix, apply(basis, anchorLocal))
+  let anchorBefore: Point
+  try { anchorBefore = anchorOf(preliminary) }
+  catch { return null }
+  const poseOf = (matrix: Matrix) => bounds(boxPoints(box).map(point => apply(matrix, apply(basis, point))))
+  const edgeValue = (rect: Bounds, side: 'low' | 'high') => passive === 'x'
+    ? side === 'low' ? rect.x : rect.x + rect.width
+    : side === 'low' ? rect.y : rect.y + rect.height
+  type Candidate = {
+    pointerDelta: number
+    guide: ResizeSnapGuide
+    span: readonly [number, number] | null
+    feature: number
+    rank: number
+  }
+  const candidates: Candidate[] = []
+  const consider = (side: 'low' | 'high', rank: number) => {
+    const before = edgeValue(proposed, side)
+    const hit = queryResizeLine(query, passive, before, proposed, threshold)
+    if (!hit) return
+    const nudged = primary === 'x' ? { x: end.x + 1, y: end.y } : { x: end.x, y: end.y + 1 }
+    let slope = 0
+    try {
+      slope = edgeValue(poseOf(resizeInBasis(basis, box, start, nudged, corner, true, center, false)), side) - before
+    } catch { return }
+    if (!Number.isFinite(slope) || Math.abs(slope) < 1e-6) return
+    const pointerDelta = hit.delta / slope
+    if (!Number.isFinite(pointerDelta) || Math.abs(pointerDelta) > 1e4) return
+    const next = primary === 'x' ? { x: end.x + pointerDelta, y: end.y } : { x: end.x, y: end.y + pointerDelta }
+    try {
+      const matrix = resizeInBasis(basis, box, start, next, corner, true, center, false)
+      if (Math.abs(edgeValue(poseOf(matrix), side) - hit.guide.position) > 1e-4) return
+      const anchor = anchorOf(matrix)
+      if (Math.hypot(anchor.x - anchorBefore.x, anchor.y - anchorBefore.y) > 1e-4) return
+      candidates.push({ pointerDelta, guide: hit.guide, span: hit.span, feature: Math.abs(hit.delta), rank })
+    } catch { return }
+  }
+  consider('low', 0)
+  consider('high', 1)
+  candidates.sort((a, b) => Math.abs(a.pointerDelta) - Math.abs(b.pointerDelta) || a.feature - b.feature || a.rank - b.rank)
+  const best = candidates[0]
+  return best ? { pointerDelta: best.pointerDelta, axis: passive, guide: best.guide, span: best.span } : null
+}
+
 export function resizeSnapEnd(
   basis: Matrix,
   box: Bounds,
@@ -351,7 +416,10 @@ export function resizeSnapEnd(
     return picks[0] ?? null
   }
   const picked = { x: choose('x', mode(horizontal)), y: choose('y', mode(vertical)) }
-  if (!picked.x && !picked.y) return none()
+  const passive = aspect && edge >= 0
+    ? aspectEdgePassiveSnap(basis, box, start, end, corner, center, threshold, query, proposed, preliminary)
+    : null
+  if (!picked.x && !picked.y && !passive) return none()
   const slope = (axis: 'x' | 'y') => {
     const nudged = axis === 'x' ? { x: end.x + 1, y: end.y } : { x: end.x, y: end.y + 1 }
     try {
@@ -387,6 +455,23 @@ export function resizeSnapEnd(
     targetSpans: [x?.span ?? null, y?.span ?? null],
     snapped: { x: !!x, y: !!y },
   })
+  const passiveSnap = (): ResizeSnapEnd | null => {
+    if (!passive) return null
+    const next = from(horizontal ? passive.pointerDelta : 0, horizontal ? 0 : passive.pointerDelta)
+    const pick: Pick = { pointerDelta: passive.pointerDelta, guide: passive.guide, span: passive.span, align: 'handle' }
+    return pack(next, passive.axis === 'x' ? pick : null, passive.axis === 'y' ? pick : null)
+  }
+  if (passive) {
+    const primaryPick = horizontal ? picked.x : picked.y
+    const primaryPointer = primaryPick ? shift(horizontal ? 'x' : 'y', primaryPick) : null
+    // The dragged edge wins a tie. The coupled axis is used only when it
+    // moves the pointer less, or the dragged edge has no snap.
+    if (primaryPointer === null || Math.abs(passive.pointerDelta) + 1e-6 < Math.abs(primaryPointer)) {
+      const snapped = passiveSnap()
+      if (snapped) return snapped
+    }
+  }
+  if (!picked.x && !picked.y) return none()
   let useX = picked.x, useY = picked.y
   if (aspect && useX && useY) {
     const options = (['x', 'y'] as const).flatMap(axis => {
@@ -412,5 +497,5 @@ export function resizeSnapEnd(
     if (y && !placed(next, 'y', y)) return null
     return pack(next, x, y)
   }
-  return accept(useX, useY) ?? accept(useX, null) ?? accept(null, useY) ?? none()
+  return accept(useX, useY) ?? accept(useX, null) ?? accept(null, useY) ?? passiveSnap() ?? none()
 }

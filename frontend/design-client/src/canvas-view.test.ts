@@ -191,6 +191,129 @@ test('a nearly perpendicular guide does not pull a rotated handle beyond its sna
   } finally { index.free() }
 })
 
+test('aspect-locked edge resize snaps the edges that scale moves', () => {
+  const basis = [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number]
+  const box = { x: 0, y: 0, width: 50, height: 40 }
+  const start = { x: 50, y: 20 }
+  const end = { x: 145, y: 20 }
+  const ask = (siblings: { x: number; y: number; width: number; height: number }[], aspect: boolean, center = false) => {
+    const index = createSmartGuidesIndex(undefined, siblings)!
+    try {
+      return resizeSnapEnd(basis, box, start, end, 5, aspect, center, 6, (moving, threshold) => index.snap(moving, threshold))
+    } finally { index.free() }
+  }
+  const hit = ask([{ x: -20, y: 80, width: 300, height: 20 }], true)
+  expect(hit.snapped).toEqual({ x: false, y: true })
+  expect(hit.end.x).toBeCloseTo(150, 6)
+  expect(hit.end.y).toBeCloseTo(20, 6)
+  expect(hit.guides[1]?.position).toBe(80)
+  const matrix = resizeInBasis(basis, box, start, hit.end, 5, true, false, false)
+  const placed = bounds(boxPoints(box).map(point => apply(matrix, point)))
+  expect(placed.x).toBeCloseTo(0, 6)
+  expect(placed.y).toBeCloseTo(-40, 6)
+  expect(placed.width).toBeCloseTo(150, 6)
+  expect(placed.height).toBeCloseTo(120, 6)
+  expect(placed.width / placed.height).toBeCloseTo(50 / 40, 6)
+  const open = ask([{ x: -20, y: 86, width: 300, height: 20 }], true)
+  expect(open.end).toEqual(end)
+  expect(open.snapped).toEqual({ x: false, y: false })
+  const plain = ask([{ x: -20, y: 80, width: 300, height: 20 }], false)
+  expect(plain.end).toEqual(end)
+  expect(plain.snapped).toEqual({ x: false, y: false })
+  const centerTarget = ask([{ x: -20, y: 60, width: 300, height: 40 }], true)
+  expect(centerTarget.guides[1]?.position).toBe(80)
+  expect(centerTarget.end.x).toBeCloseTo(150, 6)
+})
+
+test('aspect-locked top edge snaps the side edges that scale moves', () => {
+  const basis = [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number]
+  const box = { x: 0, y: 0, width: 50, height: 40 }
+  const index = createSmartGuidesIndex(undefined, [{ x: 70, y: -80, width: 20, height: 200 }])!
+  try {
+    const hit = resizeSnapEnd(basis, box, { x: 25, y: 0 }, { x: 25, y: -30 }, 4, true, false, 6,
+      (moving, threshold) => index.snap(moving, threshold))
+    expect(hit.snapped).toEqual({ x: true, y: false })
+    expect(hit.end.y).toBeCloseTo(-32, 6)
+    expect(hit.guides[0]?.position).toBe(70)
+    const matrix = resizeInBasis(basis, box, { x: 25, y: 0 }, hit.end, 4, true, false, false)
+    const placed = bounds(boxPoints(box).map(point => apply(matrix, point)))
+    expect(placed.x + placed.width).toBeCloseTo(70, 6)
+    expect(placed.y + placed.height).toBeCloseTo(40, 6)
+    expect(placed.width / placed.height).toBeCloseTo(50 / 40, 6)
+  } finally { index.free() }
+})
+
+test('aspect-locked edge resize prefers the smaller pointer correction', () => {
+  const basis = [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number]
+  const box = { x: 0, y: 0, width: 50, height: 40 }
+  const index = createSmartGuidesIndex(undefined, [
+    { x: 150, y: 0, width: 20, height: 20 },
+    { x: -20, y: 79, width: 300, height: 10 },
+  ])!
+  try {
+    const hit = resizeSnapEnd(basis, box, { x: 50, y: 20 }, { x: 145, y: 20 }, 5, true, false, 6,
+      (moving, threshold) => index.snap(moving, threshold))
+    expect(hit.snapped).toEqual({ x: false, y: true })
+    expect(hit.end.x).toBeCloseTo(147.5, 5)
+    expect(hit.guides[1]?.position).toBe(79)
+    const matrix = resizeInBasis(basis, box, { x: 50, y: 20 }, hit.end, 5, true, false, false)
+    const placed = bounds(boxPoints(box).map(point => apply(matrix, point)))
+    expect(placed.y + placed.height).toBeCloseTo(79, 6)
+    expect(placed.width / placed.height).toBeCloseTo(50 / 40, 6)
+  } finally { index.free() }
+})
+
+test('an ordinary edge resize does not query stationary edges', () => {
+  const index = createSmartGuidesIndex(undefined, [{ x: 100, y: 0, width: 40, height: 40 }])!
+  let calls = 0
+  try {
+    const hit = resizeSnapEnd([1, 0, 0, 1, 0, 0], { x: 0, y: 0, width: 50, height: 40 },
+      { x: 50, y: 20 }, { x: 96, y: 20 }, 5, false, false, 6,
+      (moving, threshold) => { calls += 1; return index.snap(moving, threshold) })
+    expect(hit.end.x).toBeCloseTo(100, 6)
+    expect(calls).toBe(2)
+  } finally { index.free() }
+})
+
+test('aspect-locked edge resize keeps the nearer dragged-edge snap', () => {
+  const basis = [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number]
+  const box = { x: 0, y: 0, width: 50, height: 40 }
+  const index = createSmartGuidesIndex(undefined, [
+    { x: 148, y: 0, width: 20, height: 40 },
+    { x: -20, y: 80, width: 300, height: 20 },
+  ])!
+  try {
+    const hit = resizeSnapEnd(basis, box, { x: 50, y: 20 }, { x: 145, y: 20 }, 5, true, false, 6,
+      (moving, threshold) => index.snap(moving, threshold))
+    expect(hit.snapped).toEqual({ x: true, y: false })
+    expect(hit.end.x).toBeCloseTo(148, 6)
+    expect(hit.guides[0]?.position).toBe(148)
+    const matrix = resizeInBasis(basis, box, { x: 50, y: 20 }, hit.end, 5, true, false, false)
+    const placed = bounds(boxPoints(box).map(point => apply(matrix, point)))
+    expect(placed.width).toBeCloseTo(148, 6)
+    expect(placed.y + placed.height).not.toBeCloseTo(80, 4)
+  } finally { index.free() }
+})
+
+test('center aspect resize snaps a perpendicular edge and keeps the center', () => {
+  const basis = [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number]
+  const box = { x: 0, y: 0, width: 50, height: 40 }
+  const index = createSmartGuidesIndex(undefined, [{ x: -40, y: 60, width: 200, height: 20 }])!
+  try {
+    const hit = resizeSnapEnd(basis, box, { x: 50, y: 20 }, { x: 70, y: 20 }, 5, true, true, 6,
+      (moving, threshold) => index.snap(moving, threshold))
+    expect(hit.snapped).toEqual({ x: false, y: true })
+    expect(hit.end.x).toBeCloseTo(75, 6)
+    expect(hit.guides[1]?.position).toBe(60)
+    const matrix = resizeInBasis(basis, box, { x: 50, y: 20 }, hit.end, 5, true, true, false)
+    const placed = bounds(boxPoints(box).map(point => apply(matrix, point)))
+    expect(placed.x + placed.width / 2).toBeCloseTo(25, 6)
+    expect(placed.y + placed.height / 2).toBeCloseTo(20, 6)
+    expect(placed.y + placed.height).toBeCloseTo(60, 6)
+    expect(placed.width / placed.height).toBeCloseTo(50 / 40, 6)
+  } finally { index.free() }
+})
+
 test('zoom changes preserve the document point under the chosen anchor', () => {
   const v = { x: 30, y: 35, zoom: 0.75 },
     a = { x: 390, y: 310 },
