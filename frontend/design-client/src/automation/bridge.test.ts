@@ -31,7 +31,8 @@ function fixture(capturePreview?: typeof captureDesignPreview, host?: BridgeDepe
   return { editor, rectangle, register, respond, recordEdit, dispose, send, call, envelope, cancel: (requestId: string) => cancel?.({ requestId }) }
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done }); return { promise, resolve } }
-const previewResult = { format: 'futureox.design-preview.v1', pageId: 'page', nodeIds: [], mimeType: 'image/png', name: 'test.png', dataUrl: 'data:image/png;base64,AAAA', width: 1, height: 1, scale: 1, backend: 'cpu' as const, documentId: 'doc', target: 'page' as const, bounds: { x: 0, y: 0, width: 1, height: 1 }, bytes: 3, renderer: 'product-cpu-export', screenshot: false, warnings: [] }
+const previewResult = { format: 'futureox.design-preview.v1', pageId: 'page', nodeIds: [], mimeType: 'image/png', name: 'test.png', dataUrl: 'data:image/png;base64,AAAA', width: 1, height: 1, scale: 1, backend: 'cpu' as const, documentId: 'doc', target: 'page' as const, bounds: { x: 0, y: 0, width: 1, height: 1 }, bytes: 3, renderer: 'product-cpu-export', screenshot: false, warnings: [],
+  requestedScale: 1, contentsOnly: true, naturalWidth: 1, naturalHeight: 1 }
 describe('live renderer automation bridge', () => {
   it('registers the real registry and exposes read-only capabilities/current fences', async () => {
     const f = fixture()
@@ -100,7 +101,8 @@ describe('live renderer automation bridge', () => {
   })
   it('rejects unknown preview parameters before touching the export subsystem', async () => {
     const capture = vi.fn(async () => previewResult) as unknown as typeof captureDesignPreview, f = fixture(capture)
-    for (const params of [{ path: '/etc/passwd' }, { scale: Infinity }, { format: 'html' }, { nodeIds: Array(257).fill('x') }]) {
+    for (const params of [{ path: '/etc/passwd' }, { scale: Infinity }, { format: 'html' }, { nodeIds: Array(257).fill('x') },
+      { maxDimension: 0 }, { maxDimension: 128.5 }, { contentsOnly: 'true' }]) {
       const response = await f.call('preview.capture', params)
       expect(response.ok).toBe(false); if (!response.ok) expect(response.error.code).toBe('INVALID_PARAMS')
     }

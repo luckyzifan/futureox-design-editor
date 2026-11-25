@@ -575,7 +575,9 @@ export function exportDesignSvg(document: DesignDocument, input: CodeExportOptio
 export const PREVIEW_LIMITS = Object.freeze({ pixels: EXPORT_LIMITS.previewPixels, maxSide: 16384, responseBytes: EXPORT_LIMITS.bytes, envelopeBytes: 64 * 1024, nodeIds: 256, minScale: 0.01, maxScale: 4 })
 export const PREVIEW_FORMATS = ['png', 'jpeg', 'webp', 'pdf'] as const
 type ProductRegionFormat = typeof PREVIEW_FORMATS[number]
-export type PreviewOptions = Pick<ContextOptions, 'pageId' | 'nodeIds'> & { format?: ProductRegionFormat; scale?: number; signal?: AbortSignal }
+export type PreviewOptions = Pick<ContextOptions, 'pageId' | 'nodeIds'> & {
+  format?: ProductRegionFormat; scale?: number; maxDimension?: number; contentsOnly?: boolean; signal?: AbortSignal
+}
 type ProductRegionOptions = Omit<PreviewOptions, 'format'>
 
 /** Actual product CPU raster export, not the displayed GPU canvas or app chrome.
@@ -583,25 +585,38 @@ type ProductRegionOptions = Omit<PreviewOptions, 'format'>
 async function renderProductRegion(document: DesignDocument, options: ProductRegionOptions, format: ProductRegionFormat) {
   options.signal?.throwIfAborted()
   const selection = contextEntries(document, { ...options, maxDepth: 0 })
-  const scale = options.scale ?? 1
-  if (typeof scale !== 'number' || !Number.isFinite(scale) || scale < PREVIEW_LIMITS.minScale || scale > PREVIEW_LIMITS.maxScale)
+  const requestedScale = options.scale ?? 1
+  if (typeof requestedScale !== 'number' || !Number.isFinite(requestedScale) || requestedScale < PREVIEW_LIMITS.minScale || requestedScale > PREVIEW_LIMITS.maxScale)
     throw new AutomationError('invalid_params', `Preview scale must be between ${PREVIEW_LIMITS.minScale} and ${PREVIEW_LIMITS.maxScale}`)
+  const max = options.maxDimension
+  if (max !== undefined && (!Number.isSafeInteger(max) || max < 1 || max > 65536))
+    throw new AutomationError('invalid_params', 'maxDimension must be an integer from 1 to 65536')
+  if (options.contentsOnly !== undefined && typeof options.contentsOnly !== 'boolean')
+    throw new AutomationError('invalid_params', 'contentsOnly must be a boolean')
   if (options.nodeIds && options.nodeIds.length > PREVIEW_LIMITS.nodeIds) throw new AutomationError('invalid_params', 'Preview supports at most 256 node ids')
-  const { exportImage, rasterExportBounds } = await import('../export')
+  const { exportImage, exportRasterBatch, rasterExportBounds } = await import('../export')
   options.signal?.throwIfAborted()
   const prepared = kernelLayout(document)
   const target = options.nodeIds ? { kind: 'selection' as const, nodeIds: selection.roots } : { kind: 'page' as const, padding: 0 }
   const bounds = rasterExportBounds(prepared, selection.page.id, target, format)
+  const longest = Math.max(bounds.width, bounds.height)
+  let scale = max === undefined || longest <= 0 ? requestedScale : Math.min(requestedScale, max / longest)
+  if (max !== undefined && Math.ceil(longest * scale) > max) scale *= 1 - Number.EPSILON
+  if (scale < 0.001) throw new AutomationError('preview_limit', 'The requested maximum dimension requires a scale smaller than the CPU exporter supports')
   const plannedWidth = Math.ceil(bounds.width * scale), plannedHeight = Math.ceil(bounds.height * scale)
   if (![plannedWidth, plannedHeight].every(Number.isSafeInteger) || plannedWidth > PREVIEW_LIMITS.maxSide || plannedHeight > PREVIEW_LIMITS.maxSide || plannedWidth * plannedHeight > PREVIEW_LIMITS.pixels) throw new AutomationError('preview_limit', 'Preview exceeds 16 megapixels or 16384 pixels per side; select a smaller region or explicit lower scale')
   const { width, height } = kernelExportPlan(bounds, scale)
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1 || width * height > PREVIEW_LIMITS.pixels) throw new AutomationError('preview_limit', 'Preview exceeds 16 megapixels; select a smaller region or explicit lower scale')
+  if (max !== undefined && Math.max(width, height) > max) throw new AutomationError('preview_limit', 'Preview exceeds maxDimension')
   if (typeof Worker !== 'function') throw new AutomationError('renderer_unavailable', 'Product CPU export requires the mounted renderer Worker runtime; no substitute image was generated')
-  const result = await exportImage(prepared, selection.page.id, format, scale, undefined, options.signal, target)
+  const contentsOnly = options.contentsOnly !== false
+  const result = !contentsOnly && target.kind === 'selection'
+    ? (await exportRasterBatch(prepared, selection.page.id, [scale], { kind: 'page', padding: 0 }, undefined, options.signal, format, bounds))[0]
+    : await exportImage(prepared, selection.page.id, format, scale, undefined, options.signal, target)
   options.signal?.throwIfAborted()
   const mime = format === 'pdf' ? 'application/pdf' : `image/${format}`
   if (result.backend !== 'cpu' || result.blob.type !== mime || result.width !== width || result.height !== height) throw new AutomationError('invalid_preview', 'Product export returned inconsistent renderer, media type or dimensions')
-  return { selection, target, bounds, scale, width, height, result }
+  return { selection, target, bounds, requestedScale, scale, width, height, result, contentsOnly }
 }
 
 /** The plugin bridge returns only the bounded product bytes, including bitmap PDF. */
@@ -619,7 +634,7 @@ export async function captureDesignPreview(document: DesignDocument, options: Pr
   options.signal?.throwIfAborted()
   const format = options.format ?? 'png'
   if (!PREVIEW_FORMATS.includes(format)) throw new AutomationError('invalid_params', 'Preview format must be png, jpeg, webp or pdf')
-  const { selection, target, bounds, scale, width, height, result } = await renderProductRegion(document, options, format)
+  const { selection, target, bounds, requestedScale, scale, width, height, result, contentsOnly } = await renderProductRegion(document, options, format)
   // The transport carries base64, not raw binary. Reserve envelope/ID metadata
   // before reading or expanding the Blob, then check the exact serialized result.
   if (!result.blob.size || 4 * Math.ceil(result.blob.size / 3) > PREVIEW_LIMITS.responseBytes - PREVIEW_LIMITS.envelopeBytes) throw new AutomationError('response_limit', 'Encoded preview exceeds the 8 MiB transport budget; lower scale or narrow the selection')
@@ -628,7 +643,8 @@ export async function captureDesignPreview(document: DesignDocument, options: Pr
   const preview = {
     format: 'futureox.design-preview.v1', documentId: document.id, pageId: selection.page.id, nodeIds: selection.roots,
     target: target.kind, bounds, mimeType: result.blob.type, name: result.name, bytes: bytes.byteLength,
-    dataUrl: `data:${result.blob.type};base64,${bytesToBase64(bytes)}`, width, height, scale,
+    dataUrl: `data:${result.blob.type};base64,${bytesToBase64(bytes)}`, width, height, scale, requestedScale, contentsOnly,
+    naturalWidth: Math.max(1, Math.ceil(bounds.width)), naturalHeight: Math.max(1, Math.ceil(bounds.height)),
     backend: result.backend, renderer: 'product-cpu-export', screenshot: false,
     warnings: [{ code: 'CPU_EXPORT_PREVIEW', message: format === 'pdf'
       ? 'Bitmap PDF from the product CPU export. Its embedded raster represents the selected design content.'

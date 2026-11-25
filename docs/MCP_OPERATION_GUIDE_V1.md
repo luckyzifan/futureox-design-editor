@@ -122,7 +122,7 @@ Default output is UTF-8 SVG. Gzip produces an actual `.svgz` with lossless conta
 
 FD and Sketch do not accept SVG precision/scale/compression settings. FD remains the lossless native schema carrier. Sketch remains the existing compatibility ZIP writer with its real unsupported-feature warnings. No FIG export is advertised. The raster UI retains 1x/2x/3x and adds custom 0.001–128 multipliers (up to 16 distinct values, 64MP batch bound); this does not claim that all raster MCP endpoints have identical budgets.
 
-preview.capture, when advertised, is actual CPU raster output of design content with document/session/revision, world bounds, scale, pixel dimensions and renderer provenance. PNG, JPEG and WebP can provide image content. Bitmap PDF is delivered through an exact MCP resource link. Requested resolution is preserved and budget failures are explicit. Use the image or resource when visual inspection is required.
+preview.capture, when advertised, is actual CPU raster output of design content with document/session/revision, world bounds, scale, pixel dimensions and renderer provenance. PNG, JPEG and WebP can provide image content. Bitmap PDF is delivered through an exact MCP resource link. maxDimension fits the output while preserving the aspect ratio and reports the actual scale separately. contentsOnly=false crops the whole page to the selected bounds. Requests that exceed the export budget return an explicit failure. Use the image or resource when visual inspection is required.
 
 ## Verification sources and limits
 

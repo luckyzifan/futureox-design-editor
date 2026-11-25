@@ -159,6 +159,20 @@ test('download_assets batches individual exports against one revision', async ()
   assert.equal(failed.result, undefined)
 })
 
+test('screenshots pin the selection and forward the requested crop and size', async () => {
+  const { api, calls } = facade({
+    'selection.get': () => ({ pageId: 'page-1', ids: ['icon'] }),
+    'preview.capture': request => ({ format: 'futureox.design-preview.v1', parameters: request.params }),
+  })
+  const shot = ok(await api.callTool('get_screenshot', { maxDimension: 512, contentsOnly: false, enableBase64Response: false }, {}))
+  assert.equal(shot.result.inlineImage, false)
+  assert.deepEqual(calls.at(-1).params, { format: 'png', maxDimension: 512, contentsOnly: false, pageId: 'page-1', nodeIds: ['icon'] })
+  assert.equal(calls.at(-1).expectedRevision, 4)
+  for (const args of [{ maxDimension: 0 }, { maxDimension: Infinity }, { contentsOnly: 'true' }, { enableBase64Response: 1 }])
+    assert.equal((await api.callTool('get_screenshot', args, {})).error.code, 'invalid_params')
+  assert.equal(calls.length, 2)
+})
+
 test('get_variable_defs keeps selection bindings and their transitive aliases at one revision', async () => {
   const { api, calls } = facade({
     'selection.get': () => ({ ids: ['label'] }),

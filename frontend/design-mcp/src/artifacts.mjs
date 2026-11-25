@@ -8,7 +8,7 @@ const previewMedia = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/webp': '
 /** Attach actual small preview bytes, never fabricate/re-render. */
 export function previewImage(response, maxBytes = 256 * 1024) {
   const result = response?.result
-  if (response?.ok !== true || result?.format !== 'futureox.design-preview.v1' || !['image/png', 'image/jpeg', 'image/webp'].includes(result.mimeType) || typeof result.dataUrl !== 'string') return
+  if (response?.ok !== true || result?.format !== 'futureox.design-preview.v1' || result.inlineImage === false || !['image/png', 'image/jpeg', 'image/webp'].includes(result.mimeType) || typeof result.dataUrl !== 'string') return
   const prefix = `data:${result.mimeType};base64,`
   if (!result.dataUrl.startsWith(prefix)) return
   const data = result.dataUrl.slice(prefix.length)
