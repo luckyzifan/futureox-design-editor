@@ -53,7 +53,8 @@ for (const mode of ['auto', 'pinned-modern', 'legacy']) test(`official SDK ${mod
     // may authenticate to the bridge or consume the single-use token.
     assert.equal(capabilityReads, 0); assert.equal(executes, 0)
     assert.equal(bridge.status().connectedClients, 0)
-    assert.equal((await client.listPrompts()).prompts.length, 2)
+    assert.ok((await client.listPrompts()).prompts.some(prompt => prompt.name === 'create_design_system_rules'))
+    assert.match((await client.getPrompt({ name: 'create_design_system_rules' })).messages[0].content.text, /design_collection_list/)
     assert.equal(capabilityReads, 0)
     assert.equal((await client.listTools()).tools.length, 2)
     assert.equal(capabilityReads, 1)

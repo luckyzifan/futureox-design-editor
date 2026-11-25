@@ -83,13 +83,15 @@ Unix: absolute current-user-owned socket mode 0600, real private directory mode 
 
 ## Bounded inspect / generate / fine-edit workflow
 
-The client model runs the workflow; the server only executes supported operations. The two prompts (`design_generation`, `design_to_code`) suggest a finite client-side budget, for example three cycles:
+The client model runs the workflow; the server only executes supported operations. The `design_generation` and `design_to_code` prompts suggest a finite client-side budget, for example three cycles:
 
 1. Inspect capabilities, document, selection, context, styles/components and current revision.
 2. Create a schema-aware, bounded native `batch.apply` with current fences. One successful batch is one undo step.
 3. Inspect `context.get` and `design.check`; use `preview.capture` only if advertised. Checks are structural/heuristic and are not GPU pixel or aesthetic validation.
 4. Apply only the justified fine edit, refresh state and inspect again. Stop on satisfaction, budget exhaustion, repeated failures, unavailable capabilities or a user decision.
 5. Export and report real warnings. HTML/CSS is approximate; native JSON / binary `.fd` preserves the design model.
+
+The `create_design_system_rules` prompt guides a client to draft Markdown from the available local token, style, component and context tools and the project's confirmed conventions. Retrieve it with `prompts/get` without arguments. The client returns the draft for review and saves it when the user requests a project file change.
 
 The adapter does not enforce or execute model iterations. No prompt authorizes unrelated edits, external asset fetching, publishing, shell/eval or an autonomous background AI loop.
 

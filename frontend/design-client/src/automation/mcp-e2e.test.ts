@@ -6,20 +6,26 @@ import { createHash } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import { Editor } from '../engine'
 import { blank, node, paint } from '../model'
+import { emptySystem } from '../design-system'
 import { figmaFixture } from '../figma-fixtures'
 import { createEditorDesignAutomation } from './index'
 import type { AutomationResponse } from './types'
 import { OperationBackend } from '../../../design-mcp/src/operation-backend.mjs'
 import { DesignMcpServer } from '../../../design-mcp/src/server.mjs'
+// @ts-expect-error The dependency-free stdio adapter is native JavaScript.
+import { FigmaFacade } from '../../../design-mcp/src/figma-facade.mjs'
 
 type Json = Record<string, any>
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => { for (const close of cleanup.splice(0)) await close() })
 
-async function fixture(document = blank('MCP live document'), scope: 'read' | 'write' = 'write') {
+async function fixture(document = blank('MCP live document'), scope: 'read' | 'write' = 'write', catalog: 'design' | 'figma' = 'design') {
   const editor = new Editor(document)
   const api = createEditorDesignAutomation(editor)
-  const backend = new OperationBackend({ capabilities: api.capabilities(), execute: request => api.execute(request), scope })
+  const operation = new OperationBackend({ capabilities: api.capabilities(), execute: request => api.execute(request), scope })
+  const backend = catalog === 'figma'
+    ? new FigmaFacade({ execute: operation.execute, methods: [...operation.methods.values()], scope })
+    : operation
   const input = new PassThrough(), output = new PassThrough(), diagnostics = new PassThrough()
   let buffer = '', id = 0
   const pending = new Map<number, (message: Json) => void>()
@@ -48,10 +54,10 @@ async function fixture(document = blank('MCP live document'), scope: 'read' | 'w
   expect(initialized.result.protocolVersion).toBe('2025-11-25')
   input.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n')
   const tools = (await rpc('tools/list')).result.tools as { name: string }[]
-  const toolName = (method: string) => `design_${method.replaceAll('.', '_')}`
+  const toolName = (method: string) => catalog === 'figma' ? method : `design_${method.replaceAll('.', '_')}`
   const call = async (method: string, params: Json = {}, fences: Json = {}) => {
     expect(tools.some(tool => tool.name === toolName(method))).toBe(true)
-    const response = await rpc('tools/call', { name: toolName(method), arguments: { params, ...fences } })
+    const response = await rpc('tools/call', { name: toolName(method), arguments: catalog === 'figma' ? params : { params, ...fences } })
     expect(response.error, JSON.stringify(response.error)).toBeUndefined()
     return response.result as Json
   }
@@ -86,6 +92,65 @@ const ids = {
   button: '10000000-0000-4000-8000-000000000004',
   label: '10000000-0000-4000-8000-000000000005',
 }
+
+it('Figma metadata reads each real subtree member once and rejects a stale cursor after an Editor edit', async () => {
+  const document = blank(), frame = node('frame'), child = node('rectangle'), other = node('ellipse')
+  frame.children.push(child.id)
+  document.nodes = { [frame.id]: frame, [child.id]: child, [other.id]: other }
+  document.pages[0].children = [frame.id, other.id]
+  const f = await fixture(document, 'read', 'figma')
+  const pages = await f.read('get_metadata')
+  expect(pages.result.pages).toEqual([{ id: document.pages[0].id, name: document.pages[0].name }])
+  const absent = await f.call('get_metadata', { nodeId: node('rectangle').id })
+  expect(absent.structuredContent.error).toMatchObject({ code: 'not_found', details: { pages: pages.result.pages } })
+  const page = await f.read('get_metadata', { nodeId: document.pages[0].id, limit: 1 })
+  expect(page.result.total).toBe(3)
+  const first = await f.read('get_metadata', { nodeId: frame.id, limit: 1 })
+  expect(first.result.nextCursor).toBeTruthy()
+  expect(first.result.total).toBe(2)
+  const second = await f.read('get_metadata', { nodeId: frame.id, limit: 1, cursor: first.result.nextCursor })
+  expect(second.result.nextCursor).toBeNull()
+  const nodes = [...first.result.nodes, ...second.result.nodes]
+  expect(new Set(nodes.map(entry => entry.id))).toEqual(new Set([frame.id, child.id]))
+  expect(nodes.find(entry => entry.id === child.id).parentId).toBe(frame.id)
+  const wrong = await f.call('get_metadata', { nodeId: other.id, cursor: first.result.nextCursor })
+  expect(wrong.structuredContent.error.code).toBe('invalid_params')
+  f.editor.change('Rename member', draft => { draft.nodes[child.id].name = 'Updated' })
+  const stale = await f.call('get_metadata', { nodeId: frame.id, cursor: first.result.nextCursor })
+  expect(stale.structuredContent.error.code).toBe('stale_cursor')
+  const fresh = await f.read('get_metadata', { nodeId: frame.id })
+  expect(fresh.result.xml).toContain('Updated')
+})
+
+it('Figma variables returns real local dependencies for both a selected and an explicit node', async () => {
+  const document = blank(), shape = node('rectangle')
+  document.schemaVersion = 6
+  document.designSystem = emptySystem()
+  document.designSystem.collections.theme = { name: 'Theme', modes: ['Light', 'Dark'], defaultMode: 'Light' }
+  document.designSystem.activeModes.theme = 'Light'
+  document.designSystem.variables = {
+    brand: { name: 'Brand', kind: 'color', collection: 'theme', values: { Light: { alias: 'palette' }, Dark: { alias: 'night' } } },
+    palette: { name: 'Palette', kind: 'color', collection: 'theme', values: { Light: { alias: 'base' }, Dark: '#445566' } },
+    base: { name: 'Base', kind: 'color', collection: 'theme', values: { Light: '#112233', Dark: '#445566' } },
+    night: { name: 'Night', kind: 'color', collection: 'theme', values: { Light: '#776655', Dark: '#665544' } },
+    spare: { name: 'Spare', kind: 'color', collection: 'theme', values: { Light: '#000000', Dark: '#ffffff' } },
+  }
+  document.designSystem.styles.fill = { name: 'Shared fill', kind: 'paint', value: [paint('#123456')] }
+  shape.bindings = { 'fills.0.color': 'brand' }
+  shape.styleRefs = { fills: 'fill' }
+  document.nodes[shape.id] = shape
+  document.pages[0].children = [shape.id]
+  const f = await fixture(document, 'read', 'figma')
+  f.editor.select([shape.id])
+  const selection = await f.read('get_variable_defs')
+  const explicit = await f.read('get_variable_defs', { nodeId: shape.id })
+  expect(selection.result).toEqual(explicit.result)
+  expect(new Set(selection.result.variables.map((variable: { id: string }) => variable.id))).toEqual(new Set(['brand', 'palette', 'base', 'night']))
+  expect(selection.result.styles.map((style: { id: string }) => style.id)).toEqual(['fill'])
+  expect(selection.result.truncated).toBe(false)
+  expect(selection.revision).toBe(f.editor.state.version)
+})
+
 const operations = [
   { method: 'node.create', params: { id: ids.frame, kind: 'frame', width: 400, height: 340, patch: { name: 'Login card', fills: [paint('#ffffff')] } } },
   { method: 'layout.set', params: { ids: [ids.frame], layout: { mode: 'vertical', gap: 16, padding: [24, 24, 24, 24] } } },

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { isRecord } from './framing.mjs'
 
 /** Explicit compatibility surface for AI clients that already speak Figma MCP.
@@ -31,6 +32,7 @@ const KINDS = new Set(['slice', 'frame', 'section', 'group', 'rectangle', 'ellip
 const IGNORED = new Set(['fileKey', 'clientFrameworks', 'clientLanguages', 'skillNames', 'dir'])
 const LOOSE = { description: 'Accepted and ignored. This server is bound to the enabled local document.' }
 const NODE_LIMIT = 100
+const METADATA_CURSOR_PATTERN = /^([A-Za-z0-9_-]{43})\.([A-Za-z0-9_-]{2,171})$/
 const SELECTION_DETAIL = 20
 
 let registeredBridge = null
@@ -50,11 +52,15 @@ const tool = (name, description, properties, required = []) => ({
 })
 
 export const FIGMA_MCP_TOOLS = Object.freeze([
-  tool('get_metadata', 'Lightweight XML outline of the open Futureox document. Omit nodeId for pages. A page id outlines that page; any other id outlines that subtree, at most 100 nodes. fileKey is ignored. This is not a Figma file listing.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, cursor: { type: 'string', description: 'Rejected. The outline is one bounded page; narrow nodeId instead of paging.' } }),
+  tool('get_metadata', 'Lightweight XML outline of the open Futureox document. Omit nodeId for pages. A page id outlines that page; any other id outlines that subtree in pages of up to 100 nodes. fileKey is ignored.', {
+    nodeId: { type: 'string', minLength: 1, maxLength: 128 },
+    limit: { type: 'integer', minimum: 1, maximum: NODE_LIMIT, description: 'Nodes per outline page. Defaults to 100.' },
+    cursor: { type: 'string', minLength: 46, maxLength: 215, description: 'nextCursor from the same nodeId, editor session, and revision.' },
+  }),
   tool('get_selection', 'Read the active page and current selection. Up to 20 nodes include id, name, kind, size, and world bounds. Desktop Figma MCP often implies this selection; call this tool to read it.', {}),
   tool('get_design_context', 'Bounded design context for nodeId or the current selection, from context.get. When code.export is available, HTML/CSS is attached as resources. Output is Futureox HTML/CSS, not Figma React and Tailwind. clientFrameworks is ignored.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
   tool('get_screenshot', 'PNG export of nodeId, the current selection, or the active page when nothing is selected. Uses preview.capture: a CPU raster of design content, not an application or GPU screenshot. scale is 0.1–4.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, scale: { type: 'number', minimum: 0.1, maximum: 4 } }),
-  tool('get_variable_defs', 'Local variables and shared styles used by nodeId or the current selection. An empty selection returns the document’s local variables and styles. No team libraries or published design systems.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
+  tool('get_variable_defs', 'Local variable definitions and their alias dependencies, plus shared styles referenced by nodeId or the first 20 selected nodes. An empty selection returns a bounded document catalog.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
   tool('download_assets', 'Export up to 20 local nodes as individual MCP resources. Formats are png, jpeg, webp, or svg. Raster exports use the product CPU renderer. PDF, raw uploaded images and external URLs are unavailable.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, nodeIds: { type: 'array', minItems: 1, maxItems: FIGMA_ASSET_LIMIT, items: { type: 'string', minLength: 1, maxLength: 128 } }, defaultFormat: { type: 'string', enum: ['png', 'jpeg', 'jpg', 'webp', 'svg'] }, defaultScale: { type: 'number', minimum: 0.1, maximum: 4 } }),
   tool('use_figma', 'Write the open document. Preferred input is operations (at most 40), applied as one Design API batch and one undo step: create {kind,parentId?,x?,y?,width?,height?,name?,text?,fontSize?,fill?}, update {nodeId,name?,x?,y?,width?,height?,text?,fill?,transform?}, delete {nodeId|nodeIds}, select {nodeIds}, move {nodeId,parentId,index?}. fill is #RRGGBB. Coordinates are parent-local document units. code is plugin JavaScript and runs only when a plugin bridge is registered; otherwise the result is plugin_host_unavailable and the source is not evaluated. description is required.', { description: { type: 'string', minLength: 1, maxLength: 400 }, operations: { type: 'array', maxItems: 40 }, code: { type: 'string', maxLength: 100000 }, mutationId: { type: 'string', minLength: 1, maxLength: 128 } }, ['description']),
   tool('open_document', 'Open a saved local design through workspace.open. Requires rootHandle, documentHandle, and mutationId from a workspace grant. This is not Figma create_new_file. A successful open can end this automation session.', { rootHandle: { type: 'string', minLength: 1, maxLength: 512 }, documentHandle: { type: 'string', minLength: 1, maxLength: 512 }, mutationId: { type: 'string', minLength: 1, maxLength: 128 } }, ['rootHandle', 'documentHandle', 'mutationId']),
@@ -68,14 +74,18 @@ const done = (method, identity, result) => ({ ok: true, method, documentId: iden
 const identityOf = response => ({ documentId: response.documentId, session: response.session, revision: response.revision })
 
 function rejectCursor(args) {
-  if (args.cursor !== undefined) return 'This server returns one bounded result and does not accept cursors. Narrow nodeId instead.'
+  if (args.cursor !== undefined) return 'This tool returns one bounded result. Narrow nodeId instead of passing a cursor.'
 }
 
-function unknownArguments(args, allowed) {
+function unknownArguments(args, allowed, { pagination = false } = {}) {
   if (!isRecord(args)) return 'Tool arguments must be an object'
   const extra = Object.keys(args).filter(key => !allowed.has(key) && !IGNORED.has(key))
   if (extra.length) return `Unknown arguments: ${extra.join(', ')}`
-  return rejectCursor(args)
+  if (!pagination) return rejectCursor(args)
+}
+
+function metadataCursorBinding({ documentId, session }, nodeId, scope) {
+  return createHash('sha256').update(JSON.stringify([documentId, session, nodeId, scope])).digest('base64url')
 }
 
 function xmlEscape(value) {
@@ -249,23 +259,41 @@ export class FigmaFacade {
   }
 
   async metadata(args, context) {
-    const invalid = unknownArguments(args, new Set(['nodeId', 'cursor']))
+    const invalid = unknownArguments(args, new Set(['nodeId', 'limit', 'cursor']), { pagination: true })
     if (invalid) return failure('get_metadata', 'invalid_params', invalid)
     const nodeId = this.nodeId(args)
     if (isRecord(nodeId)) return failure('get_metadata', 'invalid_params', nodeId.error)
+    if (args.limit !== undefined && (nodeId === undefined || !Number.isInteger(args.limit) || args.limit < 1 || args.limit > NODE_LIMIT)) return failure('get_metadata', 'invalid_params', 'limit requires nodeId and must be an integer from 1 to 100')
+    const continuation = typeof args.cursor === 'string' && args.cursor.length <= 215 ? METADATA_CURSOR_PATTERN.exec(args.cursor) : null
+    if (args.cursor !== undefined && (nodeId === undefined || !continuation)) return failure('get_metadata', 'invalid_params', 'Pass nextCursor from an earlier result with the same nodeId')
     const pages = await this.call('page.list', {}, context)
     if (!pages.ok) return pages
-    const pageList = Array.isArray(pages.result?.pages) ? pages.result.pages : []
+    const pageList = Array.isArray(pages.result?.pages) ? pages.result.pages.map(({ id, name }) => ({ id, name })) : []
     if (nodeId === undefined) {
       const xml = metadataXml(pages.documentId, pageList.map(page => ({ id: page.id, name: page.name, kind: 'page' })))
-      return done('get_metadata', identityOf(pages), { format: 'futureox.figma-metadata.v1', scope: 'pages', xml, pages: pageList.map(page => ({ id: page.id, name: page.name })), fileKeyIgnored: args.fileKey !== undefined, modelText: xml })
+      return done('get_metadata', identityOf(pages), { format: 'futureox.figma-metadata.v1', scope: 'pages', xml, pages: pageList, fileKeyIgnored: args.fileKey !== undefined, modelText: xml })
     }
     const page = pageList.find(entry => entry.id === nodeId)
-    const found = await this.call('node.find', page ? { pageId: nodeId, limit: NODE_LIMIT } : { rootId: nodeId, limit: NODE_LIMIT }, context)
+    const scope = page ? 'page' : 'subtree'
+    const identity = identityOf(pages)
+    const binding = metadataCursorBinding(identity, nodeId, scope)
+    if (continuation && continuation[1] !== binding) return failure('get_metadata', 'invalid_params', 'Cursor belongs to another document, editor session, or nodeId', identity)
+    const found = await this.call('node.find', {
+      ...(page ? { pageId: nodeId } : { rootId: nodeId }),
+      limit: args.limit ?? NODE_LIMIT,
+      ...(continuation ? { cursor: Buffer.from(continuation[2], 'base64url').toString('utf8') } : {}),
+    }, context, identity)
+    if (!found.ok && continuation && ['stale_revision', 'stale_cursor'].includes(found.error?.code)) {
+      return failure('get_metadata', 'stale_cursor', 'The document changed. Restart the outline without a cursor.', identityOf(found))
+    }
+    if (!found.ok && found.error?.code === 'not_found') {
+      return { ...found, method: 'get_metadata', error: { ...found.error, details: { pages: pageList } } }
+    }
     if (!found.ok) return found
     const nodes = Array.isArray(found.result?.nodes) ? found.result.nodes : []
     const xml = metadataXml(nodeId, nodes)
-    return done('get_metadata', identityOf(found), { format: 'futureox.figma-metadata.v1', scope: page ? 'page' : 'subtree', nodeId, xml, nodes, truncated: Boolean(found.result?.nextCursor), total: found.result?.total, fileKeyIgnored: args.fileKey !== undefined, modelText: xml })
+    const nextCursor = found.result?.nextCursor ? `${binding}.${Buffer.from(found.result.nextCursor).toString('base64url')}` : null
+    return done('get_metadata', identityOf(found), { format: 'futureox.figma-metadata.v1', scope, nodeId, xml, nodes, truncated: nextCursor !== null, nextCursor, total: found.result?.total, fileKeyIgnored: args.fileKey !== undefined, modelText: xml })
   }
 
   async selection(args, context) {
@@ -340,14 +368,16 @@ export class FigmaFacade {
     if (invalid) return failure('get_variable_defs', 'invalid_params', invalid)
     const target = await this.resolveNodes(args, context, 'get_variable_defs')
     if (!target.ok) return target
-    const variables = await this.call('variable.list', {}, context)
+    const variables = await this.call('variable.list', {}, context, target.identity)
     if (!variables.ok) return variables
-    const styles = await this.call('style.list', {}, context)
+    const identity = target.identity ?? identityOf(variables)
+    const styles = await this.call('style.list', {}, context, identity)
     if (!styles.ok) return styles
     const usedVariables = new Set()
     const usedStyles = new Set()
-    for (const id of (target.ids ?? []).slice(0, SELECTION_DETAIL)) {
-      const node = await this.call('node.get', { id }, context)
+    const ids = target.ids.slice(0, SELECTION_DETAIL)
+    for (const id of ids) {
+      const node = await this.call('node.get', { id }, context, identity)
       if (!node.ok) return node
       const source = node.result?.node ?? {}
       for (const value of Object.values(source.bindings ?? {})) if (typeof value === 'string') usedVariables.add(value)
@@ -355,8 +385,14 @@ export class FigmaFacade {
     }
     const variableList = asList(variables.result)
     const styleList = asList(styles.result)
-    const scoped = target.ids?.length
-      ? { scope: 'selection', variables: variableList.filter(entry => usedVariables.has(entry.id)), styles: styleList.filter(entry => usedStyles.has(entry.id)) }
+    const byId = new Map(variableList.map(variable => [variable.id, variable]))
+    for (const id of usedVariables) {
+      for (const value of Object.values(byId.get(id)?.values ?? {})) {
+        if (isRecord(value) && typeof value.alias === 'string') usedVariables.add(value.alias)
+      }
+    }
+    const scoped = ids.length
+      ? { scope: 'selection', variables: variableList.filter(entry => usedVariables.has(entry.id)), styles: styleList.filter(entry => usedStyles.has(entry.id)), truncated: ids.length < target.ids.length }
       : { scope: 'document', variables: variableList.slice(0, 50), styles: styleList.slice(0, 50), truncated: variableList.length > 50 || styleList.length > 50 }
     return done('get_variable_defs', identityOf(styles), {
       ...scoped, libraries: [], note: 'Local document variables and styles only. Team libraries are not available.',

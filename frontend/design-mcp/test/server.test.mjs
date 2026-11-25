@@ -142,12 +142,20 @@ test('large import admission is method-scoped and only one heavy request can sta
   assert.equal(f.server.pendingBytes, 0); assert.equal(f.server.heavyRequests, 0)
 })
 test('prompts are discoverable with bounded, validated arguments', async t => {
-  const f = fixture(t); await f.ready()
-  f.send(request(2, 'prompts/list')); assert.equal((await f.wait(2)).result.prompts.length, 2)
+  const f = fixture(t, { listTools: () => assert.fail('Prompt discovery must not query the backend'), callTool: () => assert.fail('Prompt retrieval must not execute a tool') })
+  await f.ready()
+  f.send(request(2, 'prompts/list'))
+  assert.deepEqual((await f.wait(2)).result.prompts.map(prompt => prompt.name), ['design_generation', 'design_to_code', 'create_design_system_rules'])
   f.send(request(3, 'prompts/get', { name: 'design_generation', arguments: { brief: 'Create a dashboard' } }))
   assert.match((await f.wait(3)).result.messages[0].content.text, /finite client-side iteration budget/)
   f.send(request(4, 'prompts/get', { name: 'design_generation', arguments: { brief: 'x'.repeat(16001) } }))
   assert.equal((await f.wait(4)).error.code, -32602)
+  f.send(request(5, 'prompts/get', { name: 'create_design_system_rules' }))
+  const rules = (await f.wait(5)).result.messages[0]
+  assert.equal(rules.role, 'user')
+  assert.match(rules.content.text, /Markdown.*get_variable_defs.*design_collection_list.*token names.*aliases/)
+  f.send(request(6, 'prompts/get', { name: 'create_design_system_rules', arguments: { fileKey: 'external' } }))
+  assert.equal((await f.wait(6)).error.code, -32602)
 })
 test('request IDs have a bounded retained size', async t => {
   const f = fixture(t)

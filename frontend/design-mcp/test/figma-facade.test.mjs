@@ -58,6 +58,29 @@ test('get_metadata lists pages, then a subtree, and ignores fileKey', async () =
   assert.equal(cursor.error.code, 'invalid_params')
 })
 
+test('get_metadata continues the native query with the same nodeId and fresh read fences', async () => {
+  const { api, calls } = facade({
+    'page.list': () => ({ pages: [{ id: 'page-1', name: 'Cover' }] }),
+    'node.find': ({ params }) => ({
+      nodes: [{ id: params.cursor ? 'second' : 'first', kind: 'rectangle' }],
+      total: 2,
+      nextCursor: params.cursor ? null : '4:1',
+    }),
+  })
+  const first = ok(await api.callTool('get_metadata', { nodeId: 'page-1', limit: 1 })).result
+  assert.deepEqual(first.nodes.map(node => node.id), ['first'])
+  assert.equal(first.truncated, true)
+  assert.equal(typeof first.nextCursor, 'string')
+  const second = ok(await api.callTool('get_metadata', { nodeId: 'page-1', limit: 1, cursor: first.nextCursor })).result
+  assert.deepEqual(second.nodes.map(node => node.id), ['second'])
+  assert.equal(second.nextCursor, null)
+  assert.equal(second.truncated, false)
+  assert.deepEqual(calls.at(-1), { method: 'node.find', params: { pageId: 'page-1', limit: 1, cursor: '4:1' }, documentId: 'doc-1', session: 3, expectedRevision: 4 })
+  const mismatch = await api.callTool('get_metadata', { nodeId: 'another', cursor: first.nextCursor })
+  assert.equal(mismatch.error.code, 'invalid_params')
+  assert.equal(calls.at(-1).method, 'page.list')
+})
+
 test('get_selection reads ids and summarizes at most the requested nodes', async () => {
   const { api, calls } = facade({
     'selection.get': () => ({ pageId: 'page-1', ids: ['a', 'b'] }),
@@ -129,17 +152,26 @@ test('download_assets batches individual exports against one revision', async ()
   assert.equal(failed.result, undefined)
 })
 
-test('get_variable_defs keeps selection bindings and does not invent libraries', async () => {
-  const { api } = facade({
+test('get_variable_defs keeps selection bindings and their transitive aliases at one revision', async () => {
+  const { api, calls } = facade({
     'selection.get': () => ({ ids: ['label'] }),
     'node.get': () => ({ node: { bindings: { fill: 'brand' }, styleRefs: { text: 'body' } } }),
-    'variable.list': () => [{ id: 'brand', name: 'Brand' }, { id: 'gap', name: 'Gap' }],
+    'variable.list': () => [
+      { id: 'brand', values: { Light: { alias: 'palette' }, Dark: { alias: 'dark' } } },
+      { id: 'palette', values: { Light: { alias: 'literal' } } },
+      { id: 'literal', values: { Light: '#112233' } },
+      { id: 'dark', values: { Dark: '#332211' } },
+      { id: 'gap', values: { Light: 12 } },
+    ],
     'style.list': () => [{ id: 'body', name: 'Body' }, { id: 'other', name: 'Other' }],
   })
   const defs = ok(await api.callTool('get_variable_defs', {}, {}))
-  assert.deepEqual(defs.result.variables.map(item => item.id), ['brand'])
+  assert.deepEqual(defs.result.variables.map(item => item.id), ['brand', 'palette', 'literal', 'dark'])
   assert.deepEqual(defs.result.styles.map(item => item.id), ['body'])
   assert.deepEqual(defs.result.libraries, [])
+  assert.ok(calls.slice(1).every(call => call.documentId === 'doc-1' && call.session === 3 && call.expectedRevision === 4))
+  const explicit = ok(await api.callTool('get_variable_defs', { nodeId: 'label' }, {}))
+  assert.deepEqual(explicit.result, defs.result)
 })
 
 test('use_figma compiles structured writes into one batch and refuses plugin source without a bridge', async () => {
