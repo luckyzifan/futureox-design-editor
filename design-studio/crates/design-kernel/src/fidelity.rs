@@ -263,14 +263,18 @@ fn opaque_color_endpoints(planes: &[[[u8; 4]; 4]; 4]) -> bool {
         }
     }
     let chromatic = |[r, g, b, _]: [u8; 4]| r != g || g != b;
-    second.is_some_and(|color| chromatic(first) || chromatic(color))
+    second.is_some_and(|color| {
+        chromatic(first)
+            || chromatic(color)
+            || (first[0].min(color[0]) == 0 && first[0].max(color[0]) == 255)
+    })
 }
 
 /// Same four jitter planes and 2x source density, with byte-precision
 /// horizontal/vertical filtering and separately rounded UNORM blend terms.
-/// The measured resolve for colored opaque coverage uses the exact spatial
-/// sum and jitter weights when two endpoints span the neighborhood. The
-/// achromatic filter and general-color paths keep their byte arithmetic.
+/// Certified solid coverage uses the exact spatial sum and jitter weights for
+/// colored pairs and pure black/white pairs. Other grey and material
+/// neighborhoods keep their byte arithmetic.
 pub fn resolve_software_sample_planes_2x(
     samples: [&[u8]; 4], width: u32, height: u32, allow_color_coverage: bool,
 ) -> Vec<u8> {
