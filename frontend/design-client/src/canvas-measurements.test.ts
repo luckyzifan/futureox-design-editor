@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { altMeasurementTarget, anchorPlacementBox, diagramFromLines, DISTANCE_PILL_BASELINE_LEAD, DISTANCE_PILL_EXTRA_HEIGHT, DISTANCE_PILL_FONT_SIZE, DISTANCE_PILL_GAP, DISTANCE_PILL_PAD_X, guidePositionReadout, measureAnchors, measureBounds, measureToGuide, measurementLabel, measurementTicks, readoutAtPoint, selectionChromeChipWidth, spacingDiagram, spacingInteraction, SPACING_RED } from './canvas-measurements'
+import { altMeasurementTarget, anchorPlacementBox, diagramFromLines, DISTANCE_PILL_BASELINE_LEAD, DISTANCE_PILL_EXTRA_HEIGHT, DISTANCE_PILL_FONT_SIZE, DISTANCE_PILL_GAP, DISTANCE_PILL_PAD_X, guidePositionReadout, guideSpacingAvailable, measureAnchors, measureBounds, measureGuideSpacing, measureToGuide, measurementLabel, measurementTicks, readoutAtPoint, selectionChromeChipWidth, spacingDiagram, spacingInteraction, SPACING_RED } from './canvas-measurements'
 test('nested layer measurements report all four exact margins', () => {
   const outer = { x: 10, y: 20, width: 300, height: 200 }, inner = { x: 40, y: 65, width: 50, height: 60 }
   expect(measureBounds(inner, outer).map(item => item.distance)).toEqual([30, 220, 45, 95])
@@ -106,6 +106,35 @@ test('a ruler guide is one gap outside the box and both sides when it crosses', 
   expect(measureToGuide(box, { axis: 'x', position: 70 }).map(item => item.distance)).toEqual([30])
   expect(measureToGuide(box, { axis: 'x', position: 16 }).map(item => item.distance)).toEqual([16, 24])
   expect(measureToGuide(box, { axis: 'y', position: 4 })[0]).toMatchObject({ from: { x: 20, y: 4 }, to: { x: 20, y: 10 }, axis: 'vertical' })
+  expect(measureGuideSpacing(box, { axis: 'x', position: 70 }).map(item => item.distance)).toEqual([30])
+  expect(measureGuideSpacing(box, { axis: 'y', position: 4 })[0]).toMatchObject({ from: { x: 20, y: 4 }, to: { x: 20, y: 10 }, axis: 'vertical' })
+})
+test('a tilted guide uses the same perpendicular gap as an axis-aligned guide', () => {
+  const box = { x: 0, y: 10, width: 40, height: 20 }
+  const vertical = measureGuideSpacing(box, { axis: null, position: 0, from: { x: 70, y: 0 }, to: { x: 70, y: 8 } })
+  expect(vertical.map(item => item.distance)).toEqual([30])
+  expect(vertical[0].from.y).toBeCloseTo(20, 8)
+  expect(vertical[0].to.y).toBeCloseTo(20, 8)
+  const crossing = measureGuideSpacing(box, { axis: null, position: 0, from: { x: 16, y: -4 }, to: { x: 16, y: 4 } })
+  expect(crossing.map(item => item.distance).sort((a, b) => a - b)).toEqual([16, 24])
+  const above = measureGuideSpacing(box, { axis: null, position: 0, from: { x: 0, y: 4 }, to: { x: 12, y: 4 } })
+  expect(above[0]).toMatchObject({ from: { x: 20, y: 4 }, to: { x: 20, y: 10 }, axis: 'vertical' })
+  const edge = measureGuideSpacing(box, { axis: null, position: 0, from: { x: 0, y: 0 }, to: { x: 0, y: 5 } })
+  expect(edge.map(item => item.distance)).toEqual(measureToGuide(box, { axis: 'x', position: 0 }).map(item => item.distance))
+  const tilted = measureGuideSpacing({ x: 80, y: 0, width: 40, height: 20 }, { axis: null, position: 0, from: { x: 0, y: 0 }, to: { x: -1, y: 1 } })
+  expect(tilted).toHaveLength(1)
+  expect(tilted[0].distance).toBeCloseTo(45 * Math.SQRT2, 8)
+  expect(tilted[0]).toMatchObject({ tick: false, role: 'gap' })
+  const through = measureGuideSpacing(box, { axis: null, position: 0, from: { x: 20, y: 20 }, to: { x: 21, y: 21 } })
+  expect(through).toHaveLength(2)
+  expect(through[0].distance).toBeCloseTo(10 * Math.SQRT2, 8)
+  expect(through[1].distance).toBeCloseTo(10 * Math.SQRT2, 8)
+  expect(measureGuideSpacing(box, { axis: null, position: 0, from: { x: 1, y: 1 }, to: { x: 1, y: 1 } })).toEqual([])
+  expect(measureGuideSpacing({ x: Number.NaN, y: 0, width: 1, height: 1 }, { axis: null, position: 0, from: { x: 0, y: 0 }, to: { x: 1, y: 1 } })).toEqual([])
+  expect(guideSpacingAvailable(null)).toBe(false)
+  expect(guideSpacingAvailable({ axis: 'y', from: { x: 0, y: 4 }, to: { x: 0, y: 4 } })).toBe(true)
+  expect(guideSpacingAvailable({ axis: null, from: { x: 1, y: 1 }, to: { x: 1, y: 1 } })).toBe(false)
+  expect(guideSpacingAvailable({ axis: null, from: { x: 0, y: 0 }, to: { x: -1, y: 1 } })).toBe(true)
 })
 test('two guides report axis positions and no spacing line', () => {
   expect(guidePositionReadout([120, 340.5], { x: 10, y: 20 }).map(pill => pill.text)).toEqual(['120', '340.5'])
