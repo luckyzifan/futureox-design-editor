@@ -1901,6 +1901,11 @@ impl<'a> Importer<'a> {
             // Restore only while the native effect fields still match exactly;
             // a subsequent native Sketch edit must supersede this receipt.
             if let Some(effects) = restored_effect_model(layer, &style) {
+                if layer.pointer("/userInfo/com.futureox.design-kernel/legacyEffectModel/portableZoom")
+                    .and_then(Value::as_bool) == Some(true)
+                    && effects.iter().any(|effect| effect.zoom_blur.is_some()) {
+                    node.bindings.insert("sketchPortableZoomBlur".into(), "true".into());
+                }
                 node.effects = effects;
             }
 
@@ -8224,8 +8229,14 @@ fn export_layer_impl(
                 user_info.insert("stackAlignment".into(), json!({"align":l.align,"justify":l.justify}));
             }
         }
-        if n.effects.iter().any(|e|e.kind=="blur" || e.glass.is_some() || (e.kind=="background-blur" && e.gradient_blur.is_some())) {
-            user_info.insert("legacyEffectModel".into(),json!({"native":native_effect_projection(&layer["style"]),"effects":n.effects}));
+        let portable_zoom = n.effects.iter().any(|effect| effect.zoom_blur.is_some())
+            && !crate::zoom_blur::sketch_sampling(doc, n);
+        if portable_zoom || n.effects.iter().any(|e|e.kind=="blur" || e.glass.is_some() || (e.kind=="background-blur" && e.gradient_blur.is_some())) {
+            let mut receipt = json!({"native":native_effect_projection(&layer["style"]),"effects":n.effects});
+            if portable_zoom {
+                receipt["portableZoom"] = json!(true);
+            }
+            user_info.insert("legacyEffectModel".into(), receipt);
         }
 
         if n.kind == "text" {
