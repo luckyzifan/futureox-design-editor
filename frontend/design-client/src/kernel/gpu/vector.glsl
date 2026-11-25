@@ -745,7 +745,14 @@ vec4 measuredGradientOver(vec2 p){
  vec4 color=mulRN4(figmaSampleQ8(a,b,c,d,figmaFractionQ8(addRN(coordinate,-float(left))),1u),vec4(u[8].x));
  if(color.a==0.){return dst;}
  vec4 source=min(abs(addRN4(color,vec4(field.y))),vec4(1));
- if(color.a==1.){source.a=1.;}source=mulRN4(source,vec4(coverage));float factor=addRN(1.,-source.a);
+ if(color.a==1.){source.a=1.;}
+ if(u[8].y>0.){
+  uvec4 encoded=uvec4(figmaEncodeUnorm8(clamp(source.x,0.,1.)),figmaEncodeUnorm8(clamp(source.y,0.,1.)),figmaEncodeUnorm8(clamp(source.z,0.,1.)),figmaEncodeUnorm8(clamp(source.w,0.,1.)));
+  source=mulRN4(mulRN4(figmaByteValue(encoded),vec4(u[8].y)),vec4(coverage));
+ }else{
+  source=mulRN4(source,vec4(coverage));
+ }
+ float factor=addRN(1.,-source.a);
  if(softwareRasterByte()){return softwareOver(dst,source);}
  return captureEncode(vec4(positiveFmaRN(dst.x,factor,source.x),positiveFmaRN(dst.y,factor,source.y),positiveFmaRN(dst.z,factor,source.z),positiveFmaRN(dst.w,factor,source.w)));
 }
