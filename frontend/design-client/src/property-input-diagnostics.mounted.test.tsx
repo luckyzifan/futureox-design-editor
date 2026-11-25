@@ -8,6 +8,7 @@ import { NumberField } from './fields'
 import { DraftInput } from './DraftInput'
 import { MixedNumberField } from './MixedNumberField'
 import { ColorInput } from './ColorInput'
+import { addSpatialEffect, SpatialEffectRow } from './SpatialEffectsPanel'
 import { Editor } from './engine'
 import { blank, node } from './model'
 import { PendingEditContext } from './pending-edit-context'
@@ -15,6 +16,7 @@ import { selectionMetric, resizeNodeDimension } from './selection-properties'
 import { parentBounds } from './canvas-view'
 import { canvasActions, ActionOutcome, closeCanvasActions } from './canvas-action-diagnostics'
 import { InputFamily, InputPhase } from './input-diagnostics'
+import { forma_decode_json, forma_encode_json } from './generated/design-kernel/design_kernel'
 const bootstrap = await vi.hoisted(async () => {
   // @ts-expect-error jsdom runtime dependency
   const { JSDOM } = await import('jsdom')
@@ -44,6 +46,34 @@ async function type(field: HTMLInputElement, value: string) {
 }
 async function key(field: HTMLInputElement, key: string) { await act(async () => field.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))) }
 const completed = () => canvasActions(editor).snapshot().rows.filter(r => r.actionPhase === 2)
+test('the 3D pivot accepts independent percentages and retains its value through FD and undo', async () => {
+  expect(addSpatialEffect(editor, id, 'pose')).toBe(true)
+  function Settings() {
+    const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
+    return <PendingEditContext.Provider value={editor}>
+      <SpatialEffectRow editor={editor} layer={state.doc.nodes[id]} kind="pose" open onOpen={() => {}} />
+    </PendingEditContext.Provider>
+  }
+  await act(async () => root.render(<Settings />))
+  const x = input('原点 X'), y = input('原点 Y')
+  expect(x.value).toBe('50%')
+  expect(y.value).toBe('50%')
+  await type(x, '20%'); await key(x, 'Enter')
+  await type(y, '30%'); await key(y, 'Enter')
+  const origin = () => editor.authoredDocument.nodes[id].spatial?.pose?.origin
+  expect(origin()).toEqual([.2, .3])
+  expect(mount.querySelector<HTMLSelectElement>('select[aria-label="原点"]')?.value).toBe('custom')
+  const roundTrip = JSON.parse(forma_decode_json(forma_encode_json(JSON.stringify(editor.authoredDocument))))
+  expect(roundTrip.nodes[id].spatial.pose.origin).toEqual([.2, .3])
+
+  await type(y, '101%'); await key(y, 'Enter')
+  expect(origin()).toEqual([.2, .3])
+  await key(y, 'Escape')
+  await act(async () => editor.undo())
+  expect(origin()).toEqual([.2, .5])
+  await act(async () => editor.undo())
+  expect(origin()).toEqual([.5, .5])
+})
 test('blank-document width and height author geometry agrees with selection bounds, with undo', async () => {
   await act(async () => root.render(<Dimensions />))
   for (const [label, axis, value] of [['W', 'width', 160], ['H', 'height', 90]] as const) {

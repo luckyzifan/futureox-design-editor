@@ -8,6 +8,12 @@ import { commitPendingEdits } from './pending-edits'
 
 export type SpatialKind = 'pose' | 'perspective'
 
+const originPresets = [
+  ['左上', 'Top left', 0, 0], ['上中', 'Top center', 0.5, 0], ['右上', 'Top right', 1, 0],
+  ['左中', 'Center left', 0, 0.5], ['中心', 'Center', 0.5, 0.5], ['右中', 'Center right', 1, 0.5],
+  ['左下', 'Bottom left', 0, 1], ['下中', 'Bottom center', 0.5, 1], ['右下', 'Bottom right', 1, 1],
+] as const
+
 export function addSpatialEffect(editor: Editor, layerId: string, kind: SpatialKind) {
   const before = editor.authoredDocument
   editor.updateProperties([layerId], (layer, doc) => {
@@ -32,6 +38,8 @@ export function SpatialEffectRow({ editor, layer, kind, open, onOpen }: {
   const effect = layer.spatial?.[kind]
   const pose = kind === 'pose' ? layer.spatial?.pose : undefined
   const perspective = kind === 'perspective' ? layer.spatial?.perspective : undefined
+  const origin = pose?.origin.join(',')
+  const hasOriginPreset = originPresets.some(([, , x, y]) => `${x},${y}` === origin)
   const id = useId(), trigger = useRef<HTMLButtonElement>(null), popup = useRef<HTMLDivElement>(null)
   const openRef = useRef(onOpen)
   openRef.current = onOpen
@@ -97,16 +105,20 @@ export function SpatialEffectRow({ editor, layer, kind, open, onOpen }: {
         <button type="button" aria-label={label('关闭', 'Close')} onClick={() => close(true)}><X size={15} /></button>
       </div>
       {pose && <div className="blur-settings-body effect-fields spatial-effect-fields">
-        <label>{label('原点', 'Origin point')}<select aria-label={label('原点', 'Origin point')} value={pose.origin.join(',')}
+        <label>{label('原点', 'Origin point')}<select aria-label={label('原点', 'Origin point')} value={hasOriginPreset ? origin : 'custom'}
           onChange={event => {
-            const [x, y] = event.target.value.split(',').map(Number)
+            const preset = originPresets.find(([, , x, y]) => `${x},${y}` === event.target.value)
+            if (!preset) return
+            const [, , x, y] = preset
             change('修改 3D 原点', spatial => { if (spatial.pose) spatial.pose.origin = [x, y] })
           }}>
-          {[['左上', 'Top left', 0, 0], ['上中', 'Top center', 0.5, 0], ['右上', 'Top right', 1, 0],
-            ['左中', 'Center left', 0, 0.5], ['中心', 'Center', 0.5, 0.5], ['右中', 'Center right', 1, 0.5],
-            ['左下', 'Bottom left', 0, 1], ['下中', 'Bottom center', 0.5, 1], ['右下', 'Bottom right', 1, 1]].map(([zh, en, x, y]) =>
-            <option key={`${x},${y}`} value={`${x},${y}`}>{label(String(zh), String(en))}</option>)}
+          {!hasOriginPreset && <option value="custom" disabled>{label('自定义', 'Custom')}</option>}
+          {originPresets.map(([zh, en, x, y]) => <option key={`${x},${y}`} value={`${x},${y}`}>{label(zh, en)}</option>)}
         </select></label>
+        {(['X', 'Y'] as const).map((axis, index) => <NumberField key={`origin-${axis}`}
+          label={label(`原点 ${axis}`, `Origin ${axis}`)} value={pose.origin[index] * 100} min={0} max={100} unit="percent"
+          formatValue={value => `${Number(value.toFixed(6))}%`}
+          onChange={value => change('修改 3D 原点', spatial => { if (spatial.pose) spatial.pose.origin[index] = value / 100 })} />)}
         {(['X', 'Y', 'Z'] as const).map(axis => <NumberField key={axis} label={label(`${axis} 旋转`, `${axis} rotation`)}
           value={pose[`rotate${axis}`]} min={-36000} max={36000} unit="angle"
           onChange={value => change('修改 3D 旋转', spatial => { if (spatial.pose) spatial.pose[`rotate${axis}`] = value })} />)}

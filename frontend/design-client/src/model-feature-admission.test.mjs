@@ -14,6 +14,19 @@ function fixture(version = 3, kind = 'rectangle') {
   return { document, shape }
 }
 const system = () => ({ collections: {}, variables: {}, activeModes: {}, styles: {}, libraries: {} })
+test('spatial admission distinguishes an empty payload from the schema 24 version gate', () => {
+  const { document, shape } = fixture(24, 'frame')
+  shape.spatial = {}
+  assert.throws(() => validateDocument(document), /3D 效果至少需要变换、透视或保留嵌套 3D/)
+  shape.spatial = { perspective: { distance: 540, visible: true } }
+  document.schemaVersion = 23
+  assert.throws(() => validateDocument(document), /3D 效果需要设计文件版本 24/)
+  document.schemaVersion = 24
+  assert.equal(validateDocument(document), document)
+  delete shape.spatial
+  assert.equal(validateDocument(document).schemaVersion, 24)
+})
+
 const extended = [
   ['angular fill', shape => { shape.fills[0].kind = 'angular' }],
   ['diamond fill', shape => { shape.fills[0].kind = 'diamond' }],

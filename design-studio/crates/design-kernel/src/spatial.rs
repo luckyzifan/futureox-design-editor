@@ -45,8 +45,11 @@ fn is_false(value: &bool) -> bool { !*value }
 
 impl SpatialEffects {
     pub(crate) fn validate(&self, node: &Node, schema: u32) -> Result<(), String> {
-        if schema < 24 || (self.pose.is_none() && self.perspective.is_none() && !self.preserve3d) {
+        if schema < 24 {
             return Err("Spatial effects require document schema 24".into());
+        }
+        if self.pose.is_none() && self.perspective.is_none() && !self.preserve3d {
+            return Err("Spatial effects require a transform, perspective, or shared 3D space".into());
         }
         if self.preserve3d && (schema < 25 || node.kind != "frame" || node.graphic) {
             return Err("Shared 3D space requires a frame and document schema 25".into());
@@ -448,6 +451,25 @@ mod tests {
                         "origin":[0.5,0.5],"visible":true,"backfaceVisible":true}}}
             }
         })
+    }
+
+    #[test]
+    fn spatial_admission_distinguishes_empty_payload_from_document_version() {
+        let mut document = fixture();
+        let mut engine = Engine::new();
+        document["nodes"]["shape"]["spatial"] = json!({});
+        let empty = engine.load_document(&document.to_string()).unwrap_err();
+        assert!(empty.contains("Spatial effects require a transform, perspective, or shared 3D space"));
+        document["nodes"]["shape"].as_object_mut().unwrap().remove("spatial");
+        document["schemaVersion"] = json!(23);
+        let old_version = engine.load_document(&document.to_string()).unwrap_err();
+        assert!(old_version.contains("Spatial effects require document schema 24"));
+        document["schemaVersion"] = json!(24);
+        engine.load_document(&document.to_string()).unwrap();
+        document["nodes"]["parent"].as_object_mut().unwrap().remove("spatial");
+        let bytes = crate::binfmt::encode_authored_json(&document.to_string()).unwrap();
+        let decoded = crate::binfmt::decode_authored_json(&bytes).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&decoded).unwrap(), document);
     }
 
     #[test]

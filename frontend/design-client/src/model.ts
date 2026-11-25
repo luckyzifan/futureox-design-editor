@@ -1107,8 +1107,12 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     if (n.spatial !== undefined) {
       const spatial = n.spatial
       const inRange = (value: unknown, min: number, max: number) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
-      if (d.schemaVersion < 24 || !isObject(spatial) || Object.keys(spatial).some(key => !['pose', 'perspective', 'preserve3d'].includes(key)) ||
-          (!spatial.pose && !spatial.perspective && !spatial.preserve3d)) throw new Error('3D 效果需要设计文件版本 24')
+      if (d.schemaVersion < 24) throw new Error('3D 效果需要设计文件版本 24')
+      if (!isObject(spatial) || Object.keys(spatial).some(key => !['pose', 'perspective', 'preserve3d'].includes(key)))
+        throw new Error('无效的 3D 效果字段')
+      if (spatial.pose === undefined && spatial.perspective === undefined &&
+          (spatial.preserve3d === undefined || spatial.preserve3d === false))
+        throw new Error('3D 效果至少需要变换、透视或保留嵌套 3D')
       if (spatial.preserve3d !== undefined && (typeof spatial.preserve3d !== 'boolean' ||
           spatial.preserve3d && (d.schemaVersion < 25 || n.kind !== 'frame' || n.graphic)))
         throw new Error('保留嵌套 3D 需要画框和设计文件版本 25')
