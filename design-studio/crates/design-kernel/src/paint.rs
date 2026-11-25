@@ -814,6 +814,17 @@ pub(crate) fn sketch_motion_phase_axis(doc: &Document, n: &Node) -> Option<u8> {
     }
 }
 
+pub(crate) fn sketch_cover_fill_footprint(doc: &Document, node: &Node, paint: &Paint) -> bool {
+    doc.color_management.is_none()
+        && node.kind == "vector" && node.opacity == 1. && node.blend == "normal" && !node.mask
+        && node.fills.len() == 1 && node.strokes.iter().all(|stroke| !stroke.visible)
+        && node.effects.iter().all(|effect| !effect.visible)
+        && paint.kind == "image" && paint.fit == "cover" && paint.opacity == 1.
+        && paint.blend == "normal" && paint.transform.is_none() && paint.adjust.is_none()
+        && paint.tile.as_ref().is_none_or(|tile| !tile.is_active())
+        && crate::interop::sketch_binding(doc, node, "sketchSourceCoverImageFill") == Some("true")
+}
+
 /// For imported Sketch bitmap layers choose the offline box mip when both
 /// device axes minify a simple image. At the original size the base texels
 /// remain addressable exactly; anisotropic or adjusted paints keep their
@@ -1564,6 +1575,7 @@ impl SampleImage {
 }
 pub struct Sampler {
     linear_sampling: bool,
+    sketch_cover_fill_footprint: bool,
     sketch_png_footprint: bool,
     sketch_png_raster_size: Option<[f64; 2]>,
     /// Unmanaged images stay quantized encoded bytes. Analytic frames also set
@@ -1829,6 +1841,7 @@ impl Sampler {
         Ok(Self {
             gradient_coordinates,
             image_coordinates,
+            sketch_cover_fill_footprint: false,
             sketch_png_footprint,
             sketch_png_raster_size,
             linear_sampling: images.settings.is_some(),
@@ -1848,6 +1861,10 @@ impl Sampler {
                 .map(|a| (a, images.settings.is_some())),
             rotated_windows: None,
         })
+    }
+    pub(crate) fn with_sketch_cover_fill_footprint(mut self, enabled: bool) -> Self {
+        self.sketch_cover_fill_footprint = enabled;
+        self
     }
     pub(crate) fn prepare_sampled(
         &mut self,
@@ -1898,7 +1915,8 @@ impl Sampler {
     /// Sketch Fill is `cover` and Fit is `contain`; both use one uniform
     /// scale, so a half-size placement is the same band as stretch. Device
     /// zoom is the scale, so a CSS half view at DPR 2 stays a 1:1 copy.
-    /// Magnification and other minification ratios keep the historical tap.
+    /// The imported Sketch cover fill also integrates smaller source footprints.
+    /// Other magnification and minification ratios keep the historical tap.
     /// Unmanaged texels are averaged as encoded bytes. Managed texels are
     /// averaged in the linear values already stored for them. Image
     /// adjustments and pattern tiles stay on the historical tap. Contain
@@ -1938,7 +1956,8 @@ impl Sampler {
         }
         let sx = (e10.x - e00.x).abs();
         let sy = (e01.y - e00.y).abs();
-        if !(1.5..2.5).contains(&sx) || !(1.5..2.5).contains(&sy) {
+        let minimum = if self.sketch_cover_fill_footprint { 1.3 } else { 1.5 };
+        if !(minimum..2.5).contains(&sx) || !(minimum..2.5).contains(&sy) {
             return None;
         }
         let (x_lo, x_hi) = if e00.x <= e10.x { (e00.x, e10.x) } else { (e10.x, e00.x) };

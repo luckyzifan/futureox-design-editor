@@ -4746,7 +4746,10 @@ impl Painter<'_> {
             Sampler::with_sketch_bitmap(p, n, m, basis, self.images, true, motion_axis)?
         } else {
             Sampler::new(p, n, m, basis, self.images)?
-        };
+        }.with_sketch_cover_fill_footprint(
+            self.profile == crate::fidelity::RasterProfile::Analytic
+                && crate::paint::sketch_cover_fill_footprint(self.doc, n, p),
+        );
         sampler.prepare_sampled(p, r, !self.compatible)?;
         let solid = sampler.solid();
         let direct_constant = if self.compatible && self.sample.is_some() && p.blend == "normal" {
