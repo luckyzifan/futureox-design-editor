@@ -1262,8 +1262,9 @@ fn contour_meets_itself(path: &Path) -> bool {
             Command::Close | Command::Arc { .. } | Command::SmoothCorner(_) => {}
         }
     }
-    start.zip(end).is_some_and(|(start, end)| (start - end).length() <= 1e-6)
-        && path.commands.len() > 2
+    // A repeated authored anchor closes the fill. Distinct anchors still
+    // describe an open chain, even when their rendered positions are close.
+    path.commands.len() > 2 && start.zip(end).is_some_and(|(start, end)| start == end)
 }
 
 impl Node {
