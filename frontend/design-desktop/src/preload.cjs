@@ -113,6 +113,7 @@ contextBridge.exposeInMainWorld(
     }),
     setInterfaceLocale: locale => invoke('set-interface-locale', locale),
     setInterfaceMode: mode => invoke('set-interface-mode', mode),
+    setFigmaKeyboardLayout: layout => invoke('set-figma-keyboard-layout', layout),
     rendererReady: () => invoke('renderer-ready'),
     performTextCommand: (value) => invoke('text-command', value),
     fonts: Object.freeze({ list: () => invoke('fonts-list'), read: (value) => invoke('fonts-read', value) }),

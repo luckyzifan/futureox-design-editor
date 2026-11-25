@@ -81,6 +81,34 @@ const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement
 const canvas = () => document.querySelector<HTMLElement>('[data-testid="canvas"]')!
 async function key(value: string, options: KeyboardEventInit = {}, type = 'keydown') { await act(async () => canvas().dispatchEvent(new KeyboardEvent(type, { key: value, code: value, bubbles: true, cancelable: true, ...options }))) }
 
+test('German Figma comma reaches Quick actions and returns to Settings in the generic layout', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  const setFigmaKeyboardLayout = vi.fn().mockResolvedValue({ status: 'ok' })
+  Object.defineProperty(window, 'coreDesktop', { configurable: true, value: {
+    version: 1, renderPolicy: { cpuOnly: true }, onCommand: () => () => {}, onCloseRequested: () => () => {},
+    setDirty: async () => ({}), readRecovery: async () => ({ status: 'cancelled' }), writeRecovery: async () => ({ status: 'ok' }),
+    setFigmaKeyboardLayout,
+  } as unknown as DesktopBridge })
+  interfacePreference.set({ uiMode: 'figma', figmaKeyboardLayout: 'de-qwertz' })
+  await render()
+  expect(setFigmaKeyboardLayout).toHaveBeenLastCalledWith('de-qwertz')
+  const before = editor!.authoredDocument, version = editor!.state.version
+  await act(async () => canvas().focus())
+  await key(',', { code: 'Comma', metaKey: true })
+  expect(document.querySelector('.command-search-dialog')).toBeTruthy()
+  expect(document.querySelector('.settings-dialog')).toBeNull()
+  expect(document.querySelector('.app-settings-button')?.getAttribute('title')).toBe('设置')
+  await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+  expect(document.querySelector('.command-search-dialog')).toBeNull()
+  await act(async () => interfacePreference.set({ figmaKeyboardLayout: 'us-qwerty' }))
+  expect(setFigmaKeyboardLayout).toHaveBeenLastCalledWith('us-qwerty')
+  await key(',', { code: 'Comma', metaKey: true })
+  expect(document.querySelector('.settings-dialog')).toBeTruthy()
+  expect(editor!.authoredDocument).toBe(before)
+  expect(editor!.state.version).toBe(version)
+  expect(editor!.canUndo).toBe(false)
+})
+
 test('Sketch component shortcuts use six local categories and preserve the canvas camera', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')
