@@ -6,7 +6,7 @@ use crate::{
     math::{Point, Transform},
     path::Contour,
     scene::{Document, Node},
-    spatial::{Camera, PivotPlane, Pose, Projection, outline_geometry, pivot_plane, sin_cos},
+    spatial::{Camera, PivotPlane, Pose, Projection, outline_geometry, pivot_plane, sin_cos, supports_projected_outline},
     spatial_curve::PAGE_TOLERANCE,
     spatial_material::{self, INTERSECTION_BUDGET, Material, MaterialPlane},
 };
@@ -351,10 +351,7 @@ impl<'a> Collector<'a> {
         if self.faces.len() >= 32 {
             return Err("Shared 3D space exceeds 32 visible faces".into());
         }
-        if !matches!(
-            node.kind.as_str(),
-            "rectangle" | "ellipse" | "vector" | "polygon" | "star"
-        ) || !accepts_flat_style(node)
+        if !supports_projected_outline(node) || !accepts_flat_style(node)
             || node.blend != "normal"
         {
             return Err(

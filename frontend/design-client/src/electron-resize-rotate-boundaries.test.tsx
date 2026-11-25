@@ -19,6 +19,7 @@ import { nudgePreference } from './nudge-preference'
 import { MultiSelectionInspector } from './MultiSelectionInspector'
 import { PendingEditContext } from './pending-edit-context'
 import { encodeDocumentBinary, decodeDocumentBinary } from './kernel/binfmt'
+import { kernelSpatialDocument } from './kernel/picking'
 
 vi.mock('./kernel/Surface', async () => {
   const { useLayoutEffect } = await import('react')
@@ -435,8 +436,8 @@ test('T02 right-hand angle is clockwise-positive and shows two decimals before p
   expect(selectionMetric(editor.state.doc.nodes[n.id], 'rotation', editor.state.doc)).toBeCloseTo(30, 6)
 })
 
-async function renderSpatialLayer(shared = false) {
-  const frame = node('frame', 30, -12, 300, 200), shape = node('rectangle', 60, 80, 100, 60)
+async function renderSpatialLayer(shared = false, kind: 'rectangle' | 'frame' = 'rectangle') {
+  const frame = node('frame', 30, -12, 300, 200), shape = node(kind, 60, 80, 100, 60)
   frame.clip = false
   frame.children = [shape.id]
   frame.spatial = { perspective: { distance: 540, visible: true }, ...(shared ? { preserve3d: true } : {}) }
@@ -485,6 +486,16 @@ test.each([false, true])('3D origin follows the projected camera and persists ar
   expect(committed.nodes[shape.id].spatial!.pose).toEqual(preview)
   expect(validateDocument(decodeDocumentBinary(encodeDocumentBinary(committed))).nodes[shape.id].spatial).toEqual(committed.nodes[shape.id].spatial)
   await history(before)
+})
+
+test.each([false, true])('a tilted empty frame renders its projected outline and keeps authored frame clipping (shared %s)', async shared => {
+  const shape = await renderSpatialLayer(shared, 'frame')
+  const document = editor.state.doc
+  expect(document.nodes[shape.id]).toMatchObject({ kind: 'frame', clip: true, children: [] })
+  expect(kernelSpatialDocument(document).nodes[shape.id]).toMatchObject({ kind: 'vector', clip: false })
+  expect(spatialHandle('origin').point.x).toBeCloseTo(worldPivot(.5, .5).x, 8)
+  expect(validateDocument(decodeDocumentBinary(encodeDocumentBinary(document))).nodes[shape.id]).toEqual(document.nodes[shape.id])
+  expect(editor.canUndo).toBe(false)
 })
 
 test('3D axis handles change one authored rotation each; Escape restores the last committed pose', async () => {

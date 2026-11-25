@@ -172,6 +172,11 @@ fn corners(node: &Node) -> [Point; 4] {
     [Point::new(0., 0.), Point::new(node.width, 0.), Point::new(node.width, node.height), Point::new(0., node.height)]
 }
 
+pub(crate) fn supports_projected_outline(node: &Node) -> bool {
+    matches!(node.kind.as_str(), "rectangle" | "ellipse" | "vector" | "polygon" | "star")
+        || node.kind == "frame" && node.children.is_empty() && !node.graphic
+}
+
 fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transform, color_managed: bool) -> Result<Projection, String> {
     let plane = Plane::new(node, pose);
     let affine = node.transform.concat(plane.xy);
@@ -218,8 +223,8 @@ fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transf
 
     // The outline projects independently from the paint. Paints and styles
     // that need inverse projective sampling keep their explicit admission gate.
-    if !matches!(node.kind.as_str(), "rectangle" | "ellipse" | "vector" | "polygon" | "star")
-        || !node.children.is_empty() || node.mask || node.clip || node.path_offset != 0.
+    if !supports_projected_outline(node)
+        || !node.children.is_empty() || node.mask || node.clip && node.kind != "frame" || node.path_offset != 0.
         || node.vector_brush.is_some() || node.repeat.is_some()
         || !node.bindings.is_empty() || !node.style_refs.is_empty()
         || node.fills.iter().any(|p| p.visible && p.kind != "solid")
@@ -349,6 +354,11 @@ fn apply_projection(doc: &mut Document, patches: BTreeMap<String, Projection>) -
         }
         if projection.hide_strokes { node.strokes.clear(); }
         if let Some(geometry) = projection.vector_geometry {
+            // An empty frame lends its own outline only. Its authored clip
+            // controls children, so it is inert in the projected appearance.
+            if node.kind == "frame" && node.children.is_empty() {
+                node.clip = false;
+            }
             node.kind = "vector".into();
             node.network = None;
             node.vector_geometry = Some(Arc::new(geometry));
@@ -496,6 +506,34 @@ mod tests {
             let expected_y = -12. + 100. + (80. + 18. - 100.) / distance;
             assert!((x / w - expected_x).abs() < 1e-10, "shared {shared}: {x} / {w}");
             assert!((y / w - expected_y).abs() < 1e-10, "shared {shared}: {y} / {w}");
+        }
+    }
+
+    #[test]
+    fn an_empty_frame_under_perspective_keeps_its_authored_kind_and_rectangle_pixels() {
+        let mut input = fixture();
+        input["schemaVersion"] = json!(25);
+        let request = json!({"pageId":"p", "width":300, "height":200, "transparent":true,
+            "rasterProfile":"figma", "view":{"x":0,"y":0,"zoom":1}});
+        let options: RenderOptions = serde_json::from_value(request.clone()).unwrap();
+        for shared in [false, true] {
+            input["nodes"]["parent"]["spatial"]["preserve3d"] = json!(shared);
+            input["nodes"]["shape"]["kind"] = json!("rectangle");
+            input["nodes"]["shape"]["clip"] = json!(false);
+            let mut rectangle = Engine::new();
+            rectangle.load_document(&input.to_string()).unwrap();
+            input["nodes"]["shape"]["kind"] = json!("frame");
+            input["nodes"]["shape"]["clip"] = json!(true);
+            let mut frame = Engine::new();
+            frame.load_document(&input.to_string()).unwrap();
+            assert!(frame.render(&options).unwrap() == rectangle.render(&options).unwrap(),
+                "frame and rectangle CPU pixels differ, shared {shared}");
+            let packet = |engine: &mut Engine| engine.compile_gpu_request(&request.to_string()).unwrap().into_packet().unwrap();
+            assert!(packet(&mut frame) == packet(&mut rectangle),
+                "frame and rectangle GPU plans differ, shared {shared}");
+            let bytes = crate::binfmt::encode_authored_json(&input.to_string()).unwrap();
+            let decoded: Value = serde_json::from_str(&crate::binfmt::decode_authored_json(&bytes).unwrap()).unwrap();
+            assert_eq!(decoded["nodes"]["shape"], input["nodes"]["shape"]);
         }
     }
 

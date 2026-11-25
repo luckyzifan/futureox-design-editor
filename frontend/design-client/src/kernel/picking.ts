@@ -101,6 +101,7 @@ function applySpatialPatches(doc: DesignDocument, patches: Record<string, Spatia
     if (hideStrokes) nodes[id].strokes = []
     delete nodes[id].spatial
     if (vectorGeometry) {
+      if (original.kind === 'frame' && !original.children.length) nodes[id].clip = false
       nodes[id].kind = 'vector'
       delete nodes[id].network
       nodes[id].vectorGeometry = vectorGeometry
