@@ -74,8 +74,9 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
   if (nodes.length && nodes.every((n) => !container(n) && n.kind !== 'text') && nodes.some((n) => n.strokes.some((stroke) => stroke.visible && stroke.width > 0)))
     items.push({ command: 'outline-stroke', label: '轮廓化描边', group: 'geometry', disabled: !mutable || !siblings })
   if (nodes.length) items.push({ command: 'mask-selection', label: '用作蒙版', group: 'geometry', disabled: !mutable || !siblings || roots.length < 2 })
-  if (nodes.length) items.push({ command: 'rename', label: nodes.length > 1 ? '批量重命名…' : '重命名', group: 'naming', disabled: busy || editor.interactionActive || (nodes.length > 1 && (!mutable || nodes.some(n => n.instanceOrigin))) })
-  if (nodes.length && nodes.every(n => n.kind === 'frame' && !n.component && !n.instance && !n.componentSet)) items.push({ command: 'convert-section', label: '转换为分区', group: 'naming', disabled: !mutable })
+  const namingGroup = context.uiMode === 'figma' ? 'structure' : 'naming'
+  if (nodes.length) items.push({ command: 'rename', label: nodes.length > 1 ? '批量重命名…' : '重命名', group: namingGroup, disabled: busy || editor.interactionActive || (nodes.length > 1 && (!mutable || nodes.some(n => n.instanceOrigin))) })
+  if (nodes.length && nodes.every(n => n.kind === 'frame' && !n.component && !n.instance && !n.componentSet)) items.push({ command: 'convert-section', label: '转换为分区', group: namingGroup, disabled: !mutable })
   if (nodes.length) {
     for (const [query, label] of [['matching','匹配图层'],['properties','相同属性'],['fill','相同填充'],['stroke','相同描边'],['effect','相同效果'],['text','相同文字属性'],['font','相同字体'],['instance','同一组件实例']] as const)
       items.push({ command: `select-${query}`, label: `选择${label}`, group: 'selection', disabled: busy })

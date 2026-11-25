@@ -6,12 +6,14 @@ export type OperationStatus =
   | { key: 'importedGroupsAppended'; count: number }
   | { key: 'imageImportFailed' | 'saveFailedCanvasRetained' | 'kernelStartupFailed' | 'recoveryFailedAutosavePaused' | 'closeFailedDocumentRetained' | 'workspaceSwitchFailedDocumentRetained' | 'operationFailedCanvasRetained'; error: string }
   | { key: 'toolUnavailable' | 'unknownToolCommand'; commandId: string }
+  | { key: 'emptyClipboard' }
 export type MessagePresentation = Readonly<{ raw: string; status: OperationStatus }>
 /** Only explicitly tagged producers localize; arbitrary text is never interpreted. */
 export function operationStatusText(raw: string, presentation: MessagePresentation | undefined, locale: InterfaceLocale): string {
   if (locale !== 'en' || !presentation || presentation.raw !== raw) return raw
   const status = presentation.status
   switch (status?.key) {
+    case 'emptyClipboard': return 'The clipboard has no layers, images, or text to paste'
     case 'exportPreviewGenerating': return 'Generating export preview…'
     case 'exportFileReady': return 'Export file ready'
     case 'sketchExportGenerating': return 'Generating Sketch compatibility file…'

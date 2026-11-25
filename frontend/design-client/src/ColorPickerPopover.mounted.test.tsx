@@ -5,8 +5,9 @@ import React, { act, useSyncExternalStore } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { ColorInput } from './ColorInput'
+import { Inspector } from './Inspector'
 import { Editor } from './engine'
-import { blank, node } from './model'
+import { blank, node, stroke, validateDocument } from './model'
 import { defaultColorSettings } from './color'
 import { PendingEditContext } from './pending-edit-context'
 import { dispatchEditorCommand } from './editor-commands'
@@ -14,6 +15,9 @@ import { ownedPropertyPreviewTarget } from './property-preview'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { DesktopSession } from './desktop-session'
 import type { DesktopBridge } from './desktop'
+import { interfacePreference } from './interface-preference'
+import { emptySystem, setVariableMode } from './design-system'
+import { decodeDocumentBinary, encodeDocumentBinary } from './kernel/binfmt'
 const bootstrap = await vi.hoisted(async () => {
   // @ts-expect-error jsdom runtime dependency
   const { JSDOM } = await import('jsdom')
@@ -31,7 +35,7 @@ beforeEach(() => {
   doc.nodes[id] = n; doc.pages[0].children = [id]; editor = new Editor(doc); editor.select([id])
   mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
 })
-afterEach(async () => { await act(async () => root.unmount()); editor.dispose(); dom.window.close(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+afterEach(async () => { await act(async () => root.unmount()); editor.dispose(); interfacePreference.reset(); dom.window.close(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 function Fixture() {
   const s = useSyncExternalStore(editor.subscribe, editor.snapshot), n = s.doc.nodes[id]
   return <PendingEditContext.Provider value={editor}>{n && <ColorInput label="Fill" value={n.fills[0].color} onChange={() => { throw new Error('Legacy authoring callback must not run') }}
@@ -42,7 +46,89 @@ function Fixture() {
 const field = (label: string) => document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!
 const button = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === label || b.getAttribute('aria-label') === label)!
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
+test('fill and stroke opacity rows render a compact percentage', async () => {
+  const border = stroke('#345678', 1)
+  border.paint.opacity = .4
+  editor.set({ doc: { ...editor.state.doc, nodes: { [id]: { ...editor.state.doc.nodes[id], strokes: [border] } } } })
+  await act(async () => root.render(<PendingEditContext.Provider value={editor}><Inspector editor={editor} /></PendingEditContext.Provider>))
+  expect([...mount.querySelectorAll('.paint-opacity-trigger')].map(button => button.textContent)).toEqual(['60%', '40%'])
+})
 async function type(input: HTMLInputElement, value: string) { await act(async () => { input.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })) }) }
+test('Figma solid fill previews immediately and closing writes one undoable edit', async () => {
+  interfacePreference.set({ uiMode: 'figma', locale: 'zh-CN' })
+  await act(async () => root.render(<PendingEditContext.Provider value={editor}><Inspector editor={editor} /></PendingEditContext.Provider>))
+  const base = editor.authoredDocument
+  await click(button('颜色'))
+  expect(dialog()?.querySelector('.property-color-actions')).toBeNull()
+  await type(field('填充颜色值'), '#aabbcc')
+  await type(field('填充不透明度 %'), '30')
+  expect(editor.state.doc.nodes[id].fills[0]).toMatchObject({ color: '#aabbcc', opacity: .3 })
+  expect(editor.authoredDocument).toBe(base)
+  expect(editor.state.version).toBe(0)
+  await click(button('关闭颜色编辑'))
+  expect(dialog()).toBeNull()
+  expect(editor.authoredDocument.nodes[id].fills[0]).toMatchObject({ color: '#aabbcc', opacity: .3 })
+  expect(editor.state.version).toBe(1)
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument).toEqual(base)
+  expect(editor.canUndo).toBe(false)
+})
+test('Figma picker binds an existing color variable to the exact fill as one undoable edit', async () => {
+  interfacePreference.set({ uiMode: 'figma', locale: 'zh-CN' })
+  const doc = structuredClone(editor.authoredDocument)
+  const system = doc.designSystem = emptySystem()
+  doc.schemaVersion = 6
+  system.collections.theme = { name: 'Theme', defaultMode: 'Light', modes: ['Light', 'Dark'] }
+  system.variables.brand = { name: 'Brand', kind: 'color', collection: 'theme', values: { Light: '#112244', Dark: '#ffeecc' } }
+  system.variables.margin = { name: 'Margin', kind: 'number', collection: 'theme', values: { Light: 1, Dark: 2 } }
+  editor.load(doc); editor.select([id])
+  const before = editor.authoredDocument, version = editor.state.version
+  await act(async () => root.render(<PendingEditContext.Provider value={editor}><Inspector editor={editor} /></PendingEditContext.Provider>))
+  await click(button('颜色'))
+  await type(field('填充不透明度 %'), '45')
+  await click(button('变量'))
+  const picker = dialog()!.querySelector<HTMLSelectElement>('select[aria-label="本地颜色变量"]')!
+  expect(document.activeElement).toBe(picker)
+  expect([...picker.options].map(option => option.value)).toEqual(['', 'brand'])
+  await act(async () => { picker.value = 'brand'; picker.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(dialog()).toBeNull()
+  expect(editor.state.version).toBe(version + 1)
+  expect(editor.state.doc.nodes[id].bindings).toEqual({ 'fills.0.color': 'brand' })
+  expect(editor.state.doc.nodes[id].fills[0]).toMatchObject({ color: '#112244', opacity: .45, id: before.nodes[id].fills[0].id })
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+  await act(async () => { editor.redo(); editor.change('Dark', document => setVariableMode(document, 'theme', 'Dark')) })
+  expect(editor.state.doc.nodes[id].fills[0].color).toBe('#ffeecc')
+})
+test('Figma Libraries creates and persists a named local color style from the current solid fill', async () => {
+  interfacePreference.set({ uiMode: 'figma', locale: 'zh-CN' })
+  const before = editor.authoredDocument, version = editor.state.version
+  await act(async () => root.render(<PendingEditContext.Provider value={editor}><Inspector editor={editor} /></PendingEditContext.Provider>))
+  await click(button('颜色'))
+  await click(button('资料库'))
+  await click(button('新建本地颜色样式'))
+  const name = dialog()!.querySelector<HTMLInputElement>('form input')!
+  expect(document.activeElement).toBe(name)
+  expect(button('创建颜色样式').disabled).toBe(true)
+  await type(name, '  Badge Blue  ')
+  await click(button('创建颜色样式'))
+  expect(dialog()).toBeNull()
+  const after = editor.authoredDocument
+  const [style] = Object.values(after.designSystem!.styles)
+  expect(style).toMatchObject({ name: 'Badge Blue', kind: 'paint', value: [{ kind: 'solid', color: '#123456', opacity: .6 }] })
+  expect(after.nodes[id]).toEqual(before.nodes[id])
+  expect(editor.state.version).toBe(version + 1)
+  const reopened = validateDocument(decodeDocumentBinary(encodeDocumentBinary(after)))
+  expect(reopened.designSystem!.styles).toEqual(after.designSystem!.styles)
+  await click(button('颜色'))
+  await click(button('资料库'))
+  expect(dialog()!.querySelector('[title="Badge Blue"]')).toBeTruthy()
+  await click(button('关闭颜色编辑'))
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+})
 async function key(input: Element, key: string, options: object = {}) { await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options }))) }
 async function click(element: Element) { await act(async () => element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))) }
 async function open() { await act(async () => root.render(<Fixture />)); await click(button('Fill')); expect(dialog()).toBeTruthy() }

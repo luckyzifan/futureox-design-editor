@@ -1,3 +1,5 @@
+import { validColor } from './color'
+
 /** sRGB field math for the color popover and the eyedropper readout.
  * Document colors stay `#rrggbb` or authored CSS. These helpers only format
  * the Mac-style Hex / RGB / HSL / HSB fields. */
@@ -109,15 +111,17 @@ type SwatchNode = {
 
 /** Local file colors only: shared paint styles, then solid fills and strokes on this page. */
 export function collectFileColors(doc: {
+  colorManagement?: unknown
   designSystem?: { styles?: Record<string, { name: string; kind: string; value: unknown }> }
   pages: readonly { id: string; children: readonly string[] }[]
   nodes: Record<string, SwatchNode | undefined>
-}, pageId: string): { styles: { name: string; color: string }[]; colors: string[] } {
-  const styles: { name: string; color: string }[] = []
-  for (const style of Object.values(doc.designSystem?.styles ?? {})) {
+}, pageId: string): { styles: { id: string; name: string; color: string }[]; colors: string[] } {
+  const styles: { id: string; name: string; color: string }[] = []
+  for (const [id, style] of Object.entries(doc.designSystem?.styles ?? {}).reverse()) {
     if (style.kind !== 'paint' || !Array.isArray(style.value)) continue
-    const solid = style.value.find(paint => paint && typeof paint === 'object' && (paint as { kind?: string }).kind === 'solid' && typeof (paint as { color?: string }).color === 'string' && /^#[0-9a-f]{6}$/i.test((paint as { color: string }).color)) as { color: string } | undefined
-    if (solid) styles.push({ name: style.name, color: solid.color })
+    const solid = style.value.find(paint => paint?.kind === 'solid' && typeof paint.color === 'string' &&
+      validColor(paint.color, !!doc.colorManagement)) as { color: string } | undefined
+    if (solid) styles.push({ id, name: style.name, color: solid.color })
     if (styles.length >= 24) break
   }
   const colors: string[] = []

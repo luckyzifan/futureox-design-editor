@@ -36,6 +36,7 @@ export class ColorEditSession {
   }
   get draft(): ColorDraft { return this.value }
   get active() { return !this.closed && this.editor.isPropertyPreviewCurrent(this.lease) }
+  get canCommit() { return this.valid && !this.composing }
   get dirty() { return this.value.color !== this.original.color || this.value.opacity !== this.original.opacity }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
   private emit() { for (const listener of this.listeners) listener(); pendingEditsChanged(this.editor) }
@@ -64,7 +65,7 @@ export class ColorEditSession {
   }
   commit(): boolean {
     if (!this.active) return this.closed
-    if (this.composing || !this.valid) { this.error = '请先完成有效颜色输入'; this.emit(); return false }
+    if (!this.canCommit) { this.error = '请先完成有效颜色输入'; this.emit(); return false }
     const result = this.editor.commitProperty(this.lease)
     if (result === 'committed' || result === 'unchanged') { this.finish(); return true }
     this.error = '颜色提交失败，输入已保留'; this.emit(); return false

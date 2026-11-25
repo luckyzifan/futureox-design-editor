@@ -5,7 +5,6 @@ import { apply, boxPoints } from './commands/affine'
 import { color_fully_opaque, rotation_source_preview_allowed } from './generated/design-kernel/design_kernel'
 import { concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
 import { elementMatrix, followCamera, screenWarp, type FollowCamera, type GestureFollowLayer } from './gesture-follow'
-import { formatAngleDegrees } from './selection-handles'
 import { SELECTION_BLUE, SELECTION_UNION_STROKE_PX } from './selection-blue'
 import { sourceBitmap } from './source-bitmap'
 
@@ -393,11 +392,6 @@ export function mountRotationSource(host: HTMLElement, options: {
     svg.append(polygon)
     root.append(svg)
   }
-  const hint = document.createElement('div')
-  hint.className = 'canvas-rotation-hint'
-  hint.dataset.testid = 'rotation-feedback'
-  hint.style.display = 'none'
-  root.append(hint)
   host.append(root)
   let destroyed = false
   let holding = false
@@ -407,7 +401,7 @@ export function mountRotationSource(host: HTMLElement, options: {
     get holding() { return holding },
     get waiting() { return waiting },
     reconceal(next) { if (!destroyed) concealCanvasFeedback(next, options.ids, hidden) },
-    place(worldDelta, screen, degrees) {
+    place(worldDelta) {
       if (destroyed) return
       const warp = screenWarp(view, worldDelta)
       if (!warp) return
@@ -419,17 +413,9 @@ export function mountRotationSource(host: HTMLElement, options: {
           return `${at.x},${at.y}`
         }).join(' '))
       }
-      if (degrees === undefined) hint.style.display = 'none'
-      else {
-        hint.style.display = 'block'
-        hint.style.left = `${screen.x + 18}px`
-        hint.style.top = `${screen.y + 18}px`
-        hint.textContent = `${formatAngleDegrees(degrees)}°`
-      }
     },
     holdForCommit() {
       holding = true
-      hint.style.display = 'none'
     },
     waitFor(next) {
       holding = true

@@ -12,7 +12,7 @@ import { shortcutPlatform } from './shortcut-profiles'
 import { desktopBridge } from './desktop'
 import { userPages } from './fig-document'
 import { pluginLaunchGrant, requestOpenPlugins } from './plugins/open-plugins'
-import { commandSearchText } from './command-search'
+import { commandSearchCopy } from './command-search'
 import { requestCommandSearch } from './command-search-session'
 
 export type CanvasLayerCandidate = { id: string; name: string; locked: boolean; hidden?: boolean }
@@ -202,7 +202,7 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, origin = editor.st
         <div role="separator" />
         {onToggleUi && <button type="button" role="menuitem" onClick={() => { close.current(); onToggleUi() }}>{text.toggleUi}</button>}
         {figma && <>
-          <button type="button" role="menuitem" onClick={() => { close.current(); requestCommandSearch(previousFocus.current) }}>{commandSearchText[locale].label}</button>
+          <button type="button" role="menuitem" onClick={() => { close.current(); requestCommandSearch(previousFocus.current) }}>{commandSearchCopy(uiMode, locale).label}</button>
           {pluginPicker}
         </>}
       </>}

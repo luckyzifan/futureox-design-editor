@@ -52,6 +52,7 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'automation',
       'setInterfaceLocale',
       'setInterfaceMode',
+      'setFigmaKeyboardLayout',
       'rendererReady',
       'workspace',
       'workspaceRoot',
@@ -126,6 +127,17 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
     assert.equal(Object.hasOwn(api, key), false)
   }
   assert.equal(api.process, undefined)
+})
+
+test('Figma keyboard layout updates use the fixed desktop IPC channel', async () => {
+  const { api, calls } = load()
+  for (const layout of ['de-qwertz', 'us-qwerty']) {
+    assert.deepEqual(await api.setFigmaKeyboardLayout(layout), { status: 'ok' })
+  }
+  assert.deepEqual(calls, [
+    ['design-desktop:set-figma-keyboard-layout', 'de-qwertz'],
+    ['design-desktop:set-figma-keyboard-layout', 'us-qwerty'],
+  ])
 })
 
 test('picked FD uses Chromium file provenance and refuses renderer-supplied paths', async () => {

@@ -190,6 +190,7 @@ export interface DesktopBridge {
   }
   setInterfaceLocale?(locale: 'zh-CN' | 'en'): Promise<DesktopResult>
   setInterfaceMode?(mode: 'figma' | 'sketch'): Promise<DesktopResult>
+  setFigmaKeyboardLayout?(layout: import('./interface-preference').FigmaKeyboardLayout): Promise<DesktopResult>
   rendererReady?(): Promise<DesktopResult>
   performTextCommand?(command: 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll'): Promise<DesktopResult>
   readonly fonts?: {

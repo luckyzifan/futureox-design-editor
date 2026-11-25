@@ -5,7 +5,7 @@ import { createCloudCollaboration } from './cloud-collaboration.mjs'
 import { createRenderDiagnostics, sanitizeRecord, sanitizeBatch, PREFIX } from './render-terminal-diagnostics.mjs'
 import { createPetHost } from './pet/host.mjs'
 import { diagnosticFileAdapter } from './diagnostic-file.mjs'
-import { forwardNativeEditorShortcut } from './keyboard-shortcuts.mjs'
+import { forwardNativeEditorShortcut, nativeSettingsAccelerator } from './keyboard-shortcuts.mjs'
 import { registerAutomationBridge } from './automation-bridge.mjs'
 import { desktopMcpPaths, desktopMcpClientConfig, startDesktopFigmaMcp } from './figma-mcp-host.mjs'
 import { SketchSessionHost } from './sketch-session.mjs'
@@ -61,6 +61,7 @@ import { createPluginUiHost } from './plugin-ui.mjs'
 
 let interfaceLocale = 'zh-CN'
 let interfaceMode = 'figma'
+let figmaKeyboardLayout = 'us-qwerty'
 let rebuildApplicationMenu = () => {}
 
 const renderDiagnosticsEnabled = !app.isPackaged && ['1','detail'].includes(process.env.CORE_RENDER_DIAGNOSTICS)
@@ -392,6 +393,14 @@ register('set-interface-mode', value => {
   if (value !== 'figma' && value !== 'sketch') throw new TypeError('Unsupported interface mode')
   if (value !== interfaceMode) {
     interfaceMode = value
+    rebuildApplicationMenu()
+  }
+  return { status: 'ok' }
+}, false)
+register('set-figma-keyboard-layout', value => {
+  if (value !== 'us-qwerty' && value !== 'de-qwertz') throw new TypeError('Unsupported Figma keyboard layout')
+  if (value !== figmaKeyboardLayout) {
+    figmaKeyboardLayout = value
     rebuildApplicationMenu()
   }
   return { status: 'ok' }
@@ -1365,7 +1374,7 @@ async function buildWindow() {
   })
   window.webContents.on('before-input-event', (event, input) => {
     forwardNativeEditorShortcut(event, input, {
-      platform: process.platform, interfaceMode, sendCommand,
+      platform: process.platform, interfaceMode, figmaKeyboardLayout, sendCommand,
       setIgnoreMenuShortcuts: (ignore) => ownedWindow.webContents.setIgnoreMenuShortcuts(ignore),
     })
   })
@@ -1460,7 +1469,7 @@ async function buildWindow() {
         ],
       },
       { label: 'Edit', submenu: [
-        { label: 'Settings… / 设置', accelerator: 'CmdOrCtrl+,', click: () => sendCommand('settings') },
+        { label: 'Settings… / 设置', accelerator: nativeSettingsAccelerator(interfaceMode, figmaKeyboardLayout), click: () => sendCommand('settings') },
         { type: 'separator' },
         { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => sendCommand('undo') },
         { label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', click: () => sendCommand('redo') },

@@ -792,15 +792,21 @@ export const designSystemExtensions: AutomationExtension[] = [
   }),
 ]
 
-/** Standalone immutable helper. Shared API uses the same extension on its atomic draft. */
-export function applyDesignSystemOperation(document: DesignDocument, operation: string, params: Params, context?: Partial<AutomationContext>) {
+/** Execute the shared operation on a transaction-owned draft. */
+export function executeDesignSystemOperation(draft: DesignDocument, operation: string, params: Params, context?: Partial<AutomationContext>) {
   const extension = designSystemExtensions.find(e => e.name === operation)
   if (!extension) throw new Error(`Unknown design-system operation: ${operation}`)
-  const next = copy(document), c: AutomationContext = { pageId: context?.pageId ?? next.pages[0].id, selection: [...(context?.selection || [])], createdIds: [] }
-  const result = extension.execute(next, copy(params), c)
-  if (extension.mutates) {
+  const c: AutomationContext = { pageId: context?.pageId ?? draft.pages[0].id, selection: [...(context?.selection || [])], createdIds: [] }
+  return { result: extension.execute(draft, params, c), createdIds: c.createdIds, mutates: extension.mutates }
+}
+
+/** Standalone immutable helper. Shared API uses the same extension on its atomic draft. */
+export function applyDesignSystemOperation(document: DesignDocument, operation: string, params: Params, context?: Partial<AutomationContext>) {
+  const next = copy(document)
+  const { result, createdIds, mutates } = executeDesignSystemOperation(next, operation, copy(params), context)
+  if (mutates) {
     validateDocument(next)
     validateDesignSystemDocument(next)
   }
-  return { document: next, result, createdIds: c.createdIds }
+  return { document: next, result, createdIds }
 }
