@@ -1247,6 +1247,7 @@ mod tests {
             undo: Vec::new(),
             redo: Vec::new(),
             directory: PathBuf::new(),
+            index_published: 0,
             projection: None,
             scene: None,
             canvas_layout: None,

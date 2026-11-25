@@ -2,7 +2,7 @@
 //! memory; complete field tables are fetched for the selected working object.
 use super::*;
 use futureox_design_kernel::large_json::Entry;
-use std::sync::{Arc, atomic::AtomicUsize};
+use std::sync::{atomic::AtomicUsize, Arc};
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub(super) struct Row {
@@ -53,13 +53,38 @@ pub(super) struct DiskIndex {
     generations: Vec<usize>,
     edits: Vec<Edit>,
     data: String,
+    /// Journal revision this index was saved with. Older files omit it and
+    /// therefore match only a revision-0 checkpoint.
+    #[serde(default)]
+    pub(super) published_revision: u64,
+    /// Names changed in memory after the index file was written.
+    #[serde(default, skip)]
+    name_overrides: Vec<(usize, String)>,
 }
 const STREAM_CHUNK: usize = 64 * 1024;
 const ENTRY_MAGIC: &[u8; 4] = b"FXE1";
-fn push_u32(out: &mut Vec<u8>, value: u32) { out.extend_from_slice(&value.to_le_bytes()); }
-fn push_u64(out: &mut Vec<u8>, value: u64) { out.extend_from_slice(&value.to_le_bytes()); }
+fn index_io(error: io::Error) -> BackendError {
+    if error.kind() == io::ErrorKind::StorageFull
+        || matches!(error.raw_os_error(), Some(28 | 112 | 122))
+    {
+        super::save_io(error)
+    } else {
+        issue(error)
+    }
+}
+fn push_u32(out: &mut Vec<u8>, value: u32) {
+    out.extend_from_slice(&value.to_le_bytes());
+}
+fn push_u64(out: &mut Vec<u8>, value: u64) {
+    out.extend_from_slice(&value.to_le_bytes());
+}
 fn push_str(out: &mut Vec<u8>, value: &str) -> io::Result<()> {
-    let len = u32::try_from(value.len()).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index record string is too long"))?;
+    let len = u32::try_from(value.len()).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Index record string is too long",
+        )
+    })?;
     push_u32(out, len);
     out.extend_from_slice(value.as_bytes());
     Ok(())
@@ -81,12 +106,23 @@ fn encode_entry(entry: &large_json::Entry, out: &mut Vec<u8>) -> io::Result<()> 
     match entry.parent {
         Some(parent) => {
             out.push(1);
-            push_u64(out, u64::try_from(parent).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index parent does not fit"))?);
+            push_u64(
+                out,
+                u64::try_from(parent).map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidData, "Index parent does not fit")
+                })?,
+            );
         }
         None => out.push(0),
     }
-    push_u64(out, u64::try_from(entry.depth).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index depth does not fit"))?);
-    let count = u32::try_from(entry.fields.len()).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index field count does not fit"))?;
+    push_u64(
+        out,
+        u64::try_from(entry.depth)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index depth does not fit"))?,
+    );
+    let count = u32::try_from(entry.fields.len()).map_err(|_| {
+        io::Error::new(io::ErrorKind::InvalidData, "Index field count does not fit")
+    })?;
     push_u32(out, count);
     for field in &entry.fields {
         push_str(out, &field.key)?;
@@ -95,34 +131,58 @@ fn encode_entry(entry: &large_json::Entry, out: &mut Vec<u8>) -> io::Result<()> 
     }
     Ok(())
 }
-struct EntryCursor<'a> { bytes: &'a [u8], at: usize }
+struct EntryCursor<'a> {
+    bytes: &'a [u8],
+    at: usize,
+}
 impl EntryCursor<'_> {
     fn take(&mut self, n: usize) -> io::Result<&[u8]> {
-        let end = self.at.checked_add(n).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Invalid index record"))?;
-        if end > self.bytes.len() { return Err(io::Error::new(io::ErrorKind::InvalidData, "Truncated index record")); }
+        let end = self
+            .at
+            .checked_add(n)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Invalid index record"))?;
+        if end > self.bytes.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Truncated index record",
+            ));
+        }
         let value = &self.bytes[self.at..end];
         self.at = end;
         Ok(value)
     }
-    fn u32(&mut self) -> io::Result<u32> { Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap())) }
-    fn u64(&mut self) -> io::Result<u64> { Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap())) }
+    fn u32(&mut self) -> io::Result<u32> {
+        Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
+    }
+    fn u64(&mut self) -> io::Result<u64> {
+        Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap()))
+    }
     fn string(&mut self) -> io::Result<String> {
         let n = self.u32()? as usize;
         let bytes = self.take(n)?;
-        String::from_utf8(bytes.to_vec()).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index record is not UTF-8"))
+        String::from_utf8(bytes.to_vec())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index record is not UTF-8"))
     }
     fn span(&mut self) -> io::Result<large_json::Span> {
         let start = self.u64()?;
         let end = self.u64()?;
         if end < start {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Reversed index span"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Reversed index span",
+            ));
         }
         Ok(large_json::Span { start, end })
     }
 }
-fn decode_entry(bytes: &[u8]) -> io::Result<large_json::Entry> {
+fn decode_entry_prefix(bytes: &[u8]) -> io::Result<(large_json::Entry, usize)> {
     let mut cursor = EntryCursor { bytes, at: 0 };
-    if cursor.take(4)? != ENTRY_MAGIC { return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid index record")); }
+    if cursor.take(4)? != ENTRY_MAGIC {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid index record",
+        ));
+    }
     let id = cursor.string()?;
     let name = cursor.string()?;
     let kind = cursor.string()?;
@@ -130,29 +190,68 @@ fn decode_entry(bytes: &[u8]) -> io::Result<large_json::Entry> {
     let span = cursor.span()?;
     let parent = match cursor.take(1)? {
         [0] => None,
-        [1] => Some(usize::try_from(cursor.u64()?).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index parent does not fit"))?),
-        _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid index parent")),
+        [1] => Some(usize::try_from(cursor.u64()?).map_err(|_| {
+            io::Error::new(io::ErrorKind::InvalidData, "Index parent does not fit")
+        })?),
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid index parent",
+            ))
+        }
     };
-    let depth = usize::try_from(cursor.u64()?).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index depth does not fit"))?;
+    let depth = usize::try_from(cursor.u64()?)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index depth does not fit"))?;
     let count = cursor.u32()? as usize;
     // Even an empty key needs its length and two full spans.
     const MIN_FIELD_BYTES: usize = 4 + 2 * (8 + 8);
     if count > (bytes.len() - cursor.at) / MIN_FIELD_BYTES {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid index field count"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid index field count",
+        ));
     }
     let mut fields = Vec::new();
     fields.try_reserve_exact(count).map_err(io::Error::other)?;
     for _ in 0..count {
-        fields.push(large_json::Field { key: cursor.string()?, member: cursor.span()?, value: cursor.span()? });
+        fields.push(large_json::Field {
+            key: cursor.string()?,
+            member: cursor.span()?,
+            value: cursor.span()?,
+        });
     }
-    if cursor.at != bytes.len() { return Err(io::Error::new(io::ErrorKind::InvalidData, "Index record has trailing bytes")); }
-    Ok(large_json::Entry { member, id, name, kind, parent, depth, span, fields })
+    Ok((
+        large_json::Entry {
+            member,
+            id,
+            name,
+            kind,
+            parent,
+            depth,
+            span,
+            fields,
+        },
+        cursor.at,
+    ))
+}
+fn decode_entry(bytes: &[u8]) -> io::Result<large_json::Entry> {
+    let (entry, consumed) = decode_entry_prefix(bytes)?;
+    if consumed != bytes.len() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Index record has trailing bytes",
+        ));
+    }
+    Ok(entry)
 }
 /// New indexes write compact records. A working copy saved by an older build
 /// still has JSON records; both decode to the same Entry.
 fn decode_stored_entry(bytes: &[u8]) -> io::Result<large_json::Entry> {
-    if bytes.starts_with(ENTRY_MAGIC) { decode_entry(bytes) }
-    else { serde_json::from_slice(bytes).map_err(io::Error::other) }
+    if bytes.starts_with(ENTRY_MAGIC) {
+        decode_entry(bytes)
+    } else {
+        serde_json::from_slice(bytes).map_err(io::Error::other)
+    }
 }
 pub(super) struct ChunkReader {
     receiver: std::sync::mpsc::Receiver<Vec<u8>>,
@@ -161,16 +260,25 @@ pub(super) struct ChunkReader {
 
 /// One immutable index owner and its open record file. A layout pass borrows
 /// this rather than opening the same index once for every scalar field.
-pub(super) struct Records<'a> { index: &'a DiskIndex, file: File }
+pub(super) struct Records<'a> {
+    index: &'a DiskIndex,
+    file: File,
+}
 impl Records<'_> {
-    pub fn entry(&mut self, n: usize) -> Result<Entry> { self.index.entry_from(n, &mut self.file) }
+    pub fn entry(&mut self, n: usize) -> Result<Entry> {
+        self.index.entry_from(n, &mut self.file)
+    }
 }
 impl Read for ChunkReader {
     fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
-        if out.is_empty() { return Ok(0); }
+        if out.is_empty() {
+            return Ok(0);
+        }
         loop {
             let n = self.current.read(out)?;
-            if n > 0 { return Ok(n); }
+            if n > 0 {
+                return Ok(n);
+            }
             match self.receiver.recv() {
                 Ok(bytes) => self.current = std::io::Cursor::new(bytes),
                 Err(_) => return Ok(0),
@@ -180,35 +288,47 @@ impl Read for ChunkReader {
 }
 
 /// Decode/spool/hash on this thread while one bounded consumer parses the same bytes.
-pub(super) fn pipe<T:Send>(mut reader:impl Read,consume:impl FnOnce(ChunkReader)->Result<T>+Send)->Result<T> {
+pub(super) fn pipe<T: Send>(
+    mut reader: impl Read,
+    consume: impl FnOnce(ChunkReader) -> Result<T> + Send,
+) -> Result<T> {
     std::thread::scope(|scope| {
-            let (sender, receiver) = std::sync::mpsc::sync_channel(2);
-            let parser = scope.spawn(move || consume(ChunkReader {
-                receiver, current: std::io::Cursor::new(Vec::new()),
-            }));
-            let producer = (|| -> io::Result<()> {
-                loop {
-                    let mut bytes = vec![0; STREAM_CHUNK];
-                    let count = reader.read(&mut bytes)?;
-                    if count == 0 { return Ok(()); }
-                    bytes.truncate(count);
-                    // A parser rejection drops its receiver; stop decoding
-                    // promptly instead of consuming the rest of a huge member.
-                    if sender.send(bytes).is_err() { return Ok(()); }
+        let (sender, receiver) = std::sync::mpsc::sync_channel(2);
+        let parser = scope.spawn(move || {
+            consume(ChunkReader {
+                receiver,
+                current: std::io::Cursor::new(Vec::new()),
+            })
+        });
+        let producer = (|| -> io::Result<()> {
+            loop {
+                let mut bytes = vec![0; STREAM_CHUNK];
+                let count = reader.read(&mut bytes)?;
+                if count == 0 {
+                    return Ok(());
                 }
-            })();
-            drop(sender);
-            let parsed = parser.join().map_err(|_| issue("Source index worker failed"))?;
-            // A valid JSON prefix does not excuse a later archive CRC/read
-            // failure. Preserve cancellation and I/O errors from the producer.
-            producer.map_err(issue)?;
-            parsed
-        })
-    }
+                bytes.truncate(count);
+                // A parser rejection drops its receiver; stop decoding
+                // promptly instead of consuming the rest of a huge member.
+                if sender.send(bytes).is_err() {
+                    return Ok(());
+                }
+            }
+        })();
+        drop(sender);
+        let parsed = parser
+            .join()
+            .map_err(|_| issue("Source index worker failed"))?;
+        // A valid JSON prefix does not excuse a later archive CRC/read
+        // failure. Preserve cancellation and I/O errors from the producer.
+        producer.map_err(issue)?;
+        parsed
+    })
+}
 
 impl DiskIndex {
-    pub fn build_pipelined(reader:impl Read, limit:u64, directory:&Path)->Result<Self> {
-        pipe(reader,|stream|Self::build(stream,limit,directory))
+    pub fn build_pipelined(reader: impl Read, limit: u64, directory: &Path) -> Result<Self> {
+        pipe(reader, |stream| Self::build(stream, limit, directory))
     }
     pub fn build(reader: impl Read, limit: u64, directory: &Path) -> Result<Self> {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -221,47 +341,78 @@ impl DiskIndex {
                 .as_nanos(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         );
+        let path = directory.join(&data);
         let mut writer = BufWriter::new(
             OpenOptions::new()
                 .create_new(true)
                 .write(true)
-                .open(directory.join(&data))
+                .open(&path)
                 .map_err(issue)?,
         );
         let mut entries = Vec::new();
         let mut locations = Vec::new();
         let mut at = 0;
         let mut scratch = Vec::new();
-        let summary = large_json::scan(reader, limit, |ordinal, entry| {
-            if entries.len() <= ordinal {
-                entries.resize_with(ordinal + 1, Row::default);
-                locations.resize(ordinal + 1, Span::default());
-            }
-            encode_entry(&entry, &mut scratch)?;
-            writer.write_all(&scratch)?;
-            let bytes_len = scratch.len() as u64;
-            locations[ordinal] = Span {
-                start: at,
-                end: at + bytes_len,
-            };
-            at += bytes_len;
-            entries[ordinal] = Row::from_entry(&entry);
-            Ok(())
-        })
-        .map_err(issue)?;
-        writer.flush().map_err(issue)?;
-        writer.get_ref().sync_all().map_err(issue)?;
-        let mut result = Self {
-            navigation: Arc::default(),
-            bytes: summary.bytes,
-            generations: vec![0; entries.len()],
-            entries,
-            locations,
-            edits: Vec::new(),
-            data,
-        };
+        let built = (|| -> Result<Self> {
+            let summary = large_json::scan(reader, limit, |ordinal, entry| {
+                if entries.len() <= ordinal {
+                    entries.resize_with(ordinal + 1, Row::default);
+                    locations.resize(ordinal + 1, Span::default());
+                }
+                encode_entry(&entry, &mut scratch)?;
+                writer.write_all(&scratch)?;
+                let bytes_len = scratch.len() as u64;
+                locations[ordinal] = Span {
+                    start: at,
+                    end: at + bytes_len,
+                };
+                at += bytes_len;
+                entries[ordinal] = Row::from_entry(&entry);
+                Ok(())
+            })
+            .map_err(index_io)?;
+            writer.flush().map_err(index_io)?;
+            writer.get_ref().sync_all().map_err(index_io)?;
+            Ok(Self {
+                navigation: Arc::default(),
+                bytes: summary.bytes,
+                generations: vec![0; entries.len()],
+                entries,
+                locations,
+                edits: Vec::new(),
+                data,
+                published_revision: 0,
+                name_overrides: Vec::new(),
+            })
+        })();
+        if built.is_err() {
+            drop(writer);
+            let _ = fs::remove_file(&path);
+        }
+        let mut result = built?;
         result.refresh_navigation();
         Ok(result)
+    }
+    /// Reopen the index file saved for this checkpoint. Does not allocate a
+    /// replacement file, so a full volume can still read the last index.
+    pub(super) fn reopen_saved(mut self, directory: &Path) -> Result<Self> {
+        let name = self.data.as_str();
+        if name.is_empty()
+            || name.len() > 180
+            || !name.starts_with("index-data-")
+            || name.contains(['/', '\\', '\0'])
+            || name.split('-').any(|part| part == "." || part == "..")
+        {
+            return Err(issue("Retained source index file is invalid"));
+        }
+        let path = directory.join(name);
+        let meta = fs::symlink_metadata(&path).map_err(issue)?;
+        if !meta.is_file() || meta.file_type().is_symlink() || meta.len() == 0 {
+            return Err(issue("Retained source index file is invalid"));
+        }
+        File::open(&path).map_err(issue)?;
+        self.refresh_navigation();
+        Ok(self)
     }
     pub fn refresh_navigation(&mut self) {
         let count = self.entries.len();
@@ -321,11 +472,16 @@ impl DiskIndex {
         )
     }
     pub fn entry(&self, n: usize, directory: &Path) -> Result<Entry> {
-        if n >= self.entries.len() { return Err(issue("Unknown source object")); }
+        if n >= self.entries.len() {
+            return Err(issue("Unknown source object"));
+        }
         self.records(directory)?.entry(n)
     }
     pub fn records(&self, directory: &Path) -> Result<Records<'_>> {
-        Ok(Records { index: self, file: File::open(directory.join(&self.data)).map_err(issue)? })
+        Ok(Records {
+            index: self,
+            file: File::open(directory.join(&self.data)).map_err(issue)?,
+        })
     }
     fn entry_from(&self, n: usize, file: &mut File) -> Result<Entry> {
         let row = self
@@ -348,7 +504,9 @@ impl DiskIndex {
         Ok(entry)
     }
     pub fn scalar_edit(&mut self, span: Span, bytes: &[u8]) -> Result<()> {
-        let length = bytes.len() as u64;
+        self.replay_edit(span, bytes.len() as u64)
+    }
+    pub(super) fn replay_edit(&mut self, span: Span, length: u64) -> Result<()> {
         for entry in &mut self.entries {
             adjust(&mut entry.span, span, length)?;
             adjust(&mut entry.member, span, length)?;
@@ -358,6 +516,71 @@ impl DiskIndex {
             .map_err(issue)?;
         self.edits.push(Edit { span, length });
         Ok(())
+    }
+    pub(super) fn data_name(&self) -> &str {
+        &self.data
+    }
+    pub(super) fn source_bytes(&self) -> u64 {
+        self.bytes
+    }
+    pub(super) fn edit_deltas(&self) -> Vec<(u64, u64, u64)> {
+        self.edits
+            .iter()
+            .map(|edit| (edit.span.start, edit.span.end, edit.length))
+            .collect()
+    }
+    pub(super) fn name_overrides(&self) -> &[(usize, String)] {
+        &self.name_overrides
+    }
+    pub(super) fn note_name(&mut self, index: usize, name: String) {
+        self.entries[index].name.clone_from(&name);
+        self.name_overrides.push((index, name));
+    }
+    /// Rebuild rows from an index file that was already written. Does not
+    /// create another file.
+    pub(super) fn from_saved_file(
+        directory: &Path,
+        data: &str,
+        bytes: u64,
+        revision: u64,
+    ) -> Result<Self> {
+        if data.is_empty()
+            || data.len() > 180
+            || !data.starts_with("index-data-")
+            || data.contains(['/', '\\', '\0'])
+        {
+            return Err(issue("Retained source index file is invalid"));
+        }
+        let path = directory.join(data);
+        let raw = fs::read(&path).map_err(issue)?;
+        let mut entries = Vec::new();
+        let mut locations = Vec::new();
+        let mut at = 0usize;
+        while at < raw.len() {
+            let (entry, consumed) = decode_entry_prefix(&raw[at..]).map_err(issue)?;
+            if consumed == 0 {
+                return Err(issue("Retained source index file is invalid"));
+            }
+            locations.push(Span {
+                start: at as u64,
+                end: (at + consumed) as u64,
+            });
+            entries.push(Row::from_entry(&entry));
+            at += consumed;
+        }
+        let mut index = Self {
+            navigation: Arc::default(),
+            bytes,
+            generations: vec![0; entries.len()],
+            entries,
+            locations,
+            edits: Vec::new(),
+            data: data.to_owned(),
+            published_revision: revision,
+            name_overrides: Vec::new(),
+        };
+        index.refresh_navigation();
+        Ok(index)
     }
     pub fn replace_branch(&self, n: usize, bytes: &[u8], directory: &Path) -> Result<Self> {
         let span = self.entries[n].span;
@@ -459,63 +682,143 @@ fn adjust(value: &mut Span, span: Span, length: u64) -> Result<()> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod stream_pipeline_tests {
     use super::*;
     struct Directory(PathBuf);
-    impl Directory { fn new() -> Self {
-        static NEXT:AtomicUsize=AtomicUsize::new(0);
-        let p=std::env::temp_dir().join(format!("futureox-index-pipeline-{}-{}-{}",std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),NEXT.fetch_add(1,Ordering::Relaxed)));
-        fs::create_dir(&p).unwrap();Self(p)
-    }}
-    impl Drop for Directory {fn drop(&mut self){let _=fs::remove_dir_all(&self.0);}}
-    #[test] fn compact_records_keep_identity_fields_and_reject_trailing_bytes() {
-        let d=Directory::new();
-        let source=json!({"_class":"page","do_objectID":"page","name":"页 🙂","layers":[
+    impl Directory {
+        fn new() -> Self {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let p = std::env::temp_dir().join(format!(
+                "futureox-index-pipeline-{}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&p).unwrap();
+            Self(p)
+        }
+    }
+    impl Drop for Directory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    #[test]
+    fn compact_records_keep_identity_fields_and_reject_trailing_bytes() {
+        let d = Directory::new();
+        let source = json!({"_class":"page","do_objectID":"page","name":"页 🙂","layers":[
             {"_class":"group","do_objectID":"g","name":"组","layers":[
                 {"_class":"rectangle","do_objectID":"r","name":"矩形","frame":{"x":1,"y":2,"width":3,"height":4},"rotation":12.5}
             ]}
         ]});
-        let bytes=serde_json::to_vec(&source).unwrap();
-        let scanned=large_json::index(bytes.as_slice(),1024*1024).unwrap();
-        let index=DiskIndex::build(bytes.as_slice(),1024*1024,&d.0).unwrap();
-        assert_eq!(index.entries.len(),scanned.entries.len());
-        for (i,expected) in scanned.entries.iter().enumerate() {
-            let actual=index.entry(i,&d.0).unwrap();
-            assert_eq!(serde_json::to_value(&actual).unwrap(),serde_json::to_value(expected).unwrap());
+        let bytes = serde_json::to_vec(&source).unwrap();
+        let scanned = large_json::index(bytes.as_slice(), 1024 * 1024).unwrap();
+        let index = DiskIndex::build(bytes.as_slice(), 1024 * 1024, &d.0).unwrap();
+        assert_eq!(index.entries.len(), scanned.entries.len());
+        for (i, expected) in scanned.entries.iter().enumerate() {
+            let actual = index.entry(i, &d.0).unwrap();
+            assert_eq!(
+                serde_json::to_value(&actual).unwrap(),
+                serde_json::to_value(expected).unwrap()
+            );
         }
-        let mut torn=Vec::new();
-        encode_entry(&scanned.entries[0],&mut torn).unwrap();
+        let mut torn = Vec::new();
+        encode_entry(&scanned.entries[0], &mut torn).unwrap();
         torn.push(1);
         assert!(decode_entry(&torn).is_err());
         torn.pop();
-        assert_eq!(serde_json::to_value(decode_entry(&torn).unwrap()).unwrap(),serde_json::to_value(&scanned.entries[0]).unwrap());
-        let legacy=serde_json::to_vec(&scanned.entries[0]).unwrap();
-        assert_eq!(serde_json::to_value(decode_stored_entry(&legacy).unwrap()).unwrap(),serde_json::to_value(&scanned.entries[0]).unwrap());
-        let fieldless = large_json::Entry { fields: Vec::new(), ..scanned.entries[0].clone() };
+        assert_eq!(
+            serde_json::to_value(decode_entry(&torn).unwrap()).unwrap(),
+            serde_json::to_value(&scanned.entries[0]).unwrap()
+        );
+        let legacy = serde_json::to_vec(&scanned.entries[0]).unwrap();
+        assert_eq!(
+            serde_json::to_value(decode_stored_entry(&legacy).unwrap()).unwrap(),
+            serde_json::to_value(&scanned.entries[0]).unwrap()
+        );
+        let fieldless = large_json::Entry {
+            fields: Vec::new(),
+            ..scanned.entries[0].clone()
+        };
         encode_entry(&fieldless, &mut torn).unwrap();
         let count = torn.len() - 4;
         torn[count..].copy_from_slice(&u32::MAX.to_le_bytes());
-        assert_eq!(decode_entry(&torn).unwrap_err().kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            decode_entry(&torn).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
     }
-    #[test] fn pipelined_index_matches_records_across_unicode_chunk_boundaries() {
-        let d=Directory::new();let bytes=serde_json::to_vec(&json!({"nodes":{"n":{"id":"n","name":"Node","opaque":format!("{}🙂tail","a".repeat(65500)),"children":[]}}})).unwrap();
-        let a=DiskIndex::build(bytes.as_slice(),1024*1024,&d.0).unwrap();let b=DiskIndex::build_pipelined(bytes.as_slice(),1024*1024,&d.0).unwrap();
-        assert_eq!(a.bytes,b.bytes);assert_eq!(serde_json::to_value(&a.entries).unwrap(),serde_json::to_value(&b.entries).unwrap());
-        for i in 0..a.entries.len(){assert_eq!(serde_json::to_value(a.entry(i,&d.0).unwrap()).unwrap(),serde_json::to_value(b.entry(i,&d.0).unwrap()).unwrap());}
+    #[test]
+    fn pipelined_index_matches_records_across_unicode_chunk_boundaries() {
+        let d = Directory::new();
+        let bytes=serde_json::to_vec(&json!({"nodes":{"n":{"id":"n","name":"Node","opaque":format!("{}🙂tail","a".repeat(65500)),"children":[]}}})).unwrap();
+        let a = DiskIndex::build(bytes.as_slice(), 1024 * 1024, &d.0).unwrap();
+        let b = DiskIndex::build_pipelined(bytes.as_slice(), 1024 * 1024, &d.0).unwrap();
+        assert_eq!(a.bytes, b.bytes);
+        assert_eq!(
+            serde_json::to_value(&a.entries).unwrap(),
+            serde_json::to_value(&b.entries).unwrap()
+        );
+        for i in 0..a.entries.len() {
+            assert_eq!(
+                serde_json::to_value(a.entry(i, &d.0).unwrap()).unwrap(),
+                serde_json::to_value(b.entry(i, &d.0).unwrap()).unwrap()
+            );
+        }
     }
-    #[test] fn archive_failure_after_valid_json_cannot_publish_an_index() {
-        struct TailFailure {remaining:std::io::Cursor<Vec<u8>>}
-        impl Read for TailFailure {fn read(&mut self,out:&mut [u8])->io::Result<usize>{let n=self.remaining.read(out)?;if n==0{Err(io::Error::other("injected CRC failure"))}else{Ok(n)}}}
-        let d=Directory::new();let error=DiskIndex::build_pipelined(TailFailure{remaining:std::io::Cursor::new(b"{\"nodes\":{}}".to_vec())},1024,&d.0).err().unwrap();
+    #[test]
+    fn archive_failure_after_valid_json_cannot_publish_an_index() {
+        struct TailFailure {
+            remaining: std::io::Cursor<Vec<u8>>,
+        }
+        impl Read for TailFailure {
+            fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+                let n = self.remaining.read(out)?;
+                if n == 0 {
+                    Err(io::Error::other("injected CRC failure"))
+                } else {
+                    Ok(n)
+                }
+            }
+        }
+        let d = Directory::new();
+        let error = DiskIndex::build_pipelined(
+            TailFailure {
+                remaining: std::io::Cursor::new(b"{\"nodes\":{}}".to_vec()),
+            },
+            1024,
+            &d.0,
+        )
+        .err()
+        .unwrap();
         assert!(error.message.contains("injected CRC failure"));
     }
-    #[test] fn malformed_prefix_stops_read_ahead_at_the_bounded_queue() {
-        struct Counting {bytes:usize}
-        impl Read for Counting {fn read(&mut self,out:&mut [u8])->io::Result<usize>{out.fill(b'x');if self.bytes==0{out[0]=b'!';}self.bytes+=out.len();Ok(out.len())}}
-        let d=Directory::new();let mut reader=Counting{bytes:0};assert!(DiskIndex::build_pipelined(&mut reader,16*1024*1024,&d.0).is_err());
-        assert!(reader.bytes<=4*STREAM_CHUNK,"read ahead {}",reader.bytes);
+    #[test]
+    fn malformed_prefix_stops_read_ahead_at_the_bounded_queue() {
+        struct Counting {
+            bytes: usize,
+        }
+        impl Read for Counting {
+            fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+                out.fill(b'x');
+                if self.bytes == 0 {
+                    out[0] = b'!';
+                }
+                self.bytes += out.len();
+                Ok(out.len())
+            }
+        }
+        let d = Directory::new();
+        let mut reader = Counting { bytes: 0 };
+        assert!(DiskIndex::build_pipelined(&mut reader, 16 * 1024 * 1024, &d.0).is_err());
+        assert!(
+            reader.bytes <= 4 * STREAM_CHUNK,
+            "read ahead {}",
+            reader.bytes
+        );
     }
 }

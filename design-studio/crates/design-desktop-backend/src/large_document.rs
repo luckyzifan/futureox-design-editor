@@ -210,6 +210,10 @@ struct Session {
     redo: Vec<State>,
     #[serde(skip)]
     directory: PathBuf,
+    /// Revision whose index metadata is already in index.json. A later edit
+    /// writes a new snapshot; a full volume can reopen without rebuilding it.
+    #[serde(skip)]
+    index_published: u64,
     #[serde(skip)]
     projection: Option<projection::Projection>,
     #[serde(skip)]
@@ -646,6 +650,7 @@ impl Sessions {
                 undo: Vec::new(),
                 redo: Vec::new(),
                 directory: directory.clone(),
+                index_published: 0,
                 projection: None,
                 scene: None,
                 canvas_layout: None,
@@ -720,9 +725,9 @@ impl Sessions {
         let _ = checked_cache;
         Ok(Some(recovered))
     }
-    fn install_session(&self, slot: &mut Option<Session>, session: Session) -> Result<Value> {
+    fn install_session(&self, slot: &mut Option<Session>, mut session: Session) -> Result<Value> {
         let retained = committed_journal(&session.directory);
-        match persist(&session) {
+        match persist(&mut session) {
             Ok(_) => {}
             Err(error) if retained && committed_journal(&session.directory) => {
                 // The refresh did not replace the committed journal. Reopening
@@ -1047,7 +1052,10 @@ fn apply(s: &mut Session, request: Request, cancel: &AtomicBool) -> Result<Value
         .get("name")
         .and_then(|v| serde_json::from_str::<String>(v.get()).ok())
     {
-        index.entries[n].name = name.chars().take(160).collect();
+        let name = name.chars().take(160).collect::<String>();
+        if index.entries[n].name != name {
+            index.note_name(n, name);
+        }
     }
     index.refresh_navigation();
     let mut undo = s.undo.clone();
@@ -1460,7 +1468,7 @@ fn load_checkpoint(
             checkpoint.state.group_placements.is_empty() && checkpoint.additions.iter().all(Vec::is_empty) && checkpoint.state.changes.iter().all(Changes::is_pristine) && on_pristine() {
             return Ok(CheckpointLoad::Stop);
         }
-        let index_path = directory.join("index.json");
+        let index_path = preferred_index_path(directory, checkpoint.revision, source_limit);
         let metadata = fs::symlink_metadata(&index_path).map_err(issue)?;
         if !metadata.is_file() || metadata.len() > source_limit {
             return Err(issue("Retained source index is invalid"));
@@ -1515,6 +1523,8 @@ fn load_checkpoint(
             return Err(issue("Retained original source integrity check failed"));
         }
         let mut names = HashSet::new();
+        let mut rebuilt = false;
+        let delta = read_index_delta(directory, checkpoint.revision, source_limit);
         for (p, part) in parts.iter_mut().enumerate() {
             if !safe_member(&part.name) || !names.insert(part.name.clone()) {
                 return Err(issue("Retained source member identity is invalid"));
@@ -1554,6 +1564,41 @@ fn load_checkpoint(
                 cancel,
                 progress: None,
             };
+            if let Some(delta) = delta.as_ref().and_then(|delta| delta.parts.get(p)) {
+                let restored = if delta.data == part.index.data_name() {
+                    part.index.clone().reopen_saved(directory).and_then(|mut index| {
+                        for (start, end, length) in &delta.edits {
+                            index.replay_edit(Span { start: *start, end: *end }, *length)?;
+                        }
+                        for (index_at, name) in &delta.names {
+                            if *index_at >= index.entries.len() {
+                                return Err(issue("Retained source index file is invalid"));
+                            }
+                            index.entries[*index_at].name.clone_from(name);
+                        }
+                        index.published_revision = checkpoint.revision;
+                        index.refresh_navigation();
+                        Ok(index)
+                    })
+                } else {
+                    DiskIndex::from_saved_file(directory, &delta.data, delta.bytes, checkpoint.revision)
+                };
+                if let Ok(index) = restored {
+                    part.index = index;
+                    continue;
+                }
+            }
+            let saved_revision = part.index.published_revision;
+            if saved_revision == checkpoint.revision {
+                match part.index.clone().reopen_saved(directory) {
+                    Ok(index) => {
+                        part.index = index;
+                        continue;
+                    }
+                    Err(_) => {}
+                }
+            }
+            rebuilt = true;
             part.index = DiskIndex::build(
                 checkpoint.state.changes[p]
                     .reader(&mut reader, part.base_bytes)
@@ -1562,6 +1607,7 @@ fn load_checkpoint(
                 &directory,
             )?;
         }
+        let index_published = if rebuilt { 0 } else { checkpoint.revision };
         Ok(CheckpointLoad::Ready(Session {
             version: checkpoint.version,
             owner: checkpoint.owner,
@@ -1577,6 +1623,7 @@ fn load_checkpoint(
             undo: checkpoint.undo,
             redo: checkpoint.redo,
             directory: directory.to_path_buf(),
+            index_published,
             projection: None,
                 scene: None,
             canvas_layout: None,
@@ -1586,65 +1633,157 @@ fn load_checkpoint(
                 snapshot_account: Default::default(),
         }))
 }
-fn persist(s: &Session) -> Result<Option<&'static str>> {
-    let metadata = Checkpoint {
-        // Older readers reject this capability instead of silently dropping
-        // independent authored transforms during recovery or rollback.
-        version: if std::iter::once(&s.state).chain(&s.undo).chain(&s.redo)
-            .any(|state|!state.group_placements.is_empty()) {2} else {s.version},
-        owner: &s.owner,
-        name: &s.name,
-        format: &s.format,
-        source_hash: &s.source_hash,
-        revision: s.revision,
-        saved_revision: s.saved_revision,
-        expanded_bytes: s.expanded_bytes,
-        state: &s.state,
-        undo: &s.undo,
-        redo: &s.redo,
-        additions: s.parts.iter().map(|p| p.additions.as_slice()).collect(),
-    };
-    // Reject oversize metadata before creating index.json or touching journal.next.
-    // commit() may already have spilled source additions; its existing rollback
-    // remains responsible for those. This is not a no-append transaction plan.
-    serde_json::to_writer(&mut CheckpointWriter::new(io::sink()), &metadata).map_err(checkpoint_io)?;
-    // Indexes are immutable and written once, rather than serialized on edits.
-    let index_path = s.directory.join("index.json");
-    if !index_path.exists() {
-        let mut out = BufWriter::new(
-            OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&index_path)
-                .map_err(save_io)?,
-        );
-        serde_json::to_writer(&mut out, &s.parts).map_err(checkpoint_io)?;
-        out.flush().map_err(save_io)?;
-        out.get_ref().sync_all().map_err(save_io)?;
+fn preferred_index_path(directory: &Path, revision: u64, source_limit: u64) -> PathBuf {
+    let next = directory.join("index.next");
+    let usable = fs::symlink_metadata(&next).ok().is_some_and(|meta| {
+        meta.is_file() && !meta.file_type().is_symlink() && meta.len() > 0 && meta.len() <= source_limit
+    });
+    if usable {
+        if let Ok(parts) = File::open(&next).and_then(|file| {
+            serde_json::from_reader::<_, Vec<Part>>(BufReader::new(file))
+                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+        }) {
+            if !parts.is_empty()
+                && parts.iter().all(|part| part.index.published_revision == revision)
+            {
+                return next;
+            }
+        }
     }
-    let temporary = s.directory.join("journal.next");
-    let final_path = s.directory.join("journal.json");
-    let staged = File::create(&temporary).map_err(save_io)?;
-    let result = (|| {
-        let mut file = CheckpointWriter::new(BufWriter::new(staged));
-        serde_json::to_writer(&mut file, &metadata).map_err(checkpoint_io)?;
-        file.flush().map_err(save_io)?;
-        file.get_ref().get_ref().sync_all().map_err(save_io)?;
-        drop(file);
-        fs::rename(&temporary, final_path).map_err(save_io)
-    })();
-    if let Err(error) = result {
-        // Recovery may adopt a complete next journal after a process exit.
-        // A write that returned an error must not later appear committed.
-        let _ = fs::remove_file(&temporary);
+    directory.join("index.json")
+}
+#[derive(Serialize, Deserialize)]
+struct IndexDeltaFile {
+    revision: u64,
+    parts: Vec<IndexPartDelta>,
+}
+#[derive(Serialize, Deserialize)]
+struct IndexPartDelta {
+    data: String,
+    bytes: u64,
+    edits: Vec<(u64, u64, u64)>,
+    names: Vec<(usize, String)>,
+}
+fn index_delta(session: &Session) -> IndexDeltaFile {
+    IndexDeltaFile {
+        revision: session.revision,
+        parts: session
+            .parts
+            .iter()
+            .map(|part| IndexPartDelta {
+                data: part.index.data_name().to_owned(),
+                bytes: part.index.source_bytes(),
+                edits: part.index.edit_deltas(),
+                names: part.index.name_overrides().to_vec(),
+            })
+            .collect(),
+    }
+}
+fn read_index_delta(directory: &Path, revision: u64, source_limit: u64) -> Option<IndexDeltaFile> {
+    let path = directory.join("index.delta.json");
+    let meta = fs::symlink_metadata(&path).ok()?;
+    if !meta.is_file() || meta.file_type().is_symlink() || meta.len() == 0 || meta.len() > source_limit {
+        return None;
+    }
+    let file = File::open(&path).ok()?;
+    let delta: IndexDeltaFile = serde_json::from_reader(BufReader::new(file)).ok()?;
+    (delta.revision == revision && delta.parts.len() > 0).then_some(delta)
+}
+fn write_index_snapshot(path: &Path, value: &impl Serialize) -> Result<()> {
+    let mut out = BufWriter::new(
+        OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)
+            .map_err(save_io)?,
+    );
+    let wrote = serde_json::to_writer(&mut out, value).map_err(checkpoint_io);
+    if let Err(error) = wrote {
+        drop(out);
+        let _ = fs::remove_file(path);
         return Err(error);
     }
-    // Rename is the commit point. Directory-sync failure remains a committed
-    // warning, not an error that could roll the already-published state back.
-    Ok(File::open(&s.directory)
-        .and_then(|f| f.sync_all())
-        .err()
-        .map(|_| "Local checkpoint published; directory synchronization was not confirmed"))
+    out.flush().map_err(save_io)?;
+    out.get_ref().sync_all().map_err(save_io)?;
+    Ok(())
+}
+fn persist(s: &mut Session) -> Result<Option<&'static str>> {
+    let previous_marks: Vec<u64> = s.parts.iter().map(|part| part.index.published_revision).collect();
+    for part in &mut s.parts {
+        part.index.published_revision = s.revision;
+    }
+    let mut index_committed = false;
+    let published = (|| -> Result<Option<&'static str>> {
+        let metadata = Checkpoint {
+            // Older readers reject this capability instead of silently dropping
+            // independent authored transforms during recovery or rollback.
+            version: if std::iter::once(&s.state).chain(&s.undo).chain(&s.redo)
+                .any(|state|!state.group_placements.is_empty()) {2} else {s.version},
+            owner: &s.owner,
+            name: &s.name,
+            format: &s.format,
+            source_hash: &s.source_hash,
+            revision: s.revision,
+            saved_revision: s.saved_revision,
+            expanded_bytes: s.expanded_bytes,
+            state: &s.state,
+            undo: &s.undo,
+            redo: &s.redo,
+            additions: s.parts.iter().map(|p| p.additions.as_slice()).collect(),
+        };
+        // Reject oversize metadata before creating index.json or touching journal.next.
+        // commit() may already have spilled source additions; its existing rollback
+        // remains responsible for those. This is not a no-append transaction plan.
+        serde_json::to_writer(&mut CheckpointWriter::new(io::sink()), &metadata).map_err(checkpoint_io)?;
+        let index_path = s.directory.join("index.json");
+        let index_next = s.directory.join("index.delta.next");
+        // index.json stays the base index. A later edit records only the span
+        // edits and any renamed rows, then publishes that after the journal rename.
+        if !index_path.exists() {
+            write_index_snapshot(&index_path, &s.parts)?;
+        } else if s.index_published != s.revision {
+            write_index_snapshot(&index_next, &index_delta(s))?;
+        }
+        let temporary = s.directory.join("journal.next");
+        let final_path = s.directory.join("journal.json");
+        let staged = File::create(&temporary).map_err(save_io)?;
+        let result = (|| {
+            let mut file = CheckpointWriter::new(BufWriter::new(staged));
+            serde_json::to_writer(&mut file, &metadata).map_err(checkpoint_io)?;
+            file.flush().map_err(save_io)?;
+            file.get_ref().get_ref().sync_all().map_err(save_io)?;
+            drop(file);
+            fs::rename(&temporary, &final_path).map_err(save_io)
+        })();
+        if let Err(error) = result {
+            // Recovery may adopt a complete next journal after a process exit.
+            // A write that returned an error must not later appear committed.
+            let _ = fs::remove_file(&temporary);
+            let _ = fs::remove_file(&index_next);
+            return Err(error);
+        }
+        let delta_path = s.directory.join("index.delta.json");
+        if index_next.is_file() && fs::rename(&index_next, &delta_path).is_ok() {
+            index_committed = true;
+        } else if !index_next.exists() {
+            index_committed = true;
+        }
+        // Rename is the commit point. Directory-sync failure remains a committed
+        // warning, not an error that could roll the already-published state back.
+        Ok(File::open(&s.directory)
+            .and_then(|f| f.sync_all())
+            .err()
+            .map(|_| "Local checkpoint published; directory synchronization was not confirmed"))
+    })();
+    if published.is_err() {
+        for (part, mark) in s.parts.iter_mut().zip(&previous_marks) {
+            part.index.published_revision = *mark;
+        }
+    } else if index_committed {
+        s.index_published = s.revision;
+    }
+    published
 }
 
 fn validate_directory(path: &Path, start: u64, count: usize) -> io::Result<()> {

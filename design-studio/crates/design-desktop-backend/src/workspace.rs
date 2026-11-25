@@ -1,14 +1,15 @@
 //! The desktop's durable document store. Editing remains in Rust/WASM; one
 //! SQLite transaction publishes a validated snapshot, revision and retry receipt.
-use crate::{BackendError, MAX_PATH_BYTES, Result, document_bytes, hash};
+use crate::{document_bytes, hash, BackendError, Result, MAX_PATH_BYTES};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sqlx::{
-    Row, Sqlite, SqlitePool, Transaction,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    Row, Sqlite, SqlitePool, Transaction,
 };
 use std::{
     fs,
+    io::Write,
     path::Path,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -21,17 +22,44 @@ const HISTORY_PAGE: i64 = 1000;
 // Optional, store-local metadata only. Never retain document snapshot BLOBs.
 const MAX_HEADS_CACHE_BYTES: usize = 4 * 1024 * 1024;
 
-fn sqlite_primary(error: &sqlx::Error) -> Option<i32> {
-    // SQLite extended result codes retain the primary code in the low byte.
-    error.as_database_error()
+fn sqlite_extended(error: &sqlx::Error) -> Option<i32> {
+    error
+        .as_database_error()
         .and_then(|e| e.code())
         .and_then(|code| code.parse::<i32>().ok())
-        .map(|code| code & 0xff)
+}
+fn sqlite_primary(error: &sqlx::Error) -> Option<i32> {
+    // SQLite extended result codes retain the primary code in the low byte.
+    sqlite_extended(error).map(|code| code & 0xff)
+}
+// SQLITE_FULL is 13. A WAL open that cannot create or resize the -shm file
+// reports IOERR_SHMOPEN (4618) or IOERR_SHMSIZE (4874) instead. That happens
+// before any new commit and is not damage to the existing database.
+const SQLITE_IOERR_SHMOPEN: i32 = (18 << 8) | 10;
+const SQLITE_IOERR_SHMSIZE: i32 = (19 << 8) | 10;
+const SPACE_RESERVE_BYTES: usize = 256 * 1024;
+fn storage_exhausted(error: &sqlx::Error) -> bool {
+    sqlite_primary(error) == Some(13)
+        || matches!(
+            sqlite_extended(error),
+            Some(SQLITE_IOERR_SHMOPEN | SQLITE_IOERR_SHMSIZE)
+        )
+}
+fn storage_full(error: impl std::fmt::Display) -> BackendError {
+    BackendError::new(
+        "WORKSPACE_STORAGE_FULL",
+        format!("Local document storage is full; this change was not written and the last committed revision is unchanged: {error}"),
+    )
 }
 fn preflight_connect(error: sqlx::Error) -> BackendError {
     // A read-only directory is SQLITE_READONLY_DIRECTORY (1544), whose primary
     // code is still 8. That is a refused open, not a damaged database. A
     // read-only mount is often SQLITE_CANTOPEN (14) for the same reason.
+    // A full volume cannot create the WAL shared-memory file; the database
+    // bytes are unchanged and must not be reported as corrupt.
+    if storage_exhausted(&error) {
+        return storage_full(&error);
+    }
     match sqlite_primary(&error) {
         Some(8 | 13) => db(error),
         Some(14) => BackendError::new(
@@ -46,7 +74,8 @@ fn db(error: sqlx::Error) -> BackendError {
     // response so a committed receipt is replayed instead of duplicating edits.
     // SQLITE_FULL proves the statement rolled back, so it is not that uncertainty.
     let primary = sqlite_primary(&error);
-    let (code, message) = if matches!(&error, sqlx::Error::PoolTimedOut) || matches!(primary, Some(5 | 6))
+    let (code, message) = if matches!(&error, sqlx::Error::PoolTimedOut)
+        || matches!(primary, Some(5 | 6))
     {
         (
             "WORKSPACE_BUSY",
@@ -273,6 +302,9 @@ fn prepare_database_file(path: &Path) -> Result<()> {
 pub struct WorkspaceStore {
     pool: SqlitePool,
     heads_cache: Mutex<HeadsCache>,
+    // The volume cannot hold a WAL shared-memory file. Reads use the
+    // checkpoint already in the main database. New writes stay refused.
+    storage_full: bool,
 }
 
 #[derive(Default)]
@@ -315,9 +347,159 @@ struct ObserveWork {
     cache_bytes: usize,
 }
 impl WorkspaceStore {
+    fn refuse_full(&self) -> Result<()> {
+        if self.storage_full {
+            Err(storage_full(
+                "the workspace was reopened read-only because the volume has no space for a new write",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+    fn reserve_path(path: &Path) -> Option<std::path::PathBuf> {
+        let name = path.file_name()?.to_str()?;
+        if name.is_empty() || name.contains(['/', '\\']) {
+            return None;
+        }
+        Some(path.with_file_name(format!("{name}.space-reserve")))
+    }
+    fn release_space_reserve(path: &Path) -> bool {
+        let Some(reserve) = Self::reserve_path(path) else {
+            return false;
+        };
+        let Ok(meta) = fs::symlink_metadata(&reserve) else {
+            return false;
+        };
+        if !meta.is_file()
+            || meta.file_type().is_symlink()
+            || meta.len() > SPACE_RESERVE_BYTES as u64
+        {
+            return false;
+        }
+        fs::remove_file(reserve).is_ok()
+    }
+    fn ensure_space_reserve(path: &Path) {
+        let Some(reserve) = Self::reserve_path(path) else {
+            return;
+        };
+        if let Ok(meta) = fs::symlink_metadata(&reserve) {
+            if meta.is_file()
+                && !meta.file_type().is_symlink()
+                && meta.len() == SPACE_RESERVE_BYTES as u64
+            {
+                return;
+            }
+        }
+        let mut file = match fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&reserve)
+        {
+            Ok(file) => file,
+            Err(_) => return,
+        };
+        let chunk = [0u8; 8192];
+        let mut left = SPACE_RESERVE_BYTES;
+        while left > 0 {
+            let n = left.min(chunk.len());
+            if file.write_all(&chunk[..n]).is_err() {
+                drop(file);
+                let _ = fs::remove_file(reserve);
+                return;
+            }
+            left -= n;
+        }
+        if file.sync_all().is_err() {
+            drop(file);
+            let _ = fs::remove_file(reserve);
+        }
+    }
+    fn wal_has_frames(path: &Path) -> bool {
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            return true;
+        };
+        let wal = path.with_file_name(format!("{name}-wal"));
+        fs::symlink_metadata(&wal)
+            .is_ok_and(|meta| meta.is_file() && !meta.file_type().is_symlink() && meta.len() > 0)
+    }
     /// The app chooses this path; it is never accepted from authored documents.
     /// Opening a corrupt, unrelated or future-version DB does not repair/reset it.
     pub async fn open(path: &Path) -> Result<Self> {
+        let mut opened = Self::open_writable(path).await;
+        if opened
+            .as_ref()
+            .is_err_and(|error| error.code == "WORKSPACE_STORAGE_FULL")
+        {
+            let owned = path.to_path_buf();
+            let released = tokio::task::spawn_blocking(move || Self::release_space_reserve(&owned))
+                .await
+                .unwrap_or(false);
+            if released {
+                opened = Self::open_writable(path).await;
+            }
+        }
+        if opened
+            .as_ref()
+            .is_err_and(|error| error.code == "WORKSPACE_STORAGE_FULL")
+            && !Self::wal_has_frames(path)
+        {
+            if let Ok(store) = Self::open_checkpoint_readonly(path).await {
+                return Ok(store);
+            }
+        }
+        if let Ok(store) = &opened {
+            if !store.storage_full {
+                let owned = path.to_path_buf();
+                let _ =
+                    tokio::task::spawn_blocking(move || Self::ensure_space_reserve(&owned)).await;
+            }
+        }
+        opened
+    }
+    async fn open_checkpoint_readonly(path: &Path) -> Result<Self> {
+        let owned_path = path.to_path_buf();
+        tokio::task::spawn_blocking(move || prepare_database_file(&owned_path))
+            .await
+            .map_err(|error| {
+                BackendError::new(
+                    "WORKSPACE_ERROR",
+                    format!("Database preflight task failed: {error}"),
+                )
+            })??;
+        // No WAL frames remain, so the main file is the last checkpoint.
+        // immutable avoids creating -shm on a volume that cannot hold one.
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(false)
+            .read_only(true)
+            .immutable(true)
+            .foreign_keys(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .map_err(preflight_connect)?;
+        let version = match Self::inspect(&pool).await {
+            Ok(version) => version,
+            Err(error) => {
+                pool.close().await;
+                return Err(error);
+            }
+        };
+        if version != SCHEMA_VERSION {
+            pool.close().await;
+            return Err(storage_full(
+                "the saved workspace needs an upgrade and the volume has no space for it",
+            ));
+        }
+        Ok(Self {
+            pool,
+            heads_cache: Mutex::new(HeadsCache::default()),
+            storage_full: true,
+        })
+    }
+    async fn open_writable(path: &Path) -> Result<Self> {
         // Filesystem metadata, creation and fsync must not block a Tokio worker,
         // including callers other than the desktop executable.
         let owned_path = path.to_path_buf();
@@ -386,6 +568,7 @@ impl WorkspaceStore {
         Ok(Self {
             pool,
             heads_cache: Mutex::new(HeadsCache::default()),
+            storage_full: false,
         })
     }
     async fn inspect(pool: &SqlitePool) -> Result<i64> {
@@ -453,7 +636,10 @@ impl WorkspaceStore {
         if Self::inspect(pool).await? == SCHEMA_VERSION {
             return Ok(());
         }
-        let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.map_err(migration_step)?;
+        let mut tx = pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(migration_step)?;
         // Recheck under the writer lock: a second process may have just migrated.
         let version: i64 = sqlx::query_scalar("PRAGMA user_version")
             .fetch_one(&mut *tx)
@@ -498,14 +684,18 @@ impl WorkspaceStore {
                 .map_err(migration_step)?;
         }
         if version < 4 {
-            crate::automation::migrate(&mut tx).await.map_err(migration_failure)?;
+            crate::automation::migrate(&mut tx)
+                .await
+                .map_err(migration_failure)?;
             sqlx::query("PRAGMA user_version=4")
                 .execute(&mut *tx)
                 .await
                 .map_err(migration_step)?;
         }
         if version < 5 {
-            crate::automation::migrate_edits(&mut tx).await.map_err(migration_failure)?;
+            crate::automation::migrate_edits(&mut tx)
+                .await
+                .map_err(migration_failure)?;
             sqlx::query("PRAGMA user_version=5")
                 .execute(&mut *tx)
                 .await
@@ -788,6 +978,7 @@ impl WorkspaceStore {
         expected: Option<i64>,
         mutation: &str,
     ) -> Result<Entry> {
+        self.refuse_full()?;
         validate_mutation(mutation)?;
         if let Some(revision) = expected {
             validate_revision(revision)?;
@@ -838,6 +1029,7 @@ impl WorkspaceStore {
         mutation: &str,
         deleted: bool,
     ) -> Result<Entry> {
+        self.refuse_full()?;
         validate_id(id)?;
         validate_revision(expected)?;
         validate_mutation(mutation)?;
@@ -875,6 +1067,7 @@ impl WorkspaceStore {
         expected: i64,
         mutation: &str,
     ) -> Result<Opened> {
+        self.refuse_full()?;
         validate_id(id)?;
         validate_revision(revision)?;
         validate_revision(expected)?;
@@ -970,6 +1163,18 @@ impl WorkspaceStore {
         }
         let time = now()?;
         let bytes = crate::bounded_json(&presence, 256 * 1024, "INVALID_REQUEST")?;
+        if self.storage_full {
+            let entries = self.list_entries(false).await?;
+            let (hash, documents) = self.observe_heads(entries, &view_hash)?;
+            let changed = hash != view_hash;
+            let session = u64::from(
+                u32::from_str_radix(&presence.id[..8], 16)
+                    .map_err(|_| invalid("Invalid session"))?,
+            );
+            return Ok(
+                json!({"viewHash":hash,"changed":changed,"control":Envelope::ViewLoaded{view_name},"presenceControl":Envelope::Presence{session},"peers":[],"documents":documents}),
+            );
+        }
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await.map_err(db)?;
         sqlx::query("DELETE FROM local_sessions WHERE updated_at < ?")
             .bind(time - 15000)
@@ -1019,6 +1224,7 @@ impl WorkspaceStore {
         )
     }
     pub async fn leave_session(&self, id: &str) -> Result<()> {
+        self.refuse_full()?;
         validate_id(id)?;
         sqlx::query("DELETE FROM local_sessions WHERE id=?")
             .bind(id)
@@ -1064,7 +1270,10 @@ mod autosave_recovery_tests {
         let root = root.canonicalize().unwrap();
         let db = root.join("workspace.sqlite3");
         let store = WorkspaceStore::open(&db).await.unwrap();
-        let saved = store.commit(&document("consistent"), None, "create-full").await.unwrap();
+        let saved = store
+            .commit(&document("consistent"), None, "create-full")
+            .await
+            .unwrap();
         sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
             .execute(&store.pool)
             .await
@@ -1240,7 +1449,11 @@ mod autosave_recovery_tests {
         let error = match WorkspaceStore::open(&db).await {
             Ok(store) => {
                 let error = store
-                    .commit(&document("must-not-commit"), Some(saved.revision), "edit-rodir")
+                    .commit(
+                        &document("must-not-commit"),
+                        Some(saved.revision),
+                        "edit-rodir",
+                    )
                     .await
                     .expect_err("a read-only directory must not report the edit as saved");
                 store.close().await;
@@ -1262,7 +1475,12 @@ mod autosave_recovery_tests {
             .nth(1)
             .and_then(|value| value.split(')').next())
             .and_then(|value| value.parse::<i32>().ok());
-        assert_eq!(extended.map(|code| code & 0xff), Some(8), "{}", error.message);
+        assert_eq!(
+            extended.map(|code| code & 0xff),
+            Some(8),
+            "{}",
+            error.message
+        );
         assert_eq!(fs::read(&original).unwrap(), original_bytes);
         assert_eq!(fs::read(&db).unwrap(), before);
         drop(_restore);
@@ -1275,7 +1493,6 @@ mod autosave_recovery_tests {
         reopened.close().await;
         let _ = fs::remove_dir_all(&root);
     }
-
 }
 
 #[cfg(test)]

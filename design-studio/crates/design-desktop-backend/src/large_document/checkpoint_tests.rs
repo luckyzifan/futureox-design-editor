@@ -406,8 +406,8 @@ fn autosave_recovery_interrupted_journal_next_is_not_saved() {
 #[test]
 fn prepublication_io_failure_still_preserves_the_previous_journal() {
     let f = Fixture::new();
-    let slot = f.sessions.current.lock().unwrap();
-    let s = slot.as_ref().unwrap();
+    let mut slot = f.sessions.current.lock().unwrap();
+    let s = slot.as_mut().unwrap();
     let journal = s.directory.join("journal.json");
     let previous = fs::read(&journal).unwrap();
     // File::create must fail for this directory on supported host platforms.

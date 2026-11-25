@@ -1,14 +1,17 @@
 //! Cloud acceptance for autosave crash, storage failure, reopen and migration.
 //! These are simulated faults against the desktop backend. They do not exercise
 //! a signed release installer, and they are not a confirmed data-loss report.
-use futureox_design_desktop_backend::{Backend, workspace::WorkspaceStore};
-use serde_json::{Value, json};
+use futureox_design_desktop_backend::{workspace::WorkspaceStore, Backend};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use sqlx::{Connection, Executor, sqlite::SqliteConnection};
+use sqlx::{sqlite::SqliteConnection, Connection, Executor};
 use std::{
     fs,
-    path::PathBuf,
+    io::{BufRead, BufReader, Write},
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
     sync::atomic::{AtomicU64, Ordering},
+    time::Instant,
 };
 
 struct Fixture(PathBuf);
@@ -600,4 +603,394 @@ fn autosave_recovery_legacy_synced_temp_still_adopts_by_timestamp() {
     let restored = reopened.recovery_read("session-1").unwrap();
     assert_eq!(restored.document["name"], "recovered edit");
     assert!(!recovery.join(".fd-write-legacy.tmp").exists());
+}
+
+struct Volume {
+    image: PathBuf,
+    mount: PathBuf,
+}
+impl Volume {
+    fn new(megabytes: u64) -> Self {
+        static N: AtomicU64 = AtomicU64::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        let image =
+            std::env::temp_dir().join(format!("futureox-full-{n}-{}.img", std::process::id()));
+        let mount = std::env::temp_dir().join(format!("futureox-full-{n}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&mount);
+        fs::create_dir_all(&mount).unwrap();
+        let status = Command::new("fallocate")
+            .args(["-l", &format!("{megabytes}M"), image.to_str().unwrap()])
+            .status()
+            .unwrap();
+        assert!(status.success(), "fallocate failed");
+        let status = Command::new("mkfs.ext4")
+            .args(["-F", "-q", image.to_str().unwrap()])
+            .status()
+            .unwrap();
+        assert!(status.success(), "mkfs.ext4 failed");
+        let mounted = Command::new("sudo")
+            .args([
+                "-n",
+                "mount",
+                "-o",
+                "loop",
+                image.to_str().unwrap(),
+                mount.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            mounted.status.success(),
+            "mount failed: {}",
+            String::from_utf8_lossy(&mounted.stderr)
+        );
+        let uid = Command::new("id").arg("-u").output().unwrap();
+        let gid = Command::new("id").arg("-g").output().unwrap();
+        let owner = format!(
+            "{}:{}",
+            String::from_utf8(uid.stdout).unwrap().trim(),
+            String::from_utf8(gid.stdout).unwrap().trim()
+        );
+        let chowned = Command::new("sudo")
+            .args(["-n", "chown", &owner, mount.to_str().unwrap()])
+            .status()
+            .unwrap();
+        assert!(chowned.success(), "chown failed");
+        Self { image, mount }
+    }
+    fn fill(&self) {
+        let path = self.mount.join("filler");
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .unwrap();
+        let chunk = vec![0u8; 64 * 1024];
+        while file.write_all(&chunk).is_ok() {}
+        let _ = file.sync_all();
+    }
+}
+impl Drop for Volume {
+    fn drop(&mut self) {
+        let _ = Command::new("sudo")
+            .args(["-n", "umount", self.mount.to_str().unwrap()])
+            .status();
+        let _ = fs::remove_dir_all(&self.mount);
+        let _ = fs::remove_file(&self.image);
+    }
+}
+
+struct Rpc {
+    child: Option<std::process::Child>,
+    input: Option<std::process::ChildStdin>,
+    output: BufReader<std::process::ChildStdout>,
+}
+impl Rpc {
+    fn start(root: &Path) -> Self {
+        let bin = env!("CARGO_BIN_EXE_futureox-design-desktop-backend");
+        let mut child = Command::new(bin)
+            .args([
+                "--recovery-dir",
+                root.join("recovery").to_str().unwrap(),
+                "--workspace-db",
+                root.join("workspace.sqlite3").to_str().unwrap(),
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let input = child.stdin.take().unwrap();
+        let output = BufReader::new(child.stdout.take().unwrap());
+        Self {
+            child: Some(child),
+            input: Some(input),
+            output,
+        }
+    }
+    fn call(&mut self, id: &str, method: &str, params: Value) -> Value {
+        let input = self.input.as_mut().unwrap();
+        writeln!(
+            input,
+            "{}",
+            json!({"id": id, "method": method, "params": params})
+        )
+        .unwrap();
+        input.flush().unwrap();
+        let mut line = String::new();
+        self.output.read_line(&mut line).unwrap();
+        serde_json::from_str(line.trim()).unwrap_or_else(|_| panic!("bad reply {line}"))
+    }
+    fn finish(&mut self) {
+        drop(self.input.take());
+        let status = self.child.take().unwrap().wait().unwrap();
+        assert!(status.success(), "backend exit {status}");
+    }
+}
+impl Drop for Rpc {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+fn collect_index_data(dir: &Path, names: &mut Vec<String>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_index_data(&path, names);
+        } else if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("index-data-")
+        {
+            names.push(path.display().to_string());
+        }
+    }
+}
+fn index_data_files(root: &Path) -> Vec<String> {
+    let mut names = Vec::new();
+    collect_index_data(root, &mut names);
+    names.sort();
+    names
+}
+
+fn source_document() -> Value {
+    json!({"schemaVersion":6,"id":"20000000-0000-0000-0000-000000000001","name":"before",
+        "pages":[{"id":"20000000-0000-0000-0000-000000000002","name":"Page","background":"#ffffff","children":[]}],
+        "nodes":{}})
+}
+
+#[test]
+fn autosave_recovery_real_disk_full_reopens_last_consistent_copy() {
+    let volume = Volume::new(32);
+    fs::create_dir(volume.mount.join("recovery")).unwrap();
+    let source = std::env::temp_dir().join(format!(
+        "futureox-source-{}-{}.json",
+        std::process::id(),
+        volume.mount.file_name().unwrap().to_string_lossy()
+    ));
+    let source_bytes = serde_json::to_vec(&source_document()).unwrap();
+    fs::write(&source, &source_bytes).unwrap();
+    let mut rpc = Rpc::start(&volume.mount);
+    let health = rpc.call("health", "health", json!({}));
+    assert_eq!(health["result"]["workspaceAvailable"], true, "{health}");
+    let created = rpc.call(
+        "commit",
+        "workspace.commit",
+        json!({"document": document("consistent"), "expectedRevision": null, "mutationId": "create-real-full"}),
+    );
+    assert_eq!(created["result"]["revision"], 1, "{created}");
+    let opened = rpc.call(
+        "open",
+        "large.open",
+        json!({"path": source, "documentId": "20000000-0000-0000-0000-000000000001", "sessionEpoch": 1}),
+    );
+    assert!(opened.get("error").is_none(), "{opened}");
+    let owner = opened["result"]["owner"].clone();
+    let read = rpc.call(
+        "read",
+        "large.read",
+        json!({"owner": owner, "expectedRevision": 0, "key": "0:0"}),
+    );
+    assert!(read.get("error").is_none(), "{read}");
+    let edited = read["result"]["json"]
+        .as_str()
+        .unwrap()
+        .replace("before", "afterX");
+    let applied = rpc.call(
+        "apply",
+        "large.apply",
+        json!({"owner": owner, "expectedRevision": 0, "key": "0:0", "json": edited, "expectedHash": read["result"]["hash"], "requestId": "real-full-edit"}),
+    );
+    assert_eq!(applied["result"]["revision"], 1, "{applied}");
+    rpc.finish();
+    let indexes = index_data_files(&volume.mount.join("recovery"));
+    assert!(
+        !indexes.is_empty(),
+        "the saved source index must already be on disk"
+    );
+    volume.fill();
+    let started = Instant::now();
+    let mut rpc = Rpc::start(&volume.mount);
+    let health = rpc.call("health", "health", json!({}));
+    assert_eq!(health["result"]["workspaceAvailable"], true, "{health}");
+    assert!(health["result"]["workspaceError"].is_null(), "{health}");
+    let again = rpc.call("open-db", "workspace.open", json!({"id": ID}));
+    assert_eq!(again["result"]["document"]["name"], "consistent", "{again}");
+    assert_eq!(again["result"]["revision"], 1, "{again}");
+    let reopened = rpc.call(
+        "reopen",
+        "large.open",
+        json!({"path": source, "documentId": "20000000-0000-0000-0000-000000000009", "sessionEpoch": 2}),
+    );
+    let elapsed = started.elapsed();
+    assert!(reopened.get("error").is_none(), "{reopened}");
+    assert_eq!(reopened["result"]["revision"], 1, "{reopened}");
+    let owner = reopened["result"]["owner"].clone();
+    let reread = rpc.call(
+        "reread",
+        "large.read",
+        json!({"owner": owner, "expectedRevision": 1, "key": "0:0"}),
+    );
+    assert!(
+        reread["result"]["json"]
+            .as_str()
+            .unwrap()
+            .contains("afterX"),
+        "{reread}"
+    );
+    assert_eq!(fs::read(&source).unwrap(), source_bytes);
+    assert_eq!(index_data_files(&volume.mount.join("recovery")), indexes);
+    // Reopen may spend the reserve. Fill again so the next save has nowhere to grow.
+    volume.fill();
+    let mut bulky = document("must-not-commit");
+    bulky["pages"][0]["name"] = json!("p".repeat(200_000));
+    let rejected = rpc.call(
+        "edit",
+        "workspace.commit",
+        json!({"document": bulky, "expectedRevision": 1, "mutationId": "edit-real-full"}),
+    );
+    assert_eq!(
+        rejected["error"]["code"], "WORKSPACE_STORAGE_FULL",
+        "{rejected}"
+    );
+    assert_ne!(rejected["error"]["code"], "WORKSPACE_CORRUPT", "{rejected}");
+    assert_ne!(
+        rejected["error"]["code"], "WORKSPACE_MIGRATION",
+        "{rejected}"
+    );
+    let message = rejected["error"]["message"].as_str().unwrap();
+    assert!(message.contains("not written"), "{message}");
+    assert!(message.contains("unchanged"), "{message}");
+    assert!(!message.contains("saved"), "{message}");
+    let still = rpc.call("open-db-2", "workspace.open", json!({"id": ID}));
+    assert_eq!(still["result"]["document"]["name"], "consistent", "{still}");
+    assert_eq!(still["result"]["revision"], 1, "{still}");
+    eprintln!(
+        "MEASURE real_disk_full reopen_ms={} index_files={} workspace_code={}",
+        elapsed.as_millis(),
+        indexes.len(),
+        rejected["error"]["code"]
+    );
+    rpc.finish();
+    let _ = fs::remove_file(&source);
+}
+
+#[tokio::test]
+async fn autosave_recovery_real_disk_full_upgrade_keeps_prior_schema_then_retries() {
+    let volume = Volume::new(48);
+    fs::create_dir(volume.mount.join("recovery")).unwrap();
+    let font = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        vec![7u8; 800 * 1024],
+    );
+    let mut stored = document("before-upgrade");
+    stored["fonts"] = json!({"a/~font": {"family": "Embedded", "data": font}});
+    let mut rpc = Rpc::start(&volume.mount);
+    let saved = rpc.call(
+        "commit",
+        "workspace.commit",
+        json!({"document": stored, "expectedRevision": null, "mutationId": "before-upgrade"}),
+    );
+    assert_eq!(saved["result"]["revision"], 1, "{saved}");
+    let saved_hash = saved["result"]["hash"].as_str().unwrap().to_owned();
+    rpc.finish();
+    let mut connection = SqliteConnection::connect(&format!(
+        "sqlite://{}",
+        volume.mount.join("workspace.sqlite3").display()
+    ))
+    .await
+    .unwrap();
+    connection.execute("BEGIN IMMEDIATE").await.unwrap();
+    for sql in [
+        "CREATE TABLE assets_v5(hash TEXT PRIMARY KEY CHECK(length(hash)=64),kind TEXT NOT NULL CHECK(kind IN('font','image')),value BLOB NOT NULL,byte_length INTEGER NOT NULL CHECK(byte_length>=0 AND byte_length<=33554432))",
+        "INSERT INTO assets_v5 SELECT * FROM assets",
+        "CREATE TABLE revision_assets_v5(document_id TEXT NOT NULL,revision INTEGER NOT NULL,asset_hash TEXT NOT NULL REFERENCES assets_v5(hash),PRIMARY KEY(document_id,revision,asset_hash),FOREIGN KEY(document_id,revision) REFERENCES revisions(document_id,revision))",
+        "INSERT INTO revision_assets_v5 SELECT * FROM revision_assets",
+        "DROP TABLE revision_assets",
+        "DROP TABLE assets",
+        "ALTER TABLE assets_v5 RENAME TO assets",
+        "ALTER TABLE revision_assets_v5 RENAME TO revision_assets",
+        "PRAGMA user_version=5",
+        "COMMIT",
+    ] {
+        connection.execute(sql).await.unwrap();
+    }
+    let asset_before: i64 = sqlx::query_scalar("SELECT coalesce(sum(length(value)),0) FROM assets")
+        .fetch_one(&mut connection)
+        .await
+        .unwrap();
+    assert!(asset_before > 700_000, "asset bytes {asset_before}");
+    connection.close().await.unwrap();
+    volume.fill();
+    let mut rpc = Rpc::start(&volume.mount);
+    let health = rpc.call("health", "health", json!({}));
+    assert_eq!(health["result"]["workspaceAvailable"], false, "{health}");
+    let message = health["result"]["workspaceError"]["message"]
+        .as_str()
+        .unwrap();
+    assert!(message.contains("WORKSPACE_STORAGE_FULL"), "{health}");
+    assert!(!message.contains("WORKSPACE_CORRUPT"), "{health}");
+    assert!(!message.contains("saved"), "{message}");
+    rpc.finish();
+    let mut connection = SqliteConnection::connect(&format!(
+        "sqlite://{}",
+        volume.mount.join("workspace.sqlite3").display()
+    ))
+    .await
+    .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("PRAGMA user_version")
+            .fetch_one(&mut connection)
+            .await
+            .unwrap(),
+        5
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT coalesce(sum(length(value)),0) FROM assets")
+            .fetch_one(&mut connection)
+            .await
+            .unwrap(),
+        asset_before
+    );
+    connection.close().await.unwrap();
+    // Free enough of the filler for the asset copy, then the upgrade must finish.
+    let filler = volume.mount.join("filler");
+    let bytes = fs::read(&filler).unwrap();
+    fs::write(
+        &filler,
+        &bytes[..bytes.len().saturating_sub(4 * 1024 * 1024)],
+    )
+    .unwrap();
+    let mut rpc = Rpc::start(&volume.mount);
+    let health = rpc.call("health", "health", json!({}));
+    assert_eq!(health["result"]["workspaceAvailable"], true, "{health}");
+    let opened = rpc.call("open", "workspace.open", json!({"id": ID}));
+    assert_eq!(
+        opened["result"]["document"]["name"], "before-upgrade",
+        "{opened}"
+    );
+    assert_eq!(opened["result"]["hash"], saved_hash, "{opened}");
+    rpc.finish();
+    let mut connection = SqliteConnection::connect(&format!(
+        "sqlite://{}",
+        volume.mount.join("workspace.sqlite3").display()
+    ))
+    .await
+    .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("PRAGMA user_version")
+            .fetch_one(&mut connection)
+            .await
+            .unwrap(),
+        futureox_design_desktop_backend::workspace::SCHEMA_VERSION
+    );
+    connection.close().await.unwrap();
+    eprintln!("MEASURE real_disk_full_upgrade asset_bytes={asset_before} retried=ok");
 }

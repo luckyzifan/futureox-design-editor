@@ -33,6 +33,8 @@ export const EXPECTED_RECOVERY_TESTS = [
   'autosave_recovery_stale_temp_with_newer_clock_does_not_roll_back_published',
   'autosave_recovery_legacy_record_without_sequence_upgrades_and_recovers',
   'autosave_recovery_legacy_synced_temp_still_adopts_by_timestamp',
+  'autosave_recovery_real_disk_full_reopens_last_consistent_copy',
+  'autosave_recovery_real_disk_full_upgrade_keeps_prior_schema_then_retries',
   packagedCrashTest,
 ]
 
