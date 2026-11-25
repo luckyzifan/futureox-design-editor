@@ -839,6 +839,7 @@ export class GpuRenderer {
   private byteClass: ResourceClass = 'scratch'
   private constantTargets = new Map<string, Surface>()
   private prefixAllowed = true
+  private analyticDisplayColorBoxes = false
   private analyticDisplayShadowBoxes = false
   private get bytes() { return this.ledger.bytes }
   private set bytes(value: number) {
@@ -7729,7 +7730,8 @@ export class GpuRenderer {
       }
     }
     let current = input
-    const displayBox = alphaOnly && this.analyticDisplayShadowBoxes && this.prefixAllowed && sigma >= PREFIX_MIN_RADIUS
+    const displayBox = this.prefixAllowed && sigma >= PREFIX_MIN_RADIUS &&
+      (this.analyticDisplayColorBoxes || alphaOnly && this.analyticDisplayShadowBoxes)
     for (const r of gaussianRadii(sigma)) {
       if (r <= 0) continue
       const kernel = this.filterKernel('rational-box', r, () => rational_box_kernel_rgba(r))
@@ -8917,21 +8919,23 @@ export class GpuRenderer {
     // Scene policy is installed synchronously before its async pipeline work.
     // Filter programs and image uploads can then prepare independently.
     const preparation = [this.prepareWithFailureOrigin(1, () => this.driver.prepareScene?.(scene, !readback && present, this.gradientFusionActive))]
-    // At high density, sum the outer shadow's three alpha boxes on the
-    // full device lattice. Ordinary zoom and color filters keep their box path.
-    // The exact prefix is byte-exact against the rational box reducer (integer
-    // window sum + one nearest-even division, with a per-line exact fallback),
-    // so the optional low-zoom flag only widens the same alpha-only outer-shadow
-    // admission down to 800%; it never changes the kernel, source or rounding.
+    // The exact prefix can sum the same Gaussian boxes for colour and alpha
+    // at high density. Keep the optional lower-zoom admission alpha-only.
+    // Proof or scratch rejection still uses the same rational box shader.
+    const highZoom = scene.view.zoom >= 32
     const shadowBoxLowZoom = import.meta.env.VITE_DESIGN_EXACT_SHADOW_BOX_LOW_ZOOM === '1' && scene.view.zoom >= 8
-    this.analyticDisplayShadowBoxes = index.hasFilters && managedDisplay && this.optimized && !!scene.output && scene.coherentSamples === false &&
+    const analyticBoxes = index.hasFilters && managedDisplay && this.optimized && !!scene.output && scene.coherentSamples === false &&
       !scene.colorManagement && !scene.integratedBlur && !scene.interactionRetained && !scene.resolve && !scene.presentation &&
-      !scene.softwareRaster && (scene.view.zoom >= 32 || shadowBoxLowZoom) && Object.values(scene.nodes).some(node => node.effects.some(effect =>
-        effect.visible && effect.kind === 'shadow' && effect.radius * scale(node.matrix) >= 2 * PREFIX_MIN_RADIUS))
+      !scene.softwareRaster && (highZoom || shadowBoxLowZoom) && Object.values(scene.nodes).some(node => node.effects.some(effect =>
+        effect.visible && (effect.kind === 'shadow' ||
+          highZoom && (effect.kind === 'inner-shadow' || effect.kind === 'blur' || effect.kind === 'background-blur')) &&
+        effect.radius * scale(node.matrix) >= 2 * PREFIX_MIN_RADIUS))
+    this.analyticDisplayColorBoxes = analyticBoxes && highZoom
+    this.analyticDisplayShadowBoxes = analyticBoxes && !highZoom
     if (index.hasFilters) {
-      const regionalBoxes = scene.view.zoom >= 32 && Object.values(scene.nodes).some(n => n.analyticRegion)
+      const regionalBoxes = highZoom && Object.values(scene.nodes).some(n => n.analyticRegion)
       preparation.push(this.prepareWithFailureOrigin(2, () => this.driver.prepareFilters?.(Boolean(this.prefixAllowed && this.optimized &&
-        this.driver.managed && (scene.integratedBlur && index.hasPrefixFilter || regionalBoxes || this.analyticDisplayShadowBoxes)))))
+        this.driver.managed && (scene.integratedBlur && index.hasPrefixFilter || regionalBoxes || analyticBoxes)))))
     }
     preparation.push(this.loadImages(scene))
     const prepared = await Promise.allSettled(preparation)
