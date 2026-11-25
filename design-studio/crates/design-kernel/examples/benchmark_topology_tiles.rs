@@ -1,10 +1,20 @@
 //! Real topology tile compiles through Preparation::compile_gpu_packet.
-//! The Sketch archive is the LFS fixture, imported by the production importer.
+//! Open the Sketch archive with the desktop indexed source backend, or load a
+//! previously captured production scene descriptor.
 //! No synthetic document and no GPU/GUI claim.
-use futureox_design_kernel::{interop, preparation::Preparation, scene_store};
+//! Build the desktop backend in the same Cargo profile before running this
+//! example. A second argument can retain the resulting scene and descriptor.
+use futureox_design_kernel::preparation::Preparation;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, fs, path::PathBuf, sync::atomic::AtomicBool, time::Instant};
+use std::{
+    collections::BTreeMap,
+    fs,
+    io::{self, BufRead, BufReader, Read, Write},
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    time::Instant,
+};
 
 fn hash_bytes(bytes: &[u8]) -> String {
     Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
@@ -12,35 +22,132 @@ fn hash_bytes(bytes: &[u8]) -> String {
 fn font() -> Vec<u8> {
     fs::read("frontend/design-client/public/fonts/NotoSansSC.ttf").expect("bundled font")
 }
-fn import_store(sketch: &str, store_path: &str) -> Value {
-    eprintln!("reading {sketch}");
-    let bytes = fs::read(sketch).unwrap();
-    let source_sha = hash_bytes(&bytes);
-    eprintln!("importing {} bytes sha256={source_sha}", bytes.len());
+struct Scratch(PathBuf);
+impl Scratch {
+    fn new() -> io::Result<Self> {
+        let path = std::env::temp_dir().join(format!("futureox-topology-{}", std::process::id()));
+        fs::create_dir(&path)?;
+        Ok(Self(path))
+    }
+}
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn hash_file(path: &Path) -> io::Result<String> {
+    let mut file = fs::File::open(path)?;
+    let mut hash = Sha256::new();
+    let mut buffer = [0; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hash.update(&buffer[..read]);
+    }
+    Ok(hash.finalize().iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+fn backend_request(
+    input: &mut impl Write,
+    output: &mut impl BufRead,
+    id: u64,
+    method: &str,
+    params: Value,
+) -> Result<Value, String> {
+    serde_json::to_writer(&mut *input, &json!({ "id": id, "method": method, "params": params }))
+        .map_err(|error| error.to_string())?;
+    input.write_all(b"\n").and_then(|()| input.flush()).map_err(|error| error.to_string())?;
+    let mut line = String::new();
+    if output.read_line(&mut line).map_err(|error| error.to_string())? == 0 {
+        return Err(format!("Desktop backend exited during {method}"));
+    }
+    let reply: Value = serde_json::from_str(&line).map_err(|error| error.to_string())?;
+    if reply["id"] != id {
+        return Err(format!("Desktop backend returned the wrong request identity for {method}"));
+    }
+    reply.get("result").cloned().ok_or_else(|| format!("{method}: {}", reply["error"]))
+}
+
+fn import_store(sketch: &Path, profile: &Scratch, source_sha: &str) -> Result<Value, String> {
+    let binary_name = if cfg!(windows) {
+        "futureox-design-desktop-backend.exe"
+    } else {
+        "futureox-design-desktop-backend"
+    };
+    let backend = match std::env::var_os("TOPOLOGY_DESKTOP_BACKEND") {
+        Some(path) => PathBuf::from(path),
+        None => std::env::current_exe().map_err(|error| error.to_string())?
+            .parent().and_then(Path::parent).ok_or("Cannot locate the Cargo profile directory")?
+            .join(binary_name),
+    };
+    let document_id = format!("topology-{source_sha}");
+    let owner = json!({ "documentId": document_id, "sessionEpoch": 1 });
+    let mut open = owner.clone();
+    open["path"] = json!(sketch);
+    let recovery = profile.0.join("recovery");
+    let mut child = Command::new(&backend)
+        .arg("--recovery-dir").arg(&recovery)
+        .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()
+        .map_err(|error| format!("{}: {error}. Build -p futureox-design-desktop-backend in the same profile, or set TOPOLOGY_DESKTOP_BACKEND.", backend.display()))?;
+    let mut input = child.stdin.take().expect("piped stdin");
+    let mut output = BufReader::new(child.stdout.take().expect("piped stdout"));
+    eprintln!("indexing {} sha256={source_sha}", sketch.display());
     let started = Instant::now();
-    let report = interop::import_sketch_report(&bytes).expect("sketch import");
-    let import_ms = started.elapsed().as_secs_f64() * 1000.;
-    let document = report.document;
-    let page = document.pages[0].id.clone();
-    let stage = document.pages[0].children[0].clone();
-    let roots = document.nodes[&stage].children.len();
-    eprintln!("imported nodes={} roots={roots} page={page} stage={stage} import_ms={import_ms:.1} warnings={}",
-        document.nodes.len(), report.warnings.len());
-    if PathBuf::from(store_path).exists() { fs::remove_file(store_path).unwrap(); }
-    let started = Instant::now();
-    let desc = scene_store::write(PathBuf::from(store_path).as_path(), "topology:measure", &document, &[], &AtomicBool::new(false)).expect("scene store");
-    eprintln!("store write_ms={:.1} bytes={}", started.elapsed().as_secs_f64()*1000., desc.bytes);
-    json!({
-        "path": store_path,
-        "store": desc,
-        "documentId": document.id,
-        "pageId": page,
-        "stageId": stage,
-        "nodes": document.nodes.len(),
-        "roots": roots,
-        "sourceSha256": source_sha,
-        "importMs": import_ms,
-    })
+    let result = (|| {
+        let status = backend_request(&mut input, &mut output, 1, "large.open", open)?;
+        if status["owner"] != owner || status["revision"] != 0 || status["format"] != "sketch" {
+            return Err("Desktop backend indexed a different source or revision".into());
+        }
+        let source_copy = recovery.join("large-documents").join(format!("{document_id}-1")).join("source");
+        if hash_file(&source_copy).map_err(|error| error.to_string())? != source_sha {
+            return Err("Desktop backend copied different source bytes".into());
+        }
+        let params = json!({ "owner": owner, "expectedRevision": 0 });
+        let mut descriptor = backend_request(&mut input, &mut output, 2, "large.canvasSnapshot", params.clone())?;
+        if descriptor["owner"] != owner || descriptor["revision"] != 0 {
+            return Err("Desktop backend returned a stale source snapshot".into());
+        }
+        backend_request(&mut input, &mut output, 3, "large.close", params)?;
+        descriptor["documentId"] = owner["documentId"].clone();
+        descriptor["sourceSha256"] = json!(source_sha);
+        descriptor["importMs"] = json!(started.elapsed().as_secs_f64() * 1000.);
+        Ok(descriptor)
+    })();
+    drop(input);
+    drop(output);
+    let stopped = child.wait().map_err(|error| error.to_string())?;
+    if !stopped.success() {
+        return Err(format!("Desktop backend exited with {stopped}"));
+    }
+    result
+}
+
+fn save_store(descriptor: &mut Value, path: &Path, meta: &Path) -> io::Result<()> {
+    let source = descriptor["path"].as_str().ok_or_else(|| io::Error::other("Missing scene path"))?;
+    let mut source = fs::File::open(source)?;
+    let mut target = fs::OpenOptions::new().write(true).create_new(true).open(path)?;
+    let mut metadata = match fs::OpenOptions::new().write(true).create_new(true).open(meta) {
+        Ok(file) => file,
+        Err(error) => {
+            drop(target);
+            let _ = fs::remove_file(path);
+            return Err(error);
+        }
+    };
+    descriptor["path"] = json!(path);
+    let result = io::copy(&mut source, &mut target)
+        .and_then(|_| target.sync_all())
+        .and_then(|()| serde_json::to_writer_pretty(&mut metadata, descriptor).map_err(io::Error::other));
+    if result.is_err() {
+        drop(target);
+        drop(metadata);
+        let _ = fs::remove_file(meta);
+        let _ = fs::remove_file(path);
+    }
+    result
 }
 fn tiles(cam_x: f64, cam_y: f64, cols: i32, rows: i32) -> (Value, Vec<(i32, i32)>) {
     let ox = cam_x.floor() as i32;
@@ -181,25 +288,45 @@ fn compare_packets(baseline: &str, candidate: &str) -> Result<(), String> {
     Ok(())
 }
 fn main() -> Result<(), String> {
-    let sketch = std::env::args().nth(1).unwrap_or_else(|| "testing/fixtures/user-regression-20261109/拓扑素材.sketch".into());
-    let store = std::env::args().nth(2).unwrap_or_else(|| "/tmp/topology-measure.scene".into());
-    let meta_path = format!("{store}.json");
-    let mut descriptor = if sketch.ends_with(".json") {
-        eprintln!("loading descriptor {sketch}");
-        let mut descriptor: Value = serde_json::from_str(&fs::read_to_string(&sketch).unwrap()).unwrap();
+    let mut args = std::env::args_os().skip(1);
+    let sketch = PathBuf::from(args.next().unwrap_or_else(|| "testing/fixtures/user-regression-20261109/拓扑素材.sketch".into()));
+    let sketch = sketch.canonicalize().map_err(|error| error.to_string())?;
+    let store = args.next().map(std::path::absolute).transpose().map_err(|error| error.to_string())?;
+    let mut _profile = None;
+    let mut descriptor = if sketch.extension().and_then(|ext| ext.to_str()) == Some("json") {
+        eprintln!("loading descriptor {}", sketch.display());
+        let mut descriptor: Value = serde_json::from_slice(&fs::read(&sketch).map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
         if let Some(path) = descriptor.get("path").and_then(|v| v.as_str()) {
-            if !PathBuf::from(path).exists() && PathBuf::from(&store).exists() {
+            if !Path::new(path).exists() && let Some(store) = store.filter(|path| path.is_file()) {
                 descriptor["path"] = json!(store);
             }
         }
         descriptor
-    } else if PathBuf::from(&store).exists() && PathBuf::from(&meta_path).exists() {
-        eprintln!("reusing {store}");
-        serde_json::from_str(&fs::read_to_string(&meta_path).unwrap()).unwrap()
     } else {
-        let descriptor = import_store(&sketch, &store);
-        fs::write(&meta_path, serde_json::to_string_pretty(&descriptor).unwrap()).unwrap();
-        descriptor
+        let source_sha = hash_file(&sketch).map_err(|error| error.to_string())?;
+        if let Some(store) = store {
+            let mut meta = store.as_os_str().to_owned();
+            meta.push(".json");
+            let meta = PathBuf::from(meta);
+            if store.is_file() && meta.is_file() {
+                let mut descriptor: Value = serde_json::from_slice(&fs::read(&meta).map_err(|error| error.to_string())?)
+                    .map_err(|error| error.to_string())?;
+                if descriptor["sourceSha256"] != source_sha {
+                    return Err("Saved scene belongs to another source archive".into());
+                }
+                descriptor["path"] = json!(store);
+                descriptor
+            } else {
+                let profile = Scratch::new().map_err(|error| error.to_string())?;
+                let mut descriptor = import_store(&sketch, &profile, &source_sha)?;
+                save_store(&mut descriptor, &store, &meta).map_err(|error| error.to_string())?;
+                descriptor
+            }
+        } else {
+            let profile = _profile.insert(Scratch::new().map_err(|error| error.to_string())?);
+            import_store(&sketch, profile, &source_sha)?
+        }
     };
     if !descriptor.get("documentId").is_some() {
         if let Some(id) = descriptor["store"]["documentId"].as_str() {
@@ -229,10 +356,11 @@ fn main() -> Result<(), String> {
         }
     }
     println!("{}", serde_json::to_string_pretty(&json!({
-        "scope": "Real LFS topology Sketch imported by import_sketch_report, then native Preparation compile_gpu_packet for a 4x4 fixed viewport and an adjacent pan. Not Electron, Metal, or GUI scanout.",
+        "scope": "Indexed desktop Sketch scene compiled by native Preparation for fixed and adjacent viewports. CPU packets only.",
         "descriptor": {
             "nodes": source_metadata["nodes"], "roots": source_metadata["roots"],
             "sourceSha256": source_metadata["sourceSha256"], "documentId": descriptor["documentId"],
+            "importMs": source_metadata["importMs"],
         },
         "fixed": fixed,
         "adjacent": adjacent,
