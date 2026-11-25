@@ -66,9 +66,11 @@ export function pasteProperties(target:DesignDocument,ids:string[],packet:Return
     n.bindings={...Object.fromEntries(Object.entries(n.bindings||{}).filter(([key])=>!keys.includes(key.split('.')[0]))),...Object.fromEntries(Object.entries(source.bindings||{}).filter(([key])=>keys.includes(key.split('.')[0])))}
     n.styleRefs={...Object.fromEntries(Object.entries(n.styleRefs||{}).filter(([key])=>!keys.includes(key))),...Object.fromEntries(Object.entries(source.styleRefs||{}).filter(([key])=>keys.includes(key)))}
     if(keys.includes('fills')){
-      if(source.sketchLayerStyleOverridden){n.sketchLayerStyleOverridden=true;target.schemaVersion=26}
+      if(source.sketchLayerStyleOverridden){n.sketchLayerStyleOverridden=true;if(target.schemaVersion<26)target.schemaVersion=26}
       else delete n.sketchLayerStyleOverridden
     }
+    if (target.schemaVersion < 34 && (keys.includes('fills') && n.fills.some(paint => paint.video) ||
+        keys.includes('strokes') && n.strokes.some(stroke => stroke.paint.video))) target.schemaVersion = 34
     if(source.variableModes)n.variableModes={...n.variableModes,...cloneValue(source.variableModes)}
   }
 }

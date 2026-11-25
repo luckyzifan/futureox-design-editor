@@ -32,6 +32,23 @@ test('polygon corner properties are copied only to eligible polygon/star targets
  const d=blank(),a=node('polygon',0,0,50,50),b=node('rectangle',0,0,20,20);a.cornerRadius=8;d.schemaVersion=7;d.nodes[a.id]=a;d.nodes[b.id]=b;d.pages[0].children=[a.id,b.id]
  const packet=readProperties(copyProperties(d,a.id));pasteProperties(d,[b.id],packet);expect(d.nodes[b.id].cornerRadius).toBeUndefined();validateDocument(d)
 })
+test('pasting a video fill preserves original local media and promotes the destination schema', () => {
+  const source = blank(), original = node('rectangle')
+  source.schemaVersion = 34
+  original.fills = [{
+    ...paint('#112233', 'image'),
+    video: 'data:video/webm;base64,GkXfowAAAAAA',
+    image: 'data:image/png;base64,iVBORw0KGgo=',
+  }]
+  source.nodes[original.id] = original
+  source.pages[0].children.push(original.id)
+  const target = blank(), destination = node('rectangle')
+  target.nodes[destination.id] = destination
+  target.pages[0].children.push(destination.id)
+  pasteProperties(target, [destination.id], readProperties(copyProperties(source, original.id, 'fills')))
+  expect(validateDocument(target).schemaVersion).toBe(34)
+  expect(target.nodes[destination.id].fills).toEqual(original.fills)
+})
 test('async property paste rejects stale selection and leaves locked layers unchanged',async()=>{
  const d=blank(),a=node('rectangle',0,0,10,10),b=node('rectangle',20,0,10,10);a.fills=[paint('#abcdef')];d.nodes[a.id]=a;d.nodes[b.id]=b;d.pages[0].children=[a.id,b.id]
  const e=new Editor(d),packet=copyProperties(d,a.id);e.select([b.id]);const before=e.state.doc

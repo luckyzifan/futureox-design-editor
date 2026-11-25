@@ -295,6 +295,7 @@ fn style(layer: &Layer, scene: &mut GpuScene) -> Result<(Vec<GpuPaint>, f64)> {
                 angle: 0.,
                 stops,
                 image: None,
+                video: None,
                 fit: "cover".into(),
                 blend: "normal".into(),
                 adjust: None,

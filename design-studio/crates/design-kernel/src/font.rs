@@ -792,6 +792,7 @@ pub fn expand_rich_text(doc: &mut crate::scene::Document, fonts: &Fonts) -> Resu
                     angle: 0.,
                     stops: vec![],
                     image: None,
+                    video: None,
                     fit: "cover".into(),
                     blend: "normal".into(),
                     adjust: None,

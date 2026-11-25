@@ -18,6 +18,7 @@ import type { DesktopBridge } from './desktop'
 import { interfacePreference } from './interface-preference'
 import { emptySystem, setVariableMode } from './design-system'
 import { decodeDocumentBinary, encodeDocumentBinary } from './kernel/binfmt'
+import * as videoFill from './local-video-fill'
 const bootstrap = await vi.hoisted(async () => {
   // @ts-expect-error jsdom runtime dependency
   const { JSDOM } = await import('jsdom')
@@ -127,6 +128,56 @@ test('Figma Libraries creates and persists a named local color style from the cu
   await click(button('关闭颜色编辑'))
   await act(async () => editor.undo())
   expect(editor.authoredDocument).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+})
+const fixtureVideo = {
+  video: 'data:video/webm;base64,GkXfowAAAAAA',
+  image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+}
+
+async function chooseVideoFile() {
+  interfacePreference.set({ uiMode: 'figma', locale: 'zh-CN' })
+  await act(async () => root.render(<PendingEditContext.Provider value={editor}><Inspector editor={editor} /></PendingEditContext.Provider>))
+  await click(button('颜色'))
+  const input = field('选择视频'), picker = vi.spyOn(input, 'click')
+  expect(button('视频').disabled).toBe(false)
+  await click(button('视频'))
+  expect(picker).toHaveBeenCalledOnce()
+  expect(dialog()).toBeNull()
+  Object.defineProperty(input, 'files', { configurable: true, value: [new dom.window.File(['clip'], 'test.webm', { type: 'video/webm' })] })
+  await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+}
+
+test('Video action writes the decoded poster and original media into one undoable FD edit', async () => {
+  const decode = vi.spyOn(videoFill, 'readLocalVideoFill').mockResolvedValue(fixtureVideo)
+  const before = editor.authoredDocument, paintId = before.nodes[id].fills[0].id
+  await chooseVideoFile()
+  expect(decode).toHaveBeenCalledOnce()
+  const after = editor.authoredDocument
+  expect(after.schemaVersion).toBe(34)
+  expect(after.nodes[id].fills[0]).toMatchObject({ id: paintId, kind: 'image', opacity: .6, ...fixtureVideo })
+  const fd = validateDocument(decodeDocumentBinary(encodeDocumentBinary(after)))
+  expect(fd.nodes[id].fills[0]).toEqual(after.nodes[id].fills[0])
+  expect(editor.state.version).toBe(1)
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+  await act(async () => editor.redo())
+  expect(editor.authoredDocument).toEqual(after)
+})
+
+test('late video decoding cannot write into a new document or consume its first undo', async () => {
+  let resolve!: (value: typeof fixtureVideo) => void
+  const decode = vi.spyOn(videoFill, 'readLocalVideoFill').mockImplementation(() => new Promise(done => { resolve = done }))
+  await chooseVideoFile()
+  const replacement = blank(), target = node('rectangle')
+  replacement.nodes[target.id] = target
+  replacement.pages[0].children.push(target.id)
+  await act(async () => { editor.load(replacement); editor.select([target.id]) })
+  expect(decode.mock.calls[0][2].aborted).toBe(true)
+  const before = editor.authoredDocument
+  await act(async () => resolve(fixtureVideo))
+  expect(editor.authoredDocument).toBe(before)
   expect(editor.canUndo).toBe(false)
 })
 async function key(input: Element, key: string, options: object = {}) { await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options }))) }

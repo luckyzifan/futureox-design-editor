@@ -9,6 +9,7 @@ import { validStroke, validProfiles } from './stroke-profile'
 import type { AnimationClip } from './animation'
 import { validColor, validColorSettings, type ColorSettings } from './color'
 import { isEmbeddedRasterUri } from './embedded-raster'
+import { isLocalVideoData } from './local-video-fill'
 export const MAX_GRADIENT_STOPS = 64
 export type Point = { x: number; y: number }
 export type Matrix = [number, number, number, number, number, number]
@@ -106,6 +107,8 @@ export type Paint = {
   angle: number
   stops: { offset: number; color: string }[]
   image?: string
+  /** The original local video. The image is the authored, deterministic poster. */
+  video?: string
   fit: 'cover' | 'contain' | 'stretch'
   blend: Blend
   /** Image adjustments (schema 13, image paints only); absent = identity. */
@@ -546,7 +549,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34
   id: string
   name: string
   pages: Page[]
@@ -875,7 +878,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1036,7 +1039,9 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     (!['linear', 'radial', 'angular', 'diamond'].includes(p.kind) || p.stops.length >= 2) &&
     p.stops.length <= MAX_GRADIENT_STOPS &&
     p.stops.every((s) => finite(s.offset, 0, 1) && color.test(s.color)) &&
-    (!p.image || !!sourceBitmap(p.image) || isEmbeddedRasterUri(p.image))
+    (!p.image || !!sourceBitmap(p.image) || isEmbeddedRasterUri(p.image)) &&
+    (p.video === undefined || (d.schemaVersion >= 34 && p.kind === 'image' && typeof p.image === 'string' && p.image.startsWith('data:image/png;base64,') &&
+      p.image.length <= 12 * 1024 * 1024 && isLocalVideoData(p.video)))
   const paints = (list: Paint[]) => Array.isArray(list) && list.length <= 16 && list.every(validPaint)
   const defaultStyle = defaultTextStyle()
   let segmenter: Intl.Segmenter | undefined

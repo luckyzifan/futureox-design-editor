@@ -10,6 +10,7 @@ export const CSP = [
   "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
+  "media-src blob:",
   "font-src 'self' data: blob:",
   "connect-src 'self'",
   "worker-src 'self' blob:",

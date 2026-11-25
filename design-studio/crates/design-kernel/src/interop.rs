@@ -861,6 +861,7 @@ fn blank_paint(kind: &str) -> Paint {
         angle: 0.,
         stops: Vec::new(),
         image: None,
+        video: None,
         fit: "cover".into(),
         blend: "normal".into(),
         adjust: None,

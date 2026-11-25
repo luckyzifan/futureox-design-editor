@@ -147,7 +147,7 @@ async function mountFixture() {
 }
 
 function fileInput() {
-  const inputs = [...mount.querySelectorAll<HTMLInputElement>('.paint-editor input[type="file"]')]
+  const inputs = [...mount.querySelectorAll<HTMLInputElement>(`.paint-editor input[type="file"][accept="${RASTER_MIME_ACCEPT}"]`)]
   expect(inputs).toHaveLength(1)
   expect(inputs[0].accept).toBe(RASTER_MIME_ACCEPT)
   expect(RASTER_MIME_ACCEPT).toContain('image/gif')
