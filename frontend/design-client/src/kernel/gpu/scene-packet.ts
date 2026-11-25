@@ -15,18 +15,6 @@ type PacketTransportStats = Readonly<{scenePacketProtocol:number;scenePacketVers
   scenePacketBytes:number;scenePacketMetadataBytes:number;scenePacketResourceBytes:number;
   sceneCurveBytes:number;sceneWireCurveBytes:number}>
 
-function copyProgramStorage(scene: GpuScene) {
-  const {vertices, curves} = scene
-  if (!(vertices instanceof Float32Array) || !(curves instanceof Float32Array) ||
-      vertices.buffer !== curves.buffer || curves.byteOffset !== vertices.byteOffset + vertices.byteLength)
-    throw Error('Unpacked scene geometry')
-  const geometry = new Uint8Array(vertices.buffer, vertices.byteOffset, vertices.byteLength + curves.byteLength).slice()
-  const copy = {...scene, vertices:new Float32Array(geometry.buffer, 0, vertices.length),
-    curves:new Float32Array(geometry.buffer, vertices.byteLength, curves.length)}
-  bindSourcePrograms(copy)
-  return {geometry, copy}
-}
-
 function rememberTransport(wire: Uint8Array, packet: Uint8Array) {
   const header = new DataView(packet.buffer, packet.byteOffset, packet.byteLength)
   transportStats.set(wire, Object.freeze({
@@ -105,16 +93,13 @@ export function decodeScenePacket(input:ScenePacket,store?:FrameResources,lease?
   if(typeof resourceScope!=='string'||!Number.isSafeInteger(frameSequence)||frameSequence<=0||!Array.isArray(nodeResources)||
       ![7,8].includes(fields.version)||!Array.isArray(fields.roots))throw Error('Invalid frame scene metadata')
   const incoming=new Map<number,FrameResource>(), priorResources=resourceScope&&lease?.scope===resourceScope?lease.entries:undefined
-  let cursor=resourceStart, curveBytes=nc*4
+  let cursor=resourceStart
   while(cursor<bytes.length){
     if(bytes.length-cursor<9)throw Error('Truncated frame resource')
     const id=header.getUint32(cursor,true),kind=bytes[cursor+4],length=header.getUint32(cursor+5,true);cursor+=9
     if(length>bytes.length-cursor||incoming.has(id))throw Error('Invalid frame resource length or identity')
     const data=bytes.subarray(cursor,cursor+length);cursor+=length
-    if (kind === 4) {
-      if (curveResources === undefined) throw Error('Curve program without an arena')
-      curveBytes += length
-    }
+    if (kind === 4 && curveResources === undefined) throw Error('Curve program without an arena')
     const prior=priorResources?.get(id)
     if(prior){
       if(prior.kind!==kind||prior.data.length!==data.length||!prior.data.every((v,i)=>v===data[i]))throw Error('Frame resource identity changed')

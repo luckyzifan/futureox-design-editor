@@ -1133,6 +1133,7 @@ if (releaseFrame && displayFrame && nativeClippedViewport(next,displayFrame) &&
               !next.gestureSoftEffects && !bitmapRepairScene && ending && terminalPoseDisposition(pose,ending)==='same'){
             pose.input=ending.input;pose.terminal=true;pendingPose=undefined
             if(!session.patch&&!document)document=authoredPose()
+          }
           session.scene=next
 session.bitmapPreviewOnly=!!bitmapRepairScene&&!pose.terminal
           if (session.native) session.nativePosePending = !!advance?.motion

@@ -153,13 +153,14 @@ private requestBoardFill() {
       [offset.x * tile.zoom, offset.y * tile.zoom].every(Number.isSafeInteger))
   }
   private reusableOffset(offset: { x: number; y: number }) {
-    // A clipped board's texels belong to one sample lattice. Both axes must
-    // land on whole physical pixels before those texels can move. A fractional
-    // axis keeps the last accepted frame and asks native to rasterize the real
-    // pose on that same camera lattice. Ordinary boards and page reprojection
-    // keep their established rules.
-    if (this.board && !this.srgbBoard) return this.integerPhysicalOffset(offset)
-    if (this.srgbBoard?.clipped) return this.integerPhysicalOffset(offset)
+    // A fractional page translation or a clipped finite window keeps its
+    // texels on one sample lattice and must hand off to native when an axis
+    // leaves whole physical pixels. A fully visible isolated sRGB board may
+    // use its exact release bands at fractional offsets.
+    const worldInteger = Number.isSafeInteger(offset.x) && Number.isSafeInteger(offset.y)
+    if (this.board && (this.fractional || !this.srgbBoard || this.srgbBoard.clipped || !worldInteger))
+      return this.integerPhysicalOffset(offset)
+    if (this.srgbBoard) return this.residents.length > 0
     return this.residents.length > 0 && (this.fractional || this.integerPhysicalOffset(offset))
   }
   private rebase(document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1], guides=this.input.guides) {
