@@ -402,6 +402,10 @@ pub struct Paint {
     /// Replacing a paint replaces this owner; JSON/FD still contain the exact
     /// original string. No lossy interning or resource identity substitution.
     pub image: Option<std::sync::Arc<str>>,
+    /// Original local media. Renderers use the persisted image poster; playback
+    /// decodes the source only when the user opens the fill's preview.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video: Option<std::sync::Arc<str>>,
     #[serde(default = "cover")]
     pub fit: String,
     #[serde(default = "normal")]
@@ -421,6 +425,29 @@ pub struct Stop {
     pub color: String,
 }
 impl Paint {
+    pub(crate) fn validate_video_fill(&self, version: u32) -> Result<(), String> {
+        let Some(video) = self.video.as_deref() else { return Ok(()); };
+        if version < 34 || self.kind != "image" || !self.image.as_deref().is_some_and(|poster|
+            poster.len() <= 12 * 1024 * 1024 && poster.starts_with("data:image/png;base64,"))
+        {
+            return Err("Local video fills require an image poster and document schema 34".into());
+        }
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        let validate = |payload: &str, valid: fn(&[u8]) -> bool| {
+            const MAX_BYTES: usize = 8 * 1024 * 1024;
+            let padding = if payload.ends_with("==") { 2 } else if payload.ends_with('=') { 1 } else { 0 };
+            payload.len() <= MAX_BYTES.div_ceil(3) * 4 && payload.len().is_multiple_of(4)
+                && (payload.len() / 4 * 3).saturating_sub(padding) <= MAX_BYTES
+                && payload.get(..12).and_then(|header| STANDARD.decode(header).ok()).is_some_and(|header| valid(&header))
+        };
+        let valid = video.strip_prefix("data:video/webm;base64,").is_some_and(|payload|
+            validate(payload, |header| header.starts_with(&[0x1a, 0x45, 0xdf, 0xa3])))
+            || video.strip_prefix("data:video/mp4;base64,").is_some_and(|payload|
+                validate(payload, |header| header.get(4..8) == Some(b"ftyp")));
+        if !valid { return Err("Invalid local WebM or MP4 fill data".into()); }
+        Ok(())
+    }
+
     /// A spatially constant paint can blend its original opacity directly.
     /// Keep gradient parsing/transform validation before using this shortcut.
     pub fn constant_color(&self) -> Option<&str> {
@@ -872,7 +899,7 @@ impl Node {
     }
     pub(crate) fn mask_geometry(&self, shape: bool) -> Node {
         let white=Paint {id:String::new(),kind:"solid".into(),color:"#ffffff".into(),opacity:1.,visible:true,
-            angle:0.,stops:Vec::new(),image:None,fit:"cover".into(),blend:"normal".into(),transform:None,adjust:None,tile:None};
+            angle:0.,stops:Vec::new(),image:None,video:None,fit:"cover".into(),blend:"normal".into(),transform:None,adjust:None,tile:None};
         let mut node=self.clone();
         node.fills=if shape || self.fills.iter().any(|p|p.visible&&p.opacity>0.) {vec![white.clone()]} else {Vec::new()};
         if shape {node.strokes.clear();}
@@ -1674,6 +1701,7 @@ impl Document {
                 return Err("Boolean groups require 1–64 operands".into());
             }
             for paint in n.fills.iter().chain(n.strokes.iter().map(|s| &s.paint)) {
+                paint.validate_video_fill(self.schema_version)?;
                 if !paint.opacity.is_finite()
                     || !(0. ..=1.).contains(&paint.opacity)
                     || !paint.angle.is_finite()
@@ -1990,7 +2018,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if !(1..=33).contains(&self.schema_version)
+        if !(1..=34).contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32

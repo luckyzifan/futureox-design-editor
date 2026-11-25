@@ -391,7 +391,7 @@ fn apply_projection(doc: &mut Document, patches: BTreeMap<String, Projection>) -
             node.fills.push(crate::scene::Paint {
                 transform:None,id:String::new(),kind:"solid".into(),
                 color:format!("#{:02x}{:02x}{:02x}",cell.rgb[0],cell.rgb[1],cell.rgb[2]),
-                opacity:f64::from(cell.alpha)/255.,visible:true,angle:0.,stops:Vec::new(),image:None,
+                opacity:f64::from(cell.alpha)/255.,visible:true,angle:0.,stops:Vec::new(),image:None,video:None,
                 fit:"cover".into(),blend:"normal".into(),adjust:None,tile:None,
             });
             children.push(cell_id.clone());

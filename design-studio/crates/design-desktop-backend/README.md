@@ -276,6 +276,11 @@ edit remains dirty even if an earlier save finishes successfully.
   validated. Direct backend round-trips retain compatible unknown JSON fields.
   Formatting/key order are normalized; this is semantic JSON preservation, not
   byte-identical preservation or a guarantee about arbitrary future schemas.
+- Schema 34 supports local video fills. An image paint can store the original
+  WebM or MP4 bytes in its optional `video` data URI alongside the PNG poster
+  in `image`. The poster is the canvas and static export source. The Inspector
+  decodes the original media for playback and scrubbing. Import accepts up to
+  8 MiB of encoded media and a 12 MiB poster data URI.
 - UUID syntax for document/node/page IDs and unique page IDs is also checked to
   match the desktop editor. Frontend validation/migration still applies; kernel
   validation is not a claim that every frontend authoring constraint is identical.

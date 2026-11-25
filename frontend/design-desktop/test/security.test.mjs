@@ -88,6 +88,7 @@ test('CSP denies remote code, frames, objects, forms and only permits WASM compi
   for (const kind of ['frame-src', 'object-src', 'base-uri', 'form-action', 'frame-ancestors'])
     assert.ok(CSP.includes(`${kind} 'none'`))
   assert.match(CSP, /connect-src 'self'/)
+  assert.equal(CSP.split('; ').find(rule => rule.startsWith('media-src ')), 'media-src blob:')
 })
 test('backend errors preserve conflict status without leaking local paths', () => {
   assert.equal(resultError({ code: 'CONFLICT' }).status, 'conflict')

@@ -760,6 +760,7 @@ impl GpuPaint {
             ]
         });
         let mut canonical = paint.clone();
+        canonical.video = None;
         canonical
             .stops
             .sort_by(|a, b| a.offset.total_cmp(&b.offset));

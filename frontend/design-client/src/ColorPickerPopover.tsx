@@ -17,10 +17,11 @@ type KindPatch = { color: string; opacity: number }
 
 /** Transactional solid-fill entry point; ordinary controls must opt in with a
  * semantic target. A callback alone is never enough to claim document ownership. */
-export function SolidFillColorInput({ target, value, label, opacity = false, kind, onKind, channel = 'fill', buttonText }: {
+export function SolidFillColorInput({ target, value, label, opacity = false, kind, onKind, onVideo, channel = 'fill', buttonText }: {
   target: SolidFillTarget; value: string; label: string; opacity?: boolean
   kind?: Paint['kind']; onKind?: (kind: KindChoice, patch?: KindPatch) => void; channel?: PaintChannel
   buttonText?: string
+  onVideo?: () => void
 }) {
   const { tr } = usePropertyText()
   const editor = useContext(PendingEditContext), trigger = useRef<HTMLButtonElement>(null)
@@ -42,15 +43,16 @@ export function SolidFillColorInput({ target, value, label, opacity = false, kin
     </button>
     {error && <span role="alert">{tr(error)}</span>}
     {session && <ColorPickerPopover session={session} trigger={trigger} focusOpacity={opacity} kind={kind} onKind={onKind}
-      fillTarget={target} onClose={() => setSession(null)} />}
+      onVideo={onVideo} fillTarget={target} onClose={() => setSession(null)} />}
   </span>
 }
 
 /** Stroke and other paints have no preview lease. The same popover commits once. */
-export function LoosePaintColor({ label, color, opacity, hex, kind, onChange, onKind, channel = 'stroke' }: {
+export function LoosePaintColor({ label, color, opacity, hex, kind, onChange, onKind, onVideo, isVideo, channel = 'stroke' }: {
   label: string; color: string; opacity: number; hex: string; kind?: Paint['kind']
   onChange: (patch: { color: string; opacity: number }) => void
   onKind?: (kind: KindChoice, patch?: KindPatch) => void; channel?: PaintChannel
+  onVideo?: () => void; isVideo?: boolean
 }) {
   const { tr } = usePropertyText()
   const editor = useContext(PendingEditContext)
@@ -75,7 +77,7 @@ export function LoosePaintColor({ label, color, opacity, hex, kind, onChange, on
     <button ref={alpha} type="button" className="paint-opacity-trigger" aria-label={tr('填充不透明度')} aria-haspopup="dialog" aria-expanded={!!open?.focusOpacity}
       onClick={() => show(true)}>{Math.round(opacity * 100)}%</button>
     {open && <MacColorDialog trigger={open.focusOpacity ? alpha : swatch} focusOpacity={open.focusOpacity} preview={false}
-      color={draft.color} opacity={draft.opacity} valid={valid} error={error} kind={kind}
+      color={draft.color} opacity={draft.opacity} valid={valid} error={error} kind={kind} isVideo={isVideo}
       onUpdate={patch => { setError(''); setDraft(value => ({ ...value, ...patch })) }}
       onComposition={() => {}}
       onCommit={() => {
@@ -91,14 +93,16 @@ export function LoosePaintColor({ label, color, opacity, hex, kind, onChange, on
         }).catch(reason => { if ((reason as Error).name !== 'AbortError') setError('画布取色失败，请重试') })
       }}
       onKind={kindName => { setOpen(null); onKind?.(kindName, { color: draft.color, opacity: Number(draft.opacity) / 100 }) }}
+      onVideo={onVideo ? () => { setOpen(null); onVideo() } : undefined}
     />}
   </>
 }
 
-export function ColorPickerPopover({ session, trigger, focusOpacity = false, onClose, kind, onKind, fillTarget }: {
+export function ColorPickerPopover({ session, trigger, focusOpacity = false, onClose, kind, onKind, onVideo, fillTarget }: {
   session: ColorEditSession; trigger: RefObject<HTMLButtonElement | null>; focusOpacity?: boolean; onClose: () => void
   kind?: Paint['kind']; onKind?: (kind: KindChoice, patch?: KindPatch) => void
   fillTarget?: SolidFillTarget
+  onVideo?: () => void
 }) {
   const [, render] = useState(0)
   const closed = useRef(false), close = useRef(onClose)
@@ -145,12 +149,13 @@ export function ColorPickerPopover({ session, trigger, focusOpacity = false, onC
     onCancel={() => session.cancel()}
     onSample={() => void session.sample((signal, lease) => requestCanvasColor(session.editor, signal, lease))}
     onKind={onKind ? kindName => { if (!session.commit()) return; onKind(kindName) } : undefined}
+    onVideo={onVideo ? () => { if (session.commit()) onVideo() } : undefined}
     onBindVariable={fillTarget ? bindVariable : undefined}
     onCreateStyle={fillTarget ? createStyle : undefined}
   />
 }
 
-function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opacity: opacityValue, valid, error, kind, onUpdate, onComposition, onCommit, onCancel, onSample, onKind, onBindVariable, onCreateStyle }: {
+function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opacity: opacityValue, valid, error, kind, onUpdate, onComposition, onCommit, onCancel, onSample, onKind, onVideo, isVideo, onBindVariable, onCreateStyle }: {
   trigger: RefObject<HTMLButtonElement | null>; focusOpacity: boolean; preview: boolean
   color: string; opacity: string; valid: boolean; error: string; kind?: Paint['kind']
   onUpdate: (patch: Partial<ColorDraft>) => void
@@ -159,6 +164,8 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
   onCancel: () => void
   onSample: () => void
   onKind?: (kind: KindChoice, patch?: KindPatch) => void
+  onVideo?: () => void
+  isVideo?: boolean
   onBindVariable?: (variableId: string) => void
   onCreateStyle?: (name: string) => void
 }) {
@@ -298,8 +305,9 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
       {fileColors.colors.length ? <div className="property-color-swatches">{fileColors.colors.map(swatch => <button type="button" key={swatch} aria-label={swatch} onClick={() => update({ color: swatch.toLowerCase() })} style={{ background: swatch }} />)}</div> : <p className="muted">{tr('此页还没有纯色')}</p>}
     </div> : <>
       <div className="property-color-kinds" role="toolbar" aria-label={tr('填充类型')}>
-        {(['solid', 'linear', 'radial', 'angular', 'diamond', 'image'] as const).map(id => <button type="button" key={id} aria-label={tr(kindLabel[id])} aria-pressed={kind === id} onClick={() => onKind?.(id)}>{typeIcon(id)}</button>)}
-        <button type="button" aria-label={tr('视频')} disabled title={tr('视频填充尚未提供')}>{typeIcon('video')}</button>
+        {(['solid', 'linear', 'radial', 'angular', 'diamond', 'image'] as const).map(id => <button type="button" key={id} aria-label={tr(kindLabel[id])} aria-pressed={!isVideo && kind === id} onClick={() => onKind?.(id)}>{typeIcon(id)}</button>)}
+        <button type="button" aria-label={tr('视频')} aria-pressed={!!isVideo}
+          disabled={uiMode !== 'figma' || !onVideo || !valid} onClick={onVideo}>{typeIcon('video')}</button>
         <button ref={variableTrigger} type="button" aria-label={tr('变量')} aria-expanded={canBindVariable ? variablesOpen : undefined}
           disabled={!canBindVariable} title={tr(canBindVariable ? '本地颜色变量' : '变量填色尚未提供')}
           onClick={() => setVariablesOpen(value => !value)}>{typeIcon('variables')}</button>

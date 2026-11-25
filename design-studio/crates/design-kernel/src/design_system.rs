@@ -434,8 +434,11 @@ pub fn validate(doc: &Document) -> Result<(), String> {
     for style in s.styles.values() {
         match style.kind.as_str() {
             "paint" => {
-                let _: Vec<crate::scene::Paint> =
+                let paints: Vec<crate::scene::Paint> =
                     serde_json::from_value(style.value.clone()).map_err(|e| e.to_string())?;
+                for paint in paints.iter().chain(style.strokes.iter().map(|stroke| &stroke.paint)) {
+                    paint.validate_video_fill(doc.schema_version)?;
+                }
                 if !style.strokes.is_empty() || !style.effects.is_empty() {
                     if doc.schema_version < 12 {
                         return Err("Shared style strokes/effects require schema 12".into());

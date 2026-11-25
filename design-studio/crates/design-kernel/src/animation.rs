@@ -219,6 +219,7 @@ impl Pose {
         &self,
         base: &Node,
         color: Option<crate::color::ColorSettings>,
+        schema_version: u32,
     ) -> Result<(), String> {
         crate::authoring_shapes::validate(
             &self.kind,
@@ -257,6 +258,7 @@ impl Pose {
             .iter()
             .chain(self.strokes.iter().map(|s| &s.paint))
         {
+            p.validate_video_fill(schema_version)?;
             crate::color::pixel(color, &p.color, 1.)?;
             if !p.opacity.is_finite()
                 || !(0. ..=1.).contains(&p.opacity)
@@ -536,7 +538,7 @@ pub fn validate(doc: &Document) -> Result<(), String> {
                 }
                 previous = Some(key.time_ms);
                 key.easing.validate()?;
-                key.value.validate(base, doc.color_management)?;
+                key.value.validate(base, doc.color_management, doc.schema_version)?;
                 if key.value.vector_geometry.is_some() && doc.schema_version<16 {return Err("Animated vector render geometry requires schema 16".into());}
                 if let Some(n) = &key.value.network {
                     vertices += n.vertices.len() + n.edges.len();
@@ -788,7 +790,7 @@ pub(crate) fn sample_validated(
             .nodes
             .get_mut(&track.node_id)
             .ok_or("Animation target disappeared")?;
-        value.validate(node, doc.color_management)?;
+        value.validate(node, doc.color_management, doc.schema_version)?;
         value.apply(node);
     }
     Ok((

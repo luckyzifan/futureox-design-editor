@@ -152,6 +152,7 @@ fn solid(id: String, value: String) -> Paint {
         angle: 0.,
         stops: vec![],
         image: None,
+        video: None,
         fit: "cover".into(),
         blend: "normal".into(),
         adjust: None,
