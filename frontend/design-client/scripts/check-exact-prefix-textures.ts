@@ -112,10 +112,18 @@ await runProof('forma-prefix-textures', [], async (proof) => {
   })
   // The wide analytic shadow uses these boxes at native DPR. Include full
   // kernels, transparent padding, a partial scan block and alpha-only writes.
-  for (const [w,h,r,channels] of [[1031,13,479,8], [13,997,480,8], [367,17,147,15]]) {
+  // Radii 119/120 are the 800% (16x device) text-shadow boxes; 479/480 are the
+  // 3200% (64x) boxes. The exact prefix must match the rational reducer at both.
+  for (const [w,h,r,channels] of [[1031,13,479,8], [13,997,480,8], [367,17,147,15], [1031,13,119,8], [13,997,120,8]]) {
     const rgba = Float32Array.from({length:w*h*4}, (_,i) => channels === 15 || i % 4 === 3 ? ((i * 19) % 113) / 112 : 0)
     fixtures.push({name:`${channels===8?'shadow':'backdrop'}-box-${w}x${h}`,kind:'box',w,h,r,origin:[31949,25297],channels,
       values:Array.from(new Uint32Array(rgba.buffer))})
+  }
+  // 800% shadow alpha across multiple 256-lane scan chunks with a partial final
+  // block, both axes, and a fractional-origin addressing proof at the low zoom.
+  for (const [w,h,r] of [[3484,2,120], [2,3484,119], [769,3,120]]) {
+    fixtures.push({name:`low-zoom-shadow-chunk-${w}x${h}`,kind:'box',w,h,r,origin:[31949,25297],channels:8,maxBandLines:255,
+      values:Array.from({length:w*h*4}, (_,i) => i % 4 === 3 ? ((i * 19) % 113) / 112 : 0)})
   }
   for (const f of fixtures) {
     f.kernel = Array.from(f.kind === 'box' ? rational_box_kernel_rgba(f.r) : rational_tent_kernel_rgba(f.r))
