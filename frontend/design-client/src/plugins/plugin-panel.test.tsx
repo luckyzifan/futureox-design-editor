@@ -260,6 +260,60 @@ test('a desktop folder loads named UI files before running the selected command'
   }
 })
 
+test('mounted plugin documentchange reports local authored nodes and their changed properties', async () => {
+  interfacePreference.set({ locale: 'en' })
+  const code = `
+    figma.on('documentchange', function (event) {
+      const changes = event.documentChanges.map(function (change) {
+        return change.type + ':' + change.origin + ':' + (change.node.removed ? 'removed' : change.node.name) +
+          (change.properties ? ':' + change.properties.join(',') : '')
+      })
+      figma.notify(changes.join('|'))
+    })
+  `
+  const desktop = {
+    plugins: {
+      list: async () => ({ status: 'ok' as const, plugins: [{ grant, manifestText }] }),
+      read: async () => ({ status: 'ok' as const, files: { 'code.js': code, 'ui.html': '' } }),
+      closeUi: async () => ({ status: 'ok' as const }),
+      onUiMessage: () => () => {},
+      onUiClosed: () => () => {},
+    },
+  } as unknown as DesktopBridge
+  const { Editor: EditorClass } = await import('../engine')
+  const { blank, node } = await import('../model')
+  const current = new EditorClass(blank('Document changes'))
+  const status = () => document.querySelector('[role="status"]')?.textContent
+  try {
+    await act(async () => { root.render(<PluginPanel editor={current} desktop={desktop} onClose={() => {}} />) })
+    const run = [...document.querySelectorAll('button')].find(button => button.textContent === 'Run')
+    await act(async () => { run!.click() })
+    await vi.waitFor(() => expect(status()).toBe('Declared'))
+    const frame = node('frame', 0, 0, 80, 80)
+    const child = node('rectangle', 5, 8, 10, 10)
+    frame.name = 'Initial'
+    frame.children = [child.id]
+    await act(async () => {
+      current.change('Create a subtree', doc => {
+        doc.nodes[frame.id] = frame
+        doc.nodes[child.id] = child
+        doc.pages[0].children.push(frame.id)
+      })
+    })
+    expect(status()).toBe('CREATE:LOCAL:Initial')
+    await act(async () => { current.change('Rename', doc => { doc.nodes[frame.id].name = 'Renamed' }) })
+    expect(status()).toBe('PROPERTY_CHANGE:LOCAL:Renamed:name')
+    await act(async () => {
+      current.change('Delete subtree', doc => {
+        delete doc.nodes[child.id]
+        delete doc.nodes[frame.id]
+        doc.pages[0].children = []
+      })
+    })
+    expect(status()).toBe('DELETE:LOCAL:removed')
+  } finally { current.dispose() }
+})
+
 test('a plugin that finishes itself with closePlugin restores the panel load entries', async () => {
   // #207: after the guest called closePlugin the panel kept running=true, so
   // every load entry stayed disabled until the user pressed Stop plugin.

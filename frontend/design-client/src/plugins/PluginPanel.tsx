@@ -7,6 +7,7 @@ import { modalKeyDown, useModalOwnership } from '../modal-keyboard'
 import { acceptedDeclaredPlugins, type DeclaredPlugin } from './catalog'
 import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, pluginEditorEvents, PluginApiError, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
 import type { PluginStorageRequest } from './rich-host/client-storage'
+import { pluginDocumentChanges } from './rich-host/document-changes'
 import { PLUGIN_LIMITS } from './rich-host/limits'
 import { assertPluginSource, missingPluginSource, pluginBundleFromSources, pluginEditorType, pluginUiPaths, type PluginLaunchMode } from './rich-host/manifest'
 import { samplePlugin } from './sample-plugin'
@@ -120,11 +121,13 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     let watch = {
       pageId: editor.state.page, selection: editor.state.selection.join('\0'), revision: editor.state.version,
       documentId: editor.state.doc.id, session: editor.sessionGeneration,
+      authored: editor.authoredDocument,
     }
     return editor.subscribe(() => {
       const next = {
         pageId: editor.state.page, selection: editor.state.selection.join('\0'), revision: editor.state.version,
         documentId: editor.state.doc.id, session: editor.sessionGeneration,
+        authored: editor.authoredDocument,
       }
       const previous = watch
       watch = next
@@ -141,8 +144,10 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
         stopRef.current()
       }
       for (const event of events) {
+        if (!active.watches(event)) continue
         try {
-          const delivered = active.emit(event)
+          const changes = event === 'documentchange' ? pluginDocumentChanges(previous.authored, next.authored) : undefined
+          const delivered = active.emit(event, changes)
           if (delivered) void delivered.catch(failed)
         } catch (failure) { failed(failure) }
       }

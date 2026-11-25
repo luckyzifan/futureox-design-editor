@@ -67,7 +67,7 @@ Behavior follows the [Figma Plugin API](https://www.figma.com/plugin-docs/api/ap
 
 ## Still blocked
 
-These calls still throw or are absent: `createImageAsync`, vector networks, remote variable libraries, `importStyleByKeyAsync`, payment transactions, parameters, codegen, annotations, styled text range writes, reactions, relaunch buttons, `strokeStyleId`, and UI-frame network. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. `documentchange` does not list the changed nodes. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
+These calls still throw or are absent: vector networks, remote variable libraries, `importStyleByKeyAsync`, payment transactions, parameters, codegen, annotations, styled text range writes, reactions, relaunch buttons, `strokeStyleId`, and UI-frame network. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
 
 ## API coverage
 
@@ -184,7 +184,7 @@ These calls still throw or are absent: `createImageAsync`, vector networks, remo
 | `PageNode.name` | supported | Renames a page. |
 | `figma.createImage` | partial | Accepts PNG, JPEG, or WebP bytes up to 256 KiB. GIF is refused because the document does not admit a GIF data URL. The hash is the SHA-1 of those bytes, the same content id a .fig archive uses for images/<hash>. |
 | `figma.getImageByHash` | partial | Resolves a SHA-1 hash from this session or from an image paint already stored on a fill or stroke. getBytesAsync reads those bytes. getSizeAsync supports PNG and JPEG. |
-| `figma.createImageAsync` | unsupported | Throws unsupported_api. No network image fetch. Pass bytes to createImage. |
+| `figma.createImageAsync` | partial | Fetches through the declared-domain main-script bridge and applies the same image format and 256 KiB limit as createImage. |
 | `figma.createNodeFromSvg` | partial | Imports the SVG through the editor SVG importer and returns the created root. Scripts, external URLs, and animation are rejected. |
 | `figma.createVector` | unsupported | Throws unsupported_api. Vector networks are not exposed on this host. |
 | `figma.viewport.zoom` | partial | Get and set camera zoom from 0.02 to 256. Setting zoom keeps the world point at the top-left, not the visual center. |
@@ -200,7 +200,7 @@ These calls still throw or are absent: `createImageAsync`, vector networks, remo
 | `figma.currentUser` | partial | Always null. There is no account user. Optional chaining works; reading an id does not. |
 | `figma.util.rgb` | supported | Returns {r, g, b} with channels from 0 to 1. |
 | `figma.util.solidPaint` | supported | SOLID paint from #RGB, #RRGGBB, #RRGGBBAA, or an {r, g, b} object. |
-| `figma.on` | partial | The Plugins panel forwards selectionchange, currentpagechange, and documentchange for editor changes outside the plugin. documentchange has an empty documentChanges list. The plugin’s own edits do not emit them. Listeners stop when the panel closes or the document session changes. close runs inside closePlugin. run and other events throw. |
+| `figma.on` | partial | The Plugins panel forwards selectionchange, currentpagechange, and local documentchange. Document events include created/removed subtree roots and changed properties for supported authored-node fields, up to 256 changes. The plugin’s own edits do not emit these events. |
 | `figma.skipInvisibleInstanceChildren` | partial | The flag is stored. findAll does not skip invisible instance children. |
 | `setTimeout` | partial | One-shot and repeating timers accept callback arguments, cancellation, and delays up to five seconds. setInterval uses a minimum 10 ms period and a bounded per-run callback budget. |
 | `console` | partial | log, info, debug, warn, error, and clear operate on the current plugin log, with bounded output. |

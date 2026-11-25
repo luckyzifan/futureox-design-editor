@@ -954,6 +954,36 @@ describe('Figma plugin host', () => {
     run.close()
   })
 
+  it('creates images asynchronously through the declared-domain and image admission paths', async () => {
+    const current = editor()
+    const seen: string[] = []
+    const manifest = parsePluginManifest({
+      name: 'Image fetch', id: 'image.fetch', api: '1.0.0', main: 'code.js',
+      networkAccess: { allowedDomains: ['https://images.example.test'] },
+    })
+    const run = await openPlugin(current, { manifest, ui: null, main: `
+      ;(async function () {
+        try { await figma.createImageAsync('https://other.example.test/unlisted'); throw new Error('called disallowed host') }
+        catch (error) { if (!String(error).includes('network_denied')) throw error }
+        const image = await figma.createImageAsync('https://images.example.test/icon.png')
+        const size = await image.getSizeAsync()
+        if (size.width !== 2 || size.height !== 3) throw new Error('image dimensions')
+        figma.closePlugin('image ready')
+      })()
+    ` }, {
+      fetch: async url => {
+        seen.push(url)
+        return {
+          status: 200, url, headers: { 'content-type': 'image/png' },
+          body: new Uint8Array([137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,3,8,2,0,0,0,0,0,0,0]),
+        }
+      },
+    })
+    expect(run.closeMessage).toBe('image ready')
+    expect(seen).toEqual(['https://images.example.test/icon.png'])
+    run.close()
+  })
+
   it('uses the FIG SHA-1 image id and the 5 MB clientStorage quota', () => {
     expect(imageContentId(new Uint8Array())).toBe('da39a3ee5e6b4b0d3255bfef95601890afd80709')
     expect(imageContentId(new TextEncoder().encode('abc'))).toBe('a9993e364706816aba3e25717850c26c9cd0d89d')

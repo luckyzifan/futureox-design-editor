@@ -7,6 +7,8 @@ import { PLUGIN_LIMITS } from './limits'
 import { assertPluginBundle, pluginEditorType, type PluginBundle, type PluginLaunchMode } from './manifest'
 import { PLUGIN_PRELUDE } from './prelude'
 import { createPluginSession, type PluginFontJob, type PluginSystemFonts, type PluginUiState } from './session'
+import type { PluginDocumentChanges } from './document-changes'
+import type { PluginEditorEvent } from './ui-document'
 
 const CLOSED_PREFIX = '__futureox_plugin_closed__:'
 let quickJsModule: ReturnType<typeof getQuickJS> | null = null
@@ -168,8 +170,10 @@ export class PluginController {
   get pluginId() { return this.session.pluginId }
   get applying() { return this.session.applying }
 
-  emit(type: 'selectionchange' | 'currentpagechange' | 'documentchange') {
-    return this.dispatch(`globalThis.__deliverPluginEvent(${JSON.stringify(type)})`)
+  watches(type: PluginEditorEvent) { return this.session.watches(type) }
+
+  emit(type: PluginEditorEvent, change?: PluginDocumentChanges) {
+    return this.dispatch(`globalThis.__deliverPluginEvent(${JSON.stringify(type)}, ${JSON.stringify(change ?? null)})`)
   }
 
   deliver(message: unknown) {
