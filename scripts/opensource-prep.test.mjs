@@ -94,6 +94,27 @@ test('the current fidelity and fixture scan grants only the synthetic I/O images
   const fidelity = report.files.filter(file => file.path.startsWith('frontend/design-client/public/fidelity/'))
   assert.equal(fidelity.length, 349)
   assert.equal(fidelity.every(file => file.publication === 'withhold'), true)
+  for (const rel of ['testing/fixtures/design/io/red-64x48.tiff', 'testing/fixtures/design/io/two-frame-64x48.gif']) {
+    const added = report.files.find(file => file.path === rel)
+    assert.equal(added.record, 'source_list_hash_match')
+    assert.equal(added.publication, 'withhold')
+    assert.equal(added.hashCheck, 'match')
+    assert.equal(added.source, syntheticSource)
+    assert.equal(added.license, null)
+  }
+  for (const rel of [
+    'testing/fixtures/regression/canvas-spatial-blur.sketch',
+    'testing/fixtures/regression/sketch-text-layout-flow.sketch',
+    'testing/fixtures/regression/sketch-text-layout-flow/foreign-consumer.sketch',
+    'testing/fixtures/regression/sketch-text-layout-flow/library-v1.sketch',
+    'testing/fixtures/regression/sketch-text-layout-flow/library-v2.sketch',
+  ]) {
+    const added = report.files.find(file => file.path === rel)
+    assert.equal(added.record, 'no_provenance_record')
+    assert.equal(added.publication, 'withhold')
+    assert.equal(added.license, null)
+    assert.equal(added.hashCheck, 'not_listed')
+  }
   const alpha = report.files.find(file => file.path === 'frontend/design-client/public/fidelity/alpha-curve.png')
   assert.equal(alpha.record, 'source_list_omits_file')
   assert.equal(alpha.hashCheck, 'not_listed')

@@ -94,6 +94,68 @@ Regenerate with the commands above after the tree changes. Historical counts,
 including the earlier 139 fixture binaries and the 384-file withhold-only
 scan, stay historical.
 
+## 2026-11-25 recheck
+
+Checked against main `ca2e46efcdb5e056faa109b0c0511d3dc21fc850` before the
+evidence hashes below were updated. This is a Linux file-byte review, not a
+Mac, Electron, or Metal run, and it is not a legal clearance.
+
+`testing/fixtures/design/io/generate.py` and `provenance.json` had gained
+listings for `red-64x48.tiff` and `two-frame-64x48.gif`. The three explicit
+grants still named the 2026-11-10 sha256 of those two evidence files, so the
+scan rejected every grant. `proposedPublic` was empty and
+`explicit_grant_rejected` was 3. The three image bytes were unchanged:
+`display-p3-mid-icc.png` `e4721be2db2983b37521e6d860e64e594b32deb24c7e667b3e1144522e6b4b9a`
+(438 bytes), `lossless.webp`
+`920da8b5a2098b996d6721c7b2ce7bd406bd5f20b5463aa2fd4827395c86c002` (38 bytes),
+and `orientation-6.jpg`
+`fed2837ad7a94d17ce8130babe47da376723560fa0fe6cfea0acbb84dde82ca2` (706 bytes).
+`frontend/design-client/public/color-fixtures/p3-red-icc.png` was still
+`01b038754d6bb0d963442e1a18c068543f2aa7b97dac4dff1043ec5b603a0b02`.
+
+`filesMustMatch` now names the current evidence bytes:
+`provenance.json` `bdd10ec6c5cbc64c4b8e8884f75f88a7f60382c605a1eda1b51a66b52a6ba5ac`
+and `generate.py` `3418225dd43bd614367fc57f0b7c18460ced15f7c81e4d3ea8698fc72d3f9676`.
+The GIF and TIFF stay `withhold`. Their source-list hashes match, and that
+match is not a grant. `gif_tiff_import.rs` encodes them; `generate.py` does
+not rewrite them. Five restored regression Sketch files have no source list
+and stay `withhold`. No file bytes were replaced, and history was not
+rewritten.
+
+| Record | Count | Publication |
+| --- | --- | --- |
+| `source_list_hash_match` | 284 | withhold |
+| `explicit_grant` | 3 | public |
+| `source_list_omits_file` | 35 | withhold |
+| `provenance_record_file` | 24 | withhold |
+| `upstream_notice_unverified` | 20 | withhold |
+| `no_provenance_record` | 19 | withhold |
+| `lfs_oid_matches_manifest` | 7 | withhold |
+
+The scan reports 392 files. Hash mismatches: 0. Unbound source-list hashes: 0.
+`public/fidelity` is still 349 files, all `withhold`. User-regression files
+are still 7 pointers, all `withhold`. Content hash matches: 287, of which 3
+are the public grants. Regenerating the inventory also records the current
+bytes of `combined-2026-10-08/cases.json`, `text-2026-10-09/cases.json`, and
+`text-2026-10-09/create-in-figma.js`. Their publication fields stay withhold
+with no source and no license.
+
+The kernel sources under `design-studio` and the bytes under
+`testing/fixtures/design/io` are the same as main
+`ca2e46efcdb5e056faa109b0c0511d3dc21fc850`. On this Linux machine, after
+installing the C++ linker library the debug build needed, the CPU tests that
+read those bytes were:
+
+```bash
+cargo test --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel --test image_metadata --test gif_tiff_import -- --test-threads=1
+```
+
+`image_metadata`: 5 passed, 0 failed, 0.15s. `gif_tiff_import`: 3 passed, 0
+failed, 0.05s. Rustc 1.99.1. The profile is Cargo's default debug test
+profile, and the raster path inside those tests is `analytic`. This is not a
+GPU, Metal, or timing comparison. The GIF and TIFF passing that decoder does
+not make them publication grants.
+
 ## Cloud measurement versus main
 
 Measured on this Linux cloud VM on 2026-11-10. Baseline is `main` at

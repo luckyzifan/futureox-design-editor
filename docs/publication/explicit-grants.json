@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "issue": 89,
-  "note": "Only these checkout bytes are proposed for publication. Each path has to match testing/fixtures/design/io/provenance.json, including the synthetic-pixel source sentence, and the root LICENSE copyright line. A nearby LICENSE is not a grant. Fidelity exports, user design inputs, and third-party kits are outside this file.",
+  "note": "Only these checkout bytes are proposed for publication. Each path has to match testing/fixtures/design/io/provenance.json, including the synthetic-pixel source sentence, and the root LICENSE copyright line. A nearby LICENSE is not a grant. Fidelity exports, user design inputs, and third-party kits are outside this file. On 2026-11-25 filesMustMatch was re-pinned to the current provenance.json and generate.py bytes. Those files now also list red-64x48.tiff and two-frame-64x48.gif; those two listings are not grants. The three image sha256 values are unchanged.",
   "files": [
     {
       "path": "testing/fixtures/design/io/display-p3-mid-icc.png",
@@ -14,11 +14,11 @@
       "filesMustMatch": [
         {
           "path": "testing/fixtures/design/io/provenance.json",
-          "sha256": "2c274155d6a494292ea611404d6b0976a8e9a7cce793cca43981d5cec7a8f654"
+          "sha256": "bdd10ec6c5cbc64c4b8e8884f75f88a7f60382c605a1eda1b51a66b52a6ba5ac"
         },
         {
           "path": "testing/fixtures/design/io/generate.py",
-          "sha256": "ac845df8733e8f4f1c3139ce705cbab00fc061e34eaae84fa9e42197b856cc71"
+          "sha256": "3418225dd43bd614367fc57f0b7c18460ced15f7c81e4d3ea8698fc72d3f9676"
         },
         {
           "path": "frontend/design-client/public/color-fixtures/p3-red-icc.png",
@@ -37,11 +37,11 @@
       "filesMustMatch": [
         {
           "path": "testing/fixtures/design/io/provenance.json",
-          "sha256": "2c274155d6a494292ea611404d6b0976a8e9a7cce793cca43981d5cec7a8f654"
+          "sha256": "bdd10ec6c5cbc64c4b8e8884f75f88a7f60382c605a1eda1b51a66b52a6ba5ac"
         },
         {
           "path": "testing/fixtures/design/io/generate.py",
-          "sha256": "ac845df8733e8f4f1c3139ce705cbab00fc061e34eaae84fa9e42197b856cc71"
+          "sha256": "3418225dd43bd614367fc57f0b7c18460ced15f7c81e4d3ea8698fc72d3f9676"
         }
       ]
     },
@@ -56,11 +56,11 @@
       "filesMustMatch": [
         {
           "path": "testing/fixtures/design/io/provenance.json",
-          "sha256": "2c274155d6a494292ea611404d6b0976a8e9a7cce793cca43981d5cec7a8f654"
+          "sha256": "bdd10ec6c5cbc64c4b8e8884f75f88a7f60382c605a1eda1b51a66b52a6ba5ac"
         },
         {
           "path": "testing/fixtures/design/io/generate.py",
-          "sha256": "ac845df8733e8f4f1c3139ce705cbab00fc061e34eaae84fa9e42197b856cc71"
+          "sha256": "3418225dd43bd614367fc57f0b7c18460ced15f7c81e4d3ea8698fc72d3f9676"
         }
       ]
     }
