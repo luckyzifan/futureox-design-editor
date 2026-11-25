@@ -1549,18 +1549,24 @@ fn load_checkpoint(
                     return Err(issue("Retained JSON addition integrity check failed"));
                 }
             }
-            let mut reader = CheckedReader {
-                inner: File::open(file).map_err(issue)?,
-                cancel,
-                progress: None,
+            let rebuild = |index_directory: &Path| {
+                let mut reader = CheckedReader {
+                    inner: File::open(&file).map_err(issue)?,
+                    cancel,
+                    progress: None,
+                };
+                DiskIndex::build(
+                    checkpoint.state.changes[p]
+                        .reader(&mut reader, part.base_bytes)
+                        .map_err(issue)?,
+                    source_limit,
+                    index_directory,
+                )
             };
-            part.index = DiskIndex::build(
-                checkpoint.state.changes[p]
-                    .reader(&mut reader, part.base_bytes)
-                    .map_err(issue)?,
-                source_limit,
-                &directory,
-            )?;
+            part.index = match rebuild(directory) {
+                Err(error) if error.code == "SOURCE_STORAGE_FULL" => DiskIndex::build_temporary(rebuild)?,
+                result => result?,
+            };
         }
         Ok(CheckpointLoad::Ready(Session {
             version: checkpoint.version,

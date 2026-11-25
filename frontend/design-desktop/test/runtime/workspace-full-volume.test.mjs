@@ -39,9 +39,7 @@ async function fillVolume(mount) {
   } finally { await filler.close() }
 }
 
-for (const exitKind of ['clean', 'abrupt']) {
-  test(`a saved workspace reopens the last committed revision after a ${exitKind} exit on a truly full volume`,
-  { skip: process.platform !== 'darwin', timeout: 120_000 }, async t => {
+async function fullVolumeFixture(t) {
     assert.ok(backend && path.isAbsolute(backend), 'provide the current CORE_DESKTOP_SIDECAR')
     const scope = await realpath(await mkdtemp(path.join(tmpdir(), 'futureox-full-volume-')))
     const mount = path.join(scope, 'mount'), profile = path.join(scope, 'profile')
@@ -78,6 +76,15 @@ for (const exitKind of ['clean', 'abrupt']) {
       children.delete(child)
     }
 
+    return { scope, mount, profile, start, stop }
+}
+
+const volumeTestOptions = { skip: process.platform !== 'darwin', timeout: 120_000 }
+
+for (const exitKind of ['clean', 'abrupt']) {
+  test(`a saved workspace reopens the last committed revision after a ${exitKind} exit on a truly full volume`,
+    volumeTestOptions, async t => {
+    const { scope, mount, profile, start, stop } = await fullVolumeFixture(t)
     const doc = { schemaVersion: 6, id: randomUUID(), name: 'Original committed design',
       pages: [{ id: randomUUID(), name: 'Page', children: [], background: '#ffffff' }], nodes: {} }
     const original = path.join(scope, 'original.json')
@@ -149,3 +156,54 @@ for (const exitKind of ['clean', 'abrupt']) {
     console.log(`WORKSPACE_FULL_VOLUME exit=${exitKind} readRevision=2 retainedHash=true writeFailed=WORKSPACE_STORAGE_FULL nextRevision=3`)
   })
 }
+
+test('a large source reopens its edited checkpoint when the working volume cannot write an index',
+  volumeTestOptions, async t => {
+  const { scope, mount, start, stop } = await fullVolumeFixture(t)
+  const source = path.join(scope, 'source.json')
+  const config = { recoveryDir: path.join(mount, 'recovery'), catalogDb: path.join(scope, 'catalog.sqlite3') }
+  const sourceBytes = JSON.stringify({ name: 'Original source', fields: Array.from({ length: 4000 }, (_, n) => n) })
+  await writeFile(source, sourceBytes, { mode: 0o400 })
+  const openSource = (child, sessionEpoch) =>
+    child.request('large.open', { path: source, documentId: randomUUID(), sessionEpoch })
+  const readRoot = (child, open) =>
+    child.request('large.read', { owner: open.owner, expectedRevision: open.revision, key: '0:0' })
+  const changeName = (child, open, before, name) =>
+    child.request('large.apply', { owner: open.owner, expectedRevision: open.revision, key: '0:0',
+      json: JSON.stringify({ ...JSON.parse(before.json), name }), expectedHash: before.hash, requestId: randomUUID() })
+
+  const original = start(config).child
+  const opened = await openSource(original, 1)
+  const first = await readRoot(original, opened)
+  const edited = await changeName(original, opened, first, 'Saved working copy')
+  assert.equal(edited.revision, 1)
+  await stop(original)
+
+  await fillVolume(mount)
+  const temporaryIndexes = async () => (await readdir(tmpdir())).filter(name => name.startsWith('futureox-source-index-')).sort()
+  const previous = await temporaryIndexes()
+  const restored = start(config).child
+  const recovered = await openSource(restored, 2)
+  assert.equal(recovered.revision, 1)
+  const before = await readRoot(restored, recovered)
+  assert.equal(JSON.parse(before.json).name, 'Saved working copy')
+  assert.equal((await temporaryIndexes()).length, previous.length + 1)
+  assert.equal(await availableBytes(mount), 0)
+  await assert.rejects(changeName(restored, recovered, before, 'Uncommitted while full'), error => error.code === 'SOURCE_STORAGE_FULL')
+  assert.equal((await readRoot(restored, recovered)).hash, before.hash)
+
+  await rm(path.join(mount, 'test-filler'))
+  const committed = await changeName(restored, recovered, before, 'Saved after freeing space')
+  assert.equal(committed.revision, 2)
+  await restored.request('large.close', { owner: recovered.owner, expectedRevision: 2 })
+  assert.deepEqual(await temporaryIndexes(), previous)
+  await stop(restored)
+
+  const after = start(config).child
+  const reopened = await openSource(after, 3)
+  assert.equal(reopened.revision, 2)
+  assert.equal(JSON.parse((await readRoot(after, reopened)).json).name, 'Saved after freeing space')
+  await stop(after)
+  assert.equal(await readFile(source, 'utf8'), sourceBytes)
+  console.log('SOURCE_FULL_VOLUME readRevision=1 writeFailed=SOURCE_STORAGE_FULL nextRevision=2 temporaryIndexRemoved=true')
+})

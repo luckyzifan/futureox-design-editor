@@ -47,6 +47,8 @@ struct Navigation {
 pub(super) struct DiskIndex {
     #[serde(skip)]
     navigation: Arc<Navigation>,
+    #[serde(skip)]
+    temporary_directory: Option<Arc<TemporaryIndexDirectory>>,
     pub bytes: u64,
     pub entries: Vec<Row>,
     locations: Vec<Span>,
@@ -54,6 +56,25 @@ pub(super) struct DiskIndex {
     edits: Vec<Edit>,
     data: String,
 }
+
+struct TemporaryIndexDirectory(PathBuf);
+
+impl Drop for TemporaryIndexDirectory {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+struct UnpublishedRecords(Option<PathBuf>);
+
+impl Drop for UnpublishedRecords {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
 const STREAM_CHUNK: usize = 64 * 1024;
 const ENTRY_MAGIC: &[u8; 4] = b"FXE1";
 fn push_u32(out: &mut Vec<u8>, value: u32) { out.extend_from_slice(&value.to_le_bytes()); }
@@ -221,13 +242,16 @@ impl DiskIndex {
                 .as_nanos(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         );
+        let path = directory.join(&data);
+        let mut unpublished = UnpublishedRecords(None);
         let mut writer = BufWriter::new(
             OpenOptions::new()
                 .create_new(true)
                 .write(true)
-                .open(directory.join(&data))
-                .map_err(issue)?,
+                .open(&path)
+                .map_err(save_io)?,
         );
+        unpublished.0 = Some(path);
         let mut entries = Vec::new();
         let mut locations = Vec::new();
         let mut at = 0;
@@ -248,11 +272,12 @@ impl DiskIndex {
             entries[ordinal] = Row::from_entry(&entry);
             Ok(())
         })
-        .map_err(issue)?;
-        writer.flush().map_err(issue)?;
-        writer.get_ref().sync_all().map_err(issue)?;
+        .map_err(save_io)?;
+        writer.flush().map_err(save_io)?;
+        writer.get_ref().sync_all().map_err(save_io)?;
         let mut result = Self {
             navigation: Arc::default(),
+            temporary_directory: None,
             bytes: summary.bytes,
             generations: vec![0; entries.len()],
             entries,
@@ -261,7 +286,31 @@ impl DiskIndex {
             data,
         };
         result.refresh_navigation();
+        unpublished.0 = None;
         Ok(result)
+    }
+
+    /// Only recovery uses a disposable index on a writable volume. The
+    /// retained source, revisions and journal still belong to the workspace.
+    pub(super) fn build_temporary(rebuild: impl FnOnce(&Path) -> Result<Self>) -> Result<Self> {
+        let root = std::env::temp_dir().canonicalize().map_err(save_io)?;
+        let path = root.join(format!("futureox-source-index-{}", crate::unique_id()));
+        let mut builder = fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        builder.create(&path).map_err(save_io)?;
+        let directory = Arc::new(TemporaryIndexDirectory(path));
+        let mut index = rebuild(&directory.0)?;
+        index.temporary_directory = Some(directory);
+        Ok(index)
+    }
+
+    fn records_path(&self, directory: &Path) -> PathBuf {
+        let directory = self.temporary_directory.as_deref().map_or(directory, |temp| &temp.0);
+        directory.join(&self.data)
     }
     pub fn refresh_navigation(&mut self) {
         let count = self.entries.len();
@@ -325,7 +374,7 @@ impl DiskIndex {
         self.records(directory)?.entry(n)
     }
     pub fn records(&self, directory: &Path) -> Result<Records<'_>> {
-        Ok(Records { index: self, file: File::open(directory.join(&self.data)).map_err(issue)? })
+        Ok(Records { index: self, file: File::open(self.records_path(directory)).map_err(issue)? })
     }
     fn entry_from(&self, n: usize, file: &mut File) -> Result<Entry> {
         let row = self
@@ -399,7 +448,7 @@ impl DiskIndex {
         let mut generations = Vec::new();
         let mut file = OpenOptions::new()
             .append(true)
-            .open(directory.join(&self.data))
+            .open(self.records_path(directory))
             .map_err(issue)?;
         let mut at = file.metadata().map_err(issue)?.len();
         for (j, mut e) in local.entries.into_iter().enumerate() {
