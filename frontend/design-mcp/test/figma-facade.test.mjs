@@ -95,12 +95,38 @@ test('get_screenshot and single-node download call the CPU export', async () => 
   const png = ok(await api.callTool('download_assets', { nodeId: 'icon', defaultFormat: 'png' }, {}))
   assert.equal(png.result.rawImagesUnsupported, true)
   assert.equal(png.result.urls, false)
-  const many = await api.callTool('download_assets', { nodeIds: ['a', 'b'] }, {})
+  const many = await api.callTool('download_assets', { nodeIds: Array.from({ length: 21 }, (_, i) => `node-${i}`) }, {})
   assert.equal(many.error.code, 'too_many_nodes')
   const pdf = await api.callTool('download_assets', { nodeId: 'icon', defaultFormat: 'pdf' }, {})
   assert.equal(pdf.error.code, 'unsupported_format')
   ok(await api.callTool('download_assets', { nodeId: 'icon', defaultFormat: 'svg' }, {}))
   assert.equal(calls.at(-1).method, 'vector.export')
+})
+
+test('download_assets batches individual exports against one revision', async () => {
+  const { api, calls } = facade({
+    'document.get': () => ({}),
+    'preview.capture': request => ({
+      format: 'futureox.design-preview.v1', mimeType: 'image/png',
+      dataUrl: `data:image/png;base64,${Buffer.from(request.params.nodeIds[0]).toString('base64')}`,
+    }),
+  })
+  const result = ok(await api.callTool('download_assets', { nodeId: 'a', nodeIds: ['b', 'a'], defaultScale: 2 }, {}))
+  assert.deepEqual(result.result.assets.map(asset => asset.nodeId), ['a', 'b'])
+  assert.deepEqual(calls.map(call => call.method), ['document.get', 'preview.capture', 'preview.capture'])
+  for (const request of calls.slice(1)) {
+    assert.equal(request.documentId, 'doc-1')
+    assert.equal(request.session, 3)
+    assert.equal(request.expectedRevision, 4)
+    assert.equal(request.params.scale, 2)
+  }
+  const stale = facade({
+    'document.get': () => ({}),
+    'vector.export': request => ({ content: '<svg/>', revision: request.params.nodeIds[0] === 'b' ? 5 : 4 }),
+  }).api
+  const failed = await stale.callTool('download_assets', { nodeIds: ['a', 'b'], defaultFormat: 'svg' }, {})
+  assert.equal(failed.error.code, 'stale_revision')
+  assert.equal(failed.result, undefined)
 })
 
 test('get_variable_defs keeps selection bindings and does not invent libraries', async () => {

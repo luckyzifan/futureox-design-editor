@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { DesignMcpServer } from './server.mjs'
 import { SocketDesignBackend } from './socket-backend.mjs'
-import { FIGMA_MCP_INSTRUCTIONS, FigmaFacade } from './figma-facade.mjs'
+import { FIGMA_ASSET_LIMIT, FIGMA_MCP_INSTRUCTIONS, FigmaFacade } from './figma-facade.mjs'
 import { isDirectInvocation, parseOptions } from './cli.mjs'
 
 export async function main(argv = process.argv.slice(2)) {
@@ -19,7 +19,7 @@ export async function main(argv = process.argv.slice(2)) {
     target: operation.target,
     terminalSignal: socket.terminalSignal,
   })
-  const server = new DesignMcpServer({ backend, instructions: FIGMA_MCP_INSTRUCTIONS }).start()
+  const server = new DesignMcpServer({ backend, instructions: FIGMA_MCP_INSTRUCTIONS, artifactCount: FIGMA_ASSET_LIMIT }).start()
   const stop = () => { void server.close() }
   process.once('SIGINT', stop)
   process.once('SIGTERM', stop)

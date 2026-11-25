@@ -82,6 +82,18 @@ export class ArtifactResources {
       blob('base64', 'design.fd', result.mimeType)
     } else if (result.format === 'futureox.design-sketch.v1' && result.encoding === 'base64' && result.mimeType === 'application/zip') {
       blob('base64', 'design.sketch', result.mimeType)
+    } else if (result.format === 'futureox.design-asset-batch.v1') {
+      if (response.method !== 'download_assets' || !Array.isArray(result.assets) || result.assets.length > this.maxArtifacts)
+        throw unavailable('The backend returned an invalid asset batch')
+      const extensions = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/webp': 'webp', 'image/svg+xml': 'svg' }
+      metadata.assets = result.assets.map((asset, index) => {
+        const extension = Object.hasOwn(extensions, asset?.mimeType) && extensions[asset.mimeType]
+        if (!extension || typeof asset.nodeId !== 'string' || !asset.nodeId.length || asset.nodeId.length > 128 ||
+            !asset.base64 || !validBase64(asset.base64)) throw unavailable('The backend returned invalid batch media')
+        const field = `assets[${index}]`
+        candidates.push({ field, name: `asset-${index + 1}.${extension}`, mimeType: asset.mimeType, encoding: 'base64', blob: asset.base64 })
+        return { nodeId: asset.nodeId, mimeType: asset.mimeType, field }
+      })
     } else if (result.format === 'futureox.design-preview.v1') {
       if (!['image/png', 'image/jpeg', 'image/webp'].includes(result.mimeType) || typeof result.dataUrl !== 'string') throw unavailable('The backend returned invalid preview media')
       const prefix = `data:${result.mimeType};base64,`, data = result.dataUrl.slice(prefix.length)

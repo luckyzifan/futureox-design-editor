@@ -5,6 +5,8 @@ import { isRecord } from './framing.mjs'
  * translated into that API. This module does not store a document, eval plugin
  * code, or claim Figma account, library, or pixel parity. */
 export const FIGMA_MCP_INSTRUCTIONS = 'Futureox Design Figma-shaped MCP facade for the document whose desktop automation bridge is enabled. Tools call the existing Design API; this server applies document/session/revision fences itself. get_metadata, get_selection, get_design_context, get_screenshot, get_variable_defs and download_assets read. use_figma writes structured create/update/delete/move/select operations as one undo step. Plugin JavaScript in use_figma code is forwarded only when the host registered a plugin bridge; otherwise the tool returns plugin_host_unavailable and does not eval. open_document is a local workspace open, not a Figma cloud file. fileKey is ignored. Screenshots are CPU exports of design content, not GPU or window captures. Cancellation cannot undo a committed edit.'
+export const FIGMA_ASSET_LIMIT = 20
+const ASSET_BATCH_BYTES = 32 * 1024 * 1024
 
 export const FIGMA_MCP_GAPS = Object.freeze([
   { id: 'whoami', tool: 'whoami', status: 'absent', detail: 'No Figma account, plan, seat, or identity.' },
@@ -18,7 +20,7 @@ export const FIGMA_MCP_GAPS = Object.freeze([
   { id: 'libraries_and_code_connect', tool: 'get_libraries, search_design_system, get_code_connect_map, add_code_connect_map', status: 'absent', detail: 'No team libraries or Code Connect. clientFrameworks and clientLanguages are ignored.' },
   { id: 'figjam_motion_shaders', tool: 'get_figjam, get_motion_context, shader and generative-plugin tools', status: 'absent', detail: 'No FigJam, motion keyframes, shaders, or generative-plugin library.' },
   { id: 'use_figma_plugin_javascript', tool: 'use_figma', status: 'partial', detail: 'Structured operations map to Design API batches. code is forwarded only through a host-registered plugin bridge. Without that bridge the call returns plugin_host_unavailable and is not evaluated.' },
-  { id: 'download_assets_urls_pdf_raw', tool: 'download_assets', status: 'partial', detail: 'One node may export PNG, JPEG, WebP, or SVG. No PDF, no original uploaded-image extraction, no temporary fetch URLs, and no 20-node batch.' },
+  { id: 'download_assets_urls_pdf_raw', tool: 'download_assets', status: 'partial', detail: 'PNG, JPEG, WebP or SVG exports for up to 20 local nodes use MCP resources. PDF, original images, and external fetch URLs are unavailable.' },
   { id: 'design_context_not_react', tool: 'get_design_context', status: 'partial', detail: 'Returns Design API context and, when advertised, HTML/CSS from code.export. Not Figma React + Tailwind.' },
   { id: 'screenshot_is_cpu_export', tool: 'get_screenshot', status: 'partial', detail: 'preview.capture CPU raster of design content. Not an application window or GPU canvas screenshot.' },
   { id: 'file_key_ignored', tool: 'fileKey', status: 'partial', detail: 'The server is bound to the enabled local document. A Figma URL or file key does not select a different file.' },
@@ -53,7 +55,7 @@ export const FIGMA_MCP_TOOLS = Object.freeze([
   tool('get_design_context', 'Bounded design context for nodeId or the current selection, from context.get. When code.export is available, HTML/CSS is attached as resources. Output is Futureox HTML/CSS, not Figma React and Tailwind. clientFrameworks is ignored.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
   tool('get_screenshot', 'PNG export of nodeId, the current selection, or the active page when nothing is selected. Uses preview.capture: a CPU raster of design content, not an application or GPU screenshot. scale is 0.1–4.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, scale: { type: 'number', minimum: 0.1, maximum: 4 } }),
   tool('get_variable_defs', 'Local variables and shared styles used by nodeId or the current selection. An empty selection returns the document’s local variables and styles. No team libraries or published design systems.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
-  tool('download_assets', 'Export one node. defaultFormat png, jpeg, webp, or svg. More than one node, PDF, raw uploaded images, and temporary URLs are refused; call get_screenshot per node. A single raster uses the same CPU export as get_screenshot.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, nodeIds: { type: 'array', maxItems: 8, items: { type: 'string', minLength: 1, maxLength: 128 } }, defaultFormat: { type: 'string', enum: ['png', 'jpeg', 'jpg', 'webp', 'svg', 'pdf'] }, defaultScale: { type: 'number', minimum: 0.1, maximum: 4 } }),
+  tool('download_assets', 'Export up to 20 local nodes as individual MCP resources. Formats are png, jpeg, webp, or svg. Raster exports use the product CPU renderer. PDF, raw uploaded images and external URLs are unavailable.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, nodeIds: { type: 'array', minItems: 1, maxItems: FIGMA_ASSET_LIMIT, items: { type: 'string', minLength: 1, maxLength: 128 } }, defaultFormat: { type: 'string', enum: ['png', 'jpeg', 'jpg', 'webp', 'svg'] }, defaultScale: { type: 'number', minimum: 0.1, maximum: 4 } }),
   tool('use_figma', 'Write the open document. Preferred input is operations (at most 40), applied as one Design API batch and one undo step: create {kind,parentId?,x?,y?,width?,height?,name?,text?,fontSize?,fill?}, update {nodeId,name?,x?,y?,width?,height?,text?,fill?,transform?}, delete {nodeId|nodeIds}, select {nodeIds}, move {nodeId,parentId,index?}. fill is #RRGGBB. Coordinates are parent-local document units. code is plugin JavaScript and runs only when a plugin bridge is registered; otherwise the result is plugin_host_unavailable and the source is not evaluated. description is required.', { description: { type: 'string', minLength: 1, maxLength: 400 }, operations: { type: 'array', maxItems: 40 }, code: { type: 'string', maxLength: 100000 }, mutationId: { type: 'string', minLength: 1, maxLength: 128 } }, ['description']),
   tool('open_document', 'Open a saved local design through workspace.open. Requires rootHandle, documentHandle, and mutationId from a workspace grant. This is not Figma create_new_file. A successful open can end this automation session.', { rootHandle: { type: 'string', minLength: 1, maxLength: 512 }, documentHandle: { type: 'string', minLength: 1, maxLength: 512 }, mutationId: { type: 'string', minLength: 1, maxLength: 128 } }, ['rootHandle', 'documentHandle', 'mutationId']),
 ])
@@ -364,23 +366,52 @@ export class FigmaFacade {
   async download(args, context) {
     const invalid = unknownArguments(args, new Set(['nodeId', 'nodeIds', 'defaultFormat', 'defaultScale', 'cursor']))
     if (invalid) return failure('download_assets', 'invalid_params', invalid)
-    const ids = []
-    if (typeof args.nodeId === 'string') ids.push(args.nodeId)
-    if (args.nodeIds !== undefined) {
-      if (!Array.isArray(args.nodeIds) || args.nodeIds.some(id => typeof id !== 'string' || !id)) return failure('download_assets', 'invalid_params', 'nodeIds must be an array of node ids')
-      ids.push(...args.nodeIds)
-    }
+    const nodeId = this.nodeId(args)
+    if (isRecord(nodeId)) return failure('download_assets', 'invalid_params', nodeId.error)
+    if (args.nodeIds !== undefined && (!Array.isArray(args.nodeIds) ||
+        args.nodeIds.some(id => typeof id !== 'string' || !id.trim() || id.length > 128)))
+      return failure('download_assets', 'invalid_params', 'nodeIds must be an array of nonempty ids of at most 128 characters')
+    const ids = [...(nodeId ? [nodeId] : []), ...(args.nodeIds ?? [])]
+    if (ids.length > FIGMA_ASSET_LIMIT) return failure('download_assets', 'too_many_nodes', `Use at most ${FIGMA_ASSET_LIMIT} node ids`)
     const unique = [...new Set(ids)]
     if (!unique.length) return failure('download_assets', 'invalid_params', 'download_assets requires nodeId or nodeIds')
-    if (unique.length > 1) return failure('download_assets', 'too_many_nodes', 'This facade exports one node per call and does not return temporary URLs. Call get_screenshot once per node.')
     const format = args.defaultFormat ?? 'png'
     if (format === 'pdf') return failure('download_assets', 'unsupported_format', 'PDF export is not available. Use png, jpeg, webp, or svg.')
     if (!['png', 'jpeg', 'jpg', 'webp', 'svg'].includes(format)) return failure('download_assets', 'invalid_params', 'defaultFormat must be png, jpeg, webp, or svg')
-    if (args.defaultScale !== undefined && (typeof args.defaultScale !== 'number' || args.defaultScale < 0.1 || args.defaultScale > 4)) return failure('download_assets', 'invalid_params', 'defaultScale must be a number from 0.1 to 4')
-    if (format === 'svg') return this.call('vector.export', { nodeIds: unique, ...(args.defaultScale === undefined ? {} : { scale: args.defaultScale }) }, context)
-    const captured = await this.call('preview.capture', { nodeIds: unique, format: format === 'jpg' ? 'jpeg' : format, ...(args.defaultScale === undefined ? {} : { scale: args.defaultScale }) }, context)
-    if (!captured.ok) return captured
-    return { ...captured, result: { ...captured.result, rawImages: [], rawImagesUnsupported: true, urls: false } }
+    if (args.defaultScale !== undefined && (!Number.isFinite(args.defaultScale) || args.defaultScale < 0.1 || args.defaultScale > 4)) return failure('download_assets', 'invalid_params', 'defaultScale must be a number from 0.1 to 4')
+    const vector = format === 'svg'
+    const kind = format === 'jpg' ? 'jpeg' : format
+    const params = { ...(vector ? {} : { format: kind }), ...(args.defaultScale === undefined ? {} : { scale: args.defaultScale }) }
+    const method = vector ? 'vector.export' : 'preview.capture'
+    if (unique.length === 1) {
+      const captured = await this.call(method, { ...params, nodeIds: unique }, context)
+      if (vector || !captured.ok) return captured
+      return { ...captured, result: { ...captured.result, rawImages: [], rawImagesUnsupported: true, urls: false } }
+    }
+
+    const fences = await this.fences(context)
+    if (!fences.ok) return fences
+    const mimeType = vector ? 'image/svg+xml' : `image/${kind}`
+    const prefix = `data:${mimeType};base64,`
+    const assets = []
+    let bytes = 0
+    for (const id of unique) {
+      context.signal?.throwIfAborted()
+      const captured = await this.call(method, { ...params, nodeIds: [id] }, context, fences)
+      if (!captured.ok) return captured
+      if (captured.documentId !== fences.documentId || captured.session !== fences.session || captured.revision !== fences.revision)
+        return failure('download_assets', 'stale_revision', 'Document changed during export. Start a new batch.', fences)
+      const payload = captured.result
+      const base64 = vector && typeof payload?.content === 'string'
+        ? Buffer.from(payload.content).toString('base64')
+        : typeof payload?.dataUrl === 'string' && payload.dataUrl.startsWith(prefix) ? payload.dataUrl.slice(prefix.length) : undefined
+      if (!base64) return failure('download_assets', 'invalid_backend', 'The export did not return media bytes', fences)
+      bytes += base64.length
+      if (bytes > ASSET_BATCH_BYTES)
+        return failure('download_assets', 'artifact_unavailable', 'The batch exceeds the export byte budget. Use fewer nodes or a smaller scale.', fences)
+      assets.push({ nodeId: id, mimeType, base64 })
+    }
+    return done('download_assets', fences, { format: 'futureox.design-asset-batch.v1', assets, rawImagesUnsupported: true, urls: false })
   }
 
   async useFigma(args, context) {

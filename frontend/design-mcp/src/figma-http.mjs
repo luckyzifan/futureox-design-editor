@@ -4,7 +4,7 @@ import { PassThrough } from 'node:stream'
 import { StringDecoder } from 'node:string_decoder'
 import { pathToFileURL } from 'node:url'
 import { DesignMcpServer, PROTOCOL_VERSION } from './server.mjs'
-import { FIGMA_MCP_INSTRUCTIONS, FigmaFacade } from './figma-facade.mjs'
+import { FIGMA_ASSET_LIMIT, FIGMA_MCP_INSTRUCTIONS, FigmaFacade } from './figma-facade.mjs'
 import { MODERN_PROTOCOL_VERSION } from './modern-protocol.mjs'
 import { SocketDesignBackend } from './socket-backend.mjs'
 import { parseOptions } from './cli.mjs'
@@ -38,7 +38,8 @@ class HttpMcpSession {
     this.server = new DesignMcpServer({
       // The desktop grant owns the shared socket. Ending one client session
       // only retires that client's request IDs, work and resources.
-      backend, input: this.input, output: this.output, diagnostics: { write() {} }, instructions: FIGMA_MCP_INSTRUCTIONS,
+      backend, input: this.input, output: this.output, diagnostics: { write() {} },
+      instructions: FIGMA_MCP_INSTRUCTIONS, artifactCount: FIGMA_ASSET_LIMIT,
     }).start()
     this.output.on('data', chunk => this.receive(chunk))
   }
