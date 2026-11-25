@@ -3018,19 +3018,70 @@ impl Engine {
         h: u32,
     ) -> Result<Vec<u8>, String> {
         let tile = Rect::new(x as i32, y as i32, w, h);
-        let extra_halo = crate::export::backdrop_padding(self, options, tile)?;
-        self.export_tile_with_padding(options, coherent, tile, ExportPadding::Extra(extra_halo))
+        let result = crate::export::backdrop_padding(self, options, tile).and_then(|padding| {
+            self.export_tile_with_padding(options, coherent, tile, ExportPadding::Extra(padding))
+        });
+        if options.raster_profile == crate::fidelity::RasterProfile::Figma
+            && options.animation.is_none() && !self.rendering_png_region
+            && result.as_ref().is_err_and(|error| matches!(error.as_str(),
+                crate::export::BACKDROP_PADDING_BUDGET_ERROR | "Compositing memory budget exceeded"))
+        {
+            return self.render_sketch_viewport_tile(options, coherent, tile);
+        }
+        result
+    }
+
+    fn render_sketch_viewport_tile(
+        &mut self, options: &RenderOptions, coherent: bool, tile: Rect,
+    ) -> Result<Vec<u8>, String> {
+        let viewport = Rect::new(tile.x * 2, tile.y * 2, tile.w * 2, tile.h * 2);
+        let required = crate::export::sketch_viewport_backdrop_extent(self, options, viewport)?;
+        let result = self.export_tile_with_padding(options, coherent, tile, ExportPadding::Required(required));
+        // Keep the same camera, absolute sampling lattice and complete lens
+        // captures while reducing the output extent held by one allocation.
+        // Stop if even a small tile's actual dependency cannot fit.
+        if tile.w.max(tile.h) <= 64 || !result.as_ref().is_err_and(|error| error == "Compositing memory budget exceeded") {
+            return result;
+        }
+        let (first, second) = if tile.w >= tile.h {
+            let left = tile.w / 2;
+            (Rect::new(tile.x, tile.y, left, tile.h),
+             Rect::new(tile.x + left as i32, tile.y, tile.w - left, tile.h))
+        } else {
+            let top = tile.h / 2;
+            (Rect::new(tile.x, tile.y, tile.w, top),
+             Rect::new(tile.x, tile.y + top as i32, tile.w, tile.h - top))
+        };
+        let mut pixels = vec![0; tile.pixels() * 4];
+        let mut stats = Stats::default();
+        for part in [first, second] {
+            crate::render_cancellation::checkpoint()?;
+            let rendered = self.render_sketch_viewport_tile(options, coherent, part)?;
+            stats.accumulate(&self.stats);
+            let width = part.w as usize * 4;
+            for (row, bytes) in rendered.chunks_exact(width).enumerate() {
+                let offset = ((part.y - tile.y) as usize + row) * tile.w as usize * 4
+                    + (part.x - tile.x) as usize * 4;
+                pixels[offset..offset + width].copy_from_slice(bytes);
+            }
+        }
+        self.stats = stats;
+        Ok(pixels)
     }
     pub(crate) fn export_tile_with_padding(
         &mut self, options: &RenderOptions, coherent: bool, tile: Rect, padding: ExportPadding,
     ) -> Result<Vec<u8>, String> {
         let Rect { x, y, w, h } = tile;
         if options.raster_profile.is_export() {
-            let ExportPadding::Extra(extra_halo) = padding else { return Err("Invalid exact export extent".into()) };
             let source = crate::fidelity::source(options, 0, 0, w, h)?;
             let viewport = Rect::new(x * 2, y * 2, w * 2, h * 2);
+            let mut planes = match padding {
+                ExportPadding::Extra(halo) => self.render_scene_inner_at(&source, coherent, viewport, halo * 2)?,
+                ExportPadding::Required(_) => self.render_surfaces_budget_plan(
+                    &source, coherent, viewport, padding, Budget::new(COMPOSITING_BYTES), None, false,
+                )?.iter().map(|surface| surface.rgba8(viewport)).collect(),
+            };
             if coherent {
-                let planes = self.render_scene_inner_at(&source, true, viewport, extra_halo * 2)?;
                 let samples = [&planes[0][..], &planes[1][..], &planes[2][..], &planes[3][..]];
                 let mut bytes = if options.raster_profile.is_software() {
                     crate::fidelity::resolve_software_sample_planes_2x(
@@ -3053,9 +3104,7 @@ impl Engine {
                 self.false_half_fixes.clear();
                 Ok(bytes)
             } else {
-                let source = self
-                    .render_scene_inner_at(&source, false, viewport, extra_halo * 2)?
-                    .remove(0);
+                let source = planes.remove(0);
                 Ok(crate::fidelity::downsample(&source, w, h))
             }
         } else {
