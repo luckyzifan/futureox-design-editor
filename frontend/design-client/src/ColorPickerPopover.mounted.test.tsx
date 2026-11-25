@@ -15,6 +15,7 @@ import { ownedPropertyPreviewTarget } from './property-preview'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { DesktopSession } from './desktop-session'
 import type { DesktopBridge } from './desktop'
+import { interfacePreference } from './interface-preference'
 const bootstrap = await vi.hoisted(async () => {
   // @ts-expect-error jsdom runtime dependency
   const { JSDOM } = await import('jsdom')
@@ -32,7 +33,7 @@ beforeEach(() => {
   doc.nodes[id] = n; doc.pages[0].children = [id]; editor = new Editor(doc); editor.select([id])
   mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
 })
-afterEach(async () => { await act(async () => root.unmount()); editor.dispose(); dom.window.close(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+afterEach(async () => { await act(async () => root.unmount()); editor.dispose(); interfacePreference.reset(); dom.window.close(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 function Fixture() {
   const s = useSyncExternalStore(editor.subscribe, editor.snapshot), n = s.doc.nodes[id]
   return <PendingEditContext.Provider value={editor}>{n && <ColorInput label="Fill" value={n.fills[0].color} onChange={() => { throw new Error('Legacy authoring callback must not run') }}
@@ -51,6 +52,25 @@ test('fill and stroke opacity rows render a compact percentage', async () => {
   expect([...mount.querySelectorAll('.paint-opacity-trigger')].map(button => button.textContent)).toEqual(['60%', '40%'])
 })
 async function type(input: HTMLInputElement, value: string) { await act(async () => { input.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })) }) }
+test('Figma solid fill previews immediately and closing writes one undoable edit', async () => {
+  interfacePreference.set({ uiMode: 'figma', locale: 'zh-CN' })
+  await act(async () => root.render(<PendingEditContext.Provider value={editor}><Inspector editor={editor} /></PendingEditContext.Provider>))
+  const base = editor.authoredDocument
+  await click(button('颜色'))
+  expect(dialog()?.querySelector('.property-color-actions')).toBeNull()
+  await type(field('填充颜色值'), '#aabbcc')
+  await type(field('填充不透明度 %'), '30')
+  expect(editor.state.doc.nodes[id].fills[0]).toMatchObject({ color: '#aabbcc', opacity: .3 })
+  expect(editor.authoredDocument).toBe(base)
+  expect(editor.state.version).toBe(0)
+  await click(button('关闭颜色编辑'))
+  expect(dialog()).toBeNull()
+  expect(editor.authoredDocument.nodes[id].fills[0]).toMatchObject({ color: '#aabbcc', opacity: .3 })
+  expect(editor.state.version).toBe(1)
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument).toEqual(base)
+  expect(editor.canUndo).toBe(false)
+})
 async function key(input: Element, key: string, options: object = {}) { await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options }))) }
 async function click(element: Element) { await act(async () => element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))) }
 async function open() { await act(async () => root.render(<Fixture />)); await click(button('Fill')); expect(dialog()).toBeTruthy() }

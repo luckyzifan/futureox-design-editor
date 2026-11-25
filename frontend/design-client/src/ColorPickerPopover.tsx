@@ -9,6 +9,7 @@ import type { Paint } from './model'
 import { validColor } from './color'
 import { applyNotationChannel, collectFileColors, formatHex, hsbToRgb, notationChannels, parseHex, rgbToHsb, type ColorNotation } from './color-field'
 import { eyedropperChord, rememberPaintChannel, type PaintChannel } from './eyedropper-target'
+import { useInterfacePreferences } from './interface-preference'
 
 type KindChoice = Paint['kind'] | 'none'
 type KindPatch = { color: string; opacity: number }
@@ -126,6 +127,8 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
   onKind?: (kind: KindChoice, patch?: KindPatch) => void
 }) {
   const { tr } = usePropertyText()
+  const { uiMode } = useInterfacePreferences()
+  const liveSolidFill = uiMode === 'figma' && preview && kind === 'solid'
   const editor = useContext(PendingEditContext)
   const panel = useRef<HTMLDivElement>(null), color = useRef<HTMLInputElement>(null), opacity = useRef<HTMLInputElement>(null)
   const [notation, setNotation] = useState<ColorNotation>('HEX')
@@ -216,7 +219,8 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
       }
     }}>
-    <button type="button" className="property-color-close" aria-label={tr('取消颜色编辑')} onClick={() => onCancel()}>×</button>
+    <button type="button" className="property-color-close" aria-label={tr(liveSolidFill ? '关闭颜色编辑' : '取消颜色编辑')}
+      onClick={() => { if (liveSolidFill) onCommit(); else onCancel() }}>×</button>
     <div className="property-color-tabs" role="tablist" aria-label={tr('颜色来源')}>
       <button type="button" role="tab" aria-selected={tab === 'custom'} onClick={() => setTab('custom')}>{tr('自定义')}</button>
       <button type="button" role="tab" aria-selected={tab === 'libraries'} onClick={() => setTab('libraries')}>{tr('资料库')}</button>
@@ -285,10 +289,10 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
       {!simple && displayMode === 'hex' && <p className="muted">{tr('宽色域 / HDR 保留原始值，不转换为 8 位 HEX。')}</p>}
     </>}
     {error && <p role="alert">{tr(error)}</p>}
-    <div className="property-color-actions">
+    {!liveSolidFill && <div className="property-color-actions">
       <button type="button" onClick={() => onCancel()}>{tr('取消')}</button>
       <button type="button" onClick={() => onCommit()}>{tr('应用')}</button>
-    </div>
+    </div>}
   </div>, document.body)
 }
 

@@ -496,6 +496,7 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "填充颜色和不透明度": "Fill color and opacity",
   "填充颜色": "Fill color",
   "取消颜色编辑": "Cancel color editing",
+  "关闭颜色编辑": "Close color editing",
   "显示方式": "Display mode",
   "颜色显示方式": "Color display mode",
   "原始颜色 / CSS": "Native color / CSS",
