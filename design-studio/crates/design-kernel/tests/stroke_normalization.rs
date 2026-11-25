@@ -23,6 +23,45 @@ fn accepted_nested_transform_does_not_erase_a_visible_local_short_edge() {
     }
 }
 
+#[test]
+fn nested_network_edges_keep_their_rendered_stroke_and_device_hit() {
+    let scale = 2_f64.powi(38);
+    let nested = 2_f64.powi(19);
+    let shape = |units: f64, parent: f64| {
+        json!({
+            "schemaVersion": 1, "id": "d", "name": "Network stroke units",
+            "pages": [{"id":"p", "name":"p", "background":"#ffffff", "children":["g"]}],
+            "nodes": {
+                "g": {"id":"g", "kind":"group", "width":1, "height":1,
+                      "transform":[parent,0,0,parent,0,0], "children":["n"]},
+                "n": {"id":"n", "kind":"rectangle", "width":40, "height":28,
+                      "transform":[parent,0,0,parent,20./parent,0],
+                      "network": {"vertices":[
+                          {"id":"a", "x":0, "y":24./units},
+                          {"id":"b", "x":10./units, "y":4./units},
+                          {"id":"c", "x":22./units, "y":24./units}],
+                          "edges":[{"id":"ab", "from":"a", "to":"b"},
+                                   {"id":"bc", "from":"b", "to":"c"}]},
+                      "strokes":[{"width":2.75/units, "cap":"butt", "join":"round",
+                                  "paint":{"kind":"solid", "color":"#223344"}}]}
+            }
+        })
+    };
+    let ordinary = shape(1., 1.);
+    let tiny = shape(scale, nested);
+    for profile in ["analytic", "figma", "figmaSubpixel"] {
+        let expected = render(ordinary.clone(), profile);
+        assert!(expected.chunks_exact(4).any(|p| p[3] > 0), "{profile}");
+        assert_eq!(render(tiny.clone(), profile), expected, "{profile}");
+    }
+    let node: futureox_design_kernel::scene::Node =
+        serde_json::from_value(tiny["nodes"]["n"].clone()).unwrap();
+    let matrix = futureox_design_kernel::math::Transform([scale, 0., 0., scale, 28., 8.]);
+    assert!(futureox_design_kernel::hit_test_device(
+        &node, Point::new(33., 22.), matrix, 0.,
+    ).unwrap());
+}
+
 use futureox_design_kernel::{math::Point, path::Contour, scene::Stroke, stroke};
 fn style(cap: &str, join: &str, profile: bool) -> Stroke {
     serde_json::from_value(json!({"width":2.,"cap":cap,"join":join,"paint":{"kind":"solid","color":"#000000"},"widthProfile":if profile {json!([{"position":0.,"left":0.25,"right":0.5},{"position":0.4,"left":1.5,"right":0.8},{"position":1.,"left":1.,"right":1.}])}else{json!([])}})).unwrap()
