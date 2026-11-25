@@ -365,11 +365,11 @@ impl CachedProgram {
         use std::hash::{Hash, Hasher};
         let mut hash = std::collections::hash_map::DefaultHasher::new();
         program.data.len().hash(&mut hash);
-        // Coverage programs are still keyed by every word, including signed
-        // zero. Feed SipHash the same byte stream without a call per word.
+// On little-endian machines the coverage word stream already has
+        // the bytes consumed by write_u32, including signed zero.
         #[cfg(target_endian = "little")]
         hash.write(bytemuck::cast_slice(&program.data));
-        #[cfg(not(target_endian = "little"))]
+        #[cfg(target_endian = "big")]
         for value in &program.data { value.to_bits().hash(&mut hash); }
         Self { program, fingerprint: hash.finish(), phase_contours }
     }
@@ -541,11 +541,43 @@ struct PoseAreaJob {
     samples: bool,
 }
 
+/// An axis-aligned rectangle's interval words are a pure function of its
+/// crop-relative bounds. Curved scanlines are not: translating the absolute
+/// sample lattice by a whole device pixel can change intersection bits even
+/// when every vertex is an exact integer translation. Those programs are
+/// compiled again. Text stays out because glyph masks snap to absolute pixels.
+fn reuse_axis_aligned_rectangle(
+    programs: &mut ProgramCache,
+    doc: &Document,
+    id: &str,
+    input: ProgramShape,
+    contours: &Arc<Vec<crate::path::Contour>>,
+    device_shift: Option<(i32, i32)>,
+) -> Option<Arc<CachedProgram>> {
+    let (dx, dy) = device_shift?;
+    if doc.nodes.get(id).is_some_and(|node| node.kind == "text") { return None; }
+    if crate::coverage::rectangle(contours).is_none() { return None; }
+    let mut prior = input;
+    prior.1 = prior.1.checked_sub(dx)?;
+    prior.2 = prior.2.checked_sub(dy)?;
+    let old = programs.get_shift_source(id, &prior)?;
+    if old.rect.x != prior.1 || old.rect.y != prior.2 || old.rect.w != prior.3 || old.rect.h != prior.4 {
+        return None;
+    }
+    let rect = Rect::new(old.rect.x.checked_add(dx)?, old.rect.y.checked_add(dy)?, old.rect.w, old.rect.h);
+    if !old.same_phase(contours, rect) { return None; }
+    let shifted = Arc::new(CachedProgram::new(crate::area_program::AreaProgram { rect, data: old.data.clone() }, Some(Arc::clone(contours))));
+    programs.store(id, input, Arc::clone(&shifted), false);
+    Some(shifted)
+}
+
 /// The clipped-board drag spends most of one core inside `AreaProgram::compile_crop`.
 /// These programs are pure functions of contours that geometry preparation already
 /// owns. Build the missing ones on the otherwise idle cores, then let the
 /// existing single-threaded walk install them in painter order. A miss keeps
 /// the original compile; cancellation uses the same shared flag as tile batches.
+/// An integer device shift reuses exact rectangles first; the remaining curves
+/// still compile here, including while that shift is active.
 fn warm_pose_area_programs(
     doc: &Document,
     prepared: &HashMap<String, crate::geometry_snapshot::Prepared>,
@@ -553,6 +585,7 @@ fn warm_pose_area_programs(
     extent: Rect,
     samples: bool,
     keep_phase: bool,
+    device_shift: Option<(i32, i32)>,
 ) -> Result<(), String> {
     let mut jobs = Vec::new();
     for (id, entry) in prepared {
@@ -565,6 +598,7 @@ fn warm_pose_area_programs(
             let Ok(crop) = crate::area_program::clip_bounds(bounds, limit) else { return; };
             let shape = (slot, crop.x, crop.y, crop.w, crop.h, even_odd, samples);
             if programs.contains(id, &shape) { return; }
+            if reuse_axis_aligned_rectangle(programs, doc, id, shape, &contours, device_shift).is_some() { return; }
             jobs.push(PoseAreaJob { id: id.clone(), shape, contours, crop, even_odd, samples });
         };
         push(0, entry.fill_program_bounds, Arc::clone(&entry.fill), node.kind != "text" && node.fill_even_odd());
@@ -731,6 +765,7 @@ impl GpuPaint {
             ]
         });
         let mut canonical = paint.clone();
+        canonical.video = None;
         canonical
             .stops
             .sort_by(|a, b| a.offset.total_cmp(&b.offset));
@@ -1994,28 +2029,10 @@ struct Compiler<'a> {
     vertices: Vec<f32>,
 }
 impl Compiler<'_> {
-    /// Reuse scanline words when this pose is an integer device translation of
-    /// the cached crop. The interval payload is stored relative to that crop,
-    /// so only the rectangle origin moves. A viewport clip that changes the
-    /// crop size or relative coverage misses and compiles again.
+    /// Reuse an axis-aligned rectangle when this pose is an integer device
+    /// translation of the cached crop. Curved programs are compiled again.
     fn shifted_program(&mut self, id: &str, input: ProgramShape, contours: &Arc<Vec<crate::path::Contour>>) -> Option<Arc<CachedProgram>> {
-        let (dx, dy) = self.device_shift?;
-        // Glyph outlines can snap to the absolute pixel lattice. Shifting a
-        // cached text program would keep the old snap. Vectors and strokes
-        // are reused only when their crop-relative coordinates are identical.
-        if self.doc.nodes.get(id).is_some_and(|node| node.kind == "text") { return None; }
-        let mut prior = input;
-        prior.1 = prior.1.checked_sub(dx)?;
-        prior.2 = prior.2.checked_sub(dy)?;
-        let old = self.programs.get_shift_source(id, &prior)?;
-        if old.rect.x != prior.1 || old.rect.y != prior.2 || old.rect.w != prior.3 || old.rect.h != prior.4 {
-            return None;
-        }
-        let rect = Rect::new(old.rect.x.checked_add(dx)?, old.rect.y.checked_add(dy)?, old.rect.w, old.rect.h);
-        if !old.same_phase(contours, rect) { return None; }
-        let shifted = Arc::new(CachedProgram::new(crate::area_program::AreaProgram { rect, data: old.data.clone() }, Some(Arc::clone(contours))));
-        self.programs.store(id, input, Arc::clone(&shifted), false);
-        Some(shifted)
+        reuse_axis_aligned_rectangle(&mut self.programs, self.doc, id, input, contours, self.device_shift)
     }
     fn area_path(
         &mut self,
@@ -2588,7 +2605,7 @@ impl Engine {
             return Ok(scene);
         }
         if options.raster_profile.is_export() {
-            let source = crate::fidelity::source(options, 0, 0, options.width, options.height)?;
+            let source = self.export_source(options, options.width, options.height)?;
             let mut scene = self.compile_gpu_scene(&source, None, None, false, false, false,0,false,false)?;
             scene.resolve = Some(crate::preview::Presentation {
                 width: options.width,
@@ -2596,6 +2613,7 @@ impl Engine {
                 offset_x: 0.,
                 offset_y: 0.,
                 scale: 0.5,
+                software_color_coverage: source.raster_profile.is_software() && self.allows_software_color_coverage(options),
             });
             for n in scene.nodes.values_mut() {
                 n.fill.analytic_rect = None;
@@ -2643,7 +2661,7 @@ impl Engine {
         cropped.width = region.w;
         cropped.height = region.h;
         let mut scene = if options.raster_profile.is_export() {
-            let source = crate::fidelity::source(&cropped, 0, 0, region.w, region.h)?;
+            let source = self.export_source(&cropped, region.w, region.h)?;
             let source_region = Rect::new(region.x * 2, region.y * 2, region.w * 2, region.h * 2);
             let source_prepare = prepare.map(|r| Rect::new(r.x * 2, r.y * 2, r.w * 2, r.h * 2));
             let mut scene = self.compile_gpu_scene(&source, Some(source_region), source_prepare, painter_support, capture_reads, false,0,false,false)?;
@@ -2653,6 +2671,7 @@ impl Engine {
                 offset_x: 0.,
                 offset_y: 0.,
                 scale: 0.5,
+                software_color_coverage: source.raster_profile.is_software() && self.allows_software_color_coverage(options),
             });
             scene
         } else {
@@ -3225,9 +3244,9 @@ impl Engine {
             && backdrop_outputs.is_empty() && shadow_outputs.is_empty()
             && !gaussian_regions && gaussian_reduction == 0 && !source_filter_fields;
         let keep_program_phase = cache_key.is_some() && self.source_compile_context.is_none();
-        if pose_samples && device_shift.is_none() {
+        if pose_samples {
             warm_pose_area_programs(doc, &prepared, &mut programs, extent,
-                options.raster_profile != crate::fidelity::RasterProfile::Analytic, keep_program_phase)?;
+                options.raster_profile != crate::fidelity::RasterProfile::Analytic, keep_program_phase, device_shift)?;
         }
         let mut compiler = Compiler {
             analytic_regions: analytic.map(|plan| plan.nodes),
@@ -4109,6 +4128,27 @@ mod incremental_prepare_tests {
 #[cfg(test)]
 mod program_identity_tests {
     use super::*;
+
+    #[test]
+    fn coverage_fingerprint_matches_the_original_word_stream() {
+        use std::hash::{Hash, Hasher};
+
+        let words = [0., -0., f32::from_bits(0x7fc0_0081), -1., 4., 0.125, f32::MAX];
+        for size in [0, 1, 2, 3, 7, 8, 31, 257, 16_384] {
+            let data: Vec<_> = words.into_iter().cycle().take(size).collect();
+            let mut reference = std::collections::hash_map::DefaultHasher::new();
+            data.len().hash(&mut reference);
+            for value in &data {
+                value.to_bits().hash(&mut reference);
+            }
+            let actual = CachedProgram::new(
+                crate::area_program::AreaProgram { rect: Rect::default(), data },
+                None,
+            );
+            assert_eq!(actual.fingerprint, reference.finish(), "{size} coverage words");
+        }
+    }
+
     #[test]
     fn coverage_fingerprint_matches_the_original_word_stream() {
         use std::hash::{Hash, Hasher};

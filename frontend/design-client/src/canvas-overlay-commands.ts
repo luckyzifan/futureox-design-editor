@@ -71,9 +71,11 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
     direct.lines.map(line => [line.from.x, line.from.y, line.to.x, line.to.y, line.dash ? 1 : 0, line.role ?? '']),
     direct.pills.map(pill => [pill.text, pill.anchor.x, pill.anchor.y, pill.offset.x, pill.offset.y]),
   ] : null
-  const uiIdentity = JSON.stringify([5, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity, targetIdentity, Math.round(zoom * 100) / 100, ...(directIdentity ? [directIdentity] : [])])
   const diagram = direct ?? (measurementTarget ? spacingDiagram(selectionBox, measurementTarget.bounds, zoom) : { lines: [] as Measurement[], pills: [] })
   const measurements = diagram.lines
+  const crispMeasurements = input.uiMode === 'figma' && measurements.length > 0
+  const uiIdentity = JSON.stringify([5, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity,
+    targetIdentity, Math.round(zoom * 100) / 100, ...(directIdentity ? [directIdentity] : []), crispMeasurements])
   // Mac Figma does not draw a layer name above an ordinary shape. Frame and
   // section titles are the names on the canvas. The chip under the box is the size.
   if(showSelection) labels.push({anchor:{x:selectionBox.x+selectionBox.width/2,y:selectionBox.y+selectionBox.height},offset:{x:0,y:21},
@@ -84,7 +86,7 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   }
   return {document,pageId:input.pageId,epoch:input.epoch,uiIdentity,
     selectionIdentity:selectionIdentity ? JSON.stringify(selectionIdentity) : undefined,
-    commands:{pixelGrid:input.pixelGrid,labels,measurements,
+    commands:{pixelGrid:input.pixelGrid,labels,measurements,...(crispMeasurements ? { crispMeasurements } : {}),
     transforms:Object.fromEntries(owners.map(id=>[id,document.nodes[id].transform])),
     selection:showSelection?{corners:selectionCorners,handles:input.canTransform,owners}:undefined}}
 }

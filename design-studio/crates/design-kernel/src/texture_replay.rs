@@ -22,7 +22,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
-const TILE: i32 = 512;
+pub(crate) const TILE: i32 = 512;
 const LIMIT: f64 = 16_777_216.;
 
 /// A bounded scratch owner for GPU callers outside the kernel crate. Upload

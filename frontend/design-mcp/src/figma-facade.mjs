@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { isRecord } from './framing.mjs'
 
 /** Explicit compatibility surface for AI clients that already speak Figma MCP.
@@ -5,6 +6,9 @@ import { isRecord } from './framing.mjs'
  * translated into that API. This module does not store a document, eval plugin
  * code, or claim Figma account, library, or pixel parity. */
 export const FIGMA_MCP_INSTRUCTIONS = 'Futureox Design Figma-shaped MCP facade for the document whose desktop automation bridge is enabled. Tools call the existing Design API; this server applies document/session/revision fences itself. get_metadata, get_selection, get_design_context, get_screenshot, get_variable_defs and download_assets read. use_figma writes structured create/update/delete/move/select operations as one undo step. Plugin JavaScript in use_figma code is forwarded only when the host registered a plugin bridge; otherwise the tool returns plugin_host_unavailable and does not eval. open_document is a local workspace open, not a Figma cloud file. fileKey is ignored. Screenshots are CPU exports of design content, not GPU or window captures. Cancellation cannot undo a committed edit.'
+export const FIGMA_ASSET_LIMIT = 20
+const ASSET_BATCH_BYTES = 32 * 1024 * 1024
+const ASSET_MIN_SCALE = 0.01
 
 export const FIGMA_MCP_GAPS = Object.freeze([
   { id: 'whoami', tool: 'whoami', status: 'absent', detail: 'No Figma account, plan, seat, or identity.' },
@@ -18,7 +22,7 @@ export const FIGMA_MCP_GAPS = Object.freeze([
   { id: 'libraries_and_code_connect', tool: 'get_libraries, search_design_system, get_code_connect_map, add_code_connect_map', status: 'absent', detail: 'No team libraries or Code Connect. clientFrameworks and clientLanguages are ignored.' },
   { id: 'figjam_motion_shaders', tool: 'get_figjam, get_motion_context, shader and generative-plugin tools', status: 'absent', detail: 'No FigJam, motion keyframes, shaders, or generative-plugin library.' },
   { id: 'use_figma_plugin_javascript', tool: 'use_figma', status: 'partial', detail: 'Structured operations map to Design API batches. code is forwarded only through a host-registered plugin bridge. Without that bridge the call returns plugin_host_unavailable and is not evaluated.' },
-  { id: 'download_assets_urls_pdf_raw', tool: 'download_assets', status: 'partial', detail: 'One node may export PNG, JPEG, WebP, or SVG. No PDF, no original uploaded-image extraction, no temporary fetch URLs, and no 20-node batch.' },
+  { id: 'download_assets_urls_pdf_raw', tool: 'download_assets', status: 'partial', detail: 'PNG, JPEG, WebP, SVG or bitmap PDF for up to 20 local nodes uses MCP resources. rawImagesOnly reads the original embedded image fills. External fetch URLs and external image sources are unavailable.' },
   { id: 'design_context_not_react', tool: 'get_design_context', status: 'partial', detail: 'Returns Design API context and, when advertised, HTML/CSS from code.export. Not Figma React + Tailwind.' },
   { id: 'screenshot_is_cpu_export', tool: 'get_screenshot', status: 'partial', detail: 'preview.capture CPU raster of design content. Not an application window or GPU canvas screenshot.' },
   { id: 'file_key_ignored', tool: 'fileKey', status: 'partial', detail: 'The server is bound to the enabled local document. A Figma URL or file key does not select a different file.' },
@@ -29,6 +33,7 @@ const KINDS = new Set(['slice', 'frame', 'section', 'group', 'rectangle', 'ellip
 const IGNORED = new Set(['fileKey', 'clientFrameworks', 'clientLanguages', 'skillNames', 'dir'])
 const LOOSE = { description: 'Accepted and ignored. This server is bound to the enabled local document.' }
 const NODE_LIMIT = 100
+const METADATA_CURSOR_PATTERN = /^([A-Za-z0-9_-]{43})\.([A-Za-z0-9_-]{2,171})$/
 const SELECTION_DETAIL = 20
 
 let registeredBridge = null
@@ -43,17 +48,23 @@ export function figmaPluginBridge() { return registeredBridge }
 const tool = (name, description, properties, required = []) => ({
   name,
   description,
-  inputSchema: { type: 'object', additionalProperties: false, properties: { ...properties, fileKey: { type: 'string', ...LOOSE }, clientFrameworks: LOOSE, clientLanguages: LOOSE, skillNames: LOOSE }, required },
+  inputSchema: { type: 'object', additionalProperties: false, properties: { ...properties,
+    sessionId: { type: 'string', minLength: 1, maxLength: 256, description: 'Optional Futureox session assertion. Use the current HTTP Mcp-Session-Id or the packaged Figma stdio desktop grant session.' },
+    fileKey: { type: 'string', ...LOOSE }, clientFrameworks: LOOSE, clientLanguages: LOOSE, skillNames: LOOSE }, required },
   annotations: { readOnlyHint: name !== 'use_figma' && name !== 'open_document', destructiveHint: name === 'use_figma' || name === 'open_document', idempotentHint: name !== 'use_figma' && name !== 'open_document', openWorldHint: false },
 })
 
 export const FIGMA_MCP_TOOLS = Object.freeze([
-  tool('get_metadata', 'Lightweight XML outline of the open Futureox document. Omit nodeId for pages. A page id outlines that page; any other id outlines that subtree, at most 100 nodes. fileKey is ignored. This is not a Figma file listing.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, cursor: { type: 'string', description: 'Rejected. The outline is one bounded page; narrow nodeId instead of paging.' } }),
+  tool('get_metadata', 'Lightweight XML outline of the open Futureox document. Omit nodeId for pages. A page id outlines that page; any other id outlines that subtree in pages of up to 100 nodes. fileKey is ignored.', {
+    nodeId: { type: 'string', minLength: 1, maxLength: 128 },
+    limit: { type: 'integer', minimum: 1, maximum: NODE_LIMIT, description: 'Nodes per outline page. Defaults to 100.' },
+    cursor: { type: 'string', minLength: 46, maxLength: 215, description: 'nextCursor from the same nodeId, editor session, and revision.' },
+  }),
   tool('get_selection', 'Read the active page and current selection. Up to 20 nodes include id, name, kind, size, and world bounds. Desktop Figma MCP often implies this selection; call this tool to read it.', {}),
   tool('get_design_context', 'Bounded design context for nodeId or the current selection, from context.get. When code.export is available, HTML/CSS is attached as resources. Output is Futureox HTML/CSS, not Figma React and Tailwind. clientFrameworks is ignored.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
-  tool('get_screenshot', 'PNG export of nodeId, the current selection, or the active page when nothing is selected. Uses preview.capture: a CPU raster of design content, not an application or GPU screenshot. scale is 0.1–4.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, scale: { type: 'number', minimum: 0.1, maximum: 4 } }),
-  tool('get_variable_defs', 'Local variables and shared styles used by nodeId or the current selection. An empty selection returns the document’s local variables and styles. No team libraries or published design systems.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
-  tool('download_assets', 'Export one node. defaultFormat png, jpeg, webp, or svg. More than one node, PDF, raw uploaded images, and temporary URLs are refused; call get_screenshot per node. A single raster uses the same CPU export as get_screenshot.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, nodeIds: { type: 'array', maxItems: 8, items: { type: 'string', minLength: 1, maxLength: 128 } }, defaultFormat: { type: 'string', enum: ['png', 'jpeg', 'jpg', 'webp', 'svg', 'pdf'] }, defaultScale: { type: 'number', minimum: 0.1, maximum: 4 } }),
+  tool('get_screenshot', 'CPU PNG of the local node, selection or active page. maxDimension fits the rendered size. Set contentsOnly to false to include background and other page layers inside the crop. Set enableBase64Response to false for a resource link without inline image content.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, scale: { type: 'number', minimum: 0.1, maximum: 4 }, maxDimension: { type: 'integer', minimum: 1, maximum: 65536 }, contentsOnly: { type: 'boolean' }, enableBase64Response: { type: 'boolean' } }),
+  tool('get_variable_defs', 'Local variable definitions and their alias dependencies, plus shared styles referenced by nodeId or the first 20 selected nodes. An empty selection returns a bounded document catalog.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
+  tool('download_assets', 'Export up to 20 local nodes as individual MCP resources in png, jpeg, webp, svg, or bitmap pdf. Set rawImagesOnly to read up to 20 original embedded image fills in the selected subtrees instead.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, nodeIds: { type: 'array', minItems: 1, maxItems: FIGMA_ASSET_LIMIT, items: { type: 'string', minLength: 1, maxLength: 128 } }, defaultFormat: { type: 'string', enum: ['png', 'jpeg', 'jpg', 'webp', 'svg', 'pdf'] }, defaultScale: { type: 'number', minimum: ASSET_MIN_SCALE, maximum: 4 }, rawImagesOnly: { type: 'boolean' } }),
   tool('use_figma', 'Write the open document. Preferred input is operations (at most 40), applied as one Design API batch and one undo step: create {kind,parentId?,x?,y?,width?,height?,name?,text?,fontSize?,fill?}, update {nodeId,name?,x?,y?,width?,height?,text?,fill?,transform?}, delete {nodeId|nodeIds}, select {nodeIds}, move {nodeId,parentId,index?}. fill is #RRGGBB. Coordinates are parent-local document units. code is plugin JavaScript and runs only when a plugin bridge is registered; otherwise the result is plugin_host_unavailable and the source is not evaluated. description is required.', { description: { type: 'string', minLength: 1, maxLength: 400 }, operations: { type: 'array', maxItems: 40 }, code: { type: 'string', maxLength: 100000 }, mutationId: { type: 'string', minLength: 1, maxLength: 128 } }, ['description']),
   tool('open_document', 'Open a saved local design through workspace.open. Requires rootHandle, documentHandle, and mutationId from a workspace grant. This is not Figma create_new_file. A successful open can end this automation session.', { rootHandle: { type: 'string', minLength: 1, maxLength: 512 }, documentHandle: { type: 'string', minLength: 1, maxLength: 512 }, mutationId: { type: 'string', minLength: 1, maxLength: 128 } }, ['rootHandle', 'documentHandle', 'mutationId']),
 ])
@@ -66,14 +77,18 @@ const done = (method, identity, result) => ({ ok: true, method, documentId: iden
 const identityOf = response => ({ documentId: response.documentId, session: response.session, revision: response.revision })
 
 function rejectCursor(args) {
-  if (args.cursor !== undefined) return 'This server returns one bounded result and does not accept cursors. Narrow nodeId instead.'
+  if (args.cursor !== undefined) return 'This tool returns one bounded result. Narrow nodeId instead of passing a cursor.'
 }
 
-function unknownArguments(args, allowed) {
+function unknownArguments(args, allowed, { pagination = false } = {}) {
   if (!isRecord(args)) return 'Tool arguments must be an object'
   const extra = Object.keys(args).filter(key => !allowed.has(key) && !IGNORED.has(key))
   if (extra.length) return `Unknown arguments: ${extra.join(', ')}`
-  return rejectCursor(args)
+  if (!pagination) return rejectCursor(args)
+}
+
+function metadataCursorBinding({ documentId, session }, nodeId, scope) {
+  return createHash('sha256').update(JSON.stringify([documentId, session, nodeId, scope])).digest('base64url')
 }
 
 function xmlEscape(value) {
@@ -182,7 +197,7 @@ function patchFrom(operation) {
 }
 
 export class FigmaFacade {
-  constructor({ execute, methods, scope = 'write', pluginBridge = undefined, target, terminalSignal } = {}) {
+  constructor({ execute, methods, scope = 'write', pluginBridge = undefined, target, terminalSignal, localSessionId } = {}) {
     if (typeof execute !== 'function') throw new TypeError('FigmaFacade requires the Design API execute function')
     if (!Array.isArray(methods) || methods.some(method => !isRecord(method) || typeof method.name !== 'string')) throw new TypeError('FigmaFacade requires Design API method descriptors')
     if (!['read', 'write'].includes(scope)) throw new TypeError('FigmaFacade scope must be read or write')
@@ -192,13 +207,30 @@ export class FigmaFacade {
     this.pluginBridge = pluginBridge
     this.target = target
     this.terminalSignal = terminalSignal
+    this.localSessionId = localSessionId
   }
 
-  listTools() { return FIGMA_MCP_TOOLS.map(entry => ({ ...entry, inputSchema: entry.inputSchema })) }
+  listTools() {
+    const canWrite = this.scope === 'write' && this.methodNames.has('document.get')
+    const canUseFigma = canWrite && (this.methodNames.has('batch.apply') || this.pluginHost() !== null)
+    const canOpenDocument = canWrite && this.methodNames.has('workspace.open')
+    return FIGMA_MCP_TOOLS.filter(entry =>
+      entry.annotations.readOnlyHint ||
+      (canUseFigma && entry.name === 'use_figma') ||
+      (canOpenDocument && entry.name === 'open_document')
+    ).map(entry => ({ ...entry }))
+  }
 
   async callTool(name, args, context = {}) {
-    const toolArgs = args ?? {}
+    let toolArgs = args ?? {}
     try {
+      if (isRecord(toolArgs) && Object.hasOwn(toolArgs, 'sessionId')) {
+        const { sessionId, ...parameters } = toolArgs
+        const boundSession = context.localSessionId ?? this.localSessionId
+        if (typeof sessionId !== 'string' || !sessionId.length || sessionId.length > 256 || sessionId !== boundSession)
+          return failure(name, 'invalid_local_session', 'Use the active Futureox transport session ID for this connection.')
+        toolArgs = parameters
+      }
       if (name === 'get_metadata') return await this.metadata(toolArgs, context)
       if (name === 'get_selection') return await this.selection(toolArgs, context)
       if (name === 'get_design_context') return await this.designContext(toolArgs, context)
@@ -238,23 +270,41 @@ export class FigmaFacade {
   }
 
   async metadata(args, context) {
-    const invalid = unknownArguments(args, new Set(['nodeId', 'cursor']))
+    const invalid = unknownArguments(args, new Set(['nodeId', 'limit', 'cursor']), { pagination: true })
     if (invalid) return failure('get_metadata', 'invalid_params', invalid)
     const nodeId = this.nodeId(args)
     if (isRecord(nodeId)) return failure('get_metadata', 'invalid_params', nodeId.error)
+    if (args.limit !== undefined && (nodeId === undefined || !Number.isInteger(args.limit) || args.limit < 1 || args.limit > NODE_LIMIT)) return failure('get_metadata', 'invalid_params', 'limit requires nodeId and must be an integer from 1 to 100')
+    const continuation = typeof args.cursor === 'string' && args.cursor.length <= 215 ? METADATA_CURSOR_PATTERN.exec(args.cursor) : null
+    if (args.cursor !== undefined && (nodeId === undefined || !continuation)) return failure('get_metadata', 'invalid_params', 'Pass nextCursor from an earlier result with the same nodeId')
     const pages = await this.call('page.list', {}, context)
     if (!pages.ok) return pages
-    const pageList = Array.isArray(pages.result?.pages) ? pages.result.pages : []
+    const pageList = Array.isArray(pages.result?.pages) ? pages.result.pages.map(({ id, name }) => ({ id, name })) : []
     if (nodeId === undefined) {
       const xml = metadataXml(pages.documentId, pageList.map(page => ({ id: page.id, name: page.name, kind: 'page' })))
-      return done('get_metadata', identityOf(pages), { format: 'futureox.figma-metadata.v1', scope: 'pages', xml, pages: pageList.map(page => ({ id: page.id, name: page.name })), fileKeyIgnored: args.fileKey !== undefined, modelText: xml })
+      return done('get_metadata', identityOf(pages), { format: 'futureox.figma-metadata.v1', scope: 'pages', xml, pages: pageList, fileKeyIgnored: args.fileKey !== undefined, modelText: xml })
     }
     const page = pageList.find(entry => entry.id === nodeId)
-    const found = await this.call('node.find', page ? { pageId: nodeId, limit: NODE_LIMIT } : { rootId: nodeId, limit: NODE_LIMIT }, context)
+    const scope = page ? 'page' : 'subtree'
+    const identity = identityOf(pages)
+    const binding = metadataCursorBinding(identity, nodeId, scope)
+    if (continuation && continuation[1] !== binding) return failure('get_metadata', 'invalid_params', 'Cursor belongs to another document, editor session, or nodeId', identity)
+    const found = await this.call('node.find', {
+      ...(page ? { pageId: nodeId } : { rootId: nodeId }),
+      limit: args.limit ?? NODE_LIMIT,
+      ...(continuation ? { cursor: Buffer.from(continuation[2], 'base64url').toString('utf8') } : {}),
+    }, context, identity)
+    if (!found.ok && continuation && ['stale_revision', 'stale_cursor'].includes(found.error?.code)) {
+      return failure('get_metadata', 'stale_cursor', 'The document changed. Restart the outline without a cursor.', identityOf(found))
+    }
+    if (!found.ok && found.error?.code === 'not_found') {
+      return { ...found, method: 'get_metadata', error: { ...found.error, details: { pages: pageList } } }
+    }
     if (!found.ok) return found
     const nodes = Array.isArray(found.result?.nodes) ? found.result.nodes : []
     const xml = metadataXml(nodeId, nodes)
-    return done('get_metadata', identityOf(found), { format: 'futureox.figma-metadata.v1', scope: page ? 'page' : 'subtree', nodeId, xml, nodes, truncated: Boolean(found.result?.nextCursor), total: found.result?.total, fileKeyIgnored: args.fileKey !== undefined, modelText: xml })
+    const nextCursor = found.result?.nextCursor ? `${binding}.${Buffer.from(found.result.nextCursor).toString('base64url')}` : null
+    return done('get_metadata', identityOf(found), { format: 'futureox.figma-metadata.v1', scope, nodeId, xml, nodes, truncated: nextCursor !== null, nextCursor, total: found.result?.total, fileKeyIgnored: args.fileKey !== undefined, modelText: xml })
   }
 
   async selection(args, context) {
@@ -315,13 +365,25 @@ export class FigmaFacade {
   }
 
   async screenshot(args, context) {
-    const invalid = unknownArguments(args, new Set(['nodeId', 'scale', 'cursor']))
+    const invalid = unknownArguments(args, new Set(['nodeId', 'scale', 'maxDimension', 'contentsOnly', 'enableBase64Response', 'cursor']))
     if (invalid) return failure('get_screenshot', 'invalid_params', invalid)
-    if (args.scale !== undefined && (typeof args.scale !== 'number' || args.scale < 0.1 || args.scale > 4)) return failure('get_screenshot', 'invalid_params', 'scale must be a number from 0.1 to 4')
+    if (args.scale !== undefined && (!Number.isFinite(args.scale) || args.scale < 0.1 || args.scale > 4)) return failure('get_screenshot', 'invalid_params', 'scale must be a number from 0.1 to 4')
+    const { maxDimension, contentsOnly, enableBase64Response, scale } = args
+    if (maxDimension !== undefined && (!Number.isSafeInteger(maxDimension) || maxDimension < 1 || maxDimension > 65536))
+      return failure('get_screenshot', 'invalid_params', 'maxDimension must be an integer from 1 to 65536')
+    if ([contentsOnly, enableBase64Response].some(value => value !== undefined && typeof value !== 'boolean'))
+      return failure('get_screenshot', 'invalid_params', 'contentsOnly and enableBase64Response must be booleans')
     const target = await this.resolveNodes(args, context, 'get_screenshot')
     if (!target.ok) return target
-    const params = { format: 'png', ...(args.scale === undefined ? {} : { scale: args.scale }), ...(target.ids?.length ? { nodeIds: target.ids.slice(0, 256) } : {}) }
-    return this.call('preview.capture', params, context)
+    const params = { format: 'png', ...(scale === undefined ? {} : { scale }),
+      ...(maxDimension === undefined ? {} : { maxDimension }),
+      ...(contentsOnly === undefined ? {} : { contentsOnly }),
+      ...(target.pageId ? { pageId: target.pageId } : {}),
+      ...(target.ids?.length ? { nodeIds: target.ids.slice(0, 256) } : {}),
+    }
+    const captured = await this.call('preview.capture', params, context, target.identity)
+    if (!captured.ok || enableBase64Response !== false) return captured
+    return { ...captured, result: { ...captured.result, inlineImage: false } }
   }
 
   async variables(args, context) {
@@ -329,14 +391,16 @@ export class FigmaFacade {
     if (invalid) return failure('get_variable_defs', 'invalid_params', invalid)
     const target = await this.resolveNodes(args, context, 'get_variable_defs')
     if (!target.ok) return target
-    const variables = await this.call('variable.list', {}, context)
+    const variables = await this.call('variable.list', {}, context, target.identity)
     if (!variables.ok) return variables
-    const styles = await this.call('style.list', {}, context)
+    const identity = target.identity ?? identityOf(variables)
+    const styles = await this.call('style.list', {}, context, identity)
     if (!styles.ok) return styles
     const usedVariables = new Set()
     const usedStyles = new Set()
-    for (const id of (target.ids ?? []).slice(0, SELECTION_DETAIL)) {
-      const node = await this.call('node.get', { id }, context)
+    const ids = target.ids.slice(0, SELECTION_DETAIL)
+    for (const id of ids) {
+      const node = await this.call('node.get', { id }, context, identity)
       if (!node.ok) return node
       const source = node.result?.node ?? {}
       for (const value of Object.values(source.bindings ?? {})) if (typeof value === 'string') usedVariables.add(value)
@@ -344,8 +408,14 @@ export class FigmaFacade {
     }
     const variableList = asList(variables.result)
     const styleList = asList(styles.result)
-    const scoped = target.ids?.length
-      ? { scope: 'selection', variables: variableList.filter(entry => usedVariables.has(entry.id)), styles: styleList.filter(entry => usedStyles.has(entry.id)) }
+    const byId = new Map(variableList.map(variable => [variable.id, variable]))
+    for (const id of usedVariables) {
+      for (const value of Object.values(byId.get(id)?.values ?? {})) {
+        if (isRecord(value) && typeof value.alias === 'string') usedVariables.add(value.alias)
+      }
+    }
+    const scoped = ids.length
+      ? { scope: 'selection', variables: variableList.filter(entry => usedVariables.has(entry.id)), styles: styleList.filter(entry => usedStyles.has(entry.id)), truncated: ids.length < target.ids.length }
       : { scope: 'document', variables: variableList.slice(0, 50), styles: styleList.slice(0, 50), truncated: variableList.length > 50 || styleList.length > 50 }
     return done('get_variable_defs', identityOf(styles), {
       ...scoped, libraries: [], note: 'Local document variables and styles only. Team libraries are not available.',
@@ -353,25 +423,62 @@ export class FigmaFacade {
   }
 
   async download(args, context) {
-    const invalid = unknownArguments(args, new Set(['nodeId', 'nodeIds', 'defaultFormat', 'defaultScale', 'cursor']))
+    const invalid = unknownArguments(args, new Set(['nodeId', 'nodeIds', 'defaultFormat', 'defaultScale', 'rawImagesOnly', 'cursor']))
     if (invalid) return failure('download_assets', 'invalid_params', invalid)
-    const ids = []
-    if (typeof args.nodeId === 'string') ids.push(args.nodeId)
-    if (args.nodeIds !== undefined) {
-      if (!Array.isArray(args.nodeIds) || args.nodeIds.some(id => typeof id !== 'string' || !id)) return failure('download_assets', 'invalid_params', 'nodeIds must be an array of node ids')
-      ids.push(...args.nodeIds)
-    }
+    const nodeId = this.nodeId(args)
+    if (isRecord(nodeId)) return failure('download_assets', 'invalid_params', nodeId.error)
+    if (args.nodeIds !== undefined && (!Array.isArray(args.nodeIds) ||
+        args.nodeIds.some(id => typeof id !== 'string' || !id.trim() || id.length > 128)))
+      return failure('download_assets', 'invalid_params', 'nodeIds must be an array of nonempty ids of at most 128 characters')
+    const ids = [...(nodeId ? [nodeId] : []), ...(args.nodeIds ?? [])]
+    if (ids.length > FIGMA_ASSET_LIMIT) return failure('download_assets', 'too_many_nodes', `Use at most ${FIGMA_ASSET_LIMIT} node ids`)
     const unique = [...new Set(ids)]
     if (!unique.length) return failure('download_assets', 'invalid_params', 'download_assets requires nodeId or nodeIds')
-    if (unique.length > 1) return failure('download_assets', 'too_many_nodes', 'This facade exports one node per call and does not return temporary URLs. Call get_screenshot once per node.')
+    if (args.rawImagesOnly !== undefined && typeof args.rawImagesOnly !== 'boolean')
+      return failure('download_assets', 'invalid_params', 'rawImagesOnly must be a boolean')
+    if (args.rawImagesOnly) {
+      if (args.defaultFormat !== undefined || args.defaultScale !== undefined)
+        return failure('download_assets', 'invalid_params', 'Omit format and scale when requesting original images')
+      const fences = await this.fences(context)
+      return fences.ok ? this.call('raster.sourceAssets', { nodeIds: unique }, context, fences) : fences
+    }
     const format = args.defaultFormat ?? 'png'
-    if (format === 'pdf') return failure('download_assets', 'unsupported_format', 'PDF export is not available. Use png, jpeg, webp, or svg.')
-    if (!['png', 'jpeg', 'jpg', 'webp', 'svg'].includes(format)) return failure('download_assets', 'invalid_params', 'defaultFormat must be png, jpeg, webp, or svg')
-    if (args.defaultScale !== undefined && (typeof args.defaultScale !== 'number' || args.defaultScale < 0.1 || args.defaultScale > 4)) return failure('download_assets', 'invalid_params', 'defaultScale must be a number from 0.1 to 4')
-    if (format === 'svg') return this.call('vector.export', { nodeIds: unique, ...(args.defaultScale === undefined ? {} : { scale: args.defaultScale }) }, context)
-    const captured = await this.call('preview.capture', { nodeIds: unique, format: format === 'jpg' ? 'jpeg' : format, ...(args.defaultScale === undefined ? {} : { scale: args.defaultScale }) }, context)
-    if (!captured.ok) return captured
-    return { ...captured, result: { ...captured.result, rawImages: [], rawImagesUnsupported: true, urls: false } }
+    if (!['png', 'jpeg', 'jpg', 'webp', 'svg', 'pdf'].includes(format)) return failure('download_assets', 'invalid_params', 'defaultFormat must be png, jpeg, webp, svg, or pdf')
+    if (args.defaultScale !== undefined && (!Number.isFinite(args.defaultScale) || args.defaultScale < ASSET_MIN_SCALE || args.defaultScale > 4))
+      return failure('download_assets', 'invalid_params', `defaultScale must be a number from ${ASSET_MIN_SCALE} to 4`)
+    const vector = format === 'svg'
+    const kind = format === 'jpg' ? 'jpeg' : format
+    const params = { ...(vector ? {} : { format: kind }), ...(args.defaultScale === undefined ? {} : { scale: args.defaultScale }) }
+    const method = vector ? 'vector.export' : 'preview.capture'
+    if (unique.length === 1) {
+      const captured = await this.call(method, { ...params, nodeIds: unique }, context)
+      if (vector || !captured.ok) return captured
+      return { ...captured, result: { ...captured.result, rawImages: [], rawImagesUnsupported: !this.methodNames.has('raster.sourceAssets'), urls: false } }
+    }
+
+    const fences = await this.fences(context)
+    if (!fences.ok) return fences
+    const mimeType = vector ? 'image/svg+xml' : kind === 'pdf' ? 'application/pdf' : `image/${kind}`
+    const prefix = `data:${mimeType};base64,`
+    const assets = []
+    let bytes = 0
+    for (const id of unique) {
+      context.signal?.throwIfAborted()
+      const captured = await this.call(method, { ...params, nodeIds: [id] }, context, fences)
+      if (!captured.ok) return captured
+      if (captured.documentId !== fences.documentId || captured.session !== fences.session || captured.revision !== fences.revision)
+        return failure('download_assets', 'stale_revision', 'Document changed during export. Start a new batch.', fences)
+      const payload = captured.result
+      const base64 = vector && typeof payload?.content === 'string'
+        ? Buffer.from(payload.content).toString('base64')
+        : typeof payload?.dataUrl === 'string' && payload.dataUrl.startsWith(prefix) ? payload.dataUrl.slice(prefix.length) : undefined
+      if (!base64) return failure('download_assets', 'invalid_backend', 'The export did not return media bytes', fences)
+      bytes += base64.length
+      if (bytes > ASSET_BATCH_BYTES)
+        return failure('download_assets', 'artifact_unavailable', 'The batch exceeds the export byte budget. Use fewer nodes or a smaller scale.', fences)
+      assets.push({ nodeId: id, mimeType, base64 })
+    }
+    return done('download_assets', fences, { format: 'futureox.design-asset-batch.v1', assets, rawImagesUnsupported: !this.methodNames.has('raster.sourceAssets'), urls: false })
   }
 
   async useFigma(args, context) {
@@ -423,10 +530,15 @@ export class FigmaFacade {
     return { method: 'node.move', params: { ids: operation.nodeIds ?? [operation.nodeId], parentId: operation.parentId, ...(operation.index === undefined ? {} : { index: operation.index }) } }
   }
 
+  pluginHost() {
+    const bridge = this.pluginBridge === undefined ? figmaPluginBridge() : this.pluginBridge
+    return typeof bridge?.run === 'function' ? bridge : null
+  }
+
   async pluginCode(args, context) {
     if (typeof args.code !== 'string' || !args.code.trim() || args.code.length > 100000) return failure('use_figma', 'invalid_params', 'code must be plugin source of at most 100000 characters')
-    const bridge = this.pluginBridge === undefined ? figmaPluginBridge() : this.pluginBridge
-    if (!bridge || typeof bridge.run !== 'function') {
+    const bridge = this.pluginHost()
+    if (!bridge) {
       return failure('use_figma', 'plugin_host_unavailable', 'No plugin host is registered. use_figma did not evaluate code. Send structured operations, or run this document in a desktop build that registers a Figma plugin bridge.')
     }
     const fences = await this.fences(context)

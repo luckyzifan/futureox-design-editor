@@ -578,6 +578,11 @@ mod wasm {
         serde_json::to_string(&decoded).map_err(|e|JsValue::from_str(&e.to_string()))
     }
     #[wasm_bindgen]
+    pub fn decode_fig_network_stroke_json(bytes:&[u8],sx:f64,sy:f64)->Result<String,JsValue>{
+        let decoded=fig_geometry::decode_network_stroke(bytes,sx,sy).map_err(|e|JsValue::from_str(&e))?;
+        serde_json::to_string(&decoded).map_err(|e|JsValue::from_str(&e.to_string()))
+    }
+    #[wasm_bindgen]
     pub fn fig_stroke_caps_json() -> String {
         serde_json::to_string(fig::STROKE_CAPS).expect("static FIG stroke caps serialize")
     }
@@ -1964,17 +1969,14 @@ mod wasm {
             };
             parse().map_err(|e| JsValue::from_str(&e))
         }
-        /// One canvas frame assembled inside the engine: the Sketch-parity
-        /// update runs (equal instructions rasterise nothing, damage bounds
-        /// the dirty tiles) and the visible residency composites straight
-        /// into the device viewport. Bucket-snapped zooms assemble with the
-        /// byte-exact blit; off-bucket zooms resample the bucket content in
-        /// premultiplied space (the drawTiles tier). Pixel previews are
-        /// rejected — hosts present those through the ordinary render.
+        /// Assemble a settled device frame. Callers can explicitly request a
+        /// resampled bucket preview during motion. Pixel-preview documents use
+        /// the ordinary render path.
         pub fn assemble_tiled_rgba(
             &mut self,
             options: &str,
             damage: Option<String>,
+            bucket_preview: Option<bool>,
         ) -> Result<Vec<u8>, JsValue> {
             let parse = || -> Result<Vec<u8>, String> {
                 let options = self.inner.parse_options(
@@ -1985,10 +1987,12 @@ mod wasm {
                     .transpose()
                     .map_err(|e| e.to_string())?
                     .flatten();
-                Ok(self
-                    .inner
-                    .render_tiled_frame(&options, damage.as_deref())?
-                    .rgba)
+                let frame = if bucket_preview == Some(true) {
+                    self.inner.render_tiled_preview_frame(&options, damage.as_deref())?
+                } else {
+                    self.inner.render_tiled_frame(&options, damage.as_deref())?
+                };
+                Ok(frame.rgba)
             };
             parse().map_err(|e| JsValue::from_str(&e))
         }

@@ -45,6 +45,65 @@ function subject(layer: Record<string, unknown>) {
   return { ...result, node: Object.values(reopened.nodes).find((n) => n.name === 'Subject')! }
 }
 
+const publicFig = (name: string) => new Uint8Array(readFileSync(new URL(
+  `../../../testing/fixtures/fig-tools-public-20261106/fig2sketch/tests/data/${name}.fig`, import.meta.url,
+)))
+
+test('FIG scroll behavior and unrendered noise stay readable in inert source receipts', () => {
+  const prototype = importFig(publicFig('prototyping'))
+  const prototypeReceipts = prototype.document.designSystem?.sketchContainers?.nodeMetadata as
+    Record<string, { bindings: Record<string, string> }>
+  expect(Object.values(prototypeReceipts).filter(entry => entry.bindings.figScrollBehavior)
+    .map(entry => entry.bindings.figScrollBehavior)).toEqual(['FIXED_WHEN_CHILD_OF_SCROLLING_FRAME'])
+  expect(Object.values(prototype.document.nodes).some(node =>
+    node.bindings?.figScrollBehavior)).toBe(false)
+  const noise = importFig(publicFig('noise_and_grain'))
+  const noiseReceipts = noise.document.designSystem?.sketchContainers?.nodeMetadata as
+    Record<string, { bindings: Record<string, string> }>
+  const retained = Object.values(noiseReceipts).flatMap(entry =>
+    JSON.parse(entry.bindings.figNoiseEffects ?? '[]'))
+  expect(retained).toEqual([
+    expect.objectContaining({ index: 1, effect: expect.objectContaining({ type: 'NOISE', seed: 3426 }) }),
+  ])
+  expect(noise.warnings.some(warning => warning.includes('未栅格化') && warning.includes('NOISE'))).toBe(true)
+})
+
+test('native FIG list spacing is independent of paragraph spacing for plain text', () => {
+  const input = encoded({
+    type: 'TEXT', textData: { characters: 'Plain' }, fontSize: 14,
+    listSpacing: 5, paragraphSpacing: 2,
+  })
+  const imported = importFig(input)
+  const text = Object.values(imported.document.nodes).find(node => node.kind === 'text')!
+  expect(text.textStyle).toMatchObject({ listSpacing: 5, paragraphSpacing: 2 })
+  expect(text.textStyle?.list).toBeUndefined()
+})
+
+test('legacy FIG Auto accepts a rounded intrinsic line from a real archive', () => {
+  const imported = importFig(publicFig('prototyping'))
+  const names = new Set(['Scroll', 'No scroll', 'Both directions'])
+  const measured = Object.values(imported.document.nodes).filter(node => names.has(node.text ?? ''))
+  expect(measured).toHaveLength(3)
+  expect(measured.every(node => node.textStyle?.lineHeightAuto &&
+    node.textStyle.lineBoxBaseline === 'figma-font-metrics')).toBe(true)
+})
+
+test('a real styled FIG vector keeps both windings, all fills, and its stroke', () => {
+  const { document } = importFig(publicFig('vector'))
+  const authored = Object.values(document.nodes).find(layer => layer.children.length === 7)!
+  expect(authored.kind).toBe('group')
+  const fills = authored.children.slice(0, 6).map(id => document.nodes[id])
+  expect(fills.map(region => region.vectorGeometry?.fillRule))
+    .toEqual(['evenodd', 'nonzero', 'nonzero', 'nonzero', 'nonzero', 'nonzero'])
+  expect(fills.map(region => region.fills.length)).toEqual([1, 1, 1, 1, 1, 1])
+  expect(fills.every(region => (region.vectorGeometry?.fill.length ?? 0) > 0)).toBe(true)
+  const stroke = document.nodes[authored.children[6]]
+  expect(stroke.strokes).toHaveLength(1)
+  expect(stroke.vectorGeometry?.fill).toHaveLength(0)
+  expect(stroke.vectorGeometry?.stroke?.length).toBeGreaterThan(0)
+  validateDocument(document)
+})
+
 test.each([
   [undefined, 'butt', 'none'], ['NONE', 'butt', 'none'], ['ROUND', 'round', 'none'],
   ['SQUARE', 'square', 'none'], ['ARROW_LINES', 'butt', 'arrow'], ['ARROW_EQUILATERAL', 'butt', 'arrow'],

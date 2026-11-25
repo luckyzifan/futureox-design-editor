@@ -117,6 +117,35 @@ test('Rust export planning never reads device DPR or editor zoom', () => {
     }
   }
 })
+test('a projected page PNG uses the same Figma coverage as the selection route', async () => {
+  installWorker()
+  const doc = blank(), page = doc.pages[0], otherPage = blank().pages[0]
+  const frame = node('frame', 0, 0, 300, 200), shape = node('rectangle', 60, 80, 100, 60)
+  const ordinary = node('rectangle', 0, 0, 20, 20)
+  doc.schemaVersion = 24
+  frame.clip = false
+  frame.spatial = { perspective: { distance: 540, visible: true } }
+  shape.spatial = { pose: { rotateX: 30, rotateY: 25, rotateZ: 0, depth: 40, origin: [.5, .5],
+    backfaceVisible: true, visible: true } }
+  shape.fills[0].color = '#d9d9d9'
+  frame.children = [shape.id]
+  doc.nodes = { [frame.id]: frame, [shape.id]: shape, [ordinary.id]: ordinary }
+  page.children = [frame.id]
+  otherPage.children = [ordinary.id]
+  doc.pages.push(otherPage)
+  const snapshot = JSON.stringify(doc), target = { kind: 'page' as const, padding: 0 }
+  const [actual] = await exportPngBatch(doc, page.id, [1], target)
+  expect(requests.at(-1)?.options.rasterProfile).toBe('figma')
+  const [reference] = await exportPngBatch({ ...doc, rasterProfile: 'figma' }, page.id, [1], target)
+  expect(await actual.blob.arrayBuffer()).toEqual(await reference.blob.arrayBuffer())
+  await exportPngBatch(doc, page.id, [1], { kind: 'selection', nodeIds: [shape.id] })
+  expect(requests.at(-1)?.options.rasterProfile).toBe('figma')
+  await exportPngBatch(doc, otherPage.id, [1], target)
+  expect(requests.at(-1)?.options.rasterProfile).toBe('analytic')
+  await exportPngBatch({ ...doc, rasterProfile: 'figmaSoftware' }, page.id, [1], target)
+  expect(requests.at(-1)?.options.rasterProfile).toBe('figmaSoftware')
+  expect(JSON.stringify(doc)).toBe(snapshot)
+})
 test('batch uses one real CPU Engine and stable 1x/2x/3x dimensions and filenames', async () => {
   installWorker()
   const { doc, frame, page } = fixture()

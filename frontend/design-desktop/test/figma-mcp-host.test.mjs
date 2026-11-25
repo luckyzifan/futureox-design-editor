@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import path from 'node:path'
 import { LocalAutomationBridge, registerAutomationBridge } from '../src/automation-bridge.mjs'
-import { attachFigmaMcp, desktopMcpClientConfig } from '../src/figma-mcp-host.mjs'
+import { attachFigmaMcp, desktopMcpClientConfig, desktopMcpPaths } from '../src/figma-mcp-host.mjs'
 import { APP_URL, assertSender } from '../src/security.mjs'
 
 const editor = {
@@ -49,12 +50,15 @@ test('stdio config survives a replaced environment and omits unrelated secrets',
   const token = 'a'.repeat(64)
   const config = desktopMcpClientConfig(
     { endpoint: '\\\\.\\pipe\\futureox-design-session', sessionId: 'session-1', token },
-    'C:/Program Files/Futureox/resources/design-mcp/src/cli.mjs',
-    'C:/Program Files/Futureox/futureox-desgin.exe',
-    { env: { Path: 'C:/Windows', PathExt: '.EXE', NODE_OPTIONS: '--inspect', SECRET_TOKEN: token, LD_PRELOAD: '/tmp/lib.so' }, platform: 'win32' },
+    {
+      resourcesPath: 'C:/Program Files/Futureox/resources',
+      executable: 'C:/Program Files/Futureox/futureox-desgin.exe',
+      env: { Path: 'C:/Windows', PathExt: '.EXE', NODE_OPTIONS: '--inspect', SECRET_TOKEN: token, LD_PRELOAD: '/tmp/lib.so' },
+      platform: 'win32',
+    },
   ).mcpServers.futureox_design
   assert.equal(config.command, 'C:/Program Files/Futureox/futureox-desgin.exe')
-  assert.deepEqual(config.args, ['C:/Program Files/Futureox/resources/design-mcp/src/cli.mjs'])
+  assert.deepEqual(config.args, [path.join('C:/Program Files/Futureox/resources', 'design-mcp/src/cli.mjs')])
   assert.equal(config.env.ELECTRON_RUN_AS_NODE, '1')
   assert.equal(config.env.Path, 'C:/Windows')
   assert.equal(config.env.PathExt, '.EXE')
@@ -66,6 +70,7 @@ test('stdio config survives a replaced environment and omits unrelated secrets',
 
 test('confirmed enable publishes the loopback URL without putting the token in status', async t => {
   const details = []
+  const copied = []
   const handlers = new Map()
   const frame = { url: APP_URL }
   const window = { isDestroyed: () => false, webContents: { mainFrame: frame, send() {} } }
@@ -74,12 +79,15 @@ test('confirmed enable publishes the loopback URL without putting the token in s
     getWindow: () => window,
     assertSender,
     dialog: { showMessageBox: async (...args) => { const options = args.at(-1); details.push(options?.detail || ''); return { response: details.length === 1 ? 1 : 0 } } },
-    clipboard: { writeText() {} },
+    clipboard: { writeText: value => copied.push(value) },
+    clientConfig: (connection, format) => desktopMcpClientConfig(connection, { format, env: {} }),
     figmaMcp: async () => ({ url: 'http://127.0.0.1:9/mcp', close: async () => {} }),
   })
   t.after(() => api.close())
   const event = { sender: window.webContents, senderFrame: frame }
   const call = (method, value) => handlers.get(`design-desktop:automation-${method}`)(event, value)
+  assert.deepEqual(call('copy-connection', 'figma-stdio'), { copied: false })
+  assert.deepEqual(call('copy-connection', 'figma-http'), { copied: false })
   assert.deepEqual(call('register', editor), { status: 'ok' })
   const status = await call('enable', { scope: 'read' })
   assert.equal(status.enabled, true)
@@ -87,4 +95,24 @@ test('confirmed enable publishes the loopback URL without putting the token in s
   assert.equal('token' in status, false)
   assert.match(details[1], /127\.0\.0\.1:9\/mcp/)
   assert.match(details[1], /Authorization: Bearer/)
+  assert.deepEqual(call('copy-connection', 'figma-stdio'), { copied: true })
+  assert.deepEqual(call('copy-connection', 'stdio'), { copied: true })
+  assert.deepEqual(call('copy-connection', 'codex'), { copied: true })
+  assert.deepEqual(call('copy-connection', 'figma-http'), { copied: true })
+  const figma = JSON.parse(copied[0]).mcpServers
+  const design = JSON.parse(copied[1]).mcpServers
+  assert.deepEqual(Object.keys(figma), ['futureox_design_figma'])
+  assert.deepEqual(Object.keys(design), ['futureox_design'])
+  assert.deepEqual(figma.futureox_design_figma.args, [desktopMcpPaths().figmaCli])
+  assert.deepEqual(design.futureox_design.args, [desktopMcpPaths().cli])
+  assert.deepEqual(figma.futureox_design_figma.env, design.futureox_design.env)
+  assert.match(copied[2], /^\[mcp_servers.futureox_design\]/)
+  assert.deepEqual(JSON.parse(copied[3]), { mcpServers: { futureox_design_figma_http: {
+    type: 'http', url: status.figmaMcp.url,
+    headers: { Authorization: `Bearer ${design.futureox_design.env.FUTUREOX_DESIGN_BRIDGE_TOKEN}` },
+  } } })
+  assert.equal(desktopMcpClientConfig({ token: 'not-granted' }, { format: 'figma-http' }), null)
+  await call('disable')
+  assert.deepEqual(call('copy-connection', 'figma-stdio'), { copied: false })
+  assert.equal(copied.length, 4)
 })

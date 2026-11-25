@@ -1,6 +1,8 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import {compositeDrawPlan} from './composite-draw-plan'
 import { opaquePageClear } from '../../color'
+import { anchorPlacementBox, measureAnchors } from '../../canvas-measurements'
+import { overlayVertices } from './canvas-overlay'
 import { opaqueByteClear, residentFrameMessage, residentFrameSignature } from './resident-frame'
 import type { ResidentFrame } from './resident-presenter'
 afterEach(()=>vi.unstubAllEnvs())
@@ -80,4 +82,51 @@ test('an opaque page plate survives the display wire and rejects a fractional or
   expect(residentFrameMessage({ ...frame, pageBackground: [1, 1, 1, 0.5] }).pageBackground).toBeUndefined()
   expect(opaqueByteClear([1, Number.NaN, 1, 1])).toBeUndefined()
   expect(residentFrameSignature(frame)).toBe(residentFrameSignature(residentFrameMessage(frame)))
+})
+
+test('the display wire keeps a vector placement rectangle dashed and leaves anchor distances unchanged', () => {
+  const view = { x: 0, y: 0, zoom: 1 }
+  const placed = anchorPlacementBox({ x: 10, y: 20 }, { x: 90, y: 70 })
+  const frame: ResidentFrame = {
+    view, width: 400, height: 300, dpr: 1, items: [],
+    overlay: { pixelGrid: false, measurements: placed.lines },
+  }
+  const wire = residentFrameMessage(frame)
+  expect(wire.overlay?.measurements?.map(line => line.dash)).toEqual([true, true, true, true])
+  const authored = overlayVertices(frame.overlay!, view, frame.width, frame.height)
+  const drawn = overlayVertices(wire.overlay!, view, frame.width, frame.height)
+  expect(Array.from(drawn)).toEqual(Array.from(authored))
+  expect(drawn.length / 48).toBe(40)
+  const top: number[] = []
+  for (let quad = 0; quad < drawn.length; quad += 48) {
+    const ys = [0, 1, 2, 3, 4, 5].map(vertex => drawn[quad + vertex * 8 + 1])
+    const xs = [0, 1, 2, 3, 4, 5].map(vertex => drawn[quad + vertex * 8])
+    if (Math.min(...ys) < 22 && Math.max(...ys) > 18 && Math.max(...ys) - Math.min(...ys) < 8)
+      top.push(Math.max(...xs) - Math.min(...xs))
+  }
+  expect(Math.max(...top)).toBeLessThan(80)
+  const anchors = measureAnchors({ x: 10, y: 20 }, { x: 90, y: 70 })
+  const anchorFrame: ResidentFrame = { ...frame, overlay: { pixelGrid: false, measurements: anchors } }
+  const anchorWire = residentFrameMessage(anchorFrame)
+  expect(anchorWire.overlay?.measurements?.every(line => line.dash === undefined && line.tick === undefined)).toBe(true)
+  expect(Array.from(overlayVertices(anchorWire.overlay!, view, 400, 300))).toEqual(
+    Array.from(overlayVertices(anchorFrame.overlay!, view, 400, 300)))
+  const withoutDash = {
+    ...wire,
+    overlay: {
+      ...wire.overlay!,
+      measurements: wire.overlay!.measurements!.map(line => ({ from: line.from, to: line.to, axis: line.axis })),
+    },
+  }
+  expect(residentFrameSignature(wire)).not.toBe(residentFrameSignature(withoutDash))
+})
+
+test('the display wire preserves an opaque Figma measurement band', () => {
+  const view = { x: 0, y: 0, zoom: 1 }
+  const frame: ResidentFrame = { view, width: 160, height: 90, dpr: 1, items: [],
+    overlay: { pixelGrid: false, crispMeasurements: true,
+      measurements: [{ from: { x: 10, y: 20 }, to: { x: 40, y: 20 }, axis: 'horizontal' }] } }
+  const wire = residentFrameMessage(frame)
+  expect(wire.overlay?.crispMeasurements).toBe(true)
+  expect(overlayVertices(wire.overlay!, view, frame.width, frame.height)[7]).toBe(-1)
 })

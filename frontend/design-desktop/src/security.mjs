@@ -10,6 +10,7 @@ export const CSP = [
   "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
+  "media-src blob:",
   "font-src 'self' data: blob:",
   "connect-src 'self'",
   "worker-src 'self' blob:",
@@ -95,7 +96,7 @@ export function resultError(error) {
   const messages = {
     WORKSPACE_CONFLICT: '本机库中的文档已有新版本。请重新打开或保存副本，当前修改已保留。',
     WORKSPACE_MUTATION_CONFLICT: '保存请求标识与内容不一致，已拒绝覆盖本机数据。',
-    WORKSPACE_STORAGE_FULL: '本机文档库空间不足，这次没有写入。上一份已提交版本仍可打开，当前画布已保留。',
+    WORKSPACE_STORAGE_FULL: '本机文档库空间不足，这次没有写入。当前画布已保留。请清理空间后重试，必要时重开文档库以恢复上一份已提交版本。',
     WORKSPACE_WRITE_FAILED: '本机文档库这次没有写入。上一份已提交版本仍可打开，当前画布已保留。',
     WORKSPACE_MIGRATION: '本机文档库升级没有完成，旧结构和已有文档保持原样。这次没有写入。',
     SOURCE_STORAGE_FULL: '源工作副本空间不足，这次没有写入。原文件和上一份一致副本都未改动。',
@@ -124,6 +125,13 @@ export function resultError(error) {
     RECOVERY_LIMIT:
       'The recovery store is full. Recover and save an earlier snapshot to free space, or save this design manually.',
     BUSY: 'Another file operation is in progress. Please try again after it finishes.',
+    PLUGIN_STORAGE_SESSION: 'The plugin storage session has ended.',
+    PLUGIN_STORAGE_LIMIT: 'Plugin storage is full.',
+    PLUGIN_STORAGE_BUSY: 'Plugin storage is busy.',
+    PLUGIN_STORAGE_FAILED: 'Local plugin storage is unavailable.',
+    PLUGIN_STORAGE_INVALID: 'The plugin storage request was invalid.',
+    PLUGIN_SOURCE_LIMIT: 'The plugin TypeScript entry exceeds the source limit.',
+    PLUGIN_SOURCE_UNSUPPORTED: 'This TypeScript entry needs a built JavaScript bundle.',
   }
   return {
     status: code === 'CONFLICT' || code === 'WORKSPACE_CONFLICT' ? 'conflict' : 'error',

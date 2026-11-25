@@ -13,7 +13,7 @@ import { useInterfacePreferences } from './interface-preference'
 import { commitPendingEdits } from './pending-edits'
 
 type GuideRef = { owner: string; id: string }
-export type GuideMeasureHit = GuideRef & { axis: 'x' | 'y' | null; position: number; label: number; at: Point }
+export type GuideMeasureHit = GuideRef & { axis: 'x' | 'y' | null; position: number; label: number; at: Point; from: Point; to: Point }
 export type GuideMeasureState = { selected: GuideMeasureHit | null; hover: GuideMeasureHit | null }
 const GUIDE_HIT_WIDTH = 8
 
@@ -26,7 +26,8 @@ function guideAxis(guide: WorldGuide): { axis: 'x' | 'y'; position: number } | n
 function guideMeasureHit(guide: WorldGuide, at: Point): GuideMeasureHit {
   const axis = guideAxis(guide)
   return { owner: guide.owner, id: guide.guide.id, axis: axis?.axis ?? null,
-    position: axis?.position ?? guide.guide.position, label: guide.guide.position, at }
+    position: axis?.position ?? guide.guide.position, label: guide.guide.position, at,
+    from: guide.from, to: guide.to }
 }
 export function CanvasGuides({editor,view,size,entries,intercept,guidesHidden=false,onGuideMeasure}:{editor:Editor;view:CanvasCamera;size:CanvasSize;entries?:readonly SceneEntry[];intercept:(e:React.PointerEvent)=>boolean;guidesHidden?:boolean;onGuideMeasure?:(state:GuideMeasureState)=>void}){
   const {tr}=useProfessionalDialogText()

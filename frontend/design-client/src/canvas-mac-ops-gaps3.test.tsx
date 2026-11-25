@@ -12,6 +12,9 @@ import { blank, node, type DesignNode } from './model'
 import { shortcutPreference } from './shortcut-preference'
 import { interfacePreference } from './interface-preference'
 import { OPEN_PLUGINS_EVENT } from './plugins/open-plugins'
+import { closeCommandSearch, commandSearchSnapshot } from './command-search-session'
+import { fitSelectedBounds } from './canvas-camera'
+import type { DesktopClipboard } from './desktop'
 
 vi.mock('./kernel/Surface', async () => {
   const { useLayoutEffect } = await import('react')
@@ -46,11 +49,12 @@ beforeEach(() => {
   dom.window.HTMLElement.prototype.hasPointerCapture = () => false
   dom.window.HTMLElement.prototype.releasePointerCapture = () => {}
   vi.spyOn(dom.window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
-  localStorage.clear(); shortcutPreference.set('figma-like'); interfacePreference.set({ locale: 'zh-CN' })
+  localStorage.clear(); shortcutPreference.set('figma-like'); interfacePreference.set({ locale: 'zh-CN', uiMode: 'figma' })
   editor = new Editor(blank()); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false })
   mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
 })
 afterEach(async () => {
+  closeCommandSearch()
   await act(async () => root.unmount()); editor.dispose(); interfacePreference.set({ locale: 'zh-CN' }); dom.window.close()
   vi.unstubAllGlobals(); vi.restoreAllMocks()
 })
@@ -72,6 +76,101 @@ function key(value: string, options: KeyboardEventInit = {}, type = 'keydown') {
 }
 const labels = () => [...document.querySelectorAll<HTMLButtonElement>('.canvas-context-menu [role="menuitem"]')].map(button =>
   (button.querySelector('.context-label, span')?.textContent || button.textContent || '').trim())
+const menuItem = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('.canvas-context-menu [role="menuitem"]')]
+  .find(button => button.getAttribute('aria-label') === label || button.textContent === label)!
+
+test.each([
+  ['zh-CN', '快速操作'],
+  ['en', 'Quick actions'],
+] as const)('the Figma empty-canvas menu opens %s quick actions with the matching label', async (locale, label) => {
+  interfacePreference.set({ locale })
+  const close = vi.fn(), before = editor.state.doc
+  await act(async () => root.render(<CanvasContextMenu editor={editor} x={40} y={40}
+    worldPoint={{ x: 30, y: 40 }} onClose={close} />))
+  expect(commandSearchSnapshot()).toBe(0)
+  await act(async () => menuItem(label).click())
+  expect(close).toHaveBeenCalledOnce()
+  expect(commandSearchSnapshot()).toBe(1)
+  expect(editor.state.doc).toBe(before)
+  expect(editor.canUndo).toBe(false)
+})
+
+test.each(['layers', 'inspector', 'canvas'] as const)('Figma %s menu keeps structural commands together', async origin => {
+  const frame = node('frame', 20, 30, 80, 50), doc = blank()
+  doc.nodes[frame.id] = frame
+  doc.pages[0].children = [frame.id]
+  editor.load(doc); editor.select([frame.id])
+  await act(async () => root.render(<CanvasContextMenu editor={editor} x={40} y={40}
+    worldPoint={{ x: 30, y: 40 }} origin={origin} onClose={() => {}} />))
+  const ordered = labels()
+  const structure = ordered.slice(ordered.indexOf('置于底层') + 1, ordered.indexOf('展平') + 1)
+  expect(structure).toEqual(origin === 'canvas' ? ['转换为分区', '编组', '创建选区画板', '解除编组', '展平']
+    : ['转换为分区', '编组', '创建选区画板', '解除编组', '重命名', '展平'])
+  expect(menuItem(structure[0]).parentElement!.querySelector('[role="separator"]')).toBeTruthy()
+  for (const command of structure.slice(1))
+    expect(menuItem(command).parentElement!.querySelector('[role="separator"]')).toBeNull()
+})
+
+test('empty native paste reports feedback without reviving a stale clip; real paste here still undoes once', async () => {
+  const rect = node('rectangle', 20, 30, 80, 50), doc = blank()
+  doc.nodes[rect.id] = rect
+  doc.pages[0].children = [rect.id]
+  editor.load(doc); editor.select([rect.id]); editor.copy()
+  const before = editor.state.doc, version = editor.state.version
+  let clipboard: DesktopClipboard = {}
+  Object.defineProperty(window, 'coreDesktop', { configurable: true, value: {
+    version: 1, renderPolicy: { cpuOnly: true },
+    clipboard: {
+      read: async () => ({ status: 'ok', ...clipboard }),
+      write: async (value: DesktopClipboard) => { clipboard = value; return { status: 'ok' } },
+    },
+  } })
+  const choose = async (label: string) => {
+    await act(async () => root.render(<CanvasContextMenu editor={editor} x={40} y={40}
+      worldPoint={{ x: 300, y: 400 }} onClose={() => root.render(null)} />))
+    await act(async () => menuItem(label).click())
+  }
+  for (const label of ['粘贴到此处', '粘贴替换']) {
+    editor.set({ message: '' })
+    await choose(label)
+    expect(editor.state.message).toBe('剪贴板中没有可粘贴的图层、图片或文字')
+    expect(editor.state.doc).toBe(before)
+    expect(editor.state.version).toBe(version)
+    expect(editor.canUndo).toBe(false)
+  }
+  await choose('复制')
+  await choose('粘贴到此处')
+  const pasted = editor.state.doc.nodes[editor.state.selection[0]]
+  expect(pasted.id).not.toBe(rect.id)
+  expect(pasted.transform.slice(4)).toEqual([300, 400])
+  expect(editor.state.version).toBe(version + 1)
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+})
+
+test('zoom menu and shortcut fit a selected frame and its outlying selected child', async () => {
+  const frame = node('frame', 0, 0, 200, 100), child = node('rectangle', 180, 10, 80, 40)
+  frame.children = [child.id]
+  const before = await render([frame, child], [frame.id])
+  await act(async () => editor.select([frame.id, child.id]))
+  const expected = fitSelectedBounds({ x: 0, y: 0, width: 260, height: 100 }, { width: 1000, height: 800 }, 'figma')
+  const menu = mount.querySelector<HTMLDetailsElement>('.view-menu')!
+  await act(async () => {
+    menu.open = true
+    const fitSelection = [...menu.querySelectorAll('button')].find(button => button.textContent?.includes('适合选择'))!
+    fitSelection.click()
+  })
+  expect(editor.state.view).toEqual(expected)
+  await act(async () => {
+    editor.set({ view: { x: 0, y: 0, zoom: 1 } })
+    host().focus()
+    key('2', { code: 'Digit2', shiftKey: true })
+  })
+  expect(editor.state.view).toEqual(expected)
+  expect(editor.state.doc).toBe(before)
+  expect(editor.canUndo).toBe(false)
+})
 
 test('a group click stays on the group; Cmd and double-click reach the child; a frame does not', async () => {
   const frame = node('frame', 80, 80, 240, 180), group = node('group', 20, 20, 160, 80)

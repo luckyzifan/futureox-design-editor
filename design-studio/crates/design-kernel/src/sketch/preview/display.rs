@@ -152,6 +152,7 @@ fn solid(id: String, value: String) -> Paint {
         angle: 0.,
         stops: vec![],
         image: None,
+        video: None,
         fit: "cover".into(),
         blend: "normal".into(),
         adjust: None,
@@ -419,6 +420,11 @@ impl Projection<'_> {
                 .push(self.paint(&p, format!("{id}:bitmap"), [n.width, n.height], false)?)
         }
         let opts = &style["borderOptions"];
+        let mut miter_notes = Vec::new();
+        let miter_limit = crate::interop::sketch_style_miter_limit(style, &mut miter_notes);
+        for note in miter_notes {
+            self.warnings.insert(note);
+        }
         for (i, p) in array(style, "borders")
             .iter()
             .enumerate()
@@ -448,7 +454,7 @@ impl Projection<'_> {
                     _ => "miter",
                 }
                 .into(),
-                miter_limit: 4.,
+                miter_limit,
                 dash: array(opts, "dashPattern")
                     .iter()
                     .map(Value::to_string)

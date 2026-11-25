@@ -9,6 +9,7 @@ import { validStroke, validProfiles } from './stroke-profile'
 import type { AnimationClip } from './animation'
 import { validColor, validColorSettings, type ColorSettings } from './color'
 import { isEmbeddedRasterUri } from './embedded-raster'
+import { isLocalVideoData } from './local-video-fill'
 export const MAX_GRADIENT_STOPS = 64
 export type Point = { x: number; y: number }
 export type Matrix = [number, number, number, number, number, number]
@@ -106,6 +107,8 @@ export type Paint = {
   angle: number
   stops: { offset: number; color: string }[]
   image?: string
+  /** The original local video. The image is the authored, deterministic poster. */
+  video?: string
   fit: 'cover' | 'contain' | 'stretch'
   blend: Blend
   /** Image adjustments (schema 13, image paints only); absent = identity. */
@@ -125,7 +128,7 @@ export type Stroke = {
   align: 'inside' | 'center' | 'outside'
   cap: 'butt' | 'round' | 'square'
   join: 'miter' | 'round' | 'bevel'
-  /** FIG/SVG miter limit. Absent means 4, the historical renderer cap. */
+  /** FIG/Sketch/SVG miter limit. Absent means 4, the historical renderer cap. Sketch's usual authored value is 10. */
   miterLimit?: number
   dash: string
   dashOffset?: number
@@ -455,6 +458,8 @@ export type TextStyle = {
   list?: TextListStyle
   /** Indent level 0–4. Absent means the first level. */
   listLevel?: number
+  /** FIG-authored list spacing, kept separately from plain paragraph spacing. */
+  listSpacing?: number
   fontId: string
   fallbacks: string[]
   weight: number
@@ -544,7 +549,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34
   id: string
   name: string
   pages: Page[]
@@ -873,7 +878,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1034,7 +1039,9 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     (!['linear', 'radial', 'angular', 'diamond'].includes(p.kind) || p.stops.length >= 2) &&
     p.stops.length <= MAX_GRADIENT_STOPS &&
     p.stops.every((s) => finite(s.offset, 0, 1) && color.test(s.color)) &&
-    (!p.image || !!sourceBitmap(p.image) || isEmbeddedRasterUri(p.image))
+    (!p.image || !!sourceBitmap(p.image) || isEmbeddedRasterUri(p.image)) &&
+    (p.video === undefined || (d.schemaVersion >= 34 && p.kind === 'image' && typeof p.image === 'string' && p.image.startsWith('data:image/png;base64,') &&
+      p.image.length <= 12 * 1024 * 1024 && isLocalVideoData(p.video)))
   const paints = (list: Paint[]) => Array.isArray(list) && list.length <= 16 && list.every(validPaint)
   const defaultStyle = defaultTextStyle()
   let segmenter: Intl.Segmenter | undefined
@@ -1054,6 +1061,7 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
         !['top','center','bottom'].includes(style.verticalAlign ?? 'top') ||
         !['auto', 'ltr', 'rtl'].includes(style.direction) ||
         !validTextList(style.list, style.listLevel) ||
+        (style.listSpacing !== undefined && !finite(style.listSpacing, 0, 10000)) ||
         !Array.isArray(style.fallbacks) ||
         style.fallbacks.length > 16 ||
         [style.fontId, ...style.fallbacks].some(
@@ -1104,8 +1112,12 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     if (n.spatial !== undefined) {
       const spatial = n.spatial
       const inRange = (value: unknown, min: number, max: number) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
-      if (d.schemaVersion < 24 || !isObject(spatial) || Object.keys(spatial).some(key => !['pose', 'perspective', 'preserve3d'].includes(key)) ||
-          (!spatial.pose && !spatial.perspective && !spatial.preserve3d)) throw new Error('3D 效果需要设计文件版本 24')
+      if (d.schemaVersion < 24) throw new Error('3D 效果需要设计文件版本 24')
+      if (!isObject(spatial) || Object.keys(spatial).some(key => !['pose', 'perspective', 'preserve3d'].includes(key)))
+        throw new Error('无效的 3D 效果字段')
+      if (spatial.pose === undefined && spatial.perspective === undefined &&
+          (spatial.preserve3d === undefined || spatial.preserve3d === false))
+        throw new Error('3D 效果至少需要变换、透视或保留嵌套 3D')
       if (spatial.preserve3d !== undefined && (typeof spatial.preserve3d !== 'boolean' ||
           spatial.preserve3d && (d.schemaVersion < 25 || n.kind !== 'frame' || n.graphic)))
         throw new Error('保留嵌套 3D 需要画框和设计文件版本 25')

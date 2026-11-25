@@ -531,6 +531,7 @@ mod tests {
                 angle: 0.,
                 stops: Vec::new(),
                 image: None,
+                video: None,
                 fit: "cover".into(),
                 blend: "normal".into(),
                 adjust: None,
@@ -540,6 +541,28 @@ mod tests {
         doc.nodes.insert("p1".into(), page);
         doc.nodes.insert("n1".into(), frame);
         doc
+    }
+
+    #[test]
+    fn local_video_fill_reopens_with_original_encoded_media_and_poster() {
+        let mut doc = document();
+        doc.nodes.remove("p1");
+        let paint = &mut doc.nodes.get_mut("n1").unwrap().fills[0];
+        paint.kind = "image".into();
+        // A container header alone exercises file-format admission. The editor
+        // only writes a media source after its browser decoder supplies a frame.
+        paint.video = Some("data:video/webm;base64,GkXfowAAAAAA".into());
+        paint.image = Some("data:image/png;base64,iVBORw0KGgo=".into());
+        assert!(doc.validate().unwrap_err().contains("schema 34"));
+        doc.schema_version = 34;
+        doc.validate().unwrap();
+        let authored = serde_json::to_string(&doc).unwrap();
+        let encoded = encode_authored_json(&authored).unwrap();
+        let reopened: Document = serde_json::from_str(&decode_authored_json(&encoded).unwrap()).unwrap();
+        assert_eq!(reopened.schema_version, 34);
+        assert_eq!(reopened.nodes["n1"].fills[0], doc.nodes["n1"].fills[0]);
+        doc.nodes.get_mut("n1").unwrap().fills[0].video = Some("https://example.invalid/movie.webm".into());
+        assert!(doc.validate().unwrap_err().contains("Invalid local WebM or MP4"));
     }
 
     #[test]

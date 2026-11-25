@@ -72,6 +72,7 @@ impl Fixture {
             sketch_reduced_group: None,
             clipped_export_target: false,
             png_region: false,
+            png_frame: None,
             flush_backdrop_frame: None,
             compact_export_groups: false,
             post_byte_opacity: None,
@@ -80,6 +81,7 @@ impl Fixture {
             pose_prefix: None,
             settled_cuts: std::sync::Arc::new(std::sync::Mutex::new(super::SettledCuts::default())),
             prefix_allocations: Vec::new(),
+            false_half_fixes: Vec::new(),
             prefix_view: PrefixView {
                 viewport: extent,
                 extent,

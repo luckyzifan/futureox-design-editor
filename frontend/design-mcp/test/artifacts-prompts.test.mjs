@@ -30,7 +30,7 @@ test('artifact retention is bounded and does not cache failed/made-up outputs', 
   resources.clear(); assert.equal(resources.bytes, 0); assert.equal(resources.list().length, 0)
 })
 test('workflow prompts are bounded, schema-aware client instructions', () => {
-  assert.equal(DESIGN_PROMPTS.length, 2)
+  assert.deepEqual(DESIGN_PROMPTS.map(prompt => prompt.name), ['design_generation', 'design_to_code', 'create_design_system_rules'])
   const prompt = getDesignPrompt('design_generation', { brief: 'Build an invoice form' })
   assert.match(prompt.messages[0].content.text, /bounded, atomic schema-aware batch/)
   assert.match(prompt.messages[0].content.text, /Do not execute arbitrary JavaScript/)

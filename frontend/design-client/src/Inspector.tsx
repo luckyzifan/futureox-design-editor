@@ -20,6 +20,7 @@ import { commitPendingEdits, pendingOperationEpoch } from './pending-edits'
 import { DraftInput } from './DraftInput'
 import { ColorInput } from './ColorInput'
 import { LoosePaintColor, SolidFillColorInput } from './ColorPickerPopover'
+import { LOCAL_VIDEO_ACCEPT, localVideoObjectUrl, readLocalVideoFill } from './local-video-fill'
 import { nearestStopIndex } from './color-field'
 import { rememberPaintChannel } from './eyedropper-target'
 import type { SolidFillTarget } from './property-preview'
@@ -109,6 +110,33 @@ const effects: Record<Effect['kind'], string> = {
   'gaussian-blur': '高斯模糊', 'motion-blur': '运动模糊', 'zoom-blur':'缩放模糊',
 }
 
+function VideoFillPreview({ video, image }: { video: string; image: string | undefined }) {
+  const { tr } = usePropertyText()
+  const [open, setOpen] = useState(false), [source, setSource] = useState<string>(), [failed, setFailed] = useState(false)
+  useEffect(() => {
+    setSource(undefined)
+    setFailed(false)
+    if (!open) return
+    try {
+      const url = localVideoObjectUrl(video)
+      setSource(url)
+      return () => URL.revokeObjectURL(url)
+    } catch { setFailed(true) }
+  }, [open, video])
+  return <details onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary>{tr('预览视频填充')}</summary>
+    {open && source && <video controls playsInline preload="metadata" src={source} poster={image}
+      aria-label={tr('预览视频填充')} onError={() => setFailed(true)} style={{ width: '100%' }} />}
+    {open && failed && <p role="alert">{tr('无法播放此视频填充')}</p>}
+  </details>
+}
+
+function stillPaint(paint: Paint): Paint {
+  if (!paint.video) return paint
+  const { video: _video, ...rest } = paint
+  return rest
+}
+
 function PaintEditor({
   value: p,
   onChange,
@@ -123,32 +151,79 @@ function PaintEditor({
   channel?: 'fill' | 'stroke'
 }) {
   const { tr } = usePropertyText()
-  const file = useRef<HTMLInputElement>(null)
+  const file = useRef<HTMLInputElement>(null), videoFile = useRef<HTMLInputElement>(null)
+  const videoRead = useRef<AbortController | null>(null)
   const editor = useContext(PendingEditContext), mounted = useRef(true), latestPaint = useRef(p), imageRequest = useRef(0)
   const [stopAt, setStopAt] = useState(0)
+  const [videoError, setVideoError] = useState('')
+  const [videoLoading, setVideoLoading] = useState(false)
   latestPaint.current = p
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; videoRead.current?.abort() } }, [])
   useEffect(() => { setStopAt(index => Math.min(index, Math.max(0, p.stops.length - 1))) }, [p.stops.length])
   const hex = p.color.startsWith('#') ? p.color.slice(1).toUpperCase() : tr('扩展颜色')
   const changeKind = (next: Paint['kind'] | 'none', patch?: { color: string; opacity: number }) => {
     const base = { ...latestPaint.current, ...patch }
     if (next === 'none') onChange({ ...base, visible: false })
-    else onChange({ ...base, kind: next, visible: true })
+    else onChange({ ...stillPaint(base), kind: next, visible: true })
+  }
+  const chooseVideo = channel === 'fill' && interfacePreference.getSnapshot().uiMode === 'figma'
+    ? () => videoFile.current?.click() : undefined
+  const importVideo = async (file: File) => {
+    videoRead.current?.abort()
+    const request = new AbortController()
+    videoRead.current = request
+    ++imageRequest.current
+    setVideoError('')
+    setVideoLoading(true)
+    const original = latestPaint.current, session = editor?.sessionGeneration, page = editor?.state.page
+    const revision = editor?.state.version, selection = editor?.state.selection.join('\n')
+    const epoch = editor && pendingOperationEpoch(editor)
+    const current = () => mounted.current && videoRead.current === request && !request.signal.aborted &&
+      latestPaint.current === original && (!editor || editor.sessionGeneration === session && editor.state.page === page &&
+        editor.state.version === revision && editor.state.selection.join('\n') === selection &&
+        pendingOperationEpoch(editor) === epoch && !editor.interactionActive && !editor.state.busy)
+    const stop = editor?.subscribe(() => { if (!current()) request.abort() })
+    try {
+      const media = await readLocalVideoFill(file, maxImagePixels, request.signal)
+      if (current()) onChange({ ...original, ...media, kind: 'image', visible: true })
+    } catch (error) {
+      if (current()) setVideoError(error instanceof Error ? error.message : String(error))
+    } finally {
+      stop?.()
+      if (videoRead.current === request) {
+        videoRead.current = null
+        if (mounted.current) setVideoLoading(false)
+      }
+    }
   }
   return (
     <div className="paint-editor">
+      {chooseVideo && <input ref={videoFile} type="file" hidden accept={LOCAL_VIDEO_ACCEPT}
+        aria-label={tr('选择视频')} onChange={event => {
+          const selected = event.currentTarget.files?.[0]
+          event.currentTarget.value = ''
+          if (selected) void importVideo(selected)
+        }} />}
+      {videoError && <p role="alert">{tr(videoError)}</p>}
+      {videoLoading && <p role="status">{tr('正在解码视频首帧')}</p>}
       <div className="paint-color-row" onPointerDownCapture={() => rememberPaintChannel(editor, channel)}>
         {target ? <>
-          <SolidFillColorInput target={target} label={tr('颜色')} value={p.color} kind={p.kind} onKind={changeKind} channel={channel} />
+          <SolidFillColorInput target={target} label={tr('颜色')} value={p.color} kind={p.kind} onKind={changeKind} onVideo={chooseVideo} channel={channel} />
           <span className="paint-hex">{hex}</span>
-          <SolidFillColorInput target={target} label={tr('填充不透明度')} value={formatPercent(p.opacity * 100)} opacity kind={p.kind} onKind={changeKind} channel={channel} />
+          <SolidFillColorInput target={target} label={tr('填充不透明度')} value={formatPercent(p.opacity * 100)} opacity kind={p.kind} onKind={changeKind} onVideo={chooseVideo} channel={channel} />
         </> : <LoosePaintColor label={tr('颜色')} color={p.color} opacity={p.opacity} hex={hex} kind={p.kind} channel={channel} onKind={changeKind}
+          onVideo={chooseVideo} isVideo={!!p.video}
           onChange={patch => onChange({ ...p, ...patch })} />}
         <select
           className="paint-kind-native"
           aria-label={tr("填充类型")}
-          value={p.kind}
-          onChange={(e) => onChange(e.target.value==='noise-image' ? {...kernelNoiseFillPreset(),id:p.id,visible:p.visible} : { ...p, kind: e.target.value as Paint['kind'] })}
+          value={p.video ? 'video' : p.kind}
+          onChange={event => {
+            const kind = event.target.value
+            if (kind === 'video') chooseVideo?.()
+            else onChange(kind === 'noise-image' ? { ...kernelNoiseFillPreset(), id: p.id, visible: p.visible }
+              : { ...stillPaint(p), kind: kind as Paint['kind'] })
+          }}
         >
           <option value="solid">{tr("纯色")}</option>
           <option value="linear">{tr("线性渐变")}</option>
@@ -156,6 +231,7 @@ function PaintEditor({
           <option value="angular">{tr("角度渐变")}</option>
           <option value="diamond">{tr("菱形渐变")}</option>
           <option value="image">{tr("图片")}</option>
+          {(chooseVideo || p.video) && <option value="video" disabled={!chooseVideo}>{tr('视频')}</option>}
           <option value="noise-image">{tr("噪声图片预设")}</option>
         </select>
       </div>
@@ -286,6 +362,7 @@ function PaintEditor({
       )}
       {p.kind === 'image' && (
         <>
+          {p.video && <VideoFillPreview video={p.video} image={p.image} />}
           <input
             ref={file}
             type="file"
@@ -304,7 +381,7 @@ function PaintEditor({
                 try {
                   const image = await imageData(f, maxImagePixels)
                   if (!current()) return
-                  onChange({ ...p, image: image.data })
+                  onChange({ ...stillPaint(p), image: image.data })
                 } catch (error) {
                   if (current()) alert(String(error))
                 } finally {
@@ -489,7 +566,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
     n = s.doc.nodes[ids[0]]
   const live = useSyncExternalStore(editor.subscribeLiveRotation, () => editor.liveRotation) as LiveRotation | null
   const liveBlur = useSyncExternalStore(editor.subscribeLiveBlur, () => editor.liveBlur)
-  const update = (fn: (n: DesignNode) => void, label = '修改属性') => editor.updateProperties(ids, fn, label)
+  const update = (fn: Parameters<Editor['updateProperties']>[1], label = '修改属性') => editor.updateProperties(ids, fn, label)
   const [glassToOpen, setGlassToOpen] = useState<string | null>(null)
   if (uiMode === 'sketch' && s.tool === 'graphic') return <GraphicTemplatePanel editor={editor}/>
   if (s.tool === 'scale') return <ScaleInspector key={`${editor.sessionGeneration}:${s.page}:${s.selection.join(',')}`} editor={editor} />
@@ -1006,8 +1083,9 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
                 value={p}
                 target={p.kind === 'solid' ? { kind: 'solid-fill', nodeId: n.id, fillId: p.id, fillIndex: i } : undefined}
                 onChange={(p) =>
-                  update((n) => {
+                  update((n, document) => {
                     if (n.fills[i]) {
+                      if (p.video && document.schemaVersion < 34) document.schemaVersion = 34
                       n.fills[i] = { ...p, id: n.fills[i].id }
                       clearWholeTextRunColor(n)
                     }

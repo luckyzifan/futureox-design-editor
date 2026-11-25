@@ -45,12 +45,13 @@ function repeatExport(doc: DesignDocument, target: ExportTarget): {doc: DesignDo
   return {doc:{...expanded,nodes},target}
 }
 
-/** Only a PNG selection containing a projected outline needs Figma's filter.
- * Keep ordinary and explicitly encoded exports on their existing profiles. */
-function spatialPngProfile(authored: DesignDocument, projected: DesignDocument, target: ExportTarget) {
-  if (authored === projected || authored.colorManagement || target.kind !== 'selection' ||
+/** Use the same filter for a projected PNG whether exported as a selection
+ * or as part of its page. A slice retains its existing sampling policy. */
+function spatialPngProfile(authored: DesignDocument, projected: DesignDocument, pageId: string, target: ExportTarget) {
+  if (authored === projected || authored.colorManagement || target.kind === 'slice' ||
       (authored.rasterProfile && authored.rasterProfile !== 'analytic')) return
-  const pending = [...target.nodeIds]
+  const roots = target.kind === 'selection' ? target.nodeIds : projected.pages.find(page => page.id === pageId)?.children ?? []
+  const pending = [...roots]
   while (pending.length) {
     const id = pending.pop()!
     const node = projected.nodes[id]
@@ -496,11 +497,13 @@ export async function exportRasterBatch(
   doc: DesignDocument, pageId: string, scales: number[], target: ExportTarget = { kind: 'page' },
   colorOutput?: import('./color').ColorOutput, signal?: AbortSignal,
   format: 'png' | 'jpeg' | 'webp' | 'pdf' | 'tiff' | 'heic' = 'png',
+  pageRegion?: Bounds,
 ) {
   if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb' && colorOutput.space !== 'display-p3') throw new Error('JPEG、WebP、TIFF、HEIC 与 PDF 只标记 sRGB 或 Display P3；其他色彩空间请导出 PNG')
   if (signal?.aborted) throw new Error('已取消导出')
   if (!scales.length || scales.length > 16 || new Set(scales).size !== scales.length)
     throw new Error('请选择 1–16 个不重复的导出倍率')
+  if (pageRegion && target.kind !== 'page') throw new Error('页面区域必须从完整页面内容导出')
   await initializePicking()
   if (signal?.aborted) throw new Error('已取消导出')
   const authored = kernelLayout(doc)
@@ -509,11 +512,11 @@ export async function exportRasterBatch(
     ? kernelSpatialRasterDocument(authored, selection, format === 'png' && target.kind === 'selection')
     : undefined
   const projected = materialView?.geometry ?? kernelSpatialDocument(authored)
-  const spatialProfile = format === 'png' ? spatialPngProfile(authored, projected, target) : undefined
+  const spatialProfile = format === 'png' ? spatialPngProfile(authored, projected, pageId, target) : undefined
   ;({doc,target} = repeatExport(projected,target))
   doc = projectSlice(doc,pageId,target)
   const renderInput = materialView ? projectSlice(materialView.document, pageId, target) : doc
-  const box = rasterExportBounds(doc, pageId, target, format)
+  const box = pageRegion ?? rasterExportBounds(doc, pageId, target, format)
   const plans = scales.map((scale) => {
     if (!Number.isFinite(scale) || scale < 0.001 || scale > 128)
       throw new Error('导出倍率必须在 0.001–128 之间')

@@ -40,6 +40,8 @@ const phrases = {
   copyConnection: ['复制连接详情', 'Copy connection details'],
   copyCodex: ['复制 Codex TOML', 'Copy Codex TOML'],
   copyStdio: ['复制 stdio 客户端配置', 'Copy stdio client config'],
+  copyFigmaStdio: ['复制 Figma 兼容 stdio 配置', 'Copy Figma-compatible stdio config'],
+  copyFigmaHttp: ['复制 Figma 兼容 HTTP 配置', 'Copy Figma-compatible HTTP config'],
   copied: ['连接配置已复制，请仅粘贴到可信本地 AI 客户端。不要分享其中的临时凭据。', 'Connection copied. Paste it only into a trusted local AI client. Do not share the temporary credential.'],
   notCopied: ['未复制连接配置', 'Connection was not copied'],
   inspect: ['检查、预览与导入导出', 'Check, preview and transfer'],

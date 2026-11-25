@@ -1,20 +1,26 @@
-import { lstat, readFile, readdir, realpath } from 'node:fs/promises'
+import { lstat, open, readdir, realpath } from 'node:fs/promises'
+import { constants, watch } from 'node:fs'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { compilePluginTypeScript, PLUGIN_SOURCE_BYTES } from './plugin-source.mjs'
 
 export const PLUGIN_MANIFEST_BYTES = 64 * 1024
 export const PLUGIN_FILE_BYTES = 1024 * 1024
+export const PLUGIN_UI_BYTES = 512 * 1024
 export const LOCAL_PLUGIN_SCAN_LIMIT = 64
 export const LOCAL_PLUGIN_ENABLE_LIMIT = 32
+const LOCAL_PLUGIN_WATCH_LIMIT = 128
 const suffixes = new Set(['js', 'mjs', 'html', 'json', 'css', 'svg'])
+const NAMED_UI_LIMIT = 16
+const LOCAL_FOLDER_ID_PREFIX = 'futureox.local.folder:'
 
-export function pluginRelativeParts(value) {
+export function pluginRelativeParts(value, typeSource = false) {
   if (typeof value !== 'string' || value.length < 1 || value.length > 128) throw new Error('Invalid plugin file')
   if (value.includes('\\') || value.includes('\0') || path.isAbsolute(value)) throw new Error('Invalid plugin file')
   const parts = value.split('/')
   if (parts.some(part => part === '' || part === '.' || part === '..')) throw new Error('Invalid plugin file')
   const suffix = parts.at(-1).split('.').pop().toLowerCase()
-  if (!suffixes.has(suffix)) throw new Error('Invalid plugin file')
+  if (!(suffixes.has(suffix) || typeSource && suffix === 'ts')) throw new Error('Invalid plugin file')
   return parts
 }
 
@@ -30,6 +36,22 @@ function requiredText(value, max) {
   return text
 }
 
+function uiPath(value) {
+  const file = pluginRelativeParts(value).join('/')
+  if (!file.endsWith('.html')) throw new Error('Invalid plugin UI file')
+  return file
+}
+
+function namedUiFiles(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const entries = Object.entries(value)
+  if (entries.length === 0 || entries.length > NAMED_UI_LIMIT) throw new Error('Invalid plugin UI file count')
+  return Object.fromEntries(entries.map(([name, file]) => {
+    if (requiredText(name, 80) !== name) throw new Error('Invalid plugin UI name')
+    return [name, uiPath(file)]
+  }))
+}
+
 /** Same declaration rules as the client manifest parser. A valid manifest enables a plugin; it does not run it. */
 export function parseDeclaredPluginManifest(text) {
   if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > PLUGIN_MANIFEST_BYTES) throw new Error('Invalid plugin manifest')
@@ -37,16 +59,30 @@ export function parseDeclaredPluginManifest(text) {
   try { value = JSON.parse(text) } catch { throw new Error('Invalid plugin manifest') }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid plugin manifest')
   const name = requiredText(value.name, 64)
-  const id = requiredText(value.id, 128)
+  const id = typeof value.id === 'number' && Number.isSafeInteger(value.id) && value.id > 0
+    ? String(value.id) : requiredText(value.id, 128)
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id)) throw new Error('Invalid plugin manifest')
   requiredText(value.api, 32)
   const main = pluginRelativeParts(value.main).join('/')
-  const ui = value.ui === undefined ? undefined : pluginRelativeParts(value.ui).join('/')
+  const uiFiles = namedUiFiles(value.ui)
+  const ui = uiFiles ? uiFiles.main : value.ui === undefined ? undefined : uiPath(value.ui)
   const editorType = value.editorType === undefined ? ['figma'] : value.editorType
-  if (!Array.isArray(editorType) || editorType.some(item => typeof item !== 'string') || !editorType.includes('figma')) {
+  if (!Array.isArray(editorType) || editorType.some(item => typeof item !== 'string') ||
+      !editorType.includes('figma') && !editorType.includes('dev')) {
     throw new Error('Invalid plugin manifest')
   }
-  return { id, name, main, ui }
+  return { id, name, main, ui, ...(uiFiles ? { uiFiles } : {}) }
+}
+
+async function readLocalPluginManifest(root) {
+  const text = await readPluginFile(root, 'manifest.json')
+  let manifest
+  try { manifest = JSON.parse(text) } catch { return text }
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return text
+  if (typeof manifest.id === 'string' && manifest.id.trim().startsWith(LOCAL_FOLDER_ID_PREFIX)) throw new Error('Reserved local plugin id')
+  if (Object.hasOwn(manifest, 'id')) return text
+  const id = LOCAL_FOLDER_ID_PREFIX + createHash('sha256').update(root).digest('hex')
+  return JSON.stringify({ ...manifest, id })
 }
 
 function limitOption(value, max) {
@@ -72,6 +108,7 @@ export async function scanDeclaredPlugins(root, options = {}) {
   }
   const rootStat = await lstat(rootReal)
   if (!rootStat.isDirectory()) return empty
+  options.watchFolders?.add(rootReal)
   const entries = await readdir(rootReal, { withFileTypes: true })
   const names = entries
     .filter(entry => entry.isDirectory() && !entry.isSymbolicLink() && pluginFolderName(entry.name))
@@ -81,7 +118,6 @@ export async function scanDeclaredPlugins(root, options = {}) {
   let skipped = 0
   const seen = new Set()
   for (const name of names.slice(0, scanLimit)) {
-    if (plugins.length >= enableLimit) { skipped += 1; continue }
     try {
       const listed = path.join(rootReal, name)
       const stat = await lstat(listed)
@@ -89,11 +125,23 @@ export async function scanDeclaredPlugins(root, options = {}) {
       const folderReal = await realpath(listed)
       const rel = path.relative(rootReal, folderReal)
       if (rel !== name || path.isAbsolute(rel)) { skipped += 1; continue }
-      const manifestText = await readPluginFile(folderReal, 'manifest.json')
+      options.watchFolders?.add(folderReal)
+      if (plugins.length >= enableLimit) { skipped += 1; continue }
+      const manifestText = await readLocalPluginManifest(folderReal)
       const manifest = parseDeclaredPluginManifest(manifestText)
       if (seen.has(manifest.id)) { skipped += 1; continue }
-      await readPluginFile(folderReal, manifest.main)
-      if (manifest.ui) await readPluginFile(folderReal, manifest.ui)
+      if (options.watchFolders) {
+        for (const file of [manifest.main, ...Object.values(manifest.uiFiles ?? (manifest.ui ? { main: manifest.ui } : {}))]) {
+          await watchSourceParent(folderReal, file, options.watchFolders)
+        }
+      }
+      await readPluginEntry(folderReal, manifest.main, false)
+      const uiFiles = manifest.uiFiles ? Object.values(manifest.uiFiles) : manifest.ui ? [manifest.ui] : []
+      let remaining = PLUGIN_UI_BYTES
+      for (const ui of uiFiles) {
+        remaining -= Buffer.byteLength(await readPluginFile(folderReal, ui), 'utf8')
+        if (remaining < 0) throw new Error('Plugin UI is too large')
+      }
       seen.add(manifest.id)
       plugins.push({ id: manifest.id, name: manifest.name, manifestText, root: folderReal })
     } catch { skipped += 1 }
@@ -101,57 +149,178 @@ export async function scanDeclaredPlugins(root, options = {}) {
   return { plugins, skipped, truncated: names.length > scanLimit }
 }
 
-export async function readPluginFile(root, relative) {
+async function watchSourceParent(folder, relative, folders) {
+  if (folders.size >= LOCAL_PLUGIN_WATCH_LIMIT) return
+  let parent = path.dirname(path.resolve(folder, ...pluginRelativeParts(relative)))
+  while (parent !== folder) {
+    try {
+      const stat = await lstat(parent)
+      if (stat.isDirectory() && !stat.isSymbolicLink() && await realpath(parent) === parent) folders.add(parent)
+      return
+    } catch (error) {
+      if (error?.code !== 'ENOENT') return
+    }
+    parent = path.dirname(parent)
+  }
+}
+
+/** Reconcile live directory watches from the same bounded catalog scan. */
+export function createPluginCatalogWatcher(profile, refresh) {
+  const watchers = new Map()
+  let timer
+  let closed = false
+  function changed() {
+    if (closed) return
+    clearTimeout(timer)
+    timer = setTimeout(() => { if (!closed) void refresh() }, 125)
+    timer.unref?.()
+  }
+  return {
+    update(folders) {
+      if (closed) return
+      // The profile watch sees creation/removal of the plugins directory itself.
+      const ordered = [...folders].sort((left, right) => left.split(path.sep).length - right.split(path.sep).length)
+      const next = new Set([profile, ...ordered.slice(0, LOCAL_PLUGIN_WATCH_LIMIT)])
+      for (const [folder, watcher] of watchers) {
+        if (!next.has(folder)) { watcher.close(); watchers.delete(folder) }
+      }
+      for (const folder of next) {
+        if (watchers.has(folder)) continue
+        try {
+          const watcher = watch(folder, { persistent: false }, (event, name) => {
+            if (folder !== profile && event === 'rename' && (name == null || String(name) === path.basename(folder))) {
+              watchers.delete(folder)
+              watcher.close()
+            }
+            if (folder !== profile || name == null || String(name) === 'plugins') changed()
+          })
+          watchers.set(folder, watcher)
+          watcher.on('error', () => {
+            if (watchers.get(folder) !== watcher) return
+            watchers.delete(folder)
+            watcher.close()
+          })
+        } catch { /* The catalog can still refresh when the panel opens. */ }
+      }
+    },
+    close() {
+      closed = true
+      clearTimeout(timer)
+      for (const watcher of watchers.values()) watcher.close()
+      watchers.clear()
+    },
+  }
+}
+
+async function readPluginEntry(root, main, compile) {
+  try { return await readPluginFile(root, main) }
+  catch (error) {
+    if (error?.code !== 'PLUGIN_FILE_MISSING' || !main.endsWith('.js')) throw error
+    let source
+    try { source = await readPackageFile(root, main.slice(0, -3) + '.ts', true) }
+    catch (sourceError) {
+      if (sourceError?.code === 'PLUGIN_FILE_MISSING') throw error
+      throw sourceError
+    }
+    return compile ? compilePluginTypeScript(source) : source
+  }
+}
+
+export function readPluginFile(root, relative) {
+  return readPackageFile(root, relative, false)
+}
+
+async function readPackageFile(root, relative, typeSource) {
   const rootReal = await realpath(root)
   const rootStat = await lstat(rootReal)
   if (!rootStat.isDirectory()) throw new Error('Plugin folder is not a directory')
-  const candidate = path.resolve(rootReal, ...pluginRelativeParts(relative))
-  const fileReal = await realpath(candidate)
+  const candidate = path.resolve(rootReal, ...pluginRelativeParts(relative, typeSource))
+  let fileReal
+  try { fileReal = await realpath(candidate) }
+  catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+    const compiled = /\.m?js$/i.test(relative)
+    throw Object.assign(new Error(compiled
+      ? `Missing built plugin entry ${relative}. Build the plugin to generate the JavaScript named by main.`
+      : `Missing plugin file ${relative}`), { code: 'PLUGIN_FILE_MISSING' })
+  }
   const rel = path.relative(rootReal, fileReal)
   if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) throw new Error('Plugin file escapes its folder')
   const stat = await lstat(fileReal)
   if (!stat.isFile()) throw new Error('Plugin file is not a file')
-  if (stat.size > (relative === 'manifest.json' ? PLUGIN_MANIFEST_BYTES : PLUGIN_FILE_BYTES)) throw new Error('Plugin file is too large')
-  return readFile(fileReal, 'utf8')
+  const limit = typeSource ? PLUGIN_SOURCE_BYTES
+    : relative === 'manifest.json' ? PLUGIN_MANIFEST_BYTES : relative.endsWith('.html') ? PLUGIN_UI_BYTES : PLUGIN_FILE_BYTES
+  if (stat.size > limit) throw new Error('Plugin file is too large')
+  const file = await open(fileReal, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
+  try {
+    const admitted = await file.stat()
+    if (!admitted.isFile() || admitted.dev !== stat.dev || admitted.ino !== stat.ino || admitted.size > limit)
+      throw new Error('Plugin file changed while being read')
+    const data = Buffer.allocUnsafe(admitted.size + 1)
+    let size = 0
+    while (size < data.length) {
+      const read = await file.read(data, size, data.length - size, size)
+      if (!read.bytesRead) break
+      size += read.bytesRead
+    }
+    if (size > admitted.size) throw new Error('Plugin file changed while being read')
+    return data.toString('utf8', 0, size)
+  } finally { await file.close() }
 }
 
 export function createPluginDirectoryHost() {
   const grants = new Map()
+  let declared = new Map()
   let picked = null
   return {
     async take(root) {
       const id = randomUUID()
       const rootReal = await realpath(root)
-      const manifestText = await readPluginFile(rootReal, 'manifest.json')
+      const manifestText = await readLocalPluginManifest(rootReal)
       if (picked) grants.delete(picked)
       picked = id
-      grants.set(id, { root: rootReal, declared: false })
+      grants.set(id, { root: rootReal, manifestText })
       return { grant: id, manifestText, displayName: path.basename(rootReal) }
     },
-    /** Session grants for plugins declared at startup. Replaces earlier declared grants and keeps a picked folder. */
+    /** Refresh declarations and retain grants for unchanged packages and the picked folder. */
     enableDeclared(plugins) {
-      for (const [id, entry] of [...grants]) if (entry.declared) grants.delete(id)
       const enabled = []
-      const seen = new Set()
-      if (!Array.isArray(plugins)) return enabled
-      for (const plugin of plugins) {
+      const next = new Map()
+      for (const plugin of Array.isArray(plugins) ? plugins : []) {
         if (enabled.length >= LOCAL_PLUGIN_ENABLE_LIMIT) break
         if (!plugin || typeof plugin.root !== 'string' || typeof plugin.id !== 'string' || typeof plugin.name !== 'string' || typeof plugin.manifestText !== 'string') continue
-        if (seen.has(plugin.id)) continue
-        seen.add(plugin.id)
-        const grant = randomUUID()
-        grants.set(grant, { root: plugin.root, declared: true })
+        if (next.has(plugin.id)) continue
+        const previous = declared.get(plugin.id)
+        const unchanged = previous?.root === plugin.root && previous.manifestText === plugin.manifestText
+        const grant = unchanged ? previous.grant : randomUUID()
+        if (!unchanged) grants.set(grant, { root: plugin.root, manifestText: plugin.manifestText })
+        next.set(plugin.id, { grant, root: plugin.root, manifestText: plugin.manifestText })
         enabled.push({ grant, id: plugin.id, name: plugin.name, displayName: plugin.name, manifestText: plugin.manifestText })
       }
+      for (const [id, entry] of declared) {
+        if (next.get(id)?.grant !== entry.grant) grants.delete(entry.grant)
+      }
+      declared = next
       return enabled
     },
     async read(id, paths) {
       const entry = grants.get(id)
       if (!entry) throw Object.assign(new Error('Plugin folder is no longer authorized'), { code: 'PLUGIN_GRANT' })
       if (!Array.isArray(paths) || paths.length < 1 || paths.length > 2) throw new Error('Invalid plugin read')
+      let main
+      try { main = parseDeclaredPluginManifest(entry.manifestText).main } catch { /* Existing file reads still validate paths. */ }
       const files = {}
-      for (const relative of paths) files[relative] = await readPluginFile(entry.root, relative)
+      for (const relative of paths) files[relative] = relative === main
+        ? await readPluginEntry(entry.root, relative, true)
+        : await readPluginFile(entry.root, relative)
+      if (grants.get(id) !== entry) throw Object.assign(new Error('Plugin folder is no longer authorized'), { code: 'PLUGIN_GRANT' })
       return { files }
+    },
+    storageScope(id) {
+      const entry = grants.get(id)
+      if (!entry) throw Object.assign(new Error('Plugin folder is no longer authorized'), { code: 'PLUGIN_GRANT' })
+      const plugin = parseDeclaredPluginManifest(entry.manifestText)
+      return createHash('sha256').update('folder-plugin\0').update(entry.root).update('\0').update(plugin.id).digest('hex')
     },
     clear() {
       if (!picked) return

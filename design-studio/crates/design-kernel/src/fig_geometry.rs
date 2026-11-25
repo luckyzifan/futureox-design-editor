@@ -52,6 +52,7 @@ pub struct Decoded {
     pub vector_geometry: Option<std::sync::Arc<VectorGeometry>>,
     pub vertex_styles: Vec<u32>,
     pub region_styles: Vec<u32>,
+    pub region_windings: Vec<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub corner_skip: Option<String>,
     /// FIG vertex style `strokeCap`, when every styled vertex agrees.
@@ -287,6 +288,16 @@ fn region_path(network: &Network, edges: &[usize]) -> Result<(Path, bool), Strin
     Err("FIG region loop is not connected and closed".into())
 }
 pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String> {
+    decode_network_geometry(bytes, sx, sy, false)
+}
+
+/// Keep the original strokes when the caller imports each independently
+/// authored fill through its own baked contour and winding.
+pub fn decode_network_stroke(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String> {
+    decode_network_geometry(bytes, sx, sy, true)
+}
+
+fn decode_network_geometry(bytes: &[u8], sx: f64, sy: f64, stroke_only: bool) -> Result<Decoded, String> {
     if bytes.len() > 16 * 1024 * 1024 || ![sx, sy].iter().all(|s| s.is_finite() && *s > 0.) {
         return Err("Invalid FIG geometry input/scale".into());
     }
@@ -312,6 +323,7 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
     };
     let mut vertex_styles = Vec::with_capacity(nv);
     let mut region_styles = Vec::with_capacity(nr);
+    let mut region_windings = Vec::with_capacity(nr);
     for i in 0..nv {
         vertex_styles.push(reader.word()?);
         let p = reader.point(sx, sy)?;
@@ -348,7 +360,8 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
         let style = reader.word()?;
         region_styles.push(style >> 1);
         let current = if style & 1 == 1 { "nonzero" } else { "evenodd" };
-        if rule.is_some_and(|old| old != current) {
+        region_windings.push(current);
+        if !stroke_only && rule.is_some_and(|old| old != current) {
             return Err("Mixed FIG region winding requires separate paint geometry".into());
         }
         rule = Some(current);
@@ -377,8 +390,10 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
             }
             let (path, coincident_closure) = region_path(&network, &indices)?;
             explicit_fill |= coincident_closure;
-            fill.commands.extend(path.commands);
-            faces.push(indices.iter().map(|i| format!("e{i}")).collect());
+            if !stroke_only {
+                fill.commands.extend(path.commands);
+                faces.push(indices.iter().map(|i| format!("e{i}")).collect());
+            }
         }
     }
     if reader.at != bytes.len() {
@@ -388,12 +403,13 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
         network.fill_rule = rule.into();
         network.filled_faces = Some(faces);
     }
-    if nv <= 10000 && ne <= 20000 && !explicit_fill {
+    if nv <= 10000 && ne <= 20000 && !explicit_fill && !stroke_only {
         return Ok(Decoded {
             network: Some(network),
             vector_geometry: None,
             vertex_styles,
             region_styles,
+            region_windings,
             corner_skip: None,
             stroke_cap: None,
             stroke_join: None,
@@ -414,9 +430,9 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
     let faces = network.filled_faces.take();
     let (automatic, stroke) = network.paths()?;
     let geometry = VectorGeometry::from_paths(
-        if nr == 0 { &automatic } else { &fill },
+        if nr == 0 && !stroke_only { &automatic } else { &fill },
         &stroke,
-        &network.fill_rule,
+        if stroke_only { "nonzero" } else { &network.fill_rule },
     )?;
     drop(faces);
     Ok(Decoded {
@@ -424,6 +440,7 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
         vector_geometry: Some(geometry.into()),
         vertex_styles,
         region_styles,
+        region_windings,
         corner_skip: None,
         stroke_cap: None,
         stroke_join: None,

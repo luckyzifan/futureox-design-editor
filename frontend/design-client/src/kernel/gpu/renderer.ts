@@ -18,6 +18,7 @@ import { EMBEDDED_RASTER_URI_PREFIX } from '../../embedded-raster'
 import { FastPathWork } from '../../../../design-desktop/src/render-pass-work.mjs'
 import { GRADIENT_PAINT_OVER_MODE, gradientFieldMaximumStop, gradientFusionWorthwhile } from './gradient-paint-over'
 import { gradientPhaseFieldLayout } from './gradient-phase-field'
+import { progressiveBackdropAxes } from './progressive-backdrop-order'
 import { shadowFilterRegion } from './shadow-filter-region'
 import { annotateTextureFailure } from '../../../../design-desktop/src/render-texture-failure.mjs'
 import { MaintenanceResidency } from './maintenance-residency'
@@ -838,6 +839,7 @@ export class GpuRenderer {
   private byteClass: ResourceClass = 'scratch'
   private constantTargets = new Map<string, Surface>()
   private prefixAllowed = true
+  private analyticDisplayColorBoxes = false
   private analyticDisplayShadowBoxes = false
   private get bytes() { return this.ledger.bytes }
   private set bytes(value: number) {
@@ -2041,6 +2043,19 @@ export class GpuRenderer {
     if (!required || this.workingBytes + required <= this.frameBudget) return
     return this.reclaimScratch(required).then(() => this.checkFrameCurrent())
   }
+  private measuredGradientOver(
+    n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, sample: number, postByteOpacity = 0,
+  ): Surface {
+    const lookup = this.figmaGradientLookup(paint)
+    const field = this.figmaGradientField(n, paint, sample)
+    const out = this.run(42, dst.rect, [dst, mask, lookup, field], (u) => {
+      u[32] = paint.opacity
+      u[33] = postByteOpacity
+      u.set([n.rect.x, n.rect.y, n.rect.w, n.rect.h], 52)
+    })
+    this.release(dst)
+    return out
+  }
   private paintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip?: Surface): Surface
   private paintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip: Surface | undefined, admitMerge: true, compactTarget?: boolean, skipGradientFusion?:boolean): Surface | Promise<Surface>
   private paintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip?: Surface, admitMerge = false, compactTarget = false, skipGradientFusion=false): Surface | Promise<Surface> {
@@ -2091,14 +2106,7 @@ export class GpuRenderer {
       paint.blend === 'normal' &&
       this.sampleIndex !== undefined
     ) {
-      const lookup = this.figmaGradientLookup(paint)
-      const field = this.figmaGradientField(n, paint, this.sampleIndex)
-      const out = this.run(42, dst.rect, [dst, mask, lookup, field], (u) => {
-        u[32] = paint.opacity
-        u.set([n.rect.x, n.rect.y, n.rect.w, n.rect.h], 52)
-      })
-      this.release(dst)
-      return out
+      return this.measuredGradientOver(n, paint, mask, dst, this.sampleIndex)
     }
     const compose = (source: Surface): Surface | Promise<Surface> => {
       try { this.checkFrameCurrent() }
@@ -5068,6 +5076,53 @@ export class GpuRenderer {
         if (invariantCoverage) this.retireLeafMasks(n, undefined, clip, targets)
         continue
       }
+      // Quantize a measured gradient before applying its isolating frame's
+      // opacity, then blend it over the destination once.
+      const gradientNode = this.scene.resolve && !this.scene.softwareRaster && !this.driver.managed &&
+        n.clip && !maskId && !n.mask && !n.passthrough && n.blend === 'normal' &&
+        Math.fround(n.opacity) >= 2 ** -126 && n.opacity < 1 &&
+        !n.effects.length && !n.strokes.length && !n.fills.length && n.children.length === 1
+        ? this.scene.nodes[n.children[0]] : undefined
+      const gradient = gradientNode?.fills[0]
+      const groupArea = n.fill.area
+      const childArea = gradientNode?.fill.area
+      // AreaProgram's tag 4 proves both paths are sampled rectangles.
+      if (gradientNode && gradient?.figmaGradient && gradient.visible && gradient.opacity === 1 &&
+          gradient.blend === 'normal' && gradientNode.opacity === 1 && gradientNode.blend === 'normal' &&
+          gradient.stops.length === 2 && gradient.stops[0].offset === 0 && gradient.stops[1].offset === 1 &&
+          gradient.stops.every(stop => this.alpha(stop.color) === 1) &&
+          groupArea && childArea && this.scene.curves?.[groupArea.first * 4] === 4 &&
+          this.scene.curves?.[childArea.first * 4] === 4 &&
+          !gradientNode.clip && !gradientNode.mask && !gradientNode.maskId && !gradientNode.passthrough &&
+          !gradientNode.children.length && !gradientNode.strokes.length && !gradientNode.effects.length &&
+          gradientNode.fills.length === 1 && targets.length === 4 &&
+          targets.every(target => !target.logicalBounds)) {
+        for (let i = 0; i < 4; i++) {
+          await this.reclaimScratch()
+          this.sampleIndex = i
+          let coverage: Surface | undefined
+          let clipped: Surface | undefined
+          try {
+            this.activeNode = gradientNode.id
+            const childMask = await this.nodeMask(gradientNode, true)
+            this.activeNode = id
+            const groupMask = await this.nodeMask(n, true)
+            await this.reclaimForSurface(gradientNode.rect, clip ? 2 : 1)
+            coverage = this.combine(childMask, groupMask, gradientNode.rect)
+            if (clip) clipped = this.combine(coverage, clip[i], gradientNode.rect)
+            const mask = clipped ?? coverage
+            const admission = this.reclaimForPaintOver(gradientNode, gradient, mask, targets[i])
+            if (admission) await admission
+            targets[i] = this.measuredGradientOver(gradientNode, gradient, mask, targets[i], i, n.opacity)
+          } finally {
+            this.activeNode = id
+            this.release(coverage, clipped)
+          }
+        }
+        this.retireLeafMasks(gradientNode, undefined, clip, targets, true)
+        this.retireLeafMasks(n, undefined, clip, targets, true)
+        continue
+      }
       const masks: Surface[] = []
       const firstEffect = n.effects.find(fx => fx.visible)
       const streamBlur = this.optimized && this.driver.managed && !this.driver.displayMath &&
@@ -7728,7 +7783,8 @@ export class GpuRenderer {
       }
     }
     let current = input
-    const displayBox = alphaOnly && this.analyticDisplayShadowBoxes && this.prefixAllowed && sigma >= PREFIX_MIN_RADIUS
+    const displayBox = this.prefixAllowed && sigma >= PREFIX_MIN_RADIUS &&
+      (this.analyticDisplayColorBoxes || alphaOnly && this.analyticDisplayShadowBoxes)
     for (const r of gaussianRadii(sigma)) {
       if (r <= 0) continue
       const kernel = this.filterKernel('rational-box', r, () => rational_box_kernel_rgba(r))
@@ -7833,11 +7889,14 @@ export class GpuRenderer {
       u[44] = axis
       u[45] = cropped ? 1 : 0
     })
-    const horizontal = pass(background, 0)
-    if (horizontal !== background) this.release(background)
-    const vertical = pass(horizontal, 1)
-    if (vertical !== horizontal) this.release(horizontal)
-    return vertical
+    // values[0] and values[1] are the CPU field's a and b. Filter along the
+    // segment first, matching variable_endpoint_tent.
+    const [firstAxis, secondAxis] = progressiveBackdropAxes(values[0], values[1])
+    const first = pass(background, firstAxis)
+    if (first !== background) this.release(background)
+    const second = pass(first, secondAxis)
+    if (second !== first) this.release(first)
+    return second
   }
   private async floatBackdropEndpoints(source: Surface, n: GpuNode, fx: Effect, cropped: boolean): Promise<Surface> {
     const ramp = fx.gradientBlur!
@@ -8913,21 +8972,24 @@ export class GpuRenderer {
     // Scene policy is installed synchronously before its async pipeline work.
     // Filter programs and image uploads can then prepare independently.
     const preparation = [this.prepareWithFailureOrigin(1, () => this.driver.prepareScene?.(scene, !readback && present, this.gradientFusionActive))]
-    // At high density, sum the outer shadow's three alpha boxes on the
-    // full device lattice. Ordinary zoom and color filters keep their box path.
-    // The exact prefix is byte-exact against the rational box reducer (integer
-    // window sum + one nearest-even division, with a per-line exact fallback),
-    // so the optional low-zoom flag only widens the same alpha-only outer-shadow
-    // admission down to 800%; it never changes the kernel, source or rounding.
-    const shadowBoxLowZoom = import.meta.env.VITE_DESIGN_EXACT_SHADOW_BOX_LOW_ZOOM !== '0' && (scene.view?.zoom ?? 0) >= 8
-    this.analyticDisplayShadowBoxes = index.hasFilters && managedDisplay && this.optimized && !!scene.output && scene.coherentSamples === false &&
+// The exact prefix can sum the same Gaussian boxes for colour and alpha
+    // at high density. The low-zoom admission defaults on at 800% and stays
+    // alpha-only; proof or scratch rejection still uses the rational box shader.
+    const zoom = scene.view?.zoom ?? 0
+    const highZoom = zoom >= 32
+    const shadowBoxLowZoom = import.meta.env.VITE_DESIGN_EXACT_SHADOW_BOX_LOW_ZOOM !== '0' && zoom >= 8
+    const analyticBoxes = index.hasFilters && managedDisplay && this.optimized && !!scene.output && scene.coherentSamples === false &&
       !scene.colorManagement && !scene.integratedBlur && !scene.interactionRetained && !scene.resolve && !scene.presentation &&
-      !scene.softwareRaster && (scene.view.zoom >= 32 || shadowBoxLowZoom) && Object.values(scene.nodes).some(node => node.effects.some(effect =>
-        effect.visible && effect.kind === 'shadow' && effect.radius * scale(node.matrix) >= 2 * PREFIX_MIN_RADIUS))
+      !scene.softwareRaster && (highZoom || shadowBoxLowZoom) && Object.values(scene.nodes).some(node => node.effects.some(effect =>
+        effect.visible && (effect.kind === 'shadow' ||
+          highZoom && (effect.kind === 'inner-shadow' || effect.kind === 'blur' || effect.kind === 'background-blur')) &&
+        effect.radius * scale(node.matrix) >= 2 * PREFIX_MIN_RADIUS))
+    this.analyticDisplayColorBoxes = analyticBoxes && highZoom
+    this.analyticDisplayShadowBoxes = analyticBoxes && !highZoom
     if (index.hasFilters) {
-      const regionalBoxes = scene.view.zoom >= 32 && Object.values(scene.nodes).some(n => n.analyticRegion)
+      const regionalBoxes = highZoom && Object.values(scene.nodes).some(n => n.analyticRegion)
       preparation.push(this.prepareWithFailureOrigin(2, () => this.driver.prepareFilters?.(Boolean(this.prefixAllowed && this.optimized &&
-        this.driver.managed && (scene.integratedBlur && index.hasPrefixFilter || regionalBoxes || this.analyticDisplayShadowBoxes)))))
+        this.driver.managed && (scene.integratedBlur && index.hasPrefixFilter || regionalBoxes || analyticBoxes)))))
     }
     preparation.push(this.loadImages(scene))
     const prepared = await Promise.allSettled(preparation)
@@ -9032,7 +9094,7 @@ export class GpuRenderer {
         if (this.surfaceNeedsAdmission(output)) await this.reclaimForSurface(output)
         target = p
           ? this.run(24, output, planes, (u) =>
-              u.set([p.offsetX, p.offsetY, p.scale, 0], 36),
+              u.set([p.offsetX, p.offsetY, p.scale, Number(p.softwareColorCoverage === true)], 36),
             )
           : this.run(this.driver.managed ? 23 : 36, output, planes)
         this.release(...planes)

@@ -566,6 +566,9 @@ pub struct Engine {
     pub fonts: Fonts,
     images: Images,
     rendering_png_region: bool,
+    /// Device rectangle of a PNG export. Tile blurs stay inside it so they
+    /// match one full-frame analytic render of that same rectangle.
+    png_frame: Option<Rect>,
     pub(crate) paths: HashMap<String, crate::path::SharedPaths>,
     pub(crate) local_strokes: crate::resident_strokes::ResidentStrokes,
     pub(crate) stats: Stats,
@@ -621,6 +624,10 @@ pub struct Engine {
     /// captured while the previous frame was painted.
     pose_prefix: Option<PosePrefix>,
     settled_cuts: Arc<Mutex<SettledCuts>>,
+    /// Export-only. Layer-blur 2×2s whose byte average is a false half.
+    /// Cleared at the start of every surface render and consumed by the
+    /// figma tile resolver. Not a document or stats field.
+    false_half_fixes: Vec<crate::fidelity::FalseHalfFix>,
 }
 impl Default for Engine {
     fn default() -> Self {
@@ -646,6 +653,7 @@ impl Engine {
             fonts,
             images: Images::default(),
             rendering_png_region: false,
+            png_frame: None,
             paths: HashMap::new(),
             local_strokes: Default::default(),
             stats: Stats::default(),
@@ -674,6 +682,7 @@ impl Engine {
             tiled: None,
             pose_prefix: None,
             settled_cuts: Arc::new(Mutex::new(SettledCuts::default())),
+            false_half_fixes: Vec::new(),
         }
     }
     pub fn load_font(&mut self, data: &[u8]) -> Result<(), String> {
@@ -725,11 +734,18 @@ impl Engine {
     pub(crate) fn image_at_selected_level(&mut self, uri: &str, level: u32) -> Result<Arc<Surface>, String> {
         self.images.image_at_selected_level(uri, level)
     }
-    pub(crate) fn with_png_region<T>(&mut self, sketch_footprint: bool, render: impl FnOnce(&mut Self) -> T) -> T {
+    pub(crate) fn with_png_region<T>(
+        &mut self,
+        sketch_footprint: bool,
+        frame: Rect,
+        render: impl FnOnce(&mut Self) -> T,
+    ) -> T {
         let region = std::mem::replace(&mut self.rendering_png_region, true);
+        let previous = self.png_frame.replace(frame);
         let footprint = std::mem::replace(&mut self.images.sketch_png_footprint, sketch_footprint);
         let result = render(self);
         self.images.sketch_png_footprint = footprint;
+        self.png_frame = previous;
         self.rendering_png_region = region;
         result
     }
@@ -2270,6 +2286,7 @@ if retain_translated_roots {
         &mut self, options: &RenderOptions, synchronized: bool, viewport: Rect,
         padding: ExportPadding, budget: Budget, regional: bool, plan: Option<&mut CpuFramePlan>, use_pose_prefix: bool,
     ) -> Result<Vec<Surface>, String> {
+        self.false_half_fixes.clear();
         let (extra_halo, required) = match padding {
             ExportPadding::Extra(value) => (value, None),
             ExportPadding::Required(rect) => (0, Some(rect)),
@@ -2555,6 +2572,7 @@ if retain_translated_roots {
             sketch_reduced_group,
             clipped_export_target: clipped_export_target.is_some(),
             png_region: self.rendering_png_region,
+            png_frame: self.png_frame,
             // PNG export already samples the flush frame's outside tap. The
             // Figma profile's direct render used the clamped capture and kept
             // that edge at alpha 255. Software export stays on its PNG gate.
@@ -2575,6 +2593,7 @@ if retain_translated_roots {
             settled_cuts: Arc::clone(&self.settled_cuts),
             prefix_view,
             prefix_allocations: Vec::new(),
+            false_half_fixes: Vec::new(),
         };
         let rendered = if synchronized {
             let mut targets = vec![target];
@@ -2609,6 +2628,7 @@ if retain_translated_roots {
                         output.push(result);
                     }
                 }
+                self.false_half_fixes = std::mem::take(&mut painter.false_half_fixes);
                 return Ok(output);
             }
             if draw_root.iter().all(|draw| *draw) {
@@ -2617,6 +2637,7 @@ if retain_translated_roots {
                 let roots: Vec<String> = page.children.iter().enumerate().filter(|(index, _)| draw_root[*index]).map(|(_, id)| id.clone()).collect();
                 painter.paint_siblings(&roots, &mut targets, None, false, None)?;
             }
+            self.false_half_fixes = std::mem::take(&mut painter.false_half_fixes);
             Ok(targets.into_iter().collect())
         } else {
             // Reverse paint order: earlier layers must retain every input read
@@ -2637,6 +2658,7 @@ if retain_translated_roots {
                 if !draw_root[index] { continue; }
                 painter.node_region(root, &mut target, None, regional.then_some(output), extent, false)?;
             }
+            self.false_half_fixes = std::mem::take(&mut painter.false_half_fixes);
             Ok(vec![target])
         };
         rendered
@@ -3007,33 +3029,93 @@ if retain_translated_roots {
         h: u32,
     ) -> Result<Vec<u8>, String> {
         let tile = Rect::new(x as i32, y as i32, w, h);
-        let extra_halo = crate::export::backdrop_padding(self, options, tile)?;
-        self.export_tile_with_padding(options, coherent, tile, ExportPadding::Extra(extra_halo))
+        let result = crate::export::backdrop_padding(self, options, tile).and_then(|padding| {
+            self.export_tile_with_padding(options, coherent, tile, ExportPadding::Extra(padding))
+        });
+        if options.raster_profile == crate::fidelity::RasterProfile::Figma
+            && options.animation.is_none() && !self.rendering_png_region
+            && result.as_ref().is_err_and(|error| matches!(error.as_str(),
+                crate::export::BACKDROP_PADDING_BUDGET_ERROR | "Compositing memory budget exceeded"))
+        {
+            return self.render_sketch_viewport_tile(options, coherent, tile);
+        }
+        result
+    }
+
+    fn render_sketch_viewport_tile(
+        &mut self, options: &RenderOptions, coherent: bool, tile: Rect,
+    ) -> Result<Vec<u8>, String> {
+        let viewport = Rect::new(tile.x * 2, tile.y * 2, tile.w * 2, tile.h * 2);
+        let required = crate::export::sketch_viewport_backdrop_extent(self, options, viewport)?;
+        let result = self.export_tile_with_padding(options, coherent, tile, ExportPadding::Required(required));
+        // Keep the same camera, absolute sampling lattice and complete lens
+        // captures while reducing the output extent held by one allocation.
+        // Stop if even a small tile's actual dependency cannot fit.
+        if tile.w.max(tile.h) <= 64 || !result.as_ref().is_err_and(|error| error == "Compositing memory budget exceeded") {
+            return result;
+        }
+        let (first, second) = if tile.w >= tile.h {
+            let left = tile.w / 2;
+            (Rect::new(tile.x, tile.y, left, tile.h),
+             Rect::new(tile.x + left as i32, tile.y, tile.w - left, tile.h))
+        } else {
+            let top = tile.h / 2;
+            (Rect::new(tile.x, tile.y, tile.w, top),
+             Rect::new(tile.x, tile.y + top as i32, tile.w, tile.h - top))
+        };
+        let mut pixels = vec![0; tile.pixels() * 4];
+        let mut stats = Stats::default();
+        for part in [first, second] {
+            crate::render_cancellation::checkpoint()?;
+            let rendered = self.render_sketch_viewport_tile(options, coherent, part)?;
+            stats.accumulate(&self.stats);
+            let width = part.w as usize * 4;
+            for (row, bytes) in rendered.chunks_exact(width).enumerate() {
+                let offset = ((part.y - tile.y) as usize + row) * tile.w as usize * 4
+                    + (part.x - tile.x) as usize * 4;
+                pixels[offset..offset + width].copy_from_slice(bytes);
+            }
+        }
+        self.stats = stats;
+        Ok(pixels)
     }
     pub(crate) fn export_tile_with_padding(
         &mut self, options: &RenderOptions, coherent: bool, tile: Rect, padding: ExportPadding,
     ) -> Result<Vec<u8>, String> {
         let Rect { x, y, w, h } = tile;
         if options.raster_profile.is_export() {
-            let ExportPadding::Extra(extra_halo) = padding else { return Err("Invalid exact export extent".into()) };
-            let source = crate::fidelity::source(options, 0, 0, w, h)?;
+            let source = self.export_source(options, w, h)?;
             let viewport = Rect::new(x * 2, y * 2, w * 2, h * 2);
+            let mut planes = match padding {
+                ExportPadding::Extra(halo) => self.render_scene_inner_at(&source, coherent, viewport, halo * 2)?,
+                ExportPadding::Required(_) => self.render_surfaces_budget_plan(
+                    &source, coherent, viewport, padding, Budget::new(COMPOSITING_BYTES), None, false,
+                )?.iter().map(|surface| surface.rgba8(viewport)).collect(),
+            };
             if coherent {
-                let planes = self.render_scene_inner_at(&source, true, viewport, extra_halo * 2)?;
-                let resolve = if options.raster_profile.is_software() {
-                    crate::fidelity::resolve_software_sample_planes_2x
+                let samples = [&planes[0][..], &planes[1][..], &planes[2][..], &planes[3][..]];
+                let mut bytes = if source.raster_profile.is_software() {
+                    crate::fidelity::resolve_software_sample_planes_2x(
+                        samples, w, h, self.allows_software_color_coverage(options),
+                    )
                 } else {
-                    crate::fidelity::resolve_sample_planes_2x
+                    crate::fidelity::resolve_sample_planes_2x(samples, w, h)
                 };
-                Ok(resolve(
-                    [&planes[0], &planes[1], &planes[2], &planes[3]],
-                    w,
-                    h,
-                ))
+                if options.raster_profile == crate::fidelity::RasterProfile::Figma {
+                    crate::fidelity::apply_false_half_fixes(
+                        &mut bytes,
+                        [&planes[0], &planes[1], &planes[2], &planes[3]],
+                        w,
+                        h,
+                        viewport.x,
+                        viewport.y,
+                        &self.false_half_fixes,
+                    );
+                }
+                self.false_half_fixes.clear();
+                Ok(bytes)
             } else {
-                let source = self
-                    .render_scene_inner_at(&source, false, viewport, extra_halo * 2)?
-                    .remove(0);
+                let source = planes.remove(0);
                 Ok(crate::fidelity::downsample(&source, w, h))
             }
         } else {
@@ -3239,22 +3321,57 @@ impl Engine {
         }
     }
 
-    /// One device frame assembled from tiled residency: the Sketch-parity
-    /// update runs first (equal instructions rasterise nothing, damage
-    /// re-rasterises only dirty tiles), then the visible residency
-    /// composites into a `width × height` RGBA buffer. Bucket-snapped zooms
-    /// assemble with the byte-exact integer blit; off-bucket zooms resample
-    /// the bucket content — see [`crate::tiled_renderer::assemble_rgba`].
+    /// One settled device frame. Aligned cameras reuse tiled residency, and
+    /// other cameras rasterise on their requested device sampling lattice.
     pub fn render_tiled_frame(
         &mut self,
         options: &RenderOptions,
         damage: Option<&[crate::render_instruction::WorldRect]>,
     ) -> Result<crate::tiled_renderer::AssembledFrame, String> {
+        self.assemble_tiled_frame(options, damage, false)
+    }
+
+    /// An explicitly approximate preview may resample or shift bucket pixels.
+    /// Keep its reusable residency available when settling at another camera.
+    pub fn render_tiled_preview_frame(
+        &mut self,
+        options: &RenderOptions,
+        damage: Option<&[crate::render_instruction::WorldRect]>,
+    ) -> Result<crate::tiled_renderer::AssembledFrame, String> {
+        self.assemble_tiled_frame(options, damage, true)
+    }
+
+    fn assemble_tiled_frame(
+        &mut self,
+        options: &RenderOptions,
+        damage: Option<&[crate::render_instruction::WorldRect]>,
+        allow_bucket_preview: bool,
+    ) -> Result<crate::tiled_renderer::AssembledFrame, String> {
+        use crate::tiled_renderer::{AssembledFrame, UpdateStatus, level_index_for_scale};
         // Core update only — no payload byte concatenation, the composition
         // reads residency surfaces directly.
         let instruction = self.render_instruction_for(options)?;
         if options.pixel_preview.is_some() {
             return Err("Pixel preview presents a resampled frame".into());
+        }
+        let level_index = level_index_for_scale(instruction.level_scale);
+        if !allow_bucket_preview
+            && (options.view.zoom != instruction.level_scale
+                || options.view.x.fract() != 0.
+                || options.view.y.fract() != 0.)
+        {
+            let rgba = self.render_unretained(options)?;
+            let renderer = self.tiled_renderer();
+            return Ok(AssembledFrame {
+                status: UpdateStatus::Completed,
+                level: level_index,
+                previous_level: renderer.and_then(|renderer| renderer.previous_level()),
+                level_scale: instruction.level_scale,
+                telemetry: renderer.map(|renderer| renderer.telemetry().report_statistics()).unwrap_or_default(),
+                visible_tiles: 0,
+                exact_viewport: true,
+                rgba,
+            });
         }
         let mut renderer = std::mem::take(
             self.tiled
@@ -3266,7 +3383,6 @@ impl Engine {
         let telemetry = renderer.telemetry().report_statistics();
         self.tiled = Some(renderer);
         let status = status?;
-        let level_index = crate::tiled_renderer::level_index_for_scale(instruction.level_scale);
         let mut pairs: Vec<([f64; 4], &[u8])> = Vec::new();
         if let Some(level) = self.tiled_renderer().and_then(|r| r.level(level_index)) {
             for address in level.addresses_for_world(instruction.viewport)? {
@@ -3281,13 +3397,14 @@ impl Engine {
             instruction.level_scale,
             options,
         );
-        Ok(crate::tiled_renderer::AssembledFrame {
+        Ok(AssembledFrame {
             status,
             level: level_index,
             previous_level,
             level_scale: instruction.level_scale,
             telemetry,
             visible_tiles,
+            exact_viewport: false,
             rgba,
         })
     }
@@ -3310,6 +3427,7 @@ impl Engine {
             fonts: self.fonts.clone(),
             images: self.images.clone(),
             rendering_png_region: self.rendering_png_region,
+            png_frame: self.png_frame,
             paths: self.paths.clone(),
             local_strokes: self.local_strokes.clone(),
             stats: Stats::default(),
@@ -3340,6 +3458,7 @@ impl Engine {
             tiled: None,
             pose_prefix: self.pose_prefix.clone(),
             settled_cuts: Arc::clone(&self.settled_cuts),
+            false_half_fixes: Vec::new(),
         }
     }
 
@@ -3511,6 +3630,7 @@ struct Painter<'a> {
     sketch_reduced_group: Option<&'a Node>,
     clipped_export_target: bool,
     png_region: bool,
+    png_frame: Option<Rect>,
     flush_backdrop_frame: Option<&'a Node>,
     compact_export_groups: bool,
     sample: Option<usize>,
@@ -3522,6 +3642,7 @@ struct Painter<'a> {
     settled_cuts: Arc<Mutex<SettledCuts>>,
     prefix_view: PrefixView,
     prefix_allocations: Vec<Allocation>,
+    false_half_fixes: Vec<crate::fidelity::FalseHalfFix>,
 }
 
 enum TextureBundle {
@@ -4960,7 +5081,24 @@ impl Painter<'_> {
                 // basis. Release them before allocating the filter's buffers.
                 drop(planes);
                 drop(shadow_basis);
+                // Radius 1 lifts its constant half on the layer. Other figma
+                // layer blurs keep those bytes for later samples and only
+                // record a 2×2 whose byte average is a false half. The means
+                // are read from the sharp layer before the byte blur allocates.
+                let means = if !correct_export_ties
+                    && fx.gradient_blur.is_none()
+                    && compatible
+                    && self.profile == crate::fidelity::RasterProfile::Figma
+                {
+                    effects::figma_false_half_means(&resolved, fx.blur_radius() * scale)
+                } else {
+                    Vec::new()
+                };
                 let output = Arc::new(filter(resolved)?);
+                if !means.is_empty() {
+                    self.false_half_fixes
+                        .extend(effects::figma_false_half_fixes(&means, output.as_ref()));
+                }
 
                 planes = std::array::from_fn(|_| output.clone());
                 shadow_basis = planes.clone();
@@ -5127,11 +5265,11 @@ impl Painter<'_> {
         self.stats.effect_layers += 1;
         Ok(planes)
     }
-    /// Sharp shadow input is zero outside the unpadded content. The blur only
-    /// has to cover that content and the viewport (plus earlier shadows when a
-    /// later shadow reads them). The old layer used the full effect outset in
-    /// every direction, which allocated four halo-sized sample planes for a
-    /// small rectangle.
+    /// Sharp shadow input is zero outside the unpadded content. The blur still
+    /// has to keep one box-pass of intermediate values outside the viewport,
+    /// and a later shadow reads the previous shadow. The old layer used the
+    /// full effect outset in every direction, which allocated four halo-sized
+    /// sample planes for a small rectangle.
     fn shadow_composite_rect(&self, n: &Node, prepared: &Prepared, scale: f64) -> Option<Rect> {
         let shadows: Vec<_> = n
             .effects
@@ -5154,6 +5292,10 @@ impl Painter<'_> {
         if content.empty() {
             return None;
         }
+        // A second shadow reads the first shadow's already-spread result.
+        // One shadow still runs three box passes: each pass reads the
+        // previous pass, so a tile clipped to the viewport loses about one
+        // box radius of a wide shadow along that edge.
         let read = if shadows.len() > 1 {
             let effect = shadows[shadows.len() - 1];
             let pad = (effect.blur_radius() * 2.
@@ -5162,10 +5304,32 @@ impl Painter<'_> {
                 + effect.y.abs())
                 * scale;
             if pad.is_finite() { pad.ceil() as i32 } else { return None; }
+        } else if self.png_frame.is_some() {
+            let effect = shadows[0];
+            let sigma = if !self.compatible && self.doc.color_management.is_none() {
+                n.text_shadow_radius(effect, scale) / 2.
+            } else {
+                effect.blur_radius() * scale / 2.
+            };
+            let boxes = match effects::gaussian_box_radii(sigma) {
+                Ok(radii) => radii.into_iter().map(|radius| radius as i32).sum::<i32>(),
+                Err(_) => return None,
+            };
+            let offset = (effect.spread.abs() + effect.x.abs() + effect.y.abs()) * scale;
+            if !sigma.is_finite() || !offset.is_finite() {
+                return None;
+            }
+            boxes.saturating_add(offset.ceil() as i32).saturating_add(2)
         } else {
             0
         };
-        let needed = content.union(self.viewport.expand(read)).intersect(self.extent);
+        let mut needed = content.union(self.viewport.expand(read));
+        if let Some(frame) = self.png_frame {
+            // Stay inside the exported frame. Margin outside that frame is
+            // not part of the single analytic render this tile must match.
+            needed = needed.intersect(frame);
+        }
+        let needed = needed.intersect(self.extent);
         let full = prepared.bounds.intersect(self.extent);
         if needed.empty() || needed.pixels() >= full.pixels() {
             None

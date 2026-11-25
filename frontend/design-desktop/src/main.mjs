@@ -5,9 +5,9 @@ import { createCloudCollaboration } from './cloud-collaboration.mjs'
 import { createRenderDiagnostics, sanitizeRecord, sanitizeBatch, PREFIX } from './render-terminal-diagnostics.mjs'
 import { createPetHost } from './pet/host.mjs'
 import { diagnosticFileAdapter } from './diagnostic-file.mjs'
-import { forwardNativeEditorShortcut } from './keyboard-shortcuts.mjs'
+import { forwardNativeEditorShortcut, nativeSettingsAccelerator } from './keyboard-shortcuts.mjs'
 import { registerAutomationBridge } from './automation-bridge.mjs'
-import { desktopMcpPaths, desktopMcpClientConfig, startDesktopFigmaMcp } from './figma-mcp-host.mjs'
+import { desktopMcpClientConfig, startDesktopFigmaMcp } from './figma-mcp-host.mjs'
 import { SketchSessionHost } from './sketch-session.mjs'
 import { serveSourceBitmap } from './source-bitmap.mjs'
 import { LargeDocumentHost } from './large-document.mjs'
@@ -21,7 +21,7 @@ import { mkdtempSync, realpathSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, realpath } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import {
   APP_URL,
@@ -56,17 +56,21 @@ import { planLegacyUserDataMigration, runLegacyUserDataMigration } from './legac
 import { renderCheckConfig, renderCheckHandler } from './render-check.mjs'
 import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
 import { selectGpuWorkingBudgetMiB } from './gpu-working-budget.mjs'
-import { createPluginDirectoryHost, scanDeclaredPlugins } from './plugin-package.mjs'
+import { createPluginCatalogWatcher, createPluginDirectoryHost, scanDeclaredPlugins } from './plugin-package.mjs'
+import { createPluginStorageHost } from './plugin-storage-host.mjs'
+import { compilePluginTypeScript } from './plugin-source.mjs'
 import { createPluginUiHost } from './plugin-ui.mjs'
 
 let interfaceLocale = 'zh-CN'
 let interfaceMode = 'figma'
+let figmaKeyboardLayout = 'us-qwerty'
 let rebuildApplicationMenu = () => {}
 
 const renderDiagnosticsEnabled = !app.isPackaged && ['1','detail'].includes(process.env.CORE_RENDER_DIAGNOSTICS)
 const terminalDiagnostics=createRenderDiagnostics({enabled:renderDiagnosticsEnabled,source:'host',session:Math.floor(Math.random()*1e12),sink:record=>console.log(PREFIX+JSON.stringify(record))})
 const smoke = process.argv.includes('--desktop-smoke')
 const cpuOnly = process.argv.includes('--core-cpu-only') || smoke
+if (smoke && process.platform === 'darwin') app.setActivationPolicy('accessory')
 const gpuWorkingBudgetMiB = selectGpuWorkingBudgetMiB(process.env.CORE_GPU_WORKING_BUDGET_MIB,
   { platform: process.platform, arch: process.arch, ...STARTUP_MEMORY })
 const guiTest = process.argv.includes('--desktop-gui-test')
@@ -104,6 +108,8 @@ const acceptanceProfile = resolveAcceptanceProfile(process.argv, {
   home: acceptanceHome,
   env: process.env,
 })
+const inactiveAcceptance = process.platform === 'darwin' && !!acceptanceProfile
+if (inactiveAcceptance) app.setActivationPolicy('accessory')
 const desktopProfile = selectDesktopProfile({
   smoke,
   guiTest,
@@ -213,7 +219,7 @@ const automationBridge = registerAutomationBridge({
   ipcMain, getWindow: () => window, assertSender, dialog, clipboard,
   openPermissions: () => sendCommand('automation-settings'),
   figmaMcp: config => startDesktopFigmaMcp(config, app.isPackaged ? process.resourcesPath : undefined),
-  clientConfig: config => desktopMcpClientConfig(config, desktopMcpPaths(app.isPackaged ? process.resourcesPath : undefined).cli),
+  clientConfig: (config, format) => desktopMcpClientConfig(config, { format, resourcesPath: app.isPackaged ? process.resourcesPath : undefined }),
   storage: (method, params) => backend.request(method, params),
   audit: entry => backend.request('automation.audit.append', {
     event: entry.event === 'edit' ? 'edit' : entry.method === 'bridge.enable' ? 'grant' : entry.method === 'bridge.disable' ? 'revoke' : 'execute',
@@ -393,6 +399,14 @@ register('set-interface-mode', value => {
   }
   return { status: 'ok' }
 }, false)
+register('set-figma-keyboard-layout', value => {
+  if (value !== 'us-qwerty' && value !== 'de-qwertz') throw new TypeError('Unsupported Figma keyboard layout')
+  if (value !== figmaKeyboardLayout) {
+    figmaKeyboardLayout = value
+    rebuildApplicationMenu()
+  }
+  return { status: 'ok' }
+}, false)
 let petHost = null
 function getPetHost() {
   if (!petHost) {
@@ -406,26 +420,53 @@ register('pet-event', event => petHost ? petHost.event(event) : { ok: true, acce
 let pluginDirectories = null
 let pluginUi = null
 let localPlugins = []
+let pluginScan = null
+let pluginCatalogWatcher = null
 let pendingPluginLaunch = null
 function pluginDirectoryHost() {
   if (!pluginDirectories) pluginDirectories = createPluginDirectoryHost()
   return pluginDirectories
 }
+const pluginStorage = createPluginStorageHost({
+  folderScope: grant => pluginDirectoryHost().storageScope(grant),
+  request: async (method, params, bytes, assertCurrent) => {
+    if (bytes < SQLITE_OFFTHREAD_BYTES) return backend.request(method, params)
+    const id = randomUUID()
+    const prepared = await sqliteCodec.encodeRequest(id, method, params)
+    assertCurrent()
+    return backend.requestFrame(method, id, prepared.frame, prepared.wireBytes)
+  },
+})
 function publicDeclaredPlugin(plugin) {
   return { grant: plugin.grant, id: plugin.id, name: plugin.name, displayName: plugin.displayName, manifestText: plugin.manifestText }
 }
-async function loadDeclaredPlugins() {
-  localPlugins = []
-  try {
-    const scanned = await scanDeclaredPlugins(path.join(app.getPath('userData'), 'plugins'))
-    localPlugins = pluginDirectoryHost().enableDeclared(scanned.plugins)
-    if (localPlugins.length || scanned.skipped || scanned.truncated) {
+function loadDeclaredPlugins() {
+  if (pluginScan) return pluginScan
+  pluginScan = (async () => {
+    const profile = app.getPath('userData')
+    pluginCatalogWatcher ??= createPluginCatalogWatcher(profile, async () => {
+      try {
+        await pluginScan
+        if (!quitRequested) await loadDeclaredPlugins()
+      } catch { console.warn('Local plugin refresh skipped') }
+    })
+    const watchFolders = new Set()
+    let scanned
+    try { scanned = await scanDeclaredPlugins(path.join(profile, 'plugins'), { watchFolders }) }
+    catch {
+      scanned = { plugins: [], skipped: 0, truncated: false }
+      console.warn('Local plugin scan skipped')
+    }
+    pluginCatalogWatcher.update(watchFolders)
+    const next = pluginDirectoryHost().enableDeclared(scanned.plugins)
+    const changed = next.length !== localPlugins.length || next.some((plugin, index) => plugin.grant !== localPlugins[index]?.grant)
+    localPlugins = next
+    if (changed) {
+      rebuildApplicationMenu()
       console.log(`LOCAL_PLUGINS_ENABLED ${localPlugins.length}${scanned.skipped ? ` skipped ${scanned.skipped}` : ''}${scanned.truncated ? ' truncated' : ''}`)
     }
-  } catch {
-    localPlugins = []
-    console.warn('Local plugin scan skipped')
-  }
+  })().finally(() => { pluginScan = null })
+  return pluginScan
 }
 function pluginUiHost() {
   if (!pluginUi) pluginUi = createPluginUiHost({
@@ -445,14 +486,31 @@ register('plugins-pick', async () => {
 }, false)
 register('plugins-list', async value => {
   if (value !== undefined) throw new Error('Unexpected arguments')
+  await loadDeclaredPlugins()
   return { status: 'ok', plugins: localPlugins.map(publicDeclaredPlugin) }
 }, false)
 register('plugins-read', async value => {
   record(value, ['grant', 'paths'])
   return { status: 'ok', ...await pluginDirectoryHost().read(value.grant, value.paths) }
 }, false)
+register('plugins-compile-source', async value => {
+  const { source } = record(value, ['source'])
+  return { status: 'ok', script: await compilePluginTypeScript(source) }
+}, false)
+register('plugins-storage-begin', async value => {
+  const { source } = record(value, ['source'])
+  return { status: 'ok', token: pluginStorage.begin(source) }
+}, false)
+register('plugins-storage-call', async value => {
+  const { token, operation } = record(value, ['token', 'operation'])
+  return { status: 'ok', value: await pluginStorage.call(token, operation) }
+}, false)
+register('plugins-storage-end', async value => {
+  pluginStorage.end(record(value, ['token']).token)
+  return { status: 'ok' }
+}, false)
 register('plugins-ui-open', async value => {
-  record(value, ['html', 'width', 'height', 'title'])
+  record(value, ['html', 'width', 'height', 'title', 'allowedDomains'])
   await pluginUiHost().open({ ...value, parent: window })
   return { status: 'ok' }
 }, false)
@@ -1330,7 +1388,7 @@ async function buildWindow() {
       navigateOnDragDrop: false,
       // Isolated validation must not inherit occlusion-based timer throttling
       // when the operator reads the report in another app. Product policy stays unchanged.
-      backgroundThrottling: !renderCheck,
+      backgroundThrottling: !renderCheck && !smoke && !inactiveAcceptance,
       spellcheck: false,
     },
   })
@@ -1362,7 +1420,7 @@ async function buildWindow() {
   })
   window.webContents.on('before-input-event', (event, input) => {
     forwardNativeEditorShortcut(event, input, {
-      platform: process.platform, interfaceMode, sendCommand,
+      platform: process.platform, interfaceMode, figmaKeyboardLayout, sendCommand,
       setIgnoreMenuShortcuts: (ignore) => ownedWindow.webContents.setIgnoreMenuShortcuts(ignore),
     })
   })
@@ -1375,9 +1433,11 @@ async function buildWindow() {
   })
   window.webContents.on('render-process-gone', () => {
     void automationBridge.close()
+    pluginStorage.clear()
     dirty = true
   })
   window.once('ready-to-show', () => {
+    if (smoke || inactiveAcceptance) return
     if (placement.maximized) ownedWindow.maximize()
     if (placement.fullscreen) ownedWindow.setFullScreen(true)
     ownedWindow.show()
@@ -1406,6 +1466,7 @@ async function buildWindow() {
     designAgent.dispose()
     if (pluginUi) pluginUi.close()
     if (pluginDirectories) pluginDirectories.clear()
+    pluginStorage.clear()
     clearTimeout(closeTimer)
     clearTimeout(windowStateTimer)
     window = undefined
@@ -1456,7 +1517,7 @@ async function buildWindow() {
         ],
       },
       { label: 'Edit', submenu: [
-        { label: 'Settings… / 设置', accelerator: 'CmdOrCtrl+,', click: () => sendCommand('settings') },
+        { label: 'Settings… / 设置', accelerator: nativeSettingsAccelerator(interfaceMode, figmaKeyboardLayout), click: () => sendCommand('settings') },
         { type: 'separator' },
         { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => sendCommand('undo') },
         { label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', click: () => sendCommand('redo') },
@@ -1558,7 +1619,10 @@ else {
       }
       const { recoveryDir, catalogDb, workspaceDb } = workspaceRoots.config(workspaceRoots.current)
       await mkdir(recoveryDir, { recursive: true, mode: 0o700 })
-      backend = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb, sqliteCodec })
+      let pluginStorageDb
+      try { pluginStorageDb = path.join(await realpath(app.getPath('userData')), 'plugin-storage-v1.sqlite3') }
+      catch { console.warn('Local plugin storage profile is unavailable') }
+      backend = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb, pluginStorageDb, sqliteCodec })
       let startupError
       try {
         const health = await backend.request('health')
@@ -1586,6 +1650,7 @@ else {
     })
     .catch(async (error) => {
       console.error('Desktop startup failed:', error.message)
+      pluginCatalogWatcher?.close()
       await backend?.stop()
       await sqliteCodec.close()
       app.exit(1)
@@ -1595,6 +1660,7 @@ else {
 async function shutdown() {
   if (!shutdownPromise)
     shutdownPromise = (async () => {
+      pluginCatalogWatcher?.close()
       petHost?.dispose()
       await automationBridge.close()
       await windowStateWrites
@@ -1620,14 +1686,24 @@ async function runSmoke() {
   // Owned local smoke mode; no remote debugger, renderer IPC testing hooks or sandbox override.
   const report = await window.webContents.executeJavaScript(`(async () => {
     const deadline = Date.now() + 30000;
-    const surface = () => document.querySelector('canvas.kernel-surface[data-renderer="cpu"]');
-    while ((!document.querySelector('.app-shell[data-desktop-ready="true"]') || !surface()) && Date.now() < deadline) {
+    const ready = () => !!document.querySelector('.app-shell[data-desktop-ready="true"]');
+    const home = () => !!document.querySelector('.local-home');
+    const surface = () => document.querySelector('.kernel-presentation[data-presentation-ready="true"][data-presentation-backend="cpu"] canvas.kernel-surface[data-renderer="cpu"]');
+    let requestedNewDesign = false;
+    while ((!ready() || home() || !surface()) && Date.now() < deadline) {
+      if (ready() && home() && !requestedNewDesign) {
+        const button = document.querySelector('button[data-testid="home-new-design"]:enabled');
+        if (button) {
+          requestedNewDesign = true;
+          button.click();
+        }
+      }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     const frame = surface();
     return { url: location.href, bridge: window.coreDesktop?.version,
       node: typeof window.require, process: typeof window.process,
-      ready: !!document.querySelector('.app-shell[data-desktop-ready="true"]'),
+      ready: ready(), home: home(), requestedNewDesign, presentationReady: !!frame,
       text: document.body.innerText.slice(0, 1000), canvas: document.querySelectorAll('canvas').length,
       renderBackend: frame?.dataset.renderer, renderMs: Number(frame?.dataset.renderMs) };
   })()`)
@@ -1645,6 +1721,9 @@ async function runSmoke() {
     report.node !== 'undefined' ||
     report.process !== 'undefined' ||
     !report.ready ||
+    report.home ||
+    !report.requestedNewDesign ||
+    !report.presentationReady ||
     report.canvas < 1 ||
     report.renderBackend !== 'cpu' ||
     !Number.isFinite(report.renderMs) ||

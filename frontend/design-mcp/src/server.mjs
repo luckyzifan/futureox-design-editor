@@ -35,7 +35,7 @@ function validTool(tool) {
  * All design validation, transactions and actual mutations belong to that backend.
  */
 export class DesignMcpServer {
-  constructor({ backend, input = process.stdin, output = process.stdout, diagnostics = process.stderr, limits = {}, instructions }) {
+  constructor({ backend, input = process.stdin, output = process.stdout, diagnostics = process.stderr, limits = {}, instructions, artifactCount }) {
     if (!backend || typeof backend.listTools !== 'function' || typeof backend.callTool !== 'function') {
       throw new TypeError('A real design operation backend is required')
     }
@@ -48,7 +48,7 @@ export class DesignMcpServer {
     for (const [name, value] of Object.entries(this.limits)) {
       if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`Invalid limit: ${name}`)
     }
-    this.artifacts = new ArtifactResources({ maxResponseBytes: this.limits.messageBytes })
+    this.artifacts = new ArtifactResources({ maxArtifacts: artifactCount, maxResponseBytes: this.limits.messageBytes })
     this.phase = 'new'
     this.era = 'undecided'
     this.activeWork = new Set()

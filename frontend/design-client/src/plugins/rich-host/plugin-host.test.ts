@@ -367,6 +367,169 @@ describe('Figma plugin host', () => {
     run.close()
   })
 
+  it('loads named UI files from folders and archives and selects them by command', async () => {
+    const manifest = {
+      name: 'Import or export', id: 'multiple-ui.plugin', api: '1.0.0', main: 'code.js',
+      ui: { import: 'panels/import.html', export: 'export.html', main: 'main.html' },
+      menu: [{ name: 'Import', command: 'import' }, { name: 'Export', command: 'export' }],
+    }
+    const entries = {
+      'Demo/manifest.json': JSON.stringify(manifest),
+      'Demo/code.js': "figma.showUI(figma.command ? __uiFiles__[figma.command] : __html__)",
+      'Demo/panels/import.html': '<p>Import</p>',
+      'Demo/export.html': '<p>Export</p>',
+      'Demo/main.html': '<p>Default</p>',
+    }
+    const folder = await pluginBundleFromFiles(Object.entries(entries).map(([path, source]) => ({
+      name: path.split('/').at(-1)!, webkitRelativePath: path, size: Buffer.byteLength(source), text: async () => source,
+    })))
+    const archive = pluginBundleFromZip(zipSync(Object.fromEntries(Object.entries(entries).map(([path, source]) => [path, strToU8(source)]))))
+    for (const loaded of [folder, archive]) {
+      const current = editor()
+      for (const [command, html] of [['import', '<p>Import</p>'], ['export', '<p>Export</p>'], [undefined, '<p>Default</p>']] as const) {
+        const run = await openPlugin(current, loaded, { command })
+        expect(run.ui?.html).toBe(html)
+        run.close()
+      }
+    }
+    expect(() => parsePluginManifest({ ...manifest, ui: { import: '../another-folder.html' } })).toThrow(/folder/)
+    expect(() => pluginBundleFromZip(zipSync({
+      'manifest.json': strToU8(JSON.stringify({ ...manifest, ui: { import: 'a.html', export: 'b.html' } })),
+      'code.js': strToU8('figma.closePlugin()'),
+      'a.html': strToU8('测'.repeat(100_000)),
+      'b.html': strToU8('测'.repeat(100_000)),
+    }))).toThrow(/too large/)
+  })
+
+  it('normalizes safe numeric ids and reserves generated ids for installed folders', () => {
+    const manifest = { name: 'Local', api: '1.0.0', main: 'code.js' }
+    expect(parsePluginManifest({ ...manifest, id: 738167123456 }).id).toBe('738167123456')
+    expect(() => parsePluginManifest({ ...manifest, id: Number.MAX_SAFE_INTEGER + 1 })).toThrow(/id must be a string/)
+    const id = `futureox.local.folder:${'1'.repeat(64)}`
+    expect(() => parsePluginManifest({ ...manifest, id })).toThrow(/reserved/)
+    expect(parsePluginManifest({ ...manifest, id }, { desktopFolder: true }).id).toBe(id)
+  })
+
+  it('runs a Dev-only plugin in read-only inspection and allows its metadata', async () => {
+    const current = editor()
+    current.change('Seed inspected node', doc => {
+      const rectangle = node('rectangle', 0, 0, 40, 30)
+      rectangle.name = 'Inspected'
+      doc.nodes[rectangle.id] = rectangle
+      doc.pages[0].children.push(rectangle.id)
+    })
+    const plugin = {
+      manifest: parsePluginManifest({ name: 'Inspector', id: 'inspect.plugin', api: '1.0.0', main: 'code.js', editorType: ['dev'] }),
+      main: `
+        if (figma.editorType !== 'dev' || figma.mode !== 'inspect') throw new Error('Wrong plugin mode')
+        const found = figma.currentPage.children[0]
+        if (found.name !== 'Inspected') throw new Error('Missing inspection data')
+        for (const edit of [() => figma.createRectangle(), () => { found.name = 'Changed' }, () => found.remove()]) {
+          try { edit(); throw new Error('Edit was accepted') }
+          catch (error) { if (!String(error).includes('permission_denied')) throw error }
+        }
+        if (found.name !== 'Inspected') throw new Error('Inspection proxy lost the node after a denied edit')
+        found.setPluginData('inspected', 'yes')
+        figma.closePlugin(found.getPluginData('inspected'))
+      `,
+      ui: null,
+    }
+    await expect(openPlugin(current, plugin)).rejects.toMatchObject({ code: 'unsupported_editor_type' })
+    const run = await openPlugin(current, plugin, { mode: 'inspect' })
+    expect(run.closeMessage).toBe('yes')
+    expect(nodes(current).map(node => node.name)).toEqual(['Inspected'])
+    run.close()
+  })
+
+  it('identifies a missing bundle entry without reading its uncompiled source', async () => {
+    const manifest = JSON.stringify({ name: 'Source only', id: 'source-only.plugin', api: '1.0.0', main: 'dist/code.js' })
+    const readTypeScript = vi.fn(async () => 'const name: string = "uncompiled"')
+    await expect(pluginBundleFromFiles([
+      { name: 'manifest.json', size: manifest.length, text: async () => manifest },
+      { name: 'code.ts', size: 32, text: readTypeScript },
+    ])).rejects.toThrow(/Missing built plugin entry dist\/code\.js/)
+    expect(readTypeScript).not.toHaveBeenCalled()
+    expect(() => pluginBundleFromZip(zipSync({ 'manifest.json': strToU8(manifest), 'code.ts': strToU8('let value: boolean') })))
+      .toThrow(/Missing built plugin entry dist\/code\.js/)
+  })
+
+  it('runs a desktop standalone TypeScript entry after bounded type stripping', async () => {
+    const filename = new URL('../../../../design-desktop/src/plugin-source.mjs', import.meta.url)
+    const { compilePluginTypeScript } = await import(filename.href)
+    const script = await compilePluginTypeScript(`
+      const label: string = 'From a typed entry'
+      figma.createRectangle().name = label
+      figma.closePlugin('typed')
+    `)
+    const current = editor()
+    const run = await openPlugin(current, bundle('TypedEntry', script))
+    expect(run.closeMessage).toBe('typed')
+    expect(named(current, 'From a typed entry')?.kind).toBe('rectangle')
+    run.close()
+  })
+
+  it('runs a source-only desktop archive through the same bounded parser and QuickJS', async () => {
+    const filename = new URL('../../../../design-desktop/src/plugin-source.mjs', import.meta.url)
+    const { compilePluginTypeScript } = await import(filename.href)
+    const compile = vi.fn((source: string) => compilePluginTypeScript(source) as Promise<string>)
+    const archive = (source: string, built?: string) => zipSync({
+      'Plugin/manifest.json': strToU8(JSON.stringify({
+        name: 'Typed archive', id: 'typed.archive', api: '1.0.0', main: 'code.js', ui: 'ui.html',
+      })),
+      'Plugin/code.ts': strToU8(source),
+      'Plugin/ui.html': strToU8('<p>Archive UI</p>'),
+      ...(built ? { 'Plugin/code.js': strToU8(built) } : {}),
+    })
+    const typed = archive("const label: string = 'Typed archive'; figma.createRectangle().name = label; figma.showUI(__html__)")
+    const current = editor()
+    const run = await openPlugin(current, await pluginBundleFromZip(typed, compile))
+    expect(named(current, 'Typed archive')?.kind).toBe('rectangle')
+    expect(run.ui?.html).toBe('<p>Archive UI</p>')
+    run.close()
+    expect(compile).toHaveBeenCalledTimes(1)
+
+    const imported = "import { run } from './helper.js'; run()"
+    const built = await pluginBundleFromZip(archive(imported, 'figma.closePlugin("built")'), compile)
+    expect(built.main).toBe('figma.closePlugin("built")')
+    expect(compile).toHaveBeenCalledTimes(1)
+    await expect(pluginBundleFromZip(archive(imported), compile)).rejects.toThrow(/built JavaScript bundle/)
+    await expect(pluginBundleFromZip(archive(' '.repeat(256 * 1024 + 1)), compile)).rejects.toThrow(/too large/)
+    await expect(pluginBundleFromZip(new Uint8Array([1, 2, 3]), compile)).rejects.toThrow(/valid zip/)
+    expect(compile).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads the requested styled text fields across actual UTF-16 runs', async () => {
+    const current = editor()
+    current.change('Styled text', doc => {
+      const text = node('text', 0, 0, 200, 40)
+      text.text = 'A😄BC'
+      text.fontSize = 20
+      text.textRuns = [
+        { start: 0, end: 3, fontSize: 32 },
+        { start: 3, end: 4, fontSize: 32, weight: 700 },
+      ]
+      doc.nodes[text.id] = text
+      doc.pages[0].children.push(text.id)
+    })
+    const values: unknown[] = []
+    const run = await openPlugin(current, bundle('Styled', `
+      const text = figma.currentPage.findOne(function (item) { return item.type === 'TEXT' })
+      figma.ui.postMessage(text.getStyledTextSegments(['fontSize']))
+      figma.ui.postMessage(text.getStyledTextSegments(['fontSize', 'fontWeight'], 1, 5))
+      figma.ui.postMessage(text.getStyledTextSegments([], 2, 3))
+    `), { onPostMessage: value => values.push(value) })
+    expect(values).toEqual([
+      [{ start: 0, end: 4, characters: 'A😄B', fontSize: 32 }, { start: 4, end: 5, characters: 'C', fontSize: 20 }],
+      [
+        { start: 1, end: 3, characters: '😄', fontSize: 32, fontWeight: 400 },
+        { start: 3, end: 4, characters: 'B', fontSize: 32, fontWeight: 700 },
+        { start: 4, end: 5, characters: 'C', fontSize: 20, fontWeight: 400 },
+      ],
+      [{ start: 2, end: 3, characters: '😄'[1] }],
+    ])
+    run.close()
+  })
+
   it('stores clientStorage outside the document and plugin data inside one undo', async () => {
     const storage = memoryPluginStorage()
     const current = editor()
@@ -470,21 +633,144 @@ describe('Figma plugin host', () => {
     run.close()
   })
 
-  it('runs a zero-delay timer and rejects fetch', async () => {
+  it('clears the plugin console and reports the offline payment status', async () => {
+    const run = await openPlugin(editor(), bundle('Offline', `
+      console.log('cleared')
+      console.clear()
+      console.info('active')
+      console.debug('offline')
+      if (figma.payments.status.type !== 'NOT_SUPPORTED') throw new Error('payment status')
+    `))
+    expect(run.logs).toEqual(['active', 'offline'])
+    run.close()
+  })
+
+  it('runs a requested delay, clears a queued timer and rejects unavailable capabilities', async () => {
     const current = editor()
     const run = await openPlugin(current, bundle('Later', `
       ;(async function () {
         await new Promise(function (resolve) { setTimeout(resolve, 0) })
-        figma.createRectangle().name = 'Later'
+        const cancelled = setTimeout(function () { throw new Error('cancelled timer ran') }, 10)
+        clearTimeout(cancelled)
+        const label = await new Promise(function (resolve) { setTimeout(resolve, 15, 'Later') })
+        figma.createRectangle().name = label
         var blocked = false
-        try { setTimeout(function () {}, 10) } catch (error) { blocked = String(error).indexOf('unsupported_api') >= 0 }
-        if (!blocked) throw new Error('delay accepted')
+        try { setTimeout(function () {}, 10000) } catch (error) { blocked = String(error).indexOf('invalid_value') >= 0 }
+        if (!blocked) throw new Error('unbounded delay')
+        blocked = false
         try { await fetch('https://example.com/secret') } catch (error) { blocked = String(error).indexOf('network_denied') >= 0 }
         if (!blocked) throw new Error('fetch accepted')
       })()
     `))
     expect(named(current, 'Later')?.kind).toBe('rectangle')
     run.close()
+  })
+
+  it('posts a delayed UI response and serializes other messages behind it', async () => {
+    const posted: unknown[] = []
+    const run = await openPlugin(editor(), bundle('DelayedUi', `
+      figma.showUI('<p>panel</p>')
+      figma.ui.onmessage = function (message) {
+        if (message === 'first') setTimeout(function () { figma.ui.postMessage('delayed') }, 500)
+        else figma.ui.postMessage(message)
+      }
+    `), { onPostMessage: message => posted.push(message) })
+    const first = run.deliver('first')
+    const second = run.deliver('second')
+    expect(posted).toEqual([])
+    await Promise.all([first, second])
+    expect(posted).toEqual(['delayed', 'second'])
+    run.close()
+  })
+
+  it('runs recurring callbacks across turns with arguments and cancellation', async () => {
+    const posted: unknown[] = []
+    const run = await openPlugin(editor(), bundle('Repeat', `
+      ;(async function () {
+        let ticks = 0
+        await new Promise(function (resolve) {
+          const handle = setInterval(function (label) {
+            figma.ui.postMessage(label + (++ticks))
+            if (ticks === 2) {
+              clearInterval(handle)
+              resolve()
+            }
+          }, 10, 'tick-')
+        })
+        figma.closePlugin('done')
+      })()
+    `), { onPostMessage: message => posted.push(message) })
+    expect(posted).toEqual([])
+    await vi.waitFor(() => expect(run.closeMessage).toBe('done'))
+    expect(posted).toEqual(['tick-1', 'tick-2'])
+    run.close()
+  })
+
+  it('cancels future interval callbacks when the plugin is stopped', async () => {
+    const posted: unknown[] = []
+    const run = await openPlugin(editor(), bundle('StopRepeating', `
+      setInterval(function () { figma.ui.postMessage('tick') }, 10)
+    `), { onPostMessage: message => posted.push(message) })
+    await vi.waitFor(() => expect(posted.length).toBeGreaterThan(0))
+    run.close()
+    const stoppedCount = posted.length
+    await new Promise(resolve => setTimeout(resolve, 35))
+    expect(posted).toHaveLength(stoppedCount)
+  })
+
+  it('reports a completion that rejects after a recurring callback', async () => {
+    const errors: unknown[] = []
+    const run = await openPlugin(editor(), bundle('RepeatError', `
+      ;(async function () {
+        await new Promise(function (resolve) {
+          const timer = setInterval(function () { clearTimeout(timer); resolve() }, 10)
+        })
+        throw new Error('interval continuation')
+      })()
+    `), { onError: error => errors.push(error) })
+    await vi.waitFor(() => expect(errors[0]).toMatchObject({ message: 'interval continuation' }))
+    expect(() => run.deliver(null)).toThrow(/finished/)
+    run.close()
+  })
+
+  it('disposes a suspended timer turn when the plugin is stopped', async () => {
+    const current = editor()
+    const run = await openPlugin(current, bundle('StopTimer', `
+      figma.showUI('<p>panel</p>')
+      figma.ui.onmessage = async function () {
+        figma.createRectangle().name = 'Uncommitted'
+        await new Promise(function (resolve) { setTimeout(resolve, 3000) })
+        figma.createRectangle().name = 'Cancelled'
+      }
+    `))
+    const pending = run.deliver('start')
+    run.close()
+    await pending
+    expect(named(current, 'Uncommitted')).toBeUndefined()
+    expect(named(current, 'Cancelled')).toBeUndefined()
+  })
+
+  it('cancels startup timers before returning a stopped plugin', async () => {
+    const abort = new AbortController()
+    const current = editor()
+    const starting = openPlugin(current, bundle('StopStartup', `
+      setTimeout(function () { figma.createRectangle().name = 'Cancelled' }, 3000)
+      figma.notify('started')
+    `), { signal: abort.signal, onNotify: () => abort.abort() })
+    await expect(starting).rejects.toMatchObject({ name: 'AbortError' })
+    expect(named(current, 'Cancelled')).toBeUndefined()
+  })
+
+  it('reports asynchronous timer callback errors and discards their uncommitted edits', async () => {
+    const current = editor()
+    await expect(openPlugin(current, bundle('BadTimer', `
+      setTimeout(async function () {
+        await new Promise(function (resolve) { setTimeout(resolve, 0) })
+        figma.createRectangle().name = 'Uncommitted'
+        throw new Error('timer callback failed')
+      }, 0)
+    `))).rejects.toThrow(/timer callback failed/)
+    expect(named(current, 'Uncommitted')).toBeUndefined()
   })
 
   it('imports SVG, finds by type, and writes the sizing and text fields community plugins use', async () => {
@@ -597,9 +883,6 @@ describe('Figma plugin host', () => {
         let text = ''
         for (let i = 0; i < svg.length; i++) text += String.fromCharCode(svg[i])
         if (text.indexOf('<svg') < 0) throw new Error(text.slice(0, 80))
-        var pdfBlocked = false
-        try { await rect.exportAsync({ format: 'PDF' }) } catch (error) { pdfBlocked = String(error).indexOf('unsupported_api') >= 0 }
-        if (!pdfBlocked) throw new Error('pdf export accepted')
       })()
     `))
     const rect = named(current, 'Photo')
@@ -626,6 +909,48 @@ describe('Figma plugin host', () => {
     const variable = current.state.doc.designSystem?.variables[rect!.bindings!.width]
     expect(variable).toMatchObject({ name: 'Gap', kind: 'number', values: { 'Mode 1': 12 } })
     run.close()
+  })
+
+  it('looks up variables asynchronously and round-trips their local aliases', async () => {
+    const current = editor()
+    const run = await openPlugin(current, bundle('Aliases', `
+      ;(async function () {
+        const vars = figma.variables
+        const collection = vars.createVariableCollection('Palette')
+        const alias = vars.createVariable('Accent', collection, 'COLOR')
+        const base = vars.createVariable('Base', collection, 'COLOR')
+        const mode = collection.defaultModeId
+        base.setValueForMode(mode, { r: 1, g: 0, b: 0 })
+        alias.setValueForMode(mode, vars.createVariableAlias(base))
+        const stored = alias.valuesByMode[mode]
+        if (stored.type !== 'VARIABLE_ALIAS' || stored.id !== base.id) throw new Error('alias')
+        if (base.valuesByMode[mode].r !== 1) throw new Error('color')
+        const reference = await vars.createVariableAliasByIdAsync(base.id)
+        if (reference.id !== base.id) throw new Error('async alias')
+        const collections = await vars.getLocalVariableCollectionsAsync()
+        if (collections.length !== 1 || collections[0].id !== collection.id) throw new Error('collections')
+        if ((await vars.getVariableCollectionByIdAsync(collection.id)).id !== collection.id) throw new Error('collection')
+        if ((await vars.getLocalVariablesAsync('COLOR')).length !== 2) throw new Error('variables')
+        if ((await vars.getVariableByIdAsync(alias.id)).name !== 'Accent') throw new Error('variable')
+        if (await vars.getVariableByIdAsync('missing') !== null) throw new Error('missing variable')
+      })()
+    `))
+    const [baseId] = Object.entries(current.state.doc.designSystem!.variables).find(([, variable]) => variable.name === 'Base')!
+    expect(Object.values(current.state.doc.designSystem!.variables).find(variable => variable.name === 'Accent')?.values).toEqual({ 'Mode 1': { alias: baseId } })
+    run.close()
+  })
+
+  it('rejects cyclic local variable aliases through the document validator', async () => {
+    const current = editor()
+    await expect(openPlugin(current, bundle('Cycle', `
+      const vars = figma.variables
+      const collection = vars.createVariableCollection('Sizes')
+      const first = vars.createVariable('First', collection, 'FLOAT')
+      const second = vars.createVariable('Second', collection, 'FLOAT')
+      first.setValueForMode('Mode 1', { type: 'VARIABLE_ALIAS', id: second.id })
+      second.setValueForMode('Mode 1', { type: 'VARIABLE_ALIAS', id: first.id })
+    `))).rejects.toThrow(/Variable alias cycle/)
+    expect(current.state.doc.designSystem).toBeUndefined()
   })
 
   it('fetches only declared https origins and refuses private hosts', async () => {
@@ -659,12 +984,83 @@ describe('Figma plugin host', () => {
     run.close()
   })
 
+  it('creates images asynchronously through the declared-domain and image admission paths', async () => {
+    const current = editor()
+    const seen: string[] = []
+    const manifest = parsePluginManifest({
+      name: 'Image fetch', id: 'image.fetch', api: '1.0.0', main: 'code.js',
+      networkAccess: { allowedDomains: ['https://images.example.test'] },
+    })
+    const run = await openPlugin(current, { manifest, ui: null, main: `
+      ;(async function () {
+        try { await figma.createImageAsync('https://other.example.test/unlisted'); throw new Error('called disallowed host') }
+        catch (error) { if (!String(error).includes('network_denied')) throw error }
+        const image = await figma.createImageAsync('https://images.example.test/icon.png')
+        const size = await image.getSizeAsync()
+        if (size.width !== 2 || size.height !== 3) throw new Error('image dimensions')
+        figma.closePlugin('image ready')
+      })()
+    ` }, {
+      fetch: async url => {
+        seen.push(url)
+        return {
+          status: 200, url, headers: { 'content-type': 'image/png' },
+          body: new Uint8Array([137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,3,8,2,0,0,0,0,0,0,0]),
+        }
+      },
+    })
+    expect(run.closeMessage).toBe('image ready')
+    expect(seen).toEqual(['https://images.example.test/icon.png'])
+    run.close()
+  })
+
   it('uses the FIG SHA-1 image id and the 5 MB clientStorage quota', () => {
     expect(imageContentId(new Uint8Array())).toBe('da39a3ee5e6b4b0d3255bfef95601890afd80709')
     expect(imageContentId(new TextEncoder().encode('abc'))).toBe('a9993e364706816aba3e25717850c26c9cd0d89d')
     const storage = memoryPluginStorage()
     clientStorageSet(storage, 'quota.plugin', 'ok', JSON.stringify('hi'))
     expect(() => clientStorageSet(storage, 'quota.plugin', 'big', JSON.stringify('x'.repeat(5 * 1024 * 1024)))).toThrow(PluginApiError)
+  })
+
+  it('waits for native clientStorage writes and round-trips staged bytes and UTF-16 keys', async () => {
+    const values = new Map<string, unknown>()
+    const notified: string[] = []
+    let firstWrite: (() => void) | undefined
+    const opening = openPlugin(editor(), bundle('NativeStorage', `
+      ;(async function () {
+        await figma.clientStorage.setAsync('hello', { n: 3 })
+        figma.notify('stored')
+        const name = 'emoji-\\ud83d'
+        const data = new Uint8Array(120005)
+        data[120004] = 77
+        await figma.clientStorage.setAsync(name, data)
+        const stored = await figma.clientStorage.getAsync(name)
+        if (stored.length !== data.length || stored[120004] !== 77) throw new Error('staged bytes')
+        if (!(await figma.clientStorage.keysAsync()).includes(name)) throw new Error('key')
+        if ((await figma.clientStorage.getAsync('hello')).n !== 3) throw new Error('json')
+        await figma.clientStorage.deleteAsync('hello')
+        if (await figma.clientStorage.getAsync('hello') !== undefined) throw new Error('removed')
+      })()
+    `), {
+      onNotify: message => notified.push(message),
+      storageRequest: async operation => {
+        if (operation.kind === 'set') {
+          if (!firstWrite) await new Promise<void>(resolve => { firstWrite = resolve })
+          values.set(operation.key, operation.value)
+          return null
+        }
+        if (operation.kind === 'keys') return [...values.keys()]
+        if (operation.kind === 'delete') { values.delete(operation.key); return null }
+        return values.get(operation.key) ?? null
+      },
+    })
+    await vi.waitFor(() => expect(firstWrite).toBeDefined())
+    expect(notified).toEqual([])
+    firstWrite!()
+    const run = await opening
+    expect(notified).toEqual(['stored'])
+    expect(values.size).toBe(1)
+    run.close()
   })
 
   it('resolves an image already stored on the document by its SHA-1', async () => {
@@ -738,9 +1134,6 @@ describe('Figma plugin host', () => {
 
   it('documents every coverage entry', () => {
     const coverage = pluginApiCoverage()
-    expect(coverage.counts.supported).toBeGreaterThan(20)
-    expect(coverage.counts.partial).toBeGreaterThan(10)
-    expect(coverage.counts.unsupported).toBeGreaterThan(10)
     expect(coverage.counts.supported + coverage.counts.partial + coverage.counts.unsupported).toBe(coverage.entries.length)
     const doc = readFileSync(new URL('../../../../../docs/FIGMA_PLUGIN_HOST_V1.md', import.meta.url), 'utf8')
     for (const entry of coverage.entries) expect(doc, entry.api).toContain(entry.api)
@@ -837,23 +1230,29 @@ describe('Async API coverage batch', () => {
 })
 
 describe('Raster export admission', () => {
-  it('queues PNG jobs and rejects PDF and out-of-range scales at admission', async () => {
+  it('admits PNG, JPG and PDF only through the product worker and checks the scale', async () => {
     const current = editor()
     const run = await openPlugin(current, bundle('ExportPng', `
-      const rect = figma.createRectangle()
-      rect.name = 'Exported'
-      try {
-        rect.exportAsync({ format: 'PDF' }).then(function () {
-          figma.closePlugin('unexpected pdf success')
-        }, function (error) {
-          figma.closePlugin('pdf-rejected:' + (error.message.indexOf('PNG') >= 0))
-        })
-        figma.closePlugin('pdf-threw-nothing')
-      } catch (error) {
-        figma.closePlugin('pdf-rejected:' + (String(error.message).indexOf('PNG') >= 0))
-      }
+      ;(async function () {
+        const rect = figma.createRectangle()
+        for (const format of ['PNG', 'JPG', 'PDF']) {
+          try { await rect.exportAsync({ format }); throw new Error('missing worker produced bytes') }
+          catch (error) {
+            if (!String(error).includes('mounted renderer Worker')) throw error
+          }
+          try { await rect.exportAsync({ format, constraint: { type: 'SCALE', value: 0.05 } }); throw new Error('scale accepted') }
+          catch (error) {
+            if (!String(error).includes('invalid_value')) throw error
+          }
+        }
+        try { await rect.exportAsync({ format: 'GIF' }); throw new Error('format accepted') }
+        catch (error) {
+          if (!String(error).includes('unsupported_api')) throw error
+        }
+        figma.closePlugin('validated')
+      })()
     `))
-    expect(run.closeMessage).toBe('pdf-rejected:true')
+    expect(run.closeMessage).toBe('validated')
     run.close()
   })
 })

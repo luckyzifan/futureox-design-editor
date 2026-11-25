@@ -58,6 +58,29 @@ test('get_metadata lists pages, then a subtree, and ignores fileKey', async () =
   assert.equal(cursor.error.code, 'invalid_params')
 })
 
+test('get_metadata continues the native query with the same nodeId and fresh read fences', async () => {
+  const { api, calls } = facade({
+    'page.list': () => ({ pages: [{ id: 'page-1', name: 'Cover' }] }),
+    'node.find': ({ params }) => ({
+      nodes: [{ id: params.cursor ? 'second' : 'first', kind: 'rectangle' }],
+      total: 2,
+      nextCursor: params.cursor ? null : '4:1',
+    }),
+  })
+  const first = ok(await api.callTool('get_metadata', { nodeId: 'page-1', limit: 1 })).result
+  assert.deepEqual(first.nodes.map(node => node.id), ['first'])
+  assert.equal(first.truncated, true)
+  assert.equal(typeof first.nextCursor, 'string')
+  const second = ok(await api.callTool('get_metadata', { nodeId: 'page-1', limit: 1, cursor: first.nextCursor })).result
+  assert.deepEqual(second.nodes.map(node => node.id), ['second'])
+  assert.equal(second.nextCursor, null)
+  assert.equal(second.truncated, false)
+  assert.deepEqual(calls.at(-1), { method: 'node.find', params: { pageId: 'page-1', limit: 1, cursor: '4:1' }, documentId: 'doc-1', session: 3, expectedRevision: 4 })
+  const mismatch = await api.callTool('get_metadata', { nodeId: 'another', cursor: first.nextCursor })
+  assert.equal(mismatch.error.code, 'invalid_params')
+  assert.equal(calls.at(-1).method, 'page.list')
+})
+
 test('get_selection reads ids and summarizes at most the requested nodes', async () => {
   const { api, calls } = facade({
     'selection.get': () => ({ pageId: 'page-1', ids: ['a', 'b'] }),
@@ -67,6 +90,22 @@ test('get_selection reads ids and summarizes at most the requested nodes', async
   assert.deepEqual(selected.result.ids, ['a', 'b'])
   assert.deepEqual(selected.result.nodes.map(node => node.id), ['a', 'b'])
   assert.deepEqual(calls.map(call => call.method), ['selection.get', 'node.get', 'node.get'])
+})
+
+test('a packaged stdio session assertion must match the authenticated grant', async () => {
+  const calls = []
+  const api = new FigmaFacade({ scope: 'read', localSessionId: 'desktop-grant-id', methods: [{ name: 'selection.get' }],
+    execute: async request => {
+      calls.push(request)
+      return { ok: true, method: request.method, documentId: 'doc-1', session: 3, revision: 4,
+        result: { ids: [], pageId: 'page-1' } }
+    },
+  })
+  assert.equal((await api.callTool('get_selection', { sessionId: 'another-grant' })).error.code, 'invalid_local_session')
+  assert.equal((await api.callTool('get_selection', { sessionId: 3 })).error.code, 'invalid_local_session')
+  assert.deepEqual(calls, [])
+  ok(await api.callTool('get_selection', { sessionId: 'desktop-grant-id' }))
+  assert.deepEqual(calls.map(request => request.params), [{}])
 })
 
 test('get_design_context asks for context and HTML/CSS without claiming React output', async () => {
@@ -85,7 +124,13 @@ test('get_screenshot and single-node download call the CPU export', async () => 
   const preview = { format: 'futureox.design-preview.v1', mimeType: 'image/png', width: 4, height: 4 }
   const { api, calls } = facade({
     'selection.get': () => ({ pageId: 'page-1', ids: [] }),
-    'preview.capture': request => ({ ...preview, nodeIds: request.params.nodeIds, formatName: request.params.format }),
+    'preview.capture': request => ({
+      ...preview, nodeIds: request.params.nodeIds, formatName: request.params.format,
+      ...(request.params.format === 'pdf' ? {
+        mimeType: 'application/pdf',
+        dataUrl: `data:application/pdf;base64,${Buffer.from('%PDF-1.4').toString('base64')}`,
+      } : {}),
+    }),
     'vector.export': () => ({ format: 'futureox.design-vector.v1', content: '<svg/>' }),
   })
   const shot = ok(await api.callTool('get_screenshot', {}, {}))
@@ -95,25 +140,75 @@ test('get_screenshot and single-node download call the CPU export', async () => 
   const png = ok(await api.callTool('download_assets', { nodeId: 'icon', defaultFormat: 'png' }, {}))
   assert.equal(png.result.rawImagesUnsupported, true)
   assert.equal(png.result.urls, false)
-  const many = await api.callTool('download_assets', { nodeIds: ['a', 'b'] }, {})
+  const many = await api.callTool('download_assets', { nodeIds: Array.from({ length: 21 }, (_, i) => `node-${i}`) }, {})
   assert.equal(many.error.code, 'too_many_nodes')
-  const pdf = await api.callTool('download_assets', { nodeId: 'icon', defaultFormat: 'pdf' }, {})
-  assert.equal(pdf.error.code, 'unsupported_format')
+  const pdf = ok(await api.callTool('download_assets', { nodeId: 'icon', defaultFormat: 'pdf' }, {}))
+  assert.equal(pdf.result.mimeType, 'application/pdf')
+  assert.deepEqual(calls.at(-1).params, { format: 'pdf', nodeIds: ['icon'] })
   ok(await api.callTool('download_assets', { nodeId: 'icon', defaultFormat: 'svg' }, {}))
   assert.equal(calls.at(-1).method, 'vector.export')
 })
 
-test('get_variable_defs keeps selection bindings and does not invent libraries', async () => {
-  const { api } = facade({
+test('download_assets batches individual exports against one revision', async () => {
+  const { api, calls } = facade({
+    'document.get': () => ({}),
+    'preview.capture': request => ({
+      format: 'futureox.design-preview.v1', mimeType: 'image/png',
+      dataUrl: `data:image/png;base64,${Buffer.from(request.params.nodeIds[0]).toString('base64')}`,
+    }),
+  })
+  const result = ok(await api.callTool('download_assets', { nodeId: 'a', nodeIds: ['b', 'a'], defaultScale: 2 }, {}))
+  assert.deepEqual(result.result.assets.map(asset => asset.nodeId), ['a', 'b'])
+  assert.deepEqual(calls.map(call => call.method), ['document.get', 'preview.capture', 'preview.capture'])
+  for (const request of calls.slice(1)) {
+    assert.equal(request.documentId, 'doc-1')
+    assert.equal(request.session, 3)
+    assert.equal(request.expectedRevision, 4)
+    assert.equal(request.params.scale, 2)
+  }
+  const stale = facade({
+    'document.get': () => ({}),
+    'vector.export': request => ({ content: '<svg/>', revision: request.params.nodeIds[0] === 'b' ? 5 : 4 }),
+  }).api
+  const failed = await stale.callTool('download_assets', { nodeIds: ['a', 'b'], defaultFormat: 'svg' }, {})
+  assert.equal(failed.error.code, 'stale_revision')
+  assert.equal(failed.result, undefined)
+})
+
+test('screenshots pin the selection and forward the requested crop and size', async () => {
+  const { api, calls } = facade({
+    'selection.get': () => ({ pageId: 'page-1', ids: ['icon'] }),
+    'preview.capture': request => ({ format: 'futureox.design-preview.v1', parameters: request.params }),
+  })
+  const shot = ok(await api.callTool('get_screenshot', { maxDimension: 512, contentsOnly: false, enableBase64Response: false }, {}))
+  assert.equal(shot.result.inlineImage, false)
+  assert.deepEqual(calls.at(-1).params, { format: 'png', maxDimension: 512, contentsOnly: false, pageId: 'page-1', nodeIds: ['icon'] })
+  assert.equal(calls.at(-1).expectedRevision, 4)
+  for (const args of [{ maxDimension: 0 }, { maxDimension: Infinity }, { contentsOnly: 'true' }, { enableBase64Response: 1 }])
+    assert.equal((await api.callTool('get_screenshot', args, {})).error.code, 'invalid_params')
+  assert.equal(calls.length, 2)
+})
+
+test('get_variable_defs keeps selection bindings and their transitive aliases at one revision', async () => {
+  const { api, calls } = facade({
     'selection.get': () => ({ ids: ['label'] }),
     'node.get': () => ({ node: { bindings: { fill: 'brand' }, styleRefs: { text: 'body' } } }),
-    'variable.list': () => [{ id: 'brand', name: 'Brand' }, { id: 'gap', name: 'Gap' }],
+    'variable.list': () => [
+      { id: 'brand', values: { Light: { alias: 'palette' }, Dark: { alias: 'dark' } } },
+      { id: 'palette', values: { Light: { alias: 'literal' } } },
+      { id: 'literal', values: { Light: '#112233' } },
+      { id: 'dark', values: { Dark: '#332211' } },
+      { id: 'gap', values: { Light: 12 } },
+    ],
     'style.list': () => [{ id: 'body', name: 'Body' }, { id: 'other', name: 'Other' }],
   })
   const defs = ok(await api.callTool('get_variable_defs', {}, {}))
-  assert.deepEqual(defs.result.variables.map(item => item.id), ['brand'])
+  assert.deepEqual(defs.result.variables.map(item => item.id), ['brand', 'palette', 'literal', 'dark'])
   assert.deepEqual(defs.result.styles.map(item => item.id), ['body'])
   assert.deepEqual(defs.result.libraries, [])
+  assert.ok(calls.slice(1).every(call => call.documentId === 'doc-1' && call.session === 3 && call.expectedRevision === 4))
+  const explicit = ok(await api.callTool('get_variable_defs', { nodeId: 'label' }, {}))
+  assert.deepEqual(explicit.result, defs.result)
 })
 
 test('use_figma compiles structured writes into one batch and refuses plugin source without a bridge', async () => {
@@ -160,6 +255,7 @@ test('registered plugin bridge receives source and the facade does not eval it',
 
 test('read-only scope rejects writes before calling the Design API', async () => {
   const { api, calls } = facade({}, { scope: 'read' })
+  assert.deepEqual(api.listTools().map(tool => tool.name), ['get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets'])
   const write = await api.callTool('use_figma', { description: 'Edit', operations: [{ op: 'delete', nodeId: 'a' }] }, {})
   const open = await api.callTool('open_document', { rootHandle: 'root', documentHandle: 'doc', mutationId: 'open-1' }, {})
   assert.equal(write.error.code, 'read_only')
@@ -169,6 +265,8 @@ test('read-only scope rejects writes before calling the Design API', async () =>
 
 test('open_document reports a missing workspace grant and otherwise forwards handles', async () => {
   const missing = facade({ 'document.get': () => ({}) }, { methods: METHODS.filter(name => name !== 'workspace.open') })
+  assert.equal(missing.api.listTools().some(tool => tool.name === 'use_figma'), true)
+  assert.equal(missing.api.listTools().some(tool => tool.name === 'open_document'), false)
   const unavailable = await missing.api.callTool('open_document', { rootHandle: 'root', documentHandle: 'saved', mutationId: 'open-1' }, {})
   assert.equal(unavailable.error.code, 'open_unavailable')
   assert.equal(missing.calls.length, 0)
@@ -176,7 +274,7 @@ test('open_document reports a missing workspace grant and otherwise forwards han
     'document.get': () => ({ revision: 5 }),
     'workspace.open': request => ({ handle: request.params.documentHandle, revision: 5 }),
   })
-  present.api.methodNames.add('workspace.open')
+  assert.equal(present.api.listTools().some(tool => tool.name === 'open_document'), true)
   const opened = ok(await present.api.callTool('open_document', { rootHandle: 'root', documentHandle: 'saved', mutationId: 'open-1' }, {}))
   assert.equal(opened.result.handle, 'saved')
   assert.equal(present.calls.at(-1).params.mutationId, 'open-1')

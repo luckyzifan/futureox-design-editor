@@ -83,13 +83,15 @@ Unix: absolute current-user-owned socket mode 0600, real private directory mode 
 
 ## Bounded inspect / generate / fine-edit workflow
 
-The client model runs the workflow; the server only executes supported operations. The two prompts (`design_generation`, `design_to_code`) suggest a finite client-side budget, for example three cycles:
+The client model runs the workflow; the server only executes supported operations. The `design_generation` and `design_to_code` prompts suggest a finite client-side budget, for example three cycles:
 
 1. Inspect capabilities, document, selection, context, styles/components and current revision.
 2. Create a schema-aware, bounded native `batch.apply` with current fences. One successful batch is one undo step.
 3. Inspect `context.get` and `design.check`; use `preview.capture` only if advertised. Checks are structural/heuristic and are not GPU pixel or aesthetic validation.
 4. Apply only the justified fine edit, refresh state and inspect again. Stop on satisfaction, budget exhaustion, repeated failures, unavailable capabilities or a user decision.
 5. Export and report real warnings. HTML/CSS is approximate; native JSON / binary `.fd` preserves the design model.
+
+The `create_design_system_rules` prompt guides a client to draft Markdown from the available local token, style, component and context tools and the project's confirmed conventions. Retrieve it with `prompts/get` without arguments. The client returns the draft for review and saves it when the user requests a project file change.
 
 The adapter does not enforce or execute model iterations. No prompt authorizes unrelated edits, external asset fetching, publishing, shell/eval or an autonomous background AI loop.
 
@@ -138,7 +140,7 @@ Export tools are **resource-first**: `structuredContent.result` contains metadat
 
 `futureox-design://automation/capabilities` exposes real schemas and limits. Resources are actual generated HTML, CSS, SVG, native JSON, native `.fd` or `.sketch` files, plus asset/metadata manifests. Files remain inert; the adapter does not execute HTML/SVG. Small actual PNG/JPEG/WebP previews may be MCP images; larger previews use exact blob resources. There is no re-rendering, resizing or placeholder screenshot.
 
-The session-only export cache holds 16 artifacts / 32 MiB stored text or base64. Each resource must fit the cache and 32 MiB response frame with envelope reserve. All files for one export are admitted atomically. If they cannot fit, the tool returns `artifact_unavailable` with a narrow/split instruction; it never silently drops bytes or falls back to inline file payloads. Oldest entries are evicted, and MCP disconnect clears everything. For a backend with a host-owned terminal signal, terminal disconnect or grant revocation also synchronously clears its associated server cache; `resources/list` and `resources/read` then return `-32000` (authorization session ended), not an empty success. An unknown or evicted URI in a live session returns `-32002`. A new authorized backend/server never restores an old cache. This cache is an export snapshot, never a design source of truth.
+The session-only export cache holds 20 artifacts / 32 MiB stored text or base64. Each resource must fit the cache and 32 MiB response frame with envelope reserve. All files for one export are admitted atomically. If they cannot fit, the tool returns `artifact_unavailable` with a narrow/split instruction; it never silently drops bytes or falls back to inline file payloads. Oldest entries are evicted, and MCP disconnect clears everything. For a backend with a host-owned terminal signal, terminal disconnect or grant revocation also synchronously clears its associated server cache; `resources/list` and `resources/read` then return `-32000` (authorization session ended), not an empty success. An unknown or evicted URI in a live session returns `-32002`. A new authorized backend/server never restores an old cache. This cache is an export snapshot, never a design source of truth.
 
 Limits: 256 KiB default tool output; 32 MiB explicit file-transfer frames; 8 MiB ordinary requests. Larger input is admitted only for advertised font/native-document/Sketch imports, explicit clipboard paste operations, their supported direct atomic batches, or the standalone `workspace.importCopy` host operation. Host import-copy accepts native JSON/FD and compatibility Sketch/FIG with its own framing reserve; it is not a batch operation. There are 8 active requests, 1 heavyweight input, 48 MiB pending input, 40 MiB stdout queue, 256-character IDs, a 65,536-request session budget and 512 tools. Legacy request IDs cannot be reused; modern IDs cannot overlap an outstanding request. Shared operation limits still apply to queries, previews and exports.
 
@@ -160,6 +162,14 @@ node_modules/.bin/vitest run src/automation/mcp-e2e.test.ts
 Real-Editor tests use existing WASM/font setup: native node creation, layout/text fine-editing, checks, HTML/CSS/SVG/resources, JSON, true `.fd` and Sketch resource roundtrips, full 17.77 MB font export isolation, stale-write/rollback/undo boundaries and 3,000-node paginated queries. No GPU renderer is launched. Some sandboxes reject Unix `listen` with `EPERM`; injected streams are not a substitute for OS-level socket verification. Live desktop opt-in/clipboard, Windows/macOS sockets, real preview capture and actual Codex acceptance require on-device verification.
 
 The ordinary integration suite creates real temporary Unix sockets and a stdio CLI subprocess against a deterministic bridge fixture; it does not launch Electron or a real Editor/SQLite backend. Official-SDK stdio tests are separate and skip when `MCP_OFFICIAL_SDK_ROOT` is absent; a skip is not acceptance. [Local test commands](../../testing/README.md) · [Historical validation](../../docs/verification/HISTORICAL_ACCEPTANCE_202610.zh-CN.md)
+
+Run both official SDK suites with a temporary dependency directory from `frontend/design-mcp`. They exercise auto negotiation, pinned modern, and legacy stdio against the protocol fixture and the production desktop bridge with a deterministic editor fixture. [Official SDK 2.4.0](https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/v2.4.0)
+
+```sh
+sdk_root="$(mktemp -d)"
+npm install --prefix "$sdk_root" --ignore-scripts --save-exact @modelcontextprotocol/client@2.4.0
+MCP_OFFICIAL_SDK_ROOT="$sdk_root" node --test test/modern-official-stdio.test.mjs test/modern-official-sdk.test.mjs
+```
 
 ### Reproduce the original example
 

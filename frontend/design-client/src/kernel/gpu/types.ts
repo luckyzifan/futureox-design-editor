@@ -277,6 +277,8 @@ export type PreviewPresentation = {
   offsetX: number
   offsetY: number
   scale: number
+  /** Kernel proof for the four-plane software export resolve. */
+  softwareColorCoverage?: true
 }
 export function previewUniforms(
   u: Float32Array,

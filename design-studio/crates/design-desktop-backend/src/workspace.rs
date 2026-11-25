@@ -14,6 +14,9 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+#[path = "workspace_reserve.rs"]
+mod reserve;
+
 pub const SCHEMA_VERSION: i64 = 6;
 pub const MAX_DOCUMENTS: i64 = 10_000;
 const MAX_REVISION: i64 = 9_007_199_254_740_991;
@@ -21,25 +24,34 @@ const HISTORY_PAGE: i64 = 1000;
 // Optional, store-local metadata only. Never retain document snapshot BLOBs.
 const MAX_HEADS_CACHE_BYTES: usize = 4 * 1024 * 1024;
 
-fn sqlite_primary(error: &sqlx::Error) -> Option<i32> {
-    // SQLite extended result codes retain the primary code in the low byte.
+fn sqlite_result_code(error: &sqlx::Error) -> Option<i32> {
     error.as_database_error()
         .and_then(|e| e.code())
         .and_then(|code| code.parse::<i32>().ok())
-        .map(|code| code & 0xff)
+}
+fn sqlite_primary(error: &sqlx::Error) -> Option<i32> {
+    // SQLite extended result codes retain the primary code in the low byte.
+    sqlite_result_code(error).map(|code| code & 0xff)
 }
 fn preflight_connect(error: sqlx::Error) -> BackendError {
     // A read-only directory is SQLITE_READONLY_DIRECTORY (1544), whose primary
     // code is still 8. That is a refused open, not a damaged database. A
-    // read-only mount is often SQLITE_CANTOPEN (14) for the same reason.
-    match sqlite_primary(&error) {
-        Some(8 | 13) => db(error),
-        Some(14) => BackendError::new(
-            "WORKSPACE_WRITE_FAILED",
-            format!("Local document storage could not be opened; this change was not written and the last committed revision is unchanged: {error}"),
-        ),
+    // read-only mount can report SQLITE_CANTOPEN (14). A missing or unwritable
+    // WAL shared-memory file can report SQLITE_IOERR_SHMOPEN or SHMSIZE.
+    const SQLITE_IOERR_SHMOPEN: i32 = 4618;
+    const SQLITE_IOERR_SHMSIZE: i32 = 4874;
+    match sqlite_result_code(&error) {
+        Some(SQLITE_IOERR_SHMOPEN | SQLITE_IOERR_SHMSIZE) => workspace_open_rejected(error),
+        Some(code) if matches!(code & 0xff, 8 | 13) => db(error),
+        Some(code) if code & 0xff == 14 => workspace_open_rejected(error),
         _ => corrupt(&error.to_string()),
     }
+}
+fn workspace_open_rejected(error: sqlx::Error) -> BackendError {
+    BackendError::new(
+        "WORKSPACE_WRITE_FAILED",
+        format!("Local document storage could not be opened; this change was not written and the last committed revision is unchanged: {error}"),
+    )
 }
 fn db(error: sqlx::Error) -> BackendError {
     // Contention is retryable; preserve the same mutationId after an uncertain
@@ -208,7 +220,7 @@ async fn opened(
     Ok(Opened { entry, document })
 }
 
-fn prepare_database_file(path: &Path) -> Result<()> {
+pub(crate) fn prepare_database_file(path: &Path) -> Result<()> {
     if !path.is_absolute() || path.as_os_str().len() > MAX_PATH_BYTES {
         return Err(invalid(
             "Workspace requires a bounded absolute app-owned path",
@@ -329,6 +341,40 @@ impl WorkspaceStore {
                     format!("Database preflight task failed: {error}"),
                 )
             })??;
+        match Self::open_prepared(path).await {
+            Ok(store) => {
+                let database = path.to_path_buf();
+                // Best effort on a healthy volume. A failure must not make a
+                // valid workspace unavailable.
+                let _ = tokio::task::spawn_blocking(move || reserve::replenish(&database)).await;
+                Ok(store)
+            }
+            Err(error) if matches!(error.code, "WORKSPACE_WRITE_FAILED" | "WORKSPACE_STORAGE_FULL") => {
+                // On a full volume SQLite can report a refused WAL open or a
+                // read-only database instead of SQLITE_FULL. Retry ordinary
+                // SQLite recovery once after reclaiming our reserved space.
+                let database = path.to_path_buf();
+                let released = tokio::task::spawn_blocking(move || reserve::release_if_full(&database))
+                    .await
+                    .ok()
+                    .flatten();
+                match released {
+                    Some(true) => Self::open_prepared(path).await.map_err(|retry| {
+                        if retry.code == "WORKSPACE_WRITE_FAILED" {
+                            BackendError::new("WORKSPACE_STORAGE_FULL", retry.message)
+                        } else {
+                            retry
+                        }
+                    }),
+                    Some(false) => Err(BackendError::new("WORKSPACE_STORAGE_FULL", error.message)),
+                    None => Err(error),
+                }
+            }
+            result => result,
+        }
+    }
+
+    async fn open_prepared(path: &Path) -> Result<Self> {
         let options = SqliteConnectOptions::new()
             .filename(path)
             .create_if_missing(false)

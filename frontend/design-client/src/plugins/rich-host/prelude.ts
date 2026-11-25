@@ -12,7 +12,8 @@ function unsupported(api) {
 }
 function host(op, payload) {
   const reading = {
-    readNode: 1, readDocument: 1, children: 1, fonts: 1, log: 1, notify: 1, postMessage: 1,
+    readNode: 1, readDocument: 1, children: 1, fonts: 1, log: 1, logClear: 1, notify: 1, postMessage: 1,
+    timerSchedule: 1, timerCancel: 1, textSegments: 1,
     showUI: 1, uiResize: 1, uiShow: 1, uiHide: 1, uiClose: 1, loadFont: 1, meta: 1, listen: 1,
     viewportRead: 1, clientStorageGet: 1, clientStorageKeys: 1,
     pluginDataGet: 1, pluginDataKeys: 1, sharedPluginDataGet: 1, sharedPluginDataKeys: 1,
@@ -132,7 +133,7 @@ function wrap(id) {
       if (prop === 'mainComponent') { const main = read(nodeId).mainComponentId; return main ? wrap(main) : null }
       if (prop === 'cornerRadius') { const radius = read(nodeId).cornerRadius; return radius === null ? figma.mixed : radius }
       if (prop === 'resize' || prop === 'resizeWithoutConstraints') return function (width, height) { host('resize', { id: nodeId, width: width, height: height }) }
-      if (prop === 'remove') return function () { dead.add(nodeId); host('remove', { id: nodeId }) }
+      if (prop === 'remove') return function () { host('remove', { id: nodeId }); dead.add(nodeId) }
       if (prop === 'clone') return function () { return wrap(host('clone', { id: nodeId }).id) }
       if (prop === 'appendChild') return function (child) { host('move', { id: child.id, parentId: nodeId }); return child }
       if (prop === 'insertChild') return function (index, child) { host('move', { id: child.id, parentId: nodeId, index: index }); return child }
@@ -157,7 +158,7 @@ function wrap(id) {
           for (let i = 0; i < encoded.length; i++) bytes[i] = encoded.charCodeAt(i)
           return bytes
         })
-        if (normalized === 'PNG' || normalized === 'JPG') {
+        if (normalized === 'PNG' || normalized === 'JPG' || normalized === 'PDF') {
           return new Promise(function (resolve, reject) {
             let result
             try { result = host('exportBegin', { id: nodeId, format: normalized, scale: scale }) }
@@ -169,7 +170,7 @@ function wrap(id) {
             return new Uint8Array(figma.base64Decode(payload.base64 || ''))
           })
         }
-        throw new Error('unsupported_api: exportAsync supports SVG, PNG and JPG in this host')
+        throw new Error('unsupported_api: exportAsync supports SVG, PNG, JPG and bitmap PDF')
       }
       if (prop === 'setBoundVariable') return function (field, variable) {
         host('variableBind', { id: nodeId, field: field, variableId: variable ? variable.id : null })
@@ -180,8 +181,10 @@ function wrap(id) {
         for (const key in snap) if (snap[key]) bound[key] = variableProxy(snap[key])
         return bound
       }
-      if (prop === 'setRelaunchData' || prop === 'getStyledTextSegments')
-        return function () { unsupported('SceneNode.' + prop) }
+      if (prop === 'getStyledTextSegments' && read(nodeId).type === 'TEXT') return function (fields, start, end) {
+        return host('textSegments', { id: nodeId, fields: fields, start: start, end: end })
+      }
+      if (prop === 'setRelaunchData') return function () { unsupported('SceneNode.setRelaunchData') }
       const snap = read(nodeId)
       if (Object.prototype.hasOwnProperty.call(snap, prop)) return snap[prop]
       return undefined
@@ -260,6 +263,7 @@ function variableProxy(id) {
     set name(value) { host('variableRename', { id: id, name: String(value) }) },
     get resolvedType() { return host('variableRead', { id: id }).resolvedType },
     get variableCollectionId() { return host('variableRead', { id: id }).collectionId },
+    get valuesByMode() { return host('variableRead', { id: id, includeValues: true }).valuesByMode },
     setValueForMode: function (modeId, value) { host('variableSet', { id: id, mode: String(modeId), value: value }) },
     remove: function () { host('variableDelete', { id: id }) },
   }
@@ -305,7 +309,23 @@ function hexChannels(input) {
     alpha: hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1,
   }
 }
+const storageWaiters = new Map()
+function storageCompletion(result) {
+  if (!result || !result.storageJob) return Promise.resolve(result)
+  return new Promise(function (resolve, reject) {
+    storageWaiters.set(result.storageJob, { resolve: resolve, reject: reject })
+  })
+}
+globalThis.__finishPluginStorage = function (id, payload) {
+  const waiter = storageWaiters.get(id)
+  storageWaiters.delete(id)
+  if (!waiter) return
+  if (!payload.ok) waiter.reject(new Error(payload.code + ': ' + payload.message))
+  else waiter.resolve(payload.value)
+}
+const payments = Object.freeze({ status: Object.freeze({ type: 'NOT_SUPPORTED' }) })
 const figma = {
+  get payments() { return payments },
   mixed: Object.freeze({ kind: 'mixed' }),
   createRectangle: function () { return create('rectangle') },
   createEllipse: function () { return create('ellipse') },
@@ -351,8 +371,8 @@ const figma = {
       getSharedPluginDataKeys: data.getSharedPluginDataKeys,
     }
   },
-  get editorType() { return 'figma' },
-  get mode() { return 'default' },
+  get editorType() { return host('meta', null).editorType },
+  get mode() { return host('meta', null).mode },
   get pluginId() { return __pluginMeta.pluginId },
   get fileKey() { return null },
   get command() { return __pluginMeta.command == null ? undefined : __pluginMeta.command },
@@ -379,15 +399,18 @@ const figma = {
     })
   },
   on: function (type, callback) {
-    if (!listeners[type] || typeof callback !== 'function') unsupported('figma.on(' + type + ')')
+    if (!Object.prototype.hasOwnProperty.call(listeners, type) || typeof callback !== 'function') unsupported('figma.on(' + type + ')')
     listeners[type].push(callback)
-    if (type !== 'close') host('listen', { type: type })
+    if (type !== 'close' && listeners[type].length === 1) host('listen', { type: type, active: true })
   },
   off: function (type, callback) {
+    if (!Object.prototype.hasOwnProperty.call(listeners, type)) unsupported('figma.off(' + type + ')')
     const list = listeners[type]
-    if (!list) unsupported('figma.off(' + type + ')')
     const index = list.indexOf(callback)
-    if (index >= 0) list.splice(index, 1)
+    if (index >= 0) {
+      list.splice(index, 1)
+      if (type !== 'close' && !list.length) host('listen', { type: type, active: false })
+    }
   },
   viewport: {
     get zoom() { return host('viewportRead', null).zoom },
@@ -400,8 +423,8 @@ const figma = {
   },
   clientStorage: {
     getAsync: function (key) {
-      return Promise.resolve().then(function () {
-        const result = host('clientStorageGet', { key: key })
+      return Promise.resolve().then(async function () {
+        const result = await storageCompletion(host('clientStorageGet', { key: key }))
         if (!result.found || result.kind === 'undefined') return undefined
         if (result.kind === 'bytes') {
           const parts = result.parts || []
@@ -424,28 +447,33 @@ const figma = {
       })
     },
     setAsync: function (key, value) {
-      return Promise.resolve().then(function () {
-        if (value === undefined) { host('clientStorageSet', { key: key, kind: 'undefined' }); return }
+      return Promise.resolve().then(async function () {
+        if (value === undefined) {
+          await storageCompletion(host('clientStorageSet', { key: key, kind: 'undefined' }))
+          return
+        }
         if (typeof Uint8Array === 'function' && value instanceof Uint8Array) {
           const chunk = 120000
           const parts = Math.max(1, Math.ceil(value.length / chunk))
+          let result = null
           for (let index = 0; index < parts; index++) {
             const slice = value.subarray(index * chunk, Math.min(value.length, (index + 1) * chunk))
-            host('clientStorageSet', { key: key, kind: 'bytes', part: index, parts: parts, rawBytes: value.length, base64: figma.base64Encode(slice) })
+            result = host('clientStorageSet', { key: key, kind: 'bytes', part: index, parts: parts, rawBytes: value.length, base64: figma.base64Encode(slice) })
           }
+          await storageCompletion(result)
           return
         }
         let json
         try { json = JSON.stringify(value) } catch (error) { throw new Error('invalid_value: clientStorage value must be JSON') }
         if (typeof json !== 'string') throw new Error('invalid_value: clientStorage value must be JSON')
-        host('clientStorageSet', { key: key, json: json })
+        await storageCompletion(host('clientStorageSet', { key: key, json: json }))
       })
     },
     deleteAsync: function (key) {
-      return Promise.resolve().then(function () { host('clientStorageDelete', { key: key }) })
+      return Promise.resolve().then(async function () { await storageCompletion(host('clientStorageDelete', { key: key })) })
     },
     keysAsync: function () {
-      return Promise.resolve().then(function () { return host('clientStorageKeys', null) })
+      return Promise.resolve().then(function () { return storageCompletion(host('clientStorageKeys', null)) })
     },
   },
   util: {
@@ -476,7 +504,12 @@ const figma = {
     if (!data || typeof data.length !== 'number') throw new Error('invalid_value: createImage expects bytes')
     return imageObject(host('imageCreate', { base64: figma.base64Encode(data) }).hash)
   },
-  createImageAsync: function () { unsupported('figma.createImageAsync') },
+  createImageAsync: async function (url) {
+    if (typeof url !== 'string') throw new Error('invalid_value: createImageAsync expects a URL')
+    const response = await fetch(url)
+    if (!response.ok) throw new Error('image_fetch_failed: Image request returned ' + response.status)
+    return figma.createImage(new Uint8Array(await response.arrayBuffer()))
+  },
   getImageByHash: function (hash) {
     const found = host('imageFind', { hash: String(hash) })
     return found ? imageObject(found.hash) : null
@@ -484,10 +517,29 @@ const figma = {
   variables: {
     getLocalVariableCollections: function () { return host('collectionList', null).map(function (item) { return collectionProxy(item.id) }) },
     getLocalVariables: function (type) { return host('variableList', { type: type || null }).map(function (item) { return variableProxy(item.id) }) },
+    getVariableCollectionById: function (id) {
+      if (id == null) return null
+      const snap = host('collectionRead', { id: String(id) })
+      return snap ? collectionProxy(snap.id) : null
+    },
     getVariableById: function (id) {
       if (id == null) return null
       const snap = host('variableRead', { id: String(id) })
       return snap ? variableProxy(snap.id) : null
+    },
+    getLocalVariableCollectionsAsync: async function () { return figma.variables.getLocalVariableCollections() },
+    getLocalVariablesAsync: async function (type) { return figma.variables.getLocalVariables(type) },
+    getVariableCollectionByIdAsync: async function (id) { return figma.variables.getVariableCollectionById(id) },
+    getVariableByIdAsync: async function (id) { return figma.variables.getVariableById(id) },
+    createVariableAlias: function (variable) {
+      const target = figma.variables.getVariableById(variable && variable.id)
+      if (!target) throw new Error('not_found: Variable alias target does not exist')
+      return { type: 'VARIABLE_ALIAS', id: target.id }
+    },
+    createVariableAliasByIdAsync: async function (id) {
+      const target = figma.variables.getVariableById(id)
+      if (!target) throw new Error('not_found: Variable alias target does not exist')
+      return { type: 'VARIABLE_ALIAS', id: target.id }
     },
     createVariableCollection: function (name) { return collectionProxy(host('collectionCreate', { name: String(name) }).id) },
     createVariable: function (name, collection, resolvedType) {
@@ -526,6 +578,7 @@ const figma = {
   getLocalTextStylesAsync: function () { return Promise.resolve(figma.getLocalTextStyles()) },
   getLocalEffectStylesAsync: function () { return Promise.resolve(figma.getLocalEffectStyles()) },
   importComponentByKeyAsync: function () { unsupported('figma.importComponentByKeyAsync') },
+  importStyleByKeyAsync: async function () { unsupported('figma.importStyleByKeyAsync') },
   createGridStyle: function () { unsupported('figma.createGridStyle') },
   ui: {
     onmessage: null,
@@ -541,18 +594,32 @@ const figma = {
   },
 }
 globalThis.__deliverPluginMessage = function (message) {
-  if (typeof figma.ui.onmessage === 'function') figma.ui.onmessage(message)
+  if (typeof figma.ui.onmessage === 'function') return figma.ui.onmessage(message)
 }
-globalThis.__deliverPluginEvent = function (type) {
-  const event = type === 'documentchange' ? { documentChanges: [] } : undefined
+globalThis.__deliverPluginEvent = function (type, changes) {
   const list = (listeners[type] || []).slice()
+  if (!list.length) return
+  cache.clear()
+  documentCache = null
+  let event
+  if (type === 'documentchange') {
+    dead.clear()
+    event = changes || { documentChanges: [] }
+    event.documentChanges = event.documentChanges.map(function (change) {
+      const node = change.type === 'DELETE' ? { id: change.id, removed: true } : wrap(change.id)
+      return Object.assign(change, { node: node, origin: 'LOCAL' })
+    })
+  }
   for (let i = 0; i < list.length; i++) list[i](event)
 }
 globalThis.figma = figma
 globalThis.console = {
   log: function () { host('log', { level: 'log', message: Array.prototype.join.call(arguments, ' ') }) },
+  info: function () { host('log', { level: 'info', message: Array.prototype.join.call(arguments, ' ') }) },
+  debug: function () { host('log', { level: 'debug', message: Array.prototype.join.call(arguments, ' ') }) },
   warn: function () { host('log', { level: 'warn', message: Array.prototype.join.call(arguments, ' ') }) },
   error: function () { host('log', { level: 'error', message: Array.prototype.join.call(arguments, ' ') }) },
+  clear: function () { host('logClear', null) },
 }
 const fetchWaiters = {}
 const exportWaiters = {}
@@ -613,13 +680,25 @@ globalThis.__finishFetch = function (id, payload) {
   }
   waiter.resolve(response)
 }
-globalThis.setTimeout = function (fn, ms) {
-  if (typeof fn !== 'function') throw new Error('invalid_value: setTimeout expects a function')
-  if (ms !== undefined && ms !== 0) unsupported('setTimeout delay')
-  Promise.resolve().then(function () { fn() })
-  return 0
+const pluginTimers = new Map()
+function schedulePluginTimer(callback, delay, args, repeat) {
+  if (typeof callback !== 'function') throw new Error('invalid_value: Plugin timers require a function')
+  const id = host('timerSchedule', { delay: Math.max(0, Number(delay) || 0), repeat: repeat })
+  pluginTimers.set(id, { callback: callback, args: args, repeat: repeat })
+  return id
 }
-globalThis.clearTimeout = function () {}
-globalThis.setInterval = function () { unsupported('setInterval') }
-globalThis.clearInterval = function () {}
+function clearPluginTimer(id) {
+  const timerId = Number(id)
+  if (pluginTimers.delete(timerId)) host('timerCancel', { id: timerId })
+}
+globalThis.setTimeout = function (callback, delay, ...args) { return schedulePluginTimer(callback, delay, args, false) }
+globalThis.setInterval = function (callback, delay, ...args) { return schedulePluginTimer(callback, delay, args, true) }
+globalThis.clearTimeout = clearPluginTimer
+globalThis.clearInterval = clearPluginTimer
+globalThis.__deliverPluginTimer = function (id) {
+  const timer = pluginTimers.get(id)
+  if (!timer) return
+  if (!timer.repeat) pluginTimers.delete(id)
+  return timer.callback.apply(undefined, timer.args)
+}
 `

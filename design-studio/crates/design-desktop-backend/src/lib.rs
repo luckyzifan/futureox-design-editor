@@ -15,6 +15,7 @@ pub(crate) fn digest_hex(bytes: &[u8]) -> String {
 }
 
 pub mod protocol;
+pub mod plugin_storage;
 mod recovery;
 pub mod runtime;
 mod sketch_file;
@@ -88,6 +89,7 @@ pub struct Backend {
     catalog_issue: Option<&'static str>,
     workspace: Option<workspace::WorkspaceStore>,
     workspace_issue: Option<&'static str>,
+    plugin_storage: Option<plugin_storage::PluginStorage>,
     fonts: fonts::FontCatalog,
     sketch_sessions: sketch_session::Sessions,
     large_documents: large_document::Sessions,
@@ -101,6 +103,7 @@ impl Backend {
             catalog_issue: Some("NOT_INITIALIZED"),
             workspace: None,
             workspace_issue: Some("NOT_INITIALIZED"),
+            plugin_storage: None,
             fonts: fonts::FontCatalog::system(),
             sketch_sessions: sketch_session::Sessions::default(),
             large_documents: large_document::Sessions::new(recovery_dir.join("large-documents")),
@@ -119,6 +122,15 @@ impl Backend {
         self
     }
 
+    pub fn with_plugin_storage(mut self, store: plugin_storage::PluginStorage) -> Self {
+        self.plugin_storage = Some(store);
+        self
+    }
+
+    pub(crate) fn plugin_storage(&self) -> Result<&plugin_storage::PluginStorage> {
+        self.plugin_storage.as_ref().ok_or_else(|| BackendError::new("PLUGIN_STORAGE_FAILED", "Plugin storage is unavailable"))
+    }
+
     pub fn with_workspace_unavailable(mut self, reason: &'static str) -> Self {
         self.workspace = None;
         self.workspace_issue = Some(match reason {
@@ -134,11 +146,17 @@ impl Backend {
     }
 
     pub(crate) fn workspace_unavailable(&self) -> BackendError {
+        let reason = self.workspace_issue.unwrap_or("WORKSPACE_ERROR");
+        if reason == "WORKSPACE_STORAGE_FULL" {
+            return BackendError::new(
+                reason,
+                "Local workspace storage is full. Free space and reopen the workspace to recover the last committed revision. The database is retained.",
+            );
+        }
         BackendError::new(
             "WORKSPACE_UNAVAILABLE",
             format!(
-                "Local workspace unavailable ({}). Database retained; portable files and recovery remain available.",
-                self.workspace_issue.unwrap_or("WORKSPACE_ERROR")
+                "Local workspace unavailable ({reason}). Database retained; portable files and recovery remain available.",
             ),
         )
     }
@@ -150,6 +168,9 @@ impl Backend {
     }
 
     pub async fn close_stores(&self) {
+        if let Some(store) = &self.plugin_storage {
+            store.close().await;
+        }
         if let Some(workspace) = &self.workspace {
             workspace.close().await;
         }

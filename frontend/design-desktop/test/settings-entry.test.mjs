@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
-import { nativeShortcutRoute, forwardNativeEditorShortcut } from '../src/keyboard-shortcuts.mjs'
+import { nativeShortcutRoute, forwardNativeEditorShortcut, nativeSettingsAccelerator } from '../src/keyboard-shortcuts.mjs'
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8')
 const app = read('../../design-client/src/App.tsx'), css = read('../../design-client/src/styles.css')
 for (const platform of ['darwin', 'win32', 'linux']) {
@@ -15,6 +15,20 @@ for (const platform of ['darwin', 'win32', 'linux']) {
     forwardNativeEditorShortcut({preventDefault(){prevented++}},input,{platform,sendCommand(cmd){assert.equal(cmd,'settings');count++},setIgnoreMenuShortcuts(){}})
     assert.equal(count,1); assert.equal(prevented,1)
   })
+  test(`${platform}: German Figma comma reaches the renderer with native menu handling suppressed`, () => {
+    const mod = platform === 'darwin' ? { meta: true } : { control: true }
+    const input = { type: 'keyDown', key: ',', code: 'Comma', ...mod }
+    const ignored = []
+    const context = {
+      platform, interfaceMode: 'figma', figmaKeyboardLayout: 'de-qwertz',
+      sendCommand: command => assert.fail(`Unexpected native command ${command}`),
+      setIgnoreMenuShortcuts: value => ignored.push(value),
+    }
+    for (const extra of [{}, { isAutoRepeat: true }, { isComposing: true }, { type: 'keyUp' }])
+      assert.equal(forwardNativeEditorShortcut({ preventDefault: () => assert.fail('Electron consumed renderer input') }, { ...input, ...extra }, context), false)
+    assert.deepEqual(ignored, [true, true, true, true])
+    assert.equal(nativeShortcutRoute(input, platform, 'sketch', 'de-qwertz').command, 'settings')
+  })
 }
 test('preload passes only supported commands, including Settings, and unsubscribes', () => {
   let bridge;const listeners=new Map()
@@ -22,9 +36,19 @@ test('preload passes only supported commands, including Settings, and unsubscrib
   const seen=[],stop=bridge.onCommand(c=>seen.push(c)),listener=listeners.get('design-desktop:command')
   listener({},'settings');listener({},'arbitrary-shell');assert.deepEqual(seen,['settings']);stop();assert.equal(listeners.size,0)
 })
-test('native menu Settings item invokes supported command with standard accelerator', () => {
-  const source=read('../src/main.mjs'); const entry=source.match(/\{ label: 'Settings… \/ 设置', accelerator: 'CmdOrCtrl\+,', click: \(\) => sendCommand\('settings'\) \}/)?.[0]
-  assert.ok(entry);let sent;const menu=vm.runInNewContext(`(${entry})`,{sendCommand(c){sent=c}});menu.click();assert.equal(sent,'settings');assert.equal(menu.accelerator,'CmdOrCtrl+,')
+test('native menu Settings remains clickable and leaves German Figma comma available', () => {
+  const source=read('../src/main.mjs')
+  const entry=source.match(/\{ label: 'Settings… \/ 设置', accelerator: nativeSettingsAccelerator\(interfaceMode, figmaKeyboardLayout\), click: \(\) => sendCommand\('settings'\) \}/)?.[0]
+  assert.ok(entry)
+  for (const [interfaceMode, figmaKeyboardLayout, accelerator] of [
+    ['figma', 'us-qwerty', 'CmdOrCtrl+,'], ['figma', 'de-qwertz', undefined], ['sketch', 'de-qwertz', 'CmdOrCtrl+,'],
+  ]) {
+    let sent
+    const menu=vm.runInNewContext(`(${entry})`, { interfaceMode, figmaKeyboardLayout, nativeSettingsAccelerator, sendCommand(c) { sent=c } })
+    menu.click()
+    assert.equal(sent, 'settings')
+    assert.equal(menu.accelerator, accelerator)
+  }
 })
 test('Settings retains text despite shared icon-only header styling and uses distinct gear', () => {
   const rule=css.match(/\.editor-shell \.header-right > \.app-settings-button \{([^}]+)\}/)?.[1]
@@ -54,7 +78,7 @@ function settingsCallback() {
 // These are behavior/source contracts, not a browser visibility or Electron GUI test.
 function settingsHarness({ platform = 'mac', target = { tagName: 'INPUT' }, ready = true,
   showHome = false, switching = false, transitioning = false, interactionActive = false, modal = false,
-  commit = true, largeDocument = false, source = false } = {}) {
+  commit = true, largeDocument = false, source = false, germanFigmaKeyboard = false } = {}) {
   const calls = []
   const { body } = settingsCallback()
   // Execute only the Settings prefix, not later save/open/editor shortcut branches.
@@ -64,10 +88,10 @@ function settingsHarness({ platform = 'mac', target = { tagName: 'INPUT' }, read
   const openSettings = () => open(ready, showHome, switching, { transitioning }, { interactionActive }, focused => {
     assert.equal(focused, target); calls.push('modal-check'); return modal
   }, { activeElement: target }, () => { calls.push('commit'); return commit }, value => { assert.equal(value, false); calls.push('close-menu') }, value => { assert.equal(value, true); calls.push('open-settings') })
-  const shortcut = Function('e', 'shortcutPlatform', 'openSettings', 'largeDocument', 'source', shortcutBody)
+  const shortcut = Function('e', 'shortcutPlatform', 'openSettings', 'largeDocument', 'source', 'germanFigmaKeyboard', shortcutBody)
   return { calls, openSettings, dispatch(extra = {}) {
     shortcut({ key: ',', metaKey: platform === 'mac', ctrlKey: platform !== 'mac', target,
-      preventDefault() { calls.push('prevent'); }, ...extra }, () => platform, openSettings, largeDocument, source)
+      preventDefault() { calls.push('prevent'); }, ...extra }, () => platform, openSettings, largeDocument, source, germanFigmaKeyboard)
   } }
 }
 for (const platform of ['mac', 'windows', 'linux']) {
@@ -95,6 +119,11 @@ test('focused modal and uncommittable edits never open Settings or close the cur
   // The native-menu command uses the same guarded callback without a DOM key event.
   const nativeModal = settingsHarness({ modal: true }); nativeModal.openSettings()
   assert.deepEqual(nativeModal.calls, ['modal-check'])
+})
+test('renderer Settings fallback never steals German Figma comma from its current owner', () => {
+  const harness = settingsHarness({ germanFigmaKeyboard: true })
+  harness.dispatch()
+  assert.deepEqual(harness.calls, [])
 })
 test('Home and editor Settings explicitly obey ready and transition branches', () => {
   for (const showHome of [false, true]) for (const ready of [false, true]) for (const transitioning of [false, true]) {
@@ -149,12 +178,16 @@ test('Electron minimum-width and compact-header contracts preserve Settings labe
   const display = { workArea: { x: 0, y: 0, width: 1440, height: 900 } }
   const fitted = fitWindowState({ version: 1, bounds: { x: 0, y: 0, width: 700, height: 700 } }, [display], display)
   assert.equal(fitted.minWidth, 1000); assert.equal(fitted.bounds.width, 1000)
-  // 1000px falls under the 1100px status-icon compact rule, not the <=900px mobile grid.
-  assert.match(css, /@media \(max-width: 1100px\) \{\s*\.editor-shell \.header-right \.save-status \{[^}]*font-size:\s*0/)
+  // The desktop minimum keeps the save status readable and lets its label shrink.
+  const saveStatus = css.match(/\.editor-shell \.header-right \.save-status \{([^}]+)\}/)?.[1]
+  assert.match(saveStatus, /font-size:\s*10px/)
+  assert.match(saveStatus, /flex:\s*0 1 auto/)
+  assert.match(css, /\.editor-shell \.header-right \.save-status \.save-status-label \{[^}]*text-overflow:\s*ellipsis/)
   assert.match(css, /\.editor-shell \.header-right > button \{[^}]*font-size:\s*0/)
   assert.match(css, /\.editor-shell \.header-right > \.app-settings-button \{[^}]*font-size:\s*12px/)
   // Small physical displays may be narrower than desktop minimum; mobile header remains right-aligned.
   const small = { workArea: { x: 0, y: 0, width: 800, height: 700 } }
   assert.equal(fitWindowState(undefined, [small], small).minWidth, 800)
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.editor-shell \.editor-header \.header-right \{[^}]*width:\s*auto/)
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.editor-shell \.header-right \.save-status \{[^}]*display:\s*none/)
 })

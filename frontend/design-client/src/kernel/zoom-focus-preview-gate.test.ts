@@ -106,6 +106,47 @@ test('preparing the same unrenderable idle viewport publishes its state once', (
   expect(worker.jobs).toEqual([])
 })
 
+function scaledFocus(scale: number, ellipseSize = 5) {
+  const doc = blank('scaled-zoom-focus')
+  doc.schemaVersion = 19
+  const ellipse = node('ellipse', 0, 0, ellipseSize, ellipseSize)
+  ellipse.name = '椭圆 66'
+  ellipse.effects = [effect('zoom-blur')]
+  ellipse.effects[0].radius = 0
+  ellipse.effects[0].zoomBlur = { amount: 24, center: [0.5, 0.5] }
+  const image = node('rectangle', 10, 0.2, 1.5, 1.5)
+  image.transform = [scale, 0, 0, scale, 10, 0.2]
+  image.effects = [effect('gaussian-blur')]
+  image.effects[0].radius = 2.5
+  doc.nodes = { [ellipse.id]: ellipse, [image.id]: image }
+  doc.pages[0].children = [ellipse.id, image.id]
+  return { doc, ellipse }
+}
+
+test('a scaled-up neighbor does not submit the whole-page preview the kernel halo rejects', () => {
+  const { doc, ellipse } = scaledFocus(2, 40)
+  const failed = vi.fn()
+  const owner = new InteractionRenderer(vi.fn(), new KernelClient())
+  owners.push(owner)
+  owner.prepare({
+    document: doc, selection: [ellipse.id], active: true, epoch: 1, gestureKind: 'parameter', control: { current: null }, onReady: vi.fn(), onPreviewFailed: failed,
+  }, doc.pages[0].id, { x: 0, y: 0, zoom: 150 }, 1, 'analytic', 'webgpu', undefined, { width: 800, height: 600 })
+  expect(worker.jobs).toEqual([])
+  expect(failed).not.toHaveBeenCalled()
+  expect(owner.error).toBe('')
+})
+
+test('a scaled-down neighbor keeps the preview the kernel halo admits', () => {
+  const { doc, ellipse } = scaledFocus(0.25)
+  const owner = new InteractionRenderer(vi.fn(), new KernelClient())
+  owners.push(owner)
+  owner.prepare({
+    document: doc, selection: [ellipse.id], active: true, epoch: 1, gestureKind: 'parameter', control: { current: null }, onReady: vi.fn(),
+  }, doc.pages[0].id, { x: 0, y: 0, zoom: 150.6 }, 2, 'analytic', 'webgpu', undefined, { width: 1205, height: 452 })
+  expect(worker.jobs.length).toBeGreaterThan(0)
+  expect(worker.jobs.every(job => !job.options.gpuRoots?.length)).toBe(true)
+})
+
 test('an effect outside the preview viewport still uses the ordinary preview', () => {
   const { doc, ellipse } = scene('remote')
   const owner = new InteractionRenderer(vi.fn(), new KernelClient())

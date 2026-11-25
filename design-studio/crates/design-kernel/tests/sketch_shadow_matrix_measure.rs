@@ -1055,3 +1055,215 @@ fn inner_shadow_edit_undo_reopen_and_scaled_export_keep_the_effect() {
         );
     }
 }
+
+fn render_options(
+    doc: &Document,
+    width: u32,
+    height: u32,
+    zoom: f64,
+    transparent: bool,
+) -> RenderOptions {
+    RenderOptions {
+        page_id: doc.pages[0].id.clone(),
+        width,
+        height,
+        view: View { x: 0., y: 0., zoom },
+        transparent,
+        grid: false,
+        pixel_preview: None,
+        animation: None,
+        raster_profile: RasterProfile::Analytic,
+        interactive_effects: false,
+        checkerboard: false,
+    }
+}
+
+fn render_unretained_view(
+    doc: &Document,
+    width: u32,
+    height: u32,
+    zoom: f64,
+) -> Result<Vec<u8>, String> {
+    let mut engine = Engine::new();
+    engine.load_document(&serde_json::to_string(doc).unwrap())?;
+    let pixels = engine.render_unretained(&render_options(doc, width, height, zoom, true))?;
+    let ledger = engine.compositing_ledger();
+    if ledger.budget_rejections != 0 {
+        return Err(format!(
+            "budget rejections {} peak {}",
+            ledger.budget_rejections, ledger.scene_peak_bytes
+        ));
+    }
+    Ok(pixels)
+}
+
+fn diff_summary(actual: &[u8], expected: &[u8]) -> (i32, usize, i32, usize) {
+    let mut max = 0i32;
+    let mut count = 0usize;
+    let mut rgb_max = 0i32;
+    let mut rgb_over = 0usize;
+    for i in 0..actual.len() / 4 {
+        let mut pixel = 0i32;
+        for c in 0..4 {
+            pixel = pixel.max((actual[i * 4 + c] as i32 - expected[i * 4 + c] as i32).abs());
+        }
+        if pixel > 0 {
+            count += 1;
+            max = max.max(pixel);
+        }
+        let over = |px: &[u8], c: usize| {
+            let a = px[i * 4 + 3] as f32 / 255.;
+            (px[i * 4 + c] as f32 + 255. * (1. - a)).round() as i32
+        };
+        let mut rgb = 0i32;
+        for c in 0..3 {
+            rgb = rgb.max((over(actual, c) - over(expected, c)).abs());
+        }
+        rgb_max = rgb_max.max(rgb);
+        if rgb > 16 {
+            rgb_over += 1;
+        }
+    }
+    (max, count, rgb_max, rgb_over)
+}
+
+fn region_rgba(doc: &Document, scale: f64) -> Result<Vec<u8>, String> {
+    let side = (256.0_f64 * scale).round() as u32;
+    let mut engine = Engine::new();
+    engine.load_document(&serde_json::to_string(doc).unwrap())?;
+    let png = engine.render_region_png(&RegionRequest {
+        page_id: doc.pages[0].id.clone(),
+        bounds: ExportBounds { x: 0., y: 0., width: 256., height: 256. },
+        scale,
+        node_ids: None,
+        raster_profile: Some(RasterProfile::Analytic),
+        color_output: None,
+    })?;
+    let ledger = engine.compositing_ledger();
+    if ledger.budget_rejections != 0 {
+        return Err(format!("export rejected {}", ledger.budget_rejections));
+    }
+    let image = image::load_from_memory(&png).map_err(|error| error.to_string())?;
+    let rgba = image.to_rgba8();
+    if rgba.width() != side || rgba.height() != side {
+        return Err(format!("png {}x{} expected {side}", rgba.width(), rgba.height()));
+    }
+    Ok(rgba.into_raw())
+}
+
+fn first_diff(actual: &[u8], expected: &[u8]) -> Option<(usize, [u8; 4], [u8; 4], i32)> {
+    if actual.len() != expected.len() {
+        return None;
+    }
+    let mut max = 0i32;
+    let mut at = None;
+    for i in 0..actual.len() / 4 {
+        let mut pixel = 0i32;
+        for c in 0..4 {
+            pixel = pixel.max((actual[i * 4 + c] as i32 - expected[i * 4 + c] as i32).abs());
+        }
+        if pixel > max {
+            max = pixel;
+            at = Some((
+                i,
+                actual[i * 4..i * 4 + 4].try_into().unwrap(),
+                expected[i * 4..i * 4 + 4].try_into().unwrap(),
+                pixel,
+            ));
+        }
+    }
+    at.filter(|(_, _, _, pixel)| *pixel > 0)
+}
+
+/// Issue #177 CPU checks the published matrix does not already lock.
+/// Tiled 1×/2×/3× PNG must match one analytic frame. Sketch reimport
+/// keeps those pixels. An isolated group at opacity 0.5 matches the same
+/// rectangle's layer opacity.
+#[test]
+fn issue_177_export_reimport_and_isolated_group_match_the_full_frame() {
+    for cell in cells() {
+        let doc = import_cell(&cell);
+        let again = import_sketch_report(&export_sketch(&doc).unwrap())
+            .unwrap_or_else(|error| panic!("{} reimport {error}", cell.name))
+            .document;
+        let original = render(&doc, RasterProfile::Analytic).unwrap();
+        let round_trip = render(&again, RasterProfile::Analytic).unwrap();
+        if let Some((index, got, want, delta)) = first_diff(&round_trip, &original) {
+            let side = W as i32;
+            panic!(
+                "{} sketch reimport pixel ({}, {}) {got:?} != {want:?} delta {delta}",
+                cell.name,
+                index as i32 % side,
+                index as i32 / side
+            );
+        }
+        for scale in [1., 2., 3.] {
+            let side = (256.0_f64 * scale).round() as u32;
+            let reference = render_unretained_view(&doc, side, side, scale).unwrap();
+            let exported = region_rgba(&doc, scale).unwrap();
+            let (export_max, export_n, export_rgb, export_over) = diff_summary(&exported, &reference);
+            let name = cell.name;
+            println!(
+                "EXPORT_FRAME\t{name}\tscale={scale}\tmax={export_max}\tn={export_n}\trgb={export_rgb}\tover16={export_over}"
+            );
+            assert_eq!(
+                (export_max, export_over),
+                (0, 0),
+                "{name} scale {scale} export left the single analytic frame"
+            );
+        }
+    }
+
+    let shadow = shadow("shadow", 12., 4., 8., 0., [0., 0., 0.], 0.35);
+    let shape = json!({
+        "_class": "rectangle",
+        "do_objectID": "shape",
+        "name": "Shape",
+        "frame": {"_class": "rect", "x": 0, "y": 0, "width": 96, "height": 64},
+        "style": {
+            "_class": "style",
+            "contextSettings": {"_class": "graphicsContextSettings", "opacity": 1, "blendMode": 0},
+            "fills": [{"_class": "fill", "isEnabled": true, "fillType": 0, "color": color(0.2, 0.4, 0.6, 1.)}],
+            "borders": [],
+            "shadows": [shadow.clone()],
+            "innerShadows": []
+        }
+    });
+    let group = json!({
+        "_class": "group",
+        "do_objectID": "group",
+        "name": "Group",
+        "frame": {"_class": "rect", "x": 40, "y": 48, "width": 96, "height": 64},
+        "style": {
+            "_class": "style",
+            "contextSettings": {"_class": "graphicsContextSettings", "opacity": 0.5, "blendMode": 0},
+            "fills": [], "borders": [], "shadows": [], "innerShadows": []
+        },
+        "layers": [shape]
+    });
+    let grouped = import_sketch_report(&png_archive(json!([group]))).unwrap().document;
+    let mut flat = Cell {
+        name: "layer-opacity-0.35",
+        layer_opacity: 0.5,
+        rotation: 0.,
+        stroke: false,
+        shadows: vec![shadow],
+        inner: vec![],
+        exact_coverage: true,
+    };
+    // The published group-opacity cell uses probe alpha 0.5. This is the
+    // issue comment's isolated group: child shadow alpha 0.35, group 0.5.
+    flat.shadows[0]["color"]["alpha"] = json!(0.35);
+    let layered = import_cell(&flat);
+    let group_px = render(&grouped, RasterProfile::Analytic).unwrap();
+    let layer_px = render(&layered, RasterProfile::Analytic).unwrap();
+    let (over, mae, max) = score(&group_px, &layer_px);
+    println!("GROUP\tisolated-vs-layer-opacity\tover={over:.4}\tmae={mae:.4}\tmax={max}");
+    let group_node = grouped.nodes.values().find(|node| node.name == "Group").unwrap();
+    assert_eq!(group_node.opacity, 0.5);
+    assert_eq!(group_node.blend, "normal");
+    assert!(
+        max == 0,
+        "isolated group opacity diverged from the same rectangle layer opacity: over={over:.4}% mae={mae:.4} max={max}"
+    );
+}

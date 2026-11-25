@@ -341,6 +341,14 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     }).catch(error => { if (active) editor.notify(String(error)) })
     return () => { active = false }
   }, [desktop, editor, uiMode])
+  useEffect(() => {
+    if (!desktop?.setFigmaKeyboardLayout) return
+    let active = true
+    void desktop.setFigmaKeyboardLayout(figmaKeyboardLayout).then(result => {
+      if (active && result.status === 'error') editor.notify(result.message)
+    }).catch(error => { if (active) editor.notify(String(error)) })
+    return () => { active = false }
+  }, [desktop, editor, figmaKeyboardLayout])
   useEffect(() => desktopPet.bind(editor), [editor])
   useEffect(() => bindEditorSettings(editor), [editor])
   const [exports] = useState(() => new ExportOwner())
@@ -1224,7 +1232,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     const shortcut = (e: KeyboardEvent) => {
       if (largeDocument || source) return
       const settingsMod = shortcutPlatform() === 'mac' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
-      if (settingsMod && e.key === ',' && !e.shiftKey && !e.altKey && !e.repeat && !e.isComposing && e.keyCode !== 229 && !e.defaultPrevented) {
+      if (!germanFigmaKeyboard && settingsMod && e.key === ',' && !e.shiftKey && !e.altKey && !e.repeat && !e.isComposing && e.keyCode !== 229 && !e.defaultPrevented) {
         e.preventDefault(); openSettings(); return
       }
       const sketchWorkspace = uiMode === 'sketch' && desktopSession?.supportsWorkspace
@@ -1293,7 +1301,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         })
     })
     return () => { window.removeEventListener('keydown', allAssetsShortcut, true); window.removeEventListener('keydown', layout); window.removeEventListener('keydown', shortcut); offCommand?.(); offLaunch?.(); offClose?.() }
-  }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument, source, uiMode, saveCurrentDesign])
+  }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument, source, uiMode, saveCurrentDesign, germanFigmaKeyboard])
   function resumeEditor() {
     if (!ready) return
     setShowHome(false)
@@ -1769,7 +1777,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </button>
           <button type="button" className="app-settings-button" aria-label={panelText.openSettings}
             disabled={!ready || switching || desktopStatus.transitioning}
-            title={!ready || switching || desktopStatus.transitioning ? translateProfessional('正在处理设计文件，完成后可打开设置', locale) : `${panelText.settingsTitle} (${formatShortcutCombo('Mod+,', shortcutContext.platform)})`}
+            title={!ready || switching || desktopStatus.transitioning ? translateProfessional('正在处理设计文件，完成后可打开设置', locale) :
+              germanFigmaKeyboard ? panelText.settingsTitle : `${panelText.settingsTitle} (${formatShortcutCombo('Mod+,', shortcutContext.platform)})`}
             aria-haspopup="dialog" aria-expanded={showSettings}
             onClick={openSettings}>
             <SettingsIcon size={16} /><span>{panelText.settingsTitle}</span>

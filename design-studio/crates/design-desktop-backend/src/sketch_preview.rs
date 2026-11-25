@@ -222,7 +222,13 @@ mod admission_tests {
                     .values()
                     .find(|node| node.name == "Beta")
                     .unwrap();
-                assert_eq!(beta.fills[0].opacity, 0.7);
+                let fill = &beta.fills[0];
+                let (_, _, alpha) = futureox_design_kernel::color::parse(
+                    &fill.color,
+                    futureox_design_kernel::color::ColorSpace::Srgb,
+                )
+                .unwrap();
+                assert!((alpha * fill.opacity - 0.7).abs() < 1e-9);
                 assert!((beta.transform.0[4] - 100.).abs() < 1e-9);
                 let encoded = serde_json::to_vec(&snapshot).unwrap();
                 assert!(encoded.len() < 48 * 1024 * 1024);

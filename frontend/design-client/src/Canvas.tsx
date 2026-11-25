@@ -9,12 +9,14 @@ import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
 import { selectionSizeLabel } from './selection-size-label'
 import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_MEMBER_STROKE_PX, SELECTION_UNION_STROKE_PX, SIZE_PILL_TEXT } from './selection-blue'
+import { SpatialCanvasControls, spatialPivotPoint, spatialPoseAfterDrag, type SpatialHandle } from './spatial-canvas-controls'
+import { kernelSpatialPivotPlane, type SpatialPivotPlane } from './kernel/picking'
 import { rotationChromeHeldToTexture, rotationDocumentChromeSuppressed, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
 import { selectionMemberCorners, sharedRotationFrame } from './selection-outline'
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
 import { ALIGNMENT_GUIDE, crispOutlinePath, crispSegmentPath } from './kernel/gpu/canvas-overlay'
-import { anchorPlacementBox, diagramFromLines, guidePositionReadout, measureAnchors, measureToGuide, readoutAtPoint, spacingInteraction, DISTANCE_PILL_BASELINE_LEAD, DISTANCE_PILL_EXTRA_HEIGHT, DISTANCE_PILL_PAD_X, DISTANCE_PILL_RADIUS, measurementTicks, SPACING_RED, textMeasurementBounds, type Measurement, type SpacingPill } from './canvas-measurements'
+import { anchorPlacementBox, diagramFromLines, guidePositionReadout, guideSpacingAvailable, measureAnchors, measureGuideSpacing, readoutAtPoint, spacingInteraction, DISTANCE_PILL_BASELINE_LEAD, DISTANCE_PILL_EXTRA_HEIGHT, DISTANCE_PILL_PAD_X, DISTANCE_PILL_RADIUS, measurementTicks, SPACING_RED, textMeasurementBounds, type Measurement, type SpacingPill } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
 import { frameTitleShown } from './page-frame-chrome'
 import { interfacePreference, useInterfacePreferences } from './interface-preference'
@@ -62,14 +64,14 @@ import { createPortal, flushSync } from 'react-dom'
 import { scheduleCanvasView } from './canvas-view-schedule'
 import { gridOverlayRectangles, layoutGridRectangles } from './grid-overlay'
 import { canvasDropFrame, insideParentFrame } from './canvas-drop'
-import { dispatchEditorCommand } from './editor-commands'
+import { dispatchEditorCommand, fitEditorCamera } from './editor-commands'
 import { commitPendingEdits, pendingOperationEpoch, registerPendingEdit, pendingEditsChanged } from './pending-edits'
 import { lockedSelectionIds } from './canvas-menu-model'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { ViewControls } from './ViewControls'
 import { CanvasTextEditor } from './TextEditor'
 import { createBox, localClockwiseAfter, resizeBasisIsAxisAligned, resizeInBasis, resizeSnapEnd, snapLocalClockwise, snapMove, selectionLocalBounds, vectorPointSnaps } from './canvas-view'
-import { fitBounds, fitSelectedBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
+import { fitBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
 import { WheelCameraGesture } from './wheel-camera-gesture'
 import { desktopBridge,type LocalPeer } from './desktop'
 import {
@@ -254,6 +256,7 @@ type Drag = {
   creationTool?: Tool
   hotspotBounds?: Bounds
   parameter?: 'points' | 'innerRadius' | 'arcStart' | 'arcSweep' | 'arcInner' | 'cornerRadius' | 'rectangleCorner' | 'glassLight' | 'gradientAngle' | 'gradientStop' | 'blurEndpoint' | 'blurStop' | 'zoomBlurCenter'
+  spatial?: { handle: SpatialHandle; plane: SpatialPivotPlane; pivot: Point }
   materialFill?: number
   materialStop?: number
   blurEndpoint?: 'start' | 'end'
@@ -273,6 +276,7 @@ type Drag = {
   rotationDegrees?: number
   /** This gesture's own-paint image failed to load. Do not mount it again. */
   rotationSourceRejected?: boolean
+  renderRotationRaster?: boolean
   rotationCenter?: Point
   originalPivot?: Point
 }
@@ -336,11 +340,28 @@ function SelectionChromeChip({ testId, x, y, text, size, zoom, fill, opacity, ce
   </g>
 }
 
-function MeasurementGuides({ measurements, labels, zoom, hidden, testId = 'canvas-measurement', pillPrefix = 'canvas-distance-pill' }: {
+function SelectionResizeHandle({ handle, zoom, figma, opacity, onPointerDown }: {
+  handle: ReturnType<typeof selectionHandles>[number]; zoom: number; figma: boolean; opacity?: number
+  onPointerDown?: React.PointerEventHandler<SVGPolygonElement>
+}) {
+  const points = (corners: readonly Point[]) => corners.map(point => `${point.x},${point.y}`).join(' ')
+  return <g opacity={opacity}>
+    <polygon data-testid={`resize-${handle.index}`} points={points(handle.resizePoints)}
+      fill={figma ? SELECTION_BLUE : 'white'} stroke={figma ? undefined : SELECTION_BLUE}
+      strokeWidth={figma ? undefined : 1 / zoom} strokeLinejoin="miter"
+      shapeRendering={figma || onPointerDown ? 'crispEdges' : undefined}
+      pointerEvents={onPointerDown ? 'all' : 'none'} style={onPointerDown ? { cursor: handle.resizeCursor } : undefined}
+      onPointerDown={onPointerDown} />
+    {figma && <polygon points={points(handle.resizeInsetPoints)} fill="white" shapeRendering="crispEdges" pointerEvents="none" />}
+  </g>
+}
+
+function MeasurementGuides({ measurements, labels, zoom, hidden, crisp, testId = 'canvas-measurement', pillPrefix = 'canvas-distance-pill' }: {
   measurements: readonly Measurement[]
   labels: readonly { anchor: Point; offset: Point; text: string; size: number }[]
   zoom: number
   hidden: boolean
+  crisp?: boolean
   testId?: string
   pillPrefix?: string
 }) {
@@ -348,8 +369,10 @@ function MeasurementGuides({ measurements, labels, zoom, hidden, testId = 'canva
   return <g data-testid={testId} pointerEvents="none" opacity={hidden ? 0 : 1}>
     {measurements.map((m, i) => <g key={`line-${i}`}>
       <line data-measure={m.role || 'gap'} data-distance={m.distance} data-dashed={m.dash || undefined} x1={m.from.x} y1={m.from.y} x2={m.to.x} y2={m.to.y}
-        stroke={SPACING_RED} strokeWidth={1 / zoom} strokeDasharray={m.dash ? `${4 / zoom} ${3 / zoom}` : undefined} />
-      {m.tick !== false && measurementTicks(m, zoom).map(([from, to], tick) => <line data-measure="edge" key={tick} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={SPACING_RED} strokeWidth={1 / zoom} />)}
+        stroke={SPACING_RED} strokeWidth={1 / zoom} strokeDasharray={m.dash ? `${4 / zoom} ${3 / zoom}` : undefined}
+        shapeRendering={crisp && !m.dash ? 'crispEdges' : undefined} />
+      {m.tick !== false && measurementTicks(m, zoom).map(([from, to], tick) => <line data-measure="edge" key={tick} x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+        stroke={SPACING_RED} strokeWidth={1 / zoom} shapeRendering={crisp ? 'crispEdges' : undefined} />)}
     </g>)}
     {labels.map((label, i) =>
       <SelectionChromeChip key={`pill-${i}`} testId={`${pillPrefix}-${i}`} tone="measure" centered opacity={1}
@@ -426,6 +449,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const overviewAnchor=useRef<Point|undefined>(undefined)
   const sourceWheel = useRef<{token:string; view:CanvasCamera} | undefined>(undefined)
   const gpuMove = useRef<GpuMoveControl | null>(null)
+  const drag = useRef<Drag | null>(null)
   const gestureFollow = useRef<GestureFollowLayer | null>(null)
   const sourceRotation = useRef(false)
   const [sourceRotationPaint, setSourceRotationPaint] = useState(false)
@@ -503,12 +527,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   // Filter parameters change paint. The canvas planner supplies their native
   // footprint and avoids a concurrent transform capture of the same page.
   const gpuPreviewAvailable = !canvasFilterEdit && !!gpuMove.current?.covers(state.doc, state.selection, state.view)
+  const exactRotation = drag.current?.kind === 'rotate' && !!drag.current.renderRotationRaster
   const vectorPreviewSupport = useMemo(() => ({ document: state.doc, pageId: state.page,
-    supported: !canvasFilterEdit && !gpuPreviewAvailable && supportsEditPreview(state.doc, state.page) }),
-    [state.doc, state.page, gpuPreviewAvailable, canvasFilterEdit])
+    supported: !canvasFilterEdit && !gpuPreviewAvailable && !exactRotation && supportsEditPreview(state.doc, state.page) }),
+    [state.doc, state.page, gpuPreviewAvailable, canvasFilterEdit, exactRotation])
   const vectorPreviewSupported = vectorPreviewSupport.supported
   const editPreviewSupported = !canvasFilterEdit &&
-    (gpuPreviewAvailable || vectorPreviewSupported || !!retainedMove.current?.covers(state.doc, state.selection, state.view))
+    (gpuPreviewAvailable || vectorPreviewSupported || !exactRotation && !!retainedMove.current?.covers(state.doc, state.selection, state.view))
   const editPreviewVisible = presentationScopeMatches &&
     (gpuPreviewAvailable && !!gpuMove.current?.isActive() || editPreviewSupported && presented.document !== state.doc)
   const editInputAt = useRef(0)
@@ -732,7 +757,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       alive = false
     }
   }, [editor])
-  const drag = useRef<Drag | null>(null)
   const [gradientKeyboardTarget, setGradientKeyboardTarget] = useState<GradientStopKeyboardTarget | null>(null)
   const handleTap = useRef<CanvasHandleTap | null>(null)
   const guideIndex = useRef<{ drag: Drag; rulers: boolean | undefined; ids: string; spacing: boolean;
@@ -1039,7 +1063,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const altTargetRef=useRef<string|null>(null)
   const onGuideMeasure=useCallback((next:GuideMeasureState)=>{
     setGuideChrome(prev=>{
-      const same=(a:GuideMeasureState['hover'],b:GuideMeasureState['hover'])=>a?.owner===b?.owner&&a?.id===b?.id&&a?.axis===b?.axis&&a?.position===b?.position&&a?.label===b?.label&&a?.at.x===b?.at.x&&a?.at.y===b?.at.y
+      const same=(a:GuideMeasureState['hover'],b:GuideMeasureState['hover'])=>a?.owner===b?.owner&&a?.id===b?.id&&a?.axis===b?.axis&&a?.position===b?.position&&a?.label===b?.label&&a?.at.x===b?.at.x&&a?.at.y===b?.at.y&&a?.from.x===b?.from.x&&a?.from.y===b?.from.y&&a?.to.x===b?.to.x&&a?.to.y===b?.to.y
       return same(prev.selected,next.selected)&&same(prev.hover,next.hover)?prev:next
     })
   },[])
@@ -1297,14 +1321,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const interaction = spacingInteraction({
     tool: state.tool, alt: measureKeys.alt, inspect: devInspect, dragging: !!drag.current, space: spaceHeld,
     selection: state.selection, hover: measureHover, pick: keyboardMark?.pick ?? null,
-    guideHover: !!guideChrome.hover, guideMeasurable: !!guideChrome.hover?.axis, guidePair,
+    guideHover: !!guideChrome.hover, guideMeasurable: guideSpacingAvailable(guideChrome.hover), guidePair,
     vectorAnchor: !!(vectorFrom && vectorTo && vectorTo.id !== vectorFrom.id),
     vectorPlace: !!(vectorFrom && !vectorAnchorHover && cursor && !measureKeys.deep && !measureKeys.text),
   })
   const measurementTarget = interaction?.kind === 'layers' ? interaction.id : null
   let directMeasurement: { lines: Measurement[]; pills: SpacingPill[] } | null = null
-  if (interaction?.kind === 'guide' && guideChrome.hover?.axis) {
-    directMeasurement = diagramFromLines(measureToGuide(selectionBox, { axis: guideChrome.hover.axis, position: guideChrome.hover.position }), zoom)
+  if (interaction?.kind === 'guide' && guideChrome.hover) {
+    directMeasurement = diagramFromLines(measureGuideSpacing(selectionBox, guideChrome.hover), zoom)
   } else if (interaction?.kind === 'guide-positions' && guideChrome.selected && guideChrome.hover) {
     directMeasurement = { lines: [], pills: guidePositionReadout([guideChrome.selected.label, guideChrome.hover.label], guideChrome.hover.at) }
   } else if (interaction?.kind === 'anchors' && vectorFrom && vectorTo && vectorId) {
@@ -1364,6 +1388,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     (ownedDrag?.kind === 'pan' || !ownedDrag && !editor.interactionActive)
   const showSelectionChrome = !hidePanChrome && (uiMode !== 'figma' || !editingBlur)
   const showTransformHandles = !hidePanChrome && canTransform && !editingBlur && !hasSpatialSelection
+  const spatialId = state.selection.length === 1 ? state.selection[0] : undefined
+  const shownSpatialDocument = displayedSnapshot?.document
+  const shownPose = spatialId && shownSpatialDocument?.nodes[spatialId]?.spatial?.pose
+  const spatialPlane = uiMode === 'figma' && state.tool === 'select' && !selectionFeedback.readOnly &&
+    canTransform && !editingBlur && !nativeSource && !openingSource && (!ownedDrag || ownedDrag.spatial) &&
+    spatialId && shownSpatialDocument && shownPose && shownPose.visible && state.doc.nodes[spatialId]?.visible
+    ? kernelSpatialPivotPlane(shownSpatialDocument, spatialId) : undefined
+  const spatialPivot = spatialPlane && shownPose ? spatialPivotPoint(spatialPlane, shownPose.origin) : null
   const showPixelGrid = !hidePanChrome && state.pixelGrid
   const frameTitles = useMemo(() => entries.filter(e => {
     const n = state.doc.nodes[e.id]
@@ -1602,7 +1634,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const entry = entries.find(item => item.id === id)
       if (entry) reveal(entry.bounds)
     }
-    if ((event.key === ' ' || event.code === 'Space') && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+    const optionChord = event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey
+    const controlChord = shortcutPlatform() !== 'mac' && event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
+    if ((event.key === ' ' || event.code === 'Space') && (optionChord || controlChord)) {
       event.preventDefault()
       if (!event.repeat) {
         if (gesture.mode === 'pick') {
@@ -1690,7 +1724,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if ((e.key === ' ' || e.code === 'Space') && !e.repeat && !e.metaKey && !e.ctrlKey && !e.shiftKey && cursorPoint.current) {
         const readout = measureReadoutRef.current
         const text = readoutAtPoint(readout.lines, readout.pills, cursorPoint.current, readout.zoom)
-        if (text) {
+        // Option+Space enters or switches keyboard selection. It repeats a
+        // value only after pick select is already active.
+        if (text && (!e.altKey || keyboardBox.current?.mode === 'pick')) {
           e.preventDefault()
           setMeasureAnnounce(text)
           setAnnounceNonce(nonce => nonce + 1)
@@ -2255,10 +2291,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (pencil.current || drag.current) return
     flushView()
     if(nativeSource||openingSource){editor.set({view:fitBounds((openingSource||nativeSource)!.bounds,size)});return}
-    const relevant = onlySelection ? selected : entries.filter((e) => e.depth === 0)
-    if (!relevant.length) return
-    const b = unionBounds(relevant.map((e) => e.bounds))
-    editor.set({ view: onlySelection ? fitSelectedBounds(b, size, uiMode) : fitBounds(b, size) })
+    fitEditorCamera(editor, size, onlySelection, uiMode)
   }
   function creationPointer(d: Drag, p: Point) {
     if (space.current && d.spaceAnchor && d.spacePointer)
@@ -2712,6 +2745,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       )
     if (vertex) editor.set({ editingVertex: vertex, editingVertices:drag.current?.vertices||[vertex] })
   }
+  function startSpatialGesture(event: React.PointerEvent<SVGGElement>, handle: SpatialHandle) {
+    event.stopPropagation()
+    if (event.button !== 0 || editor.interactionActive || !spatialId || !spatialPlane || !spatialPivot ||
+        editor.state.doc !== shownSpatialDocument || !commitPendingEdits(editor) ||
+        editor.state.doc !== shownSpatialDocument) return
+    start(event, 'parameter', undefined, spatialId)
+    const gesture = drag.current
+    if (gesture?.kind !== 'parameter' || gesture.node?.id !== spatialId) return
+    gesture.spatial = { handle, plane: spatialPlane, pivot: spatialPivot }
+    editor.begin(handle === 'origin' ? '移动 3D 原点' : '旋转 3D 图层')
+  }
   function resizeArgs(d: Drag, e: { shiftKey: boolean; ctrlKey: boolean; altKey: boolean }, p: Point): Parameters<typeof resizeInBasis> | null {
     if (d.kind !== 'resize' && d.kind !== 'scale') return null
     if (d.basis && d.localBox) {
@@ -2883,7 +2927,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
   }
   function placeRotationSource(d: Drag, matrix: Matrix, screen: Point, degrees?: number) {
-    if (d.rotationSourceRejected || d.duplicating || d.ids.length !== 1 || !host.current) { dropGestureFollow(); return }
+    if (d.renderRotationRaster || d.rotationSourceRejected || d.duplicating || d.ids.length !== 1 || !host.current) {
+      dropGestureFollow()
+      return
+    }
     if (gestureFollow.current?.holding) dropGestureFollow()
     const id = d.ids[0]
     const source = d.sourceDocument || state.doc
@@ -2914,6 +2961,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       grid: state.grid, checkerboard: state.checkerboard, pixelPreview: state.pixelPreview !== 0,
     }) : null
     if (!plan) { dropGestureFollow(); return }
+    // A browser transform gives solid edges different coverage. Use the
+    // document renderer throughout this gesture when Figma sampling is set.
+    if (plan.paint.kind === 'solid' && (source.rasterProfile === 'figma' || source.rasterProfile === 'figmaSoftware')) {
+      d.renderRotationRaster = true
+      dropGestureFollow()
+      return
+    }
     let layer = gestureFollow.current
     if (!layer) {
       const mounted = mountRotationSource(host.current, {
@@ -3053,6 +3107,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if(d.kind==='pivot'){setOrigin(originFromWorld(p),true);return}
     if (d.kind === 'parameter' && d.node) {
       if (!d.sampledMovement) return
+      if (d.spatial && d.node.spatial?.pose) {
+        if (p.x === d.start.x && p.y === d.start.y) { editor.preview({}); return }
+        const { handle, plane, pivot } = d.spatial
+        const pose = spatialPoseAfterDrag(d.node.spatial.pose, handle, plane, pivot, d.start, p, d.view.zoom, e.shiftKey)
+        if (pose) editor.preview({ [d.node.id]: { spatial: { ...d.node.spatial, pose } } })
+        return
+      }
       if (d.parameter?.startsWith('arc')) {
         const local = apply(inverse(d.matrices[d.node.id]), p)
         const origin = apply(inverse(d.matrices[d.node.id]), d.start)
@@ -4062,12 +4123,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             <circle data-testid="keyboard-selection-cursor" cx={screen.x} cy={screen.y} r={5} />
             {keyboardMark.pick && (() => {
               const entry = entries.find(item => item.id === keyboardMark.pick)
-              const node = entry && state.doc.nodes[entry.id]
-              if (!entry || !node) return null
-              const points = boxPoints({ x: 0, y: 0, width: node.width, height: node.height })
-                .map(point => worldToScreen(displayView, apply(entry.matrix, point)))
+              const corners = entry && selectionMemberCorners(state.doc, entry.id, entry.matrix)
+              if (!corners) return null
+              const points = corners.map(point => worldToScreen(displayView, point))
               return <polygon data-testid="keyboard-pick-outline" points={points.map(point => `${point.x},${point.y}`).join(' ')}
-                fill="none" stroke={HOVER_BLUE} strokeWidth={1} />
+                fill="none" stroke={HOVER_BLUE} strokeWidth={HOVER_STROKE_PX} shapeRendering="crispEdges" />
             })()}
           </svg>
           <span className="sr-only" role="status">{keyboardMark.pick ? (locale === 'en' ? 'Keyboard pick selection' : '键盘点选') : (locale === 'en' ? 'Keyboard box selection' : '键盘框选')}</span>
@@ -4392,7 +4452,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 return <polygon key={entry.id} data-testid="canvas-selection-member" data-node-id={entry.id} points={points}
                   data-alignment-reference={reference || undefined} fill="none" stroke={SELECTION_BLUE}
                   strokeWidth={reference ? 2 * SELECTION_MEMBER_STROKE_PX : SELECTION_MEMBER_STROKE_PX}
-                  vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                  vectorEffect="non-scaling-stroke" shapeRendering={uiMode === 'figma' ? 'crispEdges' : undefined} pointerEvents="none" />
               })}
               {showSelectionChrome && <polygon
                 data-testid="canvas-selection-outline"
@@ -4409,7 +4469,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 shapeRendering="crispEdges"
                 pointerEvents="none"
               />}
-              <MeasurementGuides measurements={measurements} labels={measurementLabels} zoom={zoom} hidden={!!gpuOverlay} />
+              <MeasurementGuides measurements={measurements} labels={measurementLabels} zoom={zoom} hidden={!!gpuOverlay} crisp={overlay.commands.crispMeasurements} />
               {showTransformHandles && drawnHandles.map(h => <line key={`edge-${h.index}`} data-testid={`resize-edge-${h.index}`}
                 x1={h.point.x} y1={h.point.y} x2={h.next.x} y2={h.next.y}
                 stroke="transparent" strokeWidth={8/zoom} pointerEvents="stroke" style={{cursor:h.edgeCursor}}
@@ -4419,25 +4479,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   points={h.rotatePoints.map(p=>`${p.x},${p.y}`).join(' ')} fill="transparent" pointerEvents="all"
                   style={{cursor:h.rotateCursor}} onPointerDown={e=>{e.stopPropagation();start(e,'rotate',h.index)}} />
               </g>)}
-              {showTransformHandles && drawnHandles.map((h, i) => (
-                <polygon
-                  key={i}
-                  data-testid={`resize-${i}`}
-                  opacity={documentChromeOpacity}
-                  points={h.resizePoints.map(p=>`${p.x},${p.y}`).join(' ')}
-                  fill="white"
-                  stroke={SELECTION_BLUE}
-                  strokeWidth={1 / zoom}
-                  strokeLinejoin="miter"
-                  shapeRendering="crispEdges"
-                  pointerEvents={showTransformHandles?'all':'none'}
-                  style={{ cursor: h.resizeCursor }}
-                  onPointerDown={(e) => {
-                    e.stopPropagation()
-                    start(e, 'resize', i)
-                  }}
-                />
-              ))}
+              {showTransformHandles && drawnHandles.map(handle =>
+                <SelectionResizeHandle key={handle.index} handle={handle} zoom={zoom}
+                  figma={uiMode === 'figma'} opacity={documentChromeOpacity}
+                  onPointerDown={event => {
+                    event.stopPropagation()
+                    start(event, 'resize', handle.index)
+                  }} />)}
               {showTransformHandles&&origin.current.visible&&(()=>{const p=drag.current?.kind==='rotate'?drag.current.rotationCenter!:originWorld();return <g
                 data-testid="rotation-origin" transform={`translate(${p.x} ${p.y}) scale(${1/zoom})`} style={{cursor:'move'}}
                 onPointerDown={e=>{e.stopPropagation();start(e,'pivot')}} onDoubleClick={e=>{e.stopPropagation();setOrigin({x:.5,y:.5},true)}}>
@@ -4615,7 +4663,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               ))}
             </g>
           )}
-          {!selectionChromeOn && <MeasurementGuides measurements={measurements} labels={measurementLabels} zoom={zoom} hidden={!!gpuOverlay} />}
+          {spatialPivot && <SpatialCanvasControls pivot={spatialPivot} zoom={zoom} locale={locale} onStart={startSpatialGesture} />}
+          {!selectionChromeOn && <MeasurementGuides measurements={measurements} labels={measurementLabels} zoom={zoom}
+            hidden={!!gpuOverlay} crisp={overlay.commands.crispMeasurements} />}
         </g>
         <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`}
           visibility={exactOverlayMatches || !!ownedDrag ? 'visible' : 'hidden'}>
@@ -4773,15 +4823,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               if (!corners?.length) return null
               const points = corners.map(point => `${point.x},${point.y}`).join(' ')
               return <polygon key={entry.id} data-testid="canvas-selection-member" data-node-id={entry.id} points={points}
-                fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_MEMBER_STROKE_PX} vectorEffect="non-scaling-stroke" />
+                fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_MEMBER_STROKE_PX} vectorEffect="non-scaling-stroke"
+                shapeRendering={uiMode === 'figma' ? 'crispEdges' : undefined} />
             })}
             <polygon data-testid="canvas-selection-outline" data-selection-role={marqueeChrome.chosen.length > 1 ? 'union' : 'object'}
               points={marqueeChrome.corners.map(point => `${point.x},${point.y}`).join(' ')}
               fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_UNION_STROKE_PX} strokeLinejoin="miter"
               vectorEffect="non-scaling-stroke" shapeRendering="crispEdges" />
-            {marqueeChrome.handles.map((handle, index) => <polygon key={index} data-testid={`resize-${index}`}
-              points={handle.resizePoints.map(point => `${point.x},${point.y}`).join(' ')}
-              fill="white" stroke={SELECTION_BLUE} strokeWidth={1 / zoom} />)}
+            {marqueeChrome.handles.map(handle => <SelectionResizeHandle key={handle.index} handle={handle}
+              zoom={zoom} figma={uiMode === 'figma'} />)}
             <SelectionChromeChip testId="canvas-selection-size" centered tone="accent" opacity={1}
               x={marqueeChrome.box.x + marqueeChrome.box.width / 2}
               y={marqueeChrome.box.y + marqueeChrome.box.height + 21 / zoom}

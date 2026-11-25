@@ -649,6 +649,9 @@ export class Editor {
   notify(message: string, status?: OperationStatus) {
     this.set({ message, messagePresentation: status ? { raw: message, status: { ...status } } : undefined })
   }
+  notifyEmptyClipboard() {
+    this.notify('剪贴板中没有可粘贴的图层、图片或文字', { key: 'emptyClipboard' })
+  }
   setScrollWheelZoom(enabled: boolean) {
     this.set({ scrollWheelZoom: enabled })
     try { if (typeof window !== 'undefined') window.localStorage.setItem('forma-scroll-wheel-zoom', String(enabled)) }
@@ -2392,7 +2395,11 @@ export class Editor {
   pasteToSelection(replace = false, inPlace = false) {
     const action = beginEditorAction(this, CanvasAction.paste, ActionSource.unknown, 225)
     try {
-    if (!this.clipboard || this.interactionActive) return
+    if (this.interactionActive) return
+    if (!this.clipboard) {
+      if (replace) this.notifyEmptyClipboard()
+      return
+    }
     const content=this.clipboard, before=this.state.doc, parents=allParents(before), selected=this.topSelection()
     if(this.topSelection(true).length!==selected.length) {this.notify('粘贴目标包含锁定图层，请先解锁');return}
     const shared = selected.length && selected.every(id => parents.get(id) === parents.get(selected[0])) ? parents.get(selected[0]) : undefined
@@ -2561,7 +2568,10 @@ export class Editor {
   paste(inPlace = false, position?: Point, nestInSelection = true) {
     const action = beginEditorAction(this, CanvasAction.paste, ActionSource.unknown, 226)
     try {
-    if (!this.clipboard) return
+    if (!this.clipboard) {
+      if (position) this.notifyEmptyClipboard()
+      return
+    }
     if (position && (!Number.isFinite(position.x) || !Number.isFinite(position.y))) {
       this.notify('粘贴位置无效'); return
     }

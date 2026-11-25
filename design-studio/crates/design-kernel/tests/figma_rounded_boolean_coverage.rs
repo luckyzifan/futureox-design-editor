@@ -30,13 +30,17 @@ fn png(case_dir: &str, case: &Value) -> Vec<u8> {
     image::open(path).unwrap().into_rgba8().into_raw()
 }
 
-fn render(document: &Value, options: &Value) -> Vec<u8> {
+fn render_profile(document: &Value, options: &Value, profile: &str) -> Vec<u8> {
     let mut engine = Engine::new();
     engine.load_document(&document.to_string()).unwrap();
     let mut options = options.clone();
-    options["rasterProfile"] = json!("figma");
+    options["rasterProfile"] = json!(profile);
     let options: RenderOptions = serde_json::from_value(options).unwrap();
     engine.render(&options).unwrap()
+}
+
+fn render(document: &Value, options: &Value) -> Vec<u8> {
+    render_profile(document, options, "figma")
 }
 
 fn gap(actual: &[u8], expected: &[u8]) -> (usize, u8) {
@@ -151,4 +155,127 @@ fn official_alpha_mask_and_smooth_corner_frames_stay_exact() {
             assert_eq!(gap(&actual, &expected), (0, 0), "{id} {profile}");
         }
     }
+}
+
+#[test]
+fn software_export_resolves_official_colored_curves_exactly() {
+    let sources = [
+        ("curves-2026-10-07", "cases.json", "curve-"),
+        ("curves-2026-10-07", "flattened-cases.json", "curve-"),
+    ];
+    let mut failures = Vec::new();
+    let mut count = 0;
+    for (directory, manifest, prefix) in sources {
+        for case in cases(&format!("{directory}/{manifest}")) {
+            let id = case["id"].as_str().unwrap();
+            if !id.starts_with(prefix) {
+                continue;
+            }
+            assert_eq!(case["strictComparable"], true, "{id}");
+            let expected = png(directory, &case);
+            let actual = render_profile(&case["document"], &case["options"], "figmaSoftware");
+            let delta = gap(&actual, &expected);
+            if delta != (0, 0) {
+                failures.push(format!("{id} {delta:?}"));
+            }
+            count += 1;
+        }
+    }
+    assert_eq!(count, 32);
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn software_texture_replay_matches_the_frozen_material_exports() {
+    let directory = "material-parameters-2026-10-08";
+    let mut count = 0;
+    for case in cases("material-parameters-2026-10-08/cases.json") {
+        let id = case["id"].as_str().unwrap();
+        if !id.starts_with("MaterialQA-texture-") {
+            continue;
+        }
+        assert_eq!(case["strictComparable"], true, "{id}");
+        let expected = png(directory, &case);
+        let actual = render_profile(&case["document"], &case["options"], "figmaSoftware");
+        assert_eq!(gap(&actual, &expected), (0, 0), "{id}");
+        count += 1;
+    }
+    assert_eq!(count, 8);
+}
+
+#[test]
+fn zero_texture_radius_keeps_software_gradient_pixels() {
+    let case = cases("material-parameters-2026-10-08/cases.json")
+        .into_iter()
+        .find(|case| case["id"] == "MaterialQA-texture-neutral")
+        .unwrap();
+    let mut untextured = case["document"].clone();
+    assert_eq!(untextured["nodes"]["a"]["effects"][0]["radius"], 0);
+    untextured["nodes"]["a"]["effects"] = json!([]);
+    let actual = render_profile(&case["document"], &case["options"], "figmaSoftware");
+    let ordinary = render_profile(&untextured, &case["options"], "figmaSoftware");
+    assert_eq!(gap(&actual, &ordinary), (0, 0));
+    let expected = png("material-parameters-2026-10-08", &case);
+    assert_eq!(gap(&ordinary, &expected), (0, 0));
+}
+
+#[test]
+fn material_resolve_requires_a_whole_page_without_other_readers() {
+    use futureox_design_kernel::math::Rect;
+    let case = cases("material-parameters-2026-10-08/cases.json")
+        .into_iter()
+        .find(|case| case["id"] == "MaterialQA-texture-size-8")
+        .unwrap();
+    let mut document = case["document"].clone();
+    let mut options = case["options"].clone();
+    options["rasterProfile"] = json!("figmaSoftware");
+    let options: RenderOptions = serde_json::from_value(options).unwrap();
+    let mut engine = Engine::new();
+    let crop = Rect::new(0, 0, 16, 16);
+    for calibrated in [true, false] {
+        engine.load_document(&document.to_string()).unwrap();
+        let whole = engine.compile_gpu(&options).unwrap();
+        let cropped = engine.compile_gpu_region(&options, crop, None).unwrap();
+        assert_eq!(whole.software_raster, !calibrated);
+        assert_eq!(cropped.software_raster, !calibrated);
+        if calibrated {
+            document["nodes"]["frame"]["children"] = json!(["a", "sibling"]);
+            document["nodes"]["sibling"] = json!({
+                "id": "sibling", "kind": "rectangle", "width": 16, "height": 16,
+                "fills": [{"kind": "solid", "color": "#6699dd"}]
+            });
+        }
+    }
+}
+
+#[test]
+fn software_color_coverage_proof_preserves_deep_glass_bytes() {
+    use futureox_design_kernel::math::Rect;
+    let curve = &cases("curves-2026-10-07/cases.json")[0];
+    let glass = cases("material-parameters-2026-10-08/cases.json")
+        .into_iter()
+        .find(|case| case["id"] == "MaterialQA-depth-24")
+        .unwrap();
+    for (case, allowed) in [(curve, true), (&glass, false)] {
+        let mut engine = Engine::new();
+        engine.load_document(&case["document"].to_string()).unwrap();
+        let mut options = case["options"].clone();
+        options["rasterProfile"] = json!("figmaSoftware");
+        let options: RenderOptions = serde_json::from_value(options).unwrap();
+        let whole = engine.compile_gpu(&options).unwrap();
+        // The crop is outside the lens. It still uses the whole-page proof.
+        let crop = engine.compile_gpu_region(&options, Rect::new(0, 0, 16, 16), None).unwrap();
+        for scene in [whole, crop] {
+            let resolve = serde_json::to_value(scene.resolve).unwrap();
+            assert_eq!(resolve["softwareColorCoverage"].as_bool(), allowed.then_some(true), "{}", case["id"]);
+        }
+    }
+    let expected = png("material-parameters-2026-10-08", &glass);
+    let actual = render_profile(&glass["document"], &glass["options"], "figmaSoftware");
+    assert_eq!(gap(&actual, &expected), (1464, 2));
+    // Complete RGBA output from the frozen baseline, before endpoint inference.
+    assert_eq!(
+        Sha256::digest(&actual).iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
+        "992b3ef648d1208fb8af11ef58cf8d85dbb1fdf99187cfc8d47d88d7b36bb7c5",
+    );
 }

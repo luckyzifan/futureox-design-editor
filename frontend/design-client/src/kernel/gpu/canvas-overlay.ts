@@ -2,7 +2,7 @@ import type { CanvasCamera } from '../../canvas-camera'
 import type { Point, Matrix } from '../../model'
 import { apply, multiply } from '../../geometry'
 import { measurementTicks, SPACING_RED, type MeasurementAxis } from '../../canvas-measurements'
-import { SELECTION_BLUE, SELECTION_UNION_STROKE_PX, srgbUnit } from '../../selection-blue'
+import { SELECTION_BLUE, SELECTION_HANDLE_PX, SELECTION_UNION_STROKE_PX, srgbUnit } from '../../selection-blue'
 import { CanvasLabels, type CanvasLabel } from './canvas-labels'
 
 /** Move alignment guide. The DOM path and the GPU overlay both use this hex. */
@@ -10,7 +10,7 @@ export const ALIGNMENT_GUIDE = '#ed6996'
 
 export type CanvasGuide = { axis:'x'|'y'; position:number; start:number; end:number }
 export type CanvasOverlay = { selection?: { corners: Point[]; handles: boolean; owners?: string[] }; pixelGrid: boolean
-  guides?: readonly CanvasGuide[]
+  guides?: readonly CanvasGuide[]; crispMeasurements?: boolean
   labels?: CanvasLabel[]; measurements?: {from:Point;to:Point;axis?:MeasurementAxis;tick?:boolean;dash?:boolean}[]; transforms?:Record<string,Matrix> }
 const blue = srgbUnit(SELECTION_BLUE), white = [1, 1, 1, 1], spacingRed = srgbUnit(SPACING_RED),
   alignmentGuide = srgbUnit(ALIGNMENT_GUIDE)
@@ -131,10 +131,12 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
       const square = (r: number) => [[-r,-r],[r,-r],[r,r],[-r,r]].map(([x,y]) => ({
         x: point.x + u.x * x + v.x * y,
         y: point.y + u.y * x + v.y * y }))
-      quad(square(4), blue); quad(square(3), white)
+      const half = SELECTION_HANDLE_PX / 2
+      quad(square(half), blue); quad(square(half - 1), white)
     }
   }
   const project = (point: Point) => ({ x: point.x * view.zoom + view.x, y: point.y * view.zoom + view.y })
+  const measurementLine = overlay.crispMeasurements ? solidLine : line
   for (const measurement of overlay.measurements || []) {
     const a = project(measurement.from), b = project(measurement.to)
     if (measurement.dash) {
@@ -147,9 +149,9 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
         }
       }
     } else {
-      line(a, b, 1, spacingRed)
+      measurementLine(a, b, 1, spacingRed)
       if (measurement.axis && measurement.tick !== false) for (const [start, end] of measurementTicks({ from: measurement.from, to: measurement.to, axis: measurement.axis }, view.zoom))
-        line(project(start), project(end), 1, spacingRed)
+        measurementLine(project(start), project(end), 1, spacingRed)
     }
   }
   for (const guide of overlay.guides || []) {

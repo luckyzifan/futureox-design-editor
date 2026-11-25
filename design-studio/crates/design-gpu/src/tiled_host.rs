@@ -13,9 +13,9 @@ pub struct TiledHostStats {
     pub unchanged_frames: usize,
     pub tiles_rasterised: usize,
     pub tiles_cached: usize,
-    /// Full-frame fallbacks: pixel preview.
+    /// Full-frame fallbacks: pixel preview or an unaligned camera.
     pub full_frames: usize,
-    /// Frames assembled from resampled bucket residency (off-bucket zooms).
+    /// Legacy diagnostic counter. Settled host requests use their exact lattice.
     pub resampled_frames: usize,
     pub full_frame_reasons: Vec<&'static str>,
     pub raster_ms: f64,
@@ -69,14 +69,12 @@ impl TiledFrameHost {
         if options.pixel_preview.is_some() {
             return self.full_frame(engine, options, "pixel preview", started);
         }
-        let instruction = engine.render_instruction_for(options)?;
-        let zoom_snapped =
-            (options.view.zoom - instruction.level_scale).abs() < f64::EPSILON * 4.;
-        if !zoom_snapped {
-            self.stats.resampled_frames += 1;
-        }
         let raster_started = Instant::now();
         let assembled = engine.render_tiled_frame(options, damage)?;
+        if assembled.exact_viewport {
+            self.stats.full_frames += 1;
+            self.stats.full_frame_reasons.push("unaligned camera");
+        }
         self.stats.raster_ms += raster_started.elapsed().as_secs_f64() * 1000.;
         match assembled.status {
             UpdateStatus::NoChange => self.stats.unchanged_frames += 1,

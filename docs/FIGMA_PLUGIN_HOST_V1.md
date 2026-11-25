@@ -12,30 +12,37 @@ The sample is `frontend/design-client/src/plugins/sample/` (`manifest.json` + `c
 
 ## Load a plugin folder or archive
 
-Choose **载入插件文件夹** / **Load plugin folder** and pick a directory that contains a Figma-style `manifest.json` and the `main` script it names. Or choose **载入 .zip / .figma** / **Load .zip / .figma** in the Plugins panel. A `.figma` plugin file is a zip. The same archive loader is covered by `pluginBundleFromZip`. The archive may nest the plugin in one folder. The loader reads `manifest.json`, the manifest `main` script, and the optional `ui` file. Other files are ignored. Paths that leave the folder are rejected.
+Choose **载入插件文件夹** / **Load plugin folder** and pick a directory that contains a Figma-style `manifest.json` and the built JavaScript entry it names. Or choose **载入 .zip / .figma** / **Load .zip / .figma** in the Plugins panel. A `.figma` plugin file is a zip. The archive may nest the plugin in one folder. The loader reads `manifest.json`, the `main` script, and the UI files declared in the manifest. Other files are ignored. Paths must stay inside the plugin folder.
 
 If the manifest has a `menu`, the panel lists those commands and runs the one you pick. `figma.command` is that command, or `undefined` when there is no menu.
 
+The desktop app updates the native Plugins menu when its local `plugins` folder changes. It also scans the folder at startup and when the plugin panel opens. Installed folders without an ID get a stable local identity based on the folder. IDs written as JSON numbers must be positive safe integers. Larger IDs can be written as strings.
+
+For a desktop folder or archive with a missing `main.js` entry, the loader can strip types from a same-directory `main.ts` file of up to 256 KiB. The resulting standalone script runs in QuickJS. A packaged JavaScript entry takes precedence. Packages with runtime imports, build dependencies, or TypeScript features that require transformation need a compiled JavaScript entry.
+
 `frontend/design-client/src/plugins/sample-ui/` is a small UI plugin. Its `ui.html` posts `{ pluginMessage: { type: "create-label", text } }`. The host answers with `{ pluginMessage, pluginId }`.
 
-- On the desktop app the page is a sandboxed `design-app://plugin/<id>` frame (`sandbox="allow-scripts"`, no same-origin). Its response policy is `script-src 'unsafe-inline'` and `connect-src 'none'`.
-- In the web app the same HTML is a sandboxed srcdoc iframe with that policy in a meta element. The parent page CSP can still block inline scripts; the desktop frame does not inherit it.
+- The desktop panel opens the page in a sandboxed Electron window with Node integration disabled and context isolation enabled. Direct network requests and remote subresources are blocked. Explicit `fetch()` calls can use the host's public HTTPS broker.
+- The web panel runs the main script and reports that the plugin UI window is available in the desktop app.
 
 Manifest rules:
 
-- `api` must be `1.0.0` and `editorType` must include `figma`.
+- `api` must be `1.0.0`. The plugin panel filters manifests by `editorType`. Design supports `figma` and the Dev toggle supports inspection plugins declaring `dev`.
+- Dev inspection plugins can read the design, open a sandboxed UI and update their own plugin metadata. Design edits are denied.
 - `documentAccess` is ignored. The open document is already local.
-- `networkAccess` may name domains. Main-thread `fetch` is allowed only for those origins (`https`, plus an explicit `localhost` origin). The UI frame still has `connect-src 'none'`. There is no collaboration server. The panel says when network is limited to the manifest.
+- `networkAccess` may name domains. Main-script `fetch` uses those origins. Desktop UI `fetch` accepts public IPv4 CORS GET and HEAD for declared HTTPS origins and wildcard subdomains. Each window allows 32 requests, up to four at a time and 1 MiB per response. UI path patterns and development domains do not grant access. UI requests carry no credentials and redirects are refused.
 - `permissions` may be non-empty. They are not granted.
-- `main` and `ui` must be relative paths inside the folder. `ui` may be a string or `{ "main": "ui.html" }`.
+- `main` and `ui` paths are relative to the plugin folder. A string `ui` supplies `__html__`. A named map such as `{ "import": "import.html", "export": "export.html" }` supplies `__uiFiles__`; a `main` entry also supplies `__html__`. A manifest can declare up to 16 pages with a combined UTF-8 limit of 512 KiB.
 
 ## How a call reaches the document
 
 Plugin JavaScript runs in QuickJS. The only bridge is a fixed set of host operations. Those operations call the shared editor automation API (`batch.apply` and the existing node, page, component, and boolean methods) and commit through `Editor.change`. There is no second document model. Each flush is one undo entry. A synchronous throw before the next flush drops the unflushed edits. The same rule applies when the script's completion promise rejects: QuickJS does not report that rejection as an eval error or a pending-job error, so the host reads the completion promise after pending jobs and declared host work finish. A rejection fails the run, the panel shows the message, and that turn's queue is discarded. Edits already flushed by `figma.closePlugin`, `figma.commitUndo`, `exportAsync`, or a read that flushes stay committed; earlier undo history is not rolled back. `figma.closePlugin` still flushes, then stops the script, including when it runs inside an async function. A rejection that is not the script's completion value (for example `void` around the async call, or a later expression) is not visible to this QuickJS build.
 
-Desktop content security policy still has no `unsafe-eval`. Plugin UI is an iframe with `sandbox="allow-scripts"` and `connect-src 'none'`. Main-thread `fetch` reaches only domains declared in `networkAccess`. `figma.clientStorage` is local to this client (5 MB, including JSON, `undefined`, and `Uint8Array`). Node `getPluginData` / `setPluginData` is stored in the inert FD extension `design.futureox/plugin-data` and shares the undo step of that flush. A file that carries the extension cannot be appended into another document until the extension is removed; open it on its own to keep the data.
+Desktop content security policy still has no `unsafe-eval`. The plugin UI window uses `connect-src 'none'`. Main-thread `fetch` reaches only domains declared in `networkAccess`. Node `getPluginData` / `setPluginData` is stored in the inert FD extension `design.futureox/plugin-data` and shares the undo step of that flush. A file that carries the extension cannot be appended into another document until the extension is removed; open it on its own to keep the data.
 
-Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host calls, and 2,000 nodes in one `findAll`.
+Desktop `figma.clientStorage` persists across launches of the same profile. Its promises wait for the local SQLite sidecar. Installed folders use the authorized folder and manifest ID as their identity. Archives use the digest of the loaded archive, so changing the archive creates a new storage identity. The browser keeps its existing client storage adapter. Old browser-only blobs are preserved and stay outside the desktop database because their originating package identity was never recorded.
+
+Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host calls, and 2,000 nodes in one `findAll`. Timers allow delays up to five seconds and share 64 pending slots. A turn can run up to 128 one-shot callbacks. Repeating timers have a 10 ms minimum period and allow up to 2,000 callbacks per plugin run. Stopping the plugin cancels pending timers.
 
 ## What a real .zip or .figma plugin can do
 
@@ -60,7 +67,7 @@ Behavior follows the [Figma Plugin API](https://www.figma.com/plugin-docs/api/ap
 
 ## Still blocked
 
-These calls still throw or are absent: `createImageAsync`, vector networks, PNG/JPG/PDF `exportAsync`, remote variable libraries and variable aliases, `importStyleByKeyAsync`, payments, parameters, codegen, annotations, rich text ranges, reactions, relaunch buttons, `strokeStyleId`, UI-frame network, positive `setTimeout`, and `setInterval`. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. `documentchange` does not list the changed nodes. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
+These calls still throw or are absent: vector networks, remote variable libraries, `importStyleByKeyAsync`, payment transactions, parameters, codegen, annotations, styled text range writes, reactions, relaunch buttons, and `strokeStyleId`. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
 
 ## API coverage
 
@@ -94,13 +101,13 @@ These calls still throw or are absent: `createImageAsync`, vector networks, PNG/
 | `figma.root` | supported | Document name and page children. The root is not a frame. |
 | `figma.notify` | supported | Shows the editor status line and the plugin log. No toast UI. |
 | `figma.closePlugin` | supported | Flushes pending edits, then stops the script. The message is returned to the host. |
-| `figma.showUI` | partial | Accepts __html__ or an HTML string up to 512 KiB. Desktop shows a sandboxed design-app://plugin frame. Web shows a sandboxed srcdoc iframe. visible, width, height, and title are honored. themeColors is ignored. |
+| `figma.showUI` | partial | Accepts __html__, a manifest page from __uiFiles__, or an HTML string up to 512 KiB. The desktop panel opens a sandboxed window. themeColors is ignored. |
 | `figma.ui.show` | supported | Shows the plugin iframe after hide or showUI({ visible: false }). |
 | `figma.ui.hide` | supported | Hides the iframe. The plugin keeps running. |
 | `figma.ui.close` | partial | Hides the iframe. The plugin keeps running until closePlugin. show() can open it again. |
 | `figma.commitUndo` | supported | Flushes the current turn as its own undo entry. Later edits in the same run are a new undo step. |
-| `figma.editorType` | supported | Always "figma". |
-| `figma.mode` | partial | Always "default". Inspect and codegen modes are not available. |
+| `figma.editorType` | partial | "figma" in design and "dev" in the editor’s Dev inspection mode. |
+| `figma.mode` | partial | "default" in design and "inspect" in Dev. Code generation and FigJam are unavailable. |
 | `figma.pluginId` | partial | The manifest id. It is not a published Figma plugin id. |
 | `figma.command` | partial | The menu command the host launched, or undefined when the manifest has no menu. |
 | `figma.fileKey` | partial | Always null. Local documents have no Figma file key. |
@@ -177,26 +184,27 @@ These calls still throw or are absent: `createImageAsync`, vector networks, PNG/
 | `PageNode.name` | supported | Renames a page. |
 | `figma.createImage` | partial | Accepts PNG, JPEG, or WebP bytes up to 256 KiB. GIF is refused because the document does not admit a GIF data URL. The hash is the SHA-1 of those bytes, the same content id a .fig archive uses for images/<hash>. |
 | `figma.getImageByHash` | partial | Resolves a SHA-1 hash from this session or from an image paint already stored on a fill or stroke. getBytesAsync reads those bytes. getSizeAsync supports PNG and JPEG. |
-| `figma.createImageAsync` | unsupported | Throws unsupported_api. No network image fetch. Pass bytes to createImage. |
+| `figma.createImageAsync` | partial | Fetches through the declared-domain main-script bridge and applies the same image format and 256 KiB limit as createImage. |
 | `figma.createNodeFromSvg` | partial | Imports the SVG through the editor SVG importer and returns the created root. Scripts, external URLs, and animation are rejected. |
 | `figma.createVector` | unsupported | Throws unsupported_api. Vector networks are not exposed on this host. |
 | `figma.viewport.zoom` | partial | Get and set camera zoom from 0.02 to 256. Setting zoom keeps the world point at the top-left, not the visual center. |
 | `figma.viewport.center` | partial | Get and set the world point at the camera origin (top-left). The host does not know the canvas size, so this is not the visual center. |
 | `figma.viewport.scrollAndZoomIntoView` | partial | Asks the editor to reveal the nodes. It does not change zoom. |
 | `figma.clientStorage` | supported | getAsync, setAsync, keysAsync, and deleteAsync. JSON values, undefined, and Uint8Array. 5 MB per plugin by the official size rule, with a host ceiling of 10000 keys. Stored in this client and not undone with the canvas. |
-| `figma.variables` | partial | Local collections and COLOR, FLOAT, STRING, and BOOLEAN variables. Mode ids are mode names. setValueForMode and setBoundVariable for width, height, opacity, characters, visible, fontSize, and itemSpacing. No remote libraries. |
+| `figma.variables` | partial | Local collections and COLOR, FLOAT, STRING, and BOOLEAN variables, synchronous and asynchronous lookups, and typed local aliases. Mode ids are mode names. setBoundVariable supports width, height, opacity, characters, visible, fontSize, and itemSpacing. Remote libraries are unavailable. |
 | `figma.teamLibrary` | unsupported | Absent. There is no team library or cloud account. |
-| `figma.payments` | unsupported | Absent. |
+| `figma.payments` | partial | Read-only status is NOT_SUPPORTED. Commerce is unavailable. |
 | `figma.parameters` | unsupported | Absent. Parameter UI is not collected. |
 | `figma.codegen` | unsupported | Absent. |
 | `figma.annotations` | unsupported | Absent. |
 | `figma.currentUser` | partial | Always null. There is no account user. Optional chaining works; reading an id does not. |
 | `figma.util.rgb` | supported | Returns {r, g, b} with channels from 0 to 1. |
 | `figma.util.solidPaint` | supported | SOLID paint from #RGB, #RRGGBB, #RRGGBBAA, or an {r, g, b} object. |
-| `figma.on` | partial | The Plugins panel forwards selectionchange, currentpagechange, and documentchange for editor changes outside the plugin. documentchange has an empty documentChanges list. The plugin’s own edits do not emit them. Listeners stop when the panel closes or the document session changes. close runs inside closePlugin. run and other events throw. |
+| `figma.on` | partial | The Plugins panel forwards selectionchange, currentpagechange, and local documentchange. Document events include created/removed subtree roots and changed properties for supported authored-node fields, up to 256 changes. The plugin’s own edits do not emit these events. |
 | `figma.skipInvisibleInstanceChildren` | partial | The flag is stored. findAll does not skip invisible instance children. |
-| `setTimeout` | partial | Only a zero delay during the current turn. A positive delay throws. setInterval throws. |
-| `fetch` | partial | Main-thread fetch only, and only to origins declared in networkAccess. https except an explicit localhost origin. Private networks, metadata hosts, credentials, and the UI frame stay blocked. |
+| `setTimeout` | partial | One-shot and repeating timers accept callback arguments, cancellation, and delays up to five seconds. setInterval uses a minimum 10 ms period and a bounded per-run callback budget. |
+| `console` | partial | log, info, debug, warn, error, and clear operate on the current plugin log, with bounded output. |
+| `fetch` | partial | Main-script fetch uses the manifest policy. Desktop UI fetch proxies public CORS GET/HEAD to explicitly declared HTTPS origins. UI requests are capped at 1 MiB and cannot send credentials or follow redirects. |
 | `figma.loadAllPagesAsync` | supported | Resolves immediately; every page of the local document is always loaded. |
 | `figma.getNodeByIdAsync` | supported | Async form of `getNodeById`. Missing ids resolve null. |
 | `figma.setCurrentPageAsync` | supported | Async form of the `currentPage` assignment. |
@@ -210,7 +218,7 @@ These calls still throw or are absent: `createImageAsync`, vector networks, PNG/
 | `figma.createTextStyle` | partial | Creates a local text style. fontName, lineHeight, letterSpacing, textCase, and paragraph spacing can be set. fontSize and textDecoration are kept on the node, not the style. |
 | `figma.createEffectStyle` | partial | Creates a local effect style. name and effects can be set. No cloud library. |
 | `figma.createGridStyle` | unsupported | Throws unsupported_api. |
-| `SceneNode.exportAsync` | partial | SVG markup bytes resolve inline. PNG and JPG rasterize through the product CPU export path with scale 0.1–4 and a 500,000-character base64 transport cap; larger rasters reject with export_limit. PDF is not available. |
+| `SceneNode.exportAsync` | partial | SVG markup bytes resolve inline. PNG, JPG, and bitmap PDF use the product CPU renderer at scales 0.1–4, with a 500,000-character base64 transport cap. |
 | `SceneNode.getPluginData` | supported | String values for this manifest id. A missing key returns "". Pages and the document root use the same methods. Stored in the fdCompatibility extension design.futureox/plugin-data and undone with the edit. |
 | `SceneNode.setPluginData` | supported | Up to 50 keys and 10000 characters. An empty string deletes the key. The same limits apply to pages and figma.root. |
 | `SceneNode.getSharedPluginData` | supported | Reads a namespace another plugin on this file could also read. Missing keys return "". |
@@ -218,7 +226,7 @@ These calls still throw or are absent: `createImageAsync`, vector networks, PNG/
 | `SceneNode.setRelaunchData` | unsupported | Throws unsupported_api. Relaunch buttons are not shown. |
 | `SceneNode.reactions` | unsupported | Absent. Prototype reactions are not edited from this host. |
 | `SceneNode.boundVariables` | partial | Reads bindings written by setBoundVariable. Fields are width, height, opacity, characters, visible, fontSize, and itemSpacing. |
-| `TextNode.getStyledTextSegments` | unsupported | Throws unsupported_api. Rich-text ranges are not read back as styled segments. |
+| `TextNode.getStyledTextSegments` | partial | Reads UTF-16 ranges and groups equal adjacent styles. Supports fontSize, fontWeight, fontStyle, textDecoration, textCase, lineHeight, letterSpacing, paragraphSpacing, and paragraphIndent. |
 | `figma.currentPage.findAllWithCriteria` | partial | Filters by types only, up to 2000 nodes. pluginData criteria throws. |
 | `figma.createNodeFromSvg` | partial | Imports the SVG through the editor SVG importer and returns the created root. Scripts, external URLs, and animation are rejected. A multi-root import is grouped. The import is its own undo step. |
 | `figma.createPaintStyle` | partial | Creates a local paint style. name and paints can be set. No cloud library or style key. |

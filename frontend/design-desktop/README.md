@@ -44,7 +44,7 @@ bun run test:smoke
 bun run start
 ```
 
-The smoke test opens its own application window and needs a working display and the normal Chromium sandbox. It waits for a WASM-backed CPU canvas frame, checks the preload API and Rust health, and prints the frame result. The test wrapper removes the isolated profile and screenshot when it exits. Host unit tests exercise the package's Node paths. Run packaged GUI and GPU checks separately. [Local test commands](../../testing/README.md) · [Package acceptance](../../docs/RELEASE_PACKAGE_ACCEPTANCE.zh-CN.md)
+The smoke test starts with its own hidden window and the normal Chromium sandbox. It opens a new design from Home, waits for a completed WASM-backed CPU canvas frame, checks the preload API and Rust health, and prints the frame result. The test wrapper removes the isolated profile and screenshot when it exits. Host unit tests exercise the package's Node paths. Run packaged GUI and GPU checks separately. [Local test commands](../../testing/README.md) · [Package acceptance](../../docs/RELEASE_PACKAGE_ACCEPTANCE.zh-CN.md)
 
 ### Optional GPU working-set ceiling
 

@@ -449,6 +449,20 @@ fn sketch_flag(value: &Value) -> bool {
     }
 }
 
+/// Sketch archives the miter limit on `style.miterLimit`. Real files use 10.
+/// A missing field stays at the historical renderer cap of 4. Out-of-range
+/// values are reported and also stay at 4. `borderOptions.miterLimit` is not
+/// read: previous exports wrote a constant 10 there while the stroke stayed 4.
+pub(crate) fn sketch_style_miter_limit(style: &Value, lossy: &mut Vec<String>) -> f64 {
+    match crate::fig::authored_miter_limit(style.get("miterLimit")) {
+        Ok(limit) => limit,
+        Err(note) => {
+            lossy.push(note);
+            crate::stroke::default_miter_limit()
+        }
+    }
+}
+
 /// Sketch 2026 writes `centerDashes` as a bool. Older files omit it, which
 /// keeps the historical uncentered dash. A 0/1 number is accepted as well.
 pub(crate) fn sketch_center_dashes(options: &Value) -> bool {
@@ -847,6 +861,7 @@ fn blank_paint(kind: &str) -> Paint {
         angle: 0.,
         stops: Vec::new(),
         image: None,
+        video: None,
         fit: "cover".into(),
         blend: "normal".into(),
         adjust: None,
@@ -1562,6 +1577,7 @@ impl<'a> Importer<'a> {
             .and_then(Value::as_i64)
             .map(|code| marker_of(code, lossy))
             .unwrap_or_default();
+        let miter_limit = sketch_style_miter_limit(style, lossy);
         let mut out = Vec::new();
         let Some(parts) = style.get("borders").and_then(Value::as_array) else {
             return out;
@@ -1587,7 +1603,7 @@ impl<'a> Importer<'a> {
                 .into(),
                 cap: cap.into(),
                 join: join.into(),
-                miter_limit: 4.,
+                miter_limit,
                 dash: dash.clone(),
                 dash_offset: 0.,
                 center_dashes: sketch_center_dashes(options),
@@ -1719,6 +1735,11 @@ impl<'a> Importer<'a> {
     }
 
     fn layer(&mut self, layer: &Value, inside_artboard: bool, stack_item: bool) -> String {
+        self.layer_in_library(layer, inside_artboard, stack_item, None)
+    }
+
+    fn layer_in_library(&mut self, layer: &Value, inside_artboard: bool, stack_item: bool,
+        library_copy: Option<&str>) -> String {
         let class = match layer
             .get("_class")
             .and_then(Value::as_str)
@@ -1727,7 +1748,7 @@ impl<'a> Importer<'a> {
             "MSImmutableHotspotLayer" => "hotspot",
             class => class,
         };
-        let id = layer
+        let source_id = layer
             .get("userInfo")
             .and_then(|u| u.get("com.futureox.design-kernel"))
             .and_then(|u| u.get("originalId"))
@@ -1740,12 +1761,23 @@ impl<'a> Importer<'a> {
                     .map(str::to_string)
             })
             .unwrap_or_else(|| format!("sketch-{}/{}", class, self.nodes.len()));
+        // A library embed can reuse the page master's object IDs, including
+        // descendants, while binding instances through a distinct symbol ID.
+        let renamed = library_copy.filter(|_| self.nodes.contains_key(&source_id)).map(|copy| {
+            (0..).map(|attempt| sketch_id(&format!("{copy}/{source_id}/{attempt}")))
+                .find(|candidate| !self.nodes.contains_key(candidate)).expect("unclaimed library layer ID")
+        });
+        let id = renamed.as_ref().unwrap_or(&source_id).clone();
         let clipping = layer.get("clippingBehavior").and_then(Value::as_i64);
         let modern_frame = class == "group"
             && (matches!(layer.get("groupBehavior").and_then(Value::as_i64), Some(1 | 2))
                 || clipping == Some(1));
         let kind = if modern_frame { "frame" } else { kind_for_class(class) };
         let mut node = crate::facet::sample_node(&id, kind);
+        if renamed.is_some() {
+            let wire = layer.get("do_objectID").and_then(Value::as_str).unwrap_or(&source_id);
+            node.bindings.insert("sketchLayerFromLibraryObjectID".into(), wire.into());
+        }
         node.graphic = kind == "frame" && layer.get("groupBehavior").and_then(Value::as_i64) == Some(2);
         node.sketch_template = kind == "frame" && class != "symbolMaster" && bool_at(layer, "isTemplate");
         if kind == "frame" {
@@ -1886,6 +1918,11 @@ impl<'a> Importer<'a> {
             // Restore only while the native effect fields still match exactly;
             // a subsequent native Sketch edit must supersede this receipt.
             if let Some(effects) = restored_effect_model(layer, &style) {
+                if layer.pointer("/userInfo/com.futureox.design-kernel/legacyEffectModel/portableZoom")
+                    .and_then(Value::as_bool) == Some(true)
+                    && effects.iter().any(|effect| effect.zoom_blur.is_some()) {
+                    node.bindings.insert("sketchPortableZoomBlur".into(), "true".into());
+                }
                 node.effects = effects;
             }
 
@@ -2126,13 +2163,16 @@ impl<'a> Importer<'a> {
             // parameters from static geometry but has no authored storage
             // slot, so the payload rides bindings verbatim and the static
             // child frames — which Sketch itself laid out — are preserved.
-            let payload = json!({
+            let mut payload = json!({
                 "_class": "MSImmutableInferredGroupLayout",
                 "axis": group_layout.get("axis").cloned().unwrap_or(json!(1)),
                 "layoutAnchor": group_layout.get("layoutAnchor").cloned().unwrap_or(json!(0)),
-                "minSize": group_layout.get("minSize").cloned().unwrap_or(Value::Null),
-                "maxSize": group_layout.get("maxSize").cloned().unwrap_or(Value::Null),
             });
+            for key in ["minSize", "maxSize"] {
+                if let Some(value) = group_layout.get(key).filter(|value| !value.is_null()) {
+                    payload[key] = value.clone();
+                }
+            }
             node.bindings.insert(
                 "sketchInferredGroupLayout".into(),
                 serde_json::to_string(&payload).unwrap_or_default(),
@@ -3034,7 +3074,7 @@ impl<'a> Importer<'a> {
         let mut children = Vec::new();
         if let Some(layers) = layer.get("layers").and_then(Value::as_array) {
             for child in layers {
-                children.push(self.layer(child, inside_artboard || class == "artboard", child_stack));
+                children.push(self.layer_in_library(child, inside_artboard || class == "artboard", child_stack, library_copy));
             }
         }
         let reverse_archive = node.layout.as_ref().and_then(|layout| layout.stacking_order)
@@ -3070,7 +3110,12 @@ impl<'a> Importer<'a> {
             );
         }
         if let Some(uuid) = layer.get("do_objectID").and_then(Value::as_str) {
-            self.uuids.insert(uuid.to_ascii_uppercase(), id.clone());
+            let uuid = uuid.to_ascii_uppercase();
+            if renamed.is_some() {
+                self.uuids.entry(uuid).or_insert_with(|| id.clone());
+            } else {
+                self.uuids.insert(uuid, id.clone());
+            }
         }
         if let Some(info)=layer.get("userInfo").and_then(Value::as_object) {
             let plugin:Map<String,Value>=info.iter().filter(|(key,_)|key.as_str()!="com.futureox.design-kernel").map(|(k,v)|(k.clone(),v.clone())).collect();
@@ -3084,6 +3129,96 @@ impl<'a> Importer<'a> {
 }
 
 const SKETCH_USER_JSON_BUDGET: usize = 1_048_576;
+const SKETCH_ASSET_IMAGE_BYTES: &str = "sketchAssetImageBytes";
+
+fn is_asset_image_file_reference(entry: &Value) -> bool {
+    entry["_class"] == "MSJSONFileReference" && entry["_ref_class"] == "MSImageData"
+}
+
+fn sketch_asset_image_member(entry: &Value) -> Option<std::borrow::Cow<'_, str>> {
+    use std::borrow::Cow;
+    let reference = entry["_ref"].as_str()?;
+    let member = if reference.starts_with("images/") {
+        Cow::Borrowed(reference)
+    } else {
+        Cow::Owned(format!("images/{reference}"))
+    };
+    crate::sketch::archive::safe_path(&member).then_some(member)
+}
+
+fn retain_sketch_asset_images(
+    document: &Value,
+    files: &BTreeMap<String, Vec<u8>>,
+    containers: &mut BTreeMap<String, Value>,
+) -> Result<()> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let Some(assets) = document.pointer("/assets/images").and_then(Value::as_array) else {
+        return Ok(());
+    };
+    let mut retained = Map::new();
+    let mut remaining = crate::capacity::document_byte_limit();
+    for asset in assets.iter().filter(|entry| is_asset_image_file_reference(entry)) {
+        if let Some(member) = sketch_asset_image_member(asset)
+            && !retained.contains_key(member.as_ref())
+            && let Some(bytes) = files.get(member.as_ref())
+        {
+            let encoded_bytes = bytes.len().div_ceil(3).saturating_mul(4);
+            remaining = remaining.checked_sub(encoded_bytes)
+                .ok_or_else(|| archive_limit("document asset representation bytes"))?;
+            retained.insert(member.into_owned(), Value::String(STANDARD.encode(bytes)));
+        }
+    }
+    if !retained.is_empty() {
+        containers.insert(SKETCH_ASSET_IMAGE_BYTES.into(), Value::Object(retained));
+    }
+    Ok(())
+}
+
+fn export_sketch_asset_images(
+    document: &mut Value,
+    doc: &Document,
+    output: &mut ExportedImages,
+) -> Result<()> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let Some(assets) = document.pointer_mut("/assets/images").and_then(Value::as_array_mut) else {
+        return Ok(());
+    };
+    if !assets.iter().any(is_asset_image_file_reference) {
+        return Ok(());
+    }
+    let retained = doc.design_system.as_ref()
+        .and_then(|system| system.sketch_containers.get(SKETCH_ASSET_IMAGE_BYTES));
+    let mut emitted: BTreeSet<_> = output.entries.iter().map(|(path, _)| path.clone()).collect();
+    let limits = archive_limits();
+    let modeled_bytes: u64 = output.entries.iter().map(|(_, bytes)| bytes.len() as u64).sum();
+    let mut remaining = limits.total.saturating_sub(modeled_bytes);
+    for asset in std::mem::take(assets) {
+        if is_asset_image_file_reference(&asset) {
+            let Some(member) = sketch_asset_image_member(&asset) else { continue };
+            if !emitted.contains(member.as_ref()) {
+                if let Some(encoded) = retained.and_then(|files| files.get(member.as_ref())).and_then(Value::as_str) {
+                    if encoded.len() as u64 > limits.entry.min(remaining).div_ceil(3).saturating_mul(4) {
+                        return Err(archive_limit("document asset expanded bytes"));
+                    }
+                    let Ok(bytes) = STANDARD.decode(encoded) else { continue };
+                    if bytes.len() as u64 > limits.entry {
+                        return Err(archive_limit("document asset entry expanded bytes"));
+                    }
+                    remaining = remaining.checked_sub(bytes.len() as u64)
+                        .ok_or_else(|| archive_limit("document asset total expanded bytes"))?;
+                    emitted.insert(member.to_string());
+                    output.entries.push((member.into_owned(), bytes));
+                } else {
+                    // Older FD documents may hold the raw JSON inventory
+                    // alone. Do not publish a reference to an absent member.
+                    continue;
+                }
+            }
+        }
+        assets.push(asset);
+    }
+    Ok(())
+}
 
 fn sketch_bool(value: Option<&Value>) -> Option<bool> {
     match value? {
@@ -3411,20 +3546,37 @@ fn foreign_symbol_import(
             unresolved.push(entry.clone());
             continue;
         };
-        let id = importer.layer(master, false, false);
         let library_id = entry
             .get("libraryID")
             .and_then(Value::as_str)
             .unwrap_or_default();
+        let entry_id = entry.get("do_objectID").and_then(Value::as_str).unwrap_or_default();
+        let symbol_id = master.get("symbolID").and_then(Value::as_str).unwrap_or_default();
+        let copy = format!("sketch/foreign/{library_id}/{entry_id}/{symbol_id}");
+        let id = importer.layer_in_library(master, false, false, Some(&copy));
+        let mut source=entry.clone();
+        if let Some(map) = source.get_mut("remoteToLocalIDMap").and_then(Value::as_object_mut) {
+            let mut scoped_ids = BTreeMap::new();
+            let mut visited = std::collections::BTreeSet::new();
+            let mut pending = vec![id.as_str()];
+            while let Some(id) = pending.pop() {
+                let Some(node) = importer.nodes.get(id).filter(|_| visited.insert(id)) else { continue };
+                if let Some(wire) = node.bindings.get("sketchLayerFromLibraryObjectID") {
+                    scoped_ids.insert(wire.to_ascii_uppercase(), node.id.as_str());
+                }
+                pending.extend(node.children.iter().map(String::as_str));
+            }
+            for local in map.values_mut() {
+                if let Some(wire) = local.as_str().map(str::to_ascii_uppercase)
+                    && let Some(mapped) = scoped_ids.get(&wire).copied()
+                        .or_else(|| importer.uuids.get(&wire).map(String::as_str)) {
+                    *local = json!(mapped);
+                }
+            }
+        }
         if let Some(node) = importer.nodes.get_mut(&id) {
             node.bindings
                 .insert("sketchForeignLibraryID".into(), library_id.into());
-            let mut source=entry.clone();
-            if let Some(map)=source.get_mut("remoteToLocalIDMap").and_then(Value::as_object_mut) {
-                for local in map.values_mut() {
-                    if let Some(id)=local.as_str().and_then(|id|importer.uuids.get(&id.to_ascii_uppercase())) { *local=json!(id); }
-                }
-            }
             if let Ok(raw) = serde_json::to_string(&source) {
                 node.bindings.insert("sketchForeignSymbolRaw".into(), raw);
             }
@@ -3959,6 +4111,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
             }
         }
     }
+    retain_sketch_asset_images(document, files, &mut sketch_containers)?;
     if !ruler_pages.is_empty() {
         sketch_containers.insert(
             "rulerData".into(),
@@ -4455,7 +4608,9 @@ fn native_override_path(document: &Document, root: &str, path: &str) -> std::res
             let Some(node) = document.nodes.get(&id) else {
                 return Err((*part).to_owned());
             };
-            if id.eq_ignore_ascii_case(part) {
+            if id.eq_ignore_ascii_case(part) ||
+                sketch_binding(document, node, "sketchLayerFromLibraryObjectID")
+                    .is_some_and(|wire| wire.eq_ignore_ascii_case(part)) {
                 found = Some(node);
                 break;
             }
@@ -5963,13 +6118,21 @@ fn export_style_parts(
             if strokes.iter().any(|s| s.center_dashes != first.center_dashes) {
                 note_lossy(lossy, "border-center-dashes-mixed-per-stroke");
             }
-            json!({"_class": "borderOptions",
+            if strokes
+                .iter()
+                .any(|stroke| (stroke.miter_limit - first.miter_limit).abs() > 1e-9)
+            {
+                note_lossy(lossy, "border-miter-limit-mixed-per-stroke");
+            }
+            let mut options = json!({"_class": "borderOptions",
                    "lineCapStyle": cap_code(&first.cap), "lineJoinStyle": join_code(&first.join),
                    "dashPattern": dash_pattern(&first.dash),
                    "centerDashes": first.center_dashes,
                    "startMarkerType": marker_code(first.start_marker, lossy),
                    "endMarkerType": marker_code(first.end_marker, lossy),
-                   "miterLimit": 10, "windingRule": 0})
+                   "windingRule": 0});
+            options["miterLimit"] = sketch_miter_json(first.miter_limit);
+            options
         }
         None => json!({"_class": "borderOptions", "lineCapStyle": 0, "lineJoinStyle": 0,
                        "dashPattern": [], "startMarkerType": 0, "endMarkerType": 0,
@@ -6038,6 +6201,18 @@ fn export_style_parts(
         "motionAngle": 0., "radius": 0., "saturation": 1., "type": 0
     }));
     Ok(SketchStyleParts { borders, shadows, inner_shadows, blur, additional_blurs, border_options })
+}
+
+/// Integer limits stay integers so a Sketch `10` does not become `10.0`.
+fn sketch_miter_json(limit: f64) -> Value {
+    let nearest = limit.round();
+    if limit.is_finite() && (limit - nearest).abs() <= 1e-6 && nearest.abs() <= i64::MAX as f64 {
+        Value::Number((nearest as i64).into())
+    } else {
+        serde_json::Number::from_f64(limit)
+            .map(Value::Number)
+            .unwrap_or(json!(4))
+    }
 }
 
 /// Record a downgrade note once; the exporter writes the collected list into
@@ -7245,7 +7420,12 @@ fn export_layer_impl(
         }
         // Keep the old dictionary for old readers; current Sketch reads blurs.
         style.insert("blur".into(), blur);
+        let archived_miter = border_options
+            .get("miterLimit")
+            .cloned()
+            .unwrap_or(json!(10));
         style.insert("borderOptions".into(), border_options);
+        style.insert("miterLimit".into(), archived_miter);
         // Per-layer color controls ride bindings verbatim when the source
         // archived an enabled part; the default-disabled object covers the
         // kernel-authored case.
@@ -7545,6 +7725,7 @@ fn export_layer_impl(
                             continue;
                         }
                         let SketchStyleParts { borders, shadows, inner_shadows, blur, border_options, .. } = export_style_parts(&strokes, &effects, &mut lossy, images, [1., 1.], false)?;
+                        let override_miter = border_options.get("miterLimit").cloned().unwrap_or(json!(10));
                         let mut paints = Vec::new();
                         for paint in &fills {
                             if let Some(part) = export_paint(paint, images, [1., 1.])? { paints.push(part); }
@@ -7552,7 +7733,7 @@ fn export_layer_impl(
                         values.push(json!({
                             "_class":"overrideValue",
                             "overrideName":format!("{native_path}_layerStyle"),
-                            "value":{"_class":"style","fills":paints,"borders":borders,"shadows":shadows,"innerShadows":inner_shadows,"blur":blur,"borderOptions":border_options}
+                            "value":{"_class":"style","fills":paints,"borders":borders,"shadows":shadows,"innerShadows":inner_shadows,"blur":blur,"borderOptions":border_options,"miterLimit":override_miter}
                         }));
                     }
                     layer.insert("overrideValues".into(), Value::Array(values));
@@ -8014,13 +8195,18 @@ fn export_layer_impl(
                 note_lossy(&mut lossy, "stack-line-gap-omitted");
             }
         } else if n.layout.is_none()
-            && let Some(payload) = n
+            && let Some(mut payload) = n
                 .bindings
                 .get("sketchInferredGroupLayout")
                 .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
         {
-            // Imported inferred (smart) group layouts return verbatim; the
-            // kernel keeps the static child frames they produced.
+            // Older FD bindings stored absent sizes as JSON null, which Sketch's
+            // native inferred-layout reader rejects. Keep all actual size values.
+            if let Some(fields) = payload.as_object_mut() {
+                fields.retain(|key, value| {
+                    !matches!(key.as_str(), "minSize" | "maxSize") || !value.is_null()
+                });
+            }
             layer.insert("groupLayout".into(), payload);
         } else if let Some(l) = &n.layout
             && !matches!(l.mode, crate::layout::Flow::None)
@@ -8183,8 +8369,14 @@ fn export_layer_impl(
                 user_info.insert("stackAlignment".into(), json!({"align":l.align,"justify":l.justify}));
             }
         }
-        if n.effects.iter().any(|e|e.kind=="blur" || e.glass.is_some() || (e.kind=="background-blur" && e.gradient_blur.is_some())) {
-            user_info.insert("legacyEffectModel".into(),json!({"native":native_effect_projection(&layer["style"]),"effects":n.effects}));
+        let portable_zoom = n.effects.iter().any(|effect| effect.zoom_blur.is_some())
+            && !crate::zoom_blur::sketch_sampling(doc, n);
+        if portable_zoom || n.effects.iter().any(|e|e.kind=="blur" || e.glass.is_some() || (e.kind=="background-blur" && e.gradient_blur.is_some())) {
+            let mut receipt = json!({"native":native_effect_projection(&layer["style"]),"effects":n.effects});
+            if portable_zoom {
+                receipt["portableZoom"] = json!(true);
+            }
+            user_info.insert("legacyEffectModel".into(), receipt);
         }
 
         if n.kind == "text" {
@@ -8354,6 +8546,19 @@ fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Result<
             map.insert("symbolID".into(), json!(symbol_id));
             map.entry("allowsOverrides").or_insert_with(|| json!(true));
             map.entry("overrideProperties").or_insert_with(|| json!([]));
+            // An archived inventory uses native paths, whereas admitted
+            // instance overrides have already been resolved to component keys.
+            if let Some(properties) = map.get_mut("overrideProperties").and_then(Value::as_array_mut) {
+                for property in properties {
+                    if let Some(name) = property.get("overrideName").and_then(Value::as_str)
+                        && let Some((path, field)) = name.rsplit_once('_')
+                        && let Ok(key) = native_override_path(doc, id, path)
+                        && let Some(native) = exported_override_path(doc, id, &key)
+                        && native != path {
+                        property["overrideName"] = json!(format!("{native}_{field}"));
+                    }
+                }
+            }
         }
         if !entry.contains_key("originalMaster") {
             entry.insert("originalMaster".into(), master.clone());
@@ -8896,6 +9101,9 @@ fn sync_foreign_paint_styles(document: &mut Value, doc: &Document, images: &mut 
         value["shadows"] = Value::Array(shadows);
         value["innerShadows"] = Value::Array(inner_shadows);
         value["blur"] = blur;
+        if let Some(limit) = border_options.get("miterLimit") {
+            value["miterLimit"] = limit.clone();
+        }
         value["borderOptions"] = border_options;
     }
     Ok(())
@@ -9179,7 +9387,12 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
             }
             value["startMarkerType"] = json!(0);
             value["endMarkerType"] = json!(0);
-            value["miterLimit"] = json!(10);
+            let archived_miter = value
+                .get("borderOptions")
+                .and_then(|options| options.get("miterLimit"))
+                .cloned()
+                .unwrap_or(json!(10));
+            value["miterLimit"] = archived_miter;
             value["windingRule"] = json!(1);
             if value.get("innerShadows").is_none() {
                 value["innerShadows"] = json!([]);
@@ -9295,6 +9508,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     | "sketchUser"
                     | "sketchCurrentPageId"
                     | "currentPageIndex"
+                    | SKETCH_ASSET_IMAGE_BYTES
             ) {
                 continue;
             }
@@ -9315,6 +9529,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
     if !foreign_symbols.is_empty() {
         document["foreignSymbols"] = Value::Array(foreign_symbols);
     }
+    export_sketch_asset_images(&mut document, doc, &mut images)?;
     validate_sketch_shared_style_ids(&document)?;
     let has_glass = doc.nodes.values().any(|n| n.effects.iter().any(|e|e.glass.is_some())) ||
         doc.design_system.as_ref().is_some_and(|s|s.styles.values().any(|style|style.effects.iter().any(|e|e.glass.is_some())));

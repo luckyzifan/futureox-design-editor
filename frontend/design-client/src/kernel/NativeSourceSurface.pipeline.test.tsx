@@ -11,7 +11,7 @@ import type {ResidentFrame} from './gpu/resident-presenter'
 import type {RasterTile} from './tile-cache'
 
 type Job={options:KernelOptions;signal?:AbortSignal;receive:(tile:TileResult)=>void;finish:()=>void;active:boolean}
-const state=vi.hoisted(()=>({jobs:[] as Job[],frames:[] as ResidentFrame[],released:[] as number[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,viewportTiles:4,prefetchEnabled:false,preview:false,deferAck:false,acks:[] as (()=>void)[],notify:undefined as undefined|((stats:Record<string,unknown>)=>void)}))
+const state=vi.hoisted(()=>({jobs:[] as Job[],frames:[] as ResidentFrame[],released:[] as number[],active:0,maxActive:0,disposed:0,phaseExact:true,positionedTiles:false,motionMultiplier:1,viewportTiles:4,prefetchEnabled:false,preview:false,bitmap:false,deferAck:false,acks:[] as (()=>void)[],notify:undefined as undefined|((stats:Record<string,unknown>)=>void)}))
 vi.mock('./client',()=>({backendPreference:()=> 'webgpu',renderExecutionPolicy:{desktopFullMath:true,desktopDisplay:true,cpuOnly:false,hdrCompositing:false},KernelClient:class{
  onPresentation?: (value:Record<string,unknown>)=>void
  renderSource(_source:unknown,options:KernelOptions,receive:(tile:TileResult)=>void,signal?:AbortSignal){
@@ -27,7 +27,10 @@ vi.mock('./client',()=>({backendPreference:()=> 'webgpu',renderExecutionPolicy:{
  attachPresentation(){state.notify=stats=>this.onPresentation?.(stats)}
  present(frame:ResidentFrame){
   state.frames.push(frame)
-  const ack=()=>this.onPresentation?.({presented:{presentationId:frame.presentationId,view:frame.view,width:frame.width,height:frame.height,dpr:frame.dpr,preview:state.preview,ids:frame.items.map(item=>item.tile.gpuTile)}})
+  const ack=()=>this.onPresentation?.({
+   presented:{presentationId:frame.presentationId,view:frame.view,width:frame.width,height:frame.height,dpr:frame.dpr,preview:state.preview,ids:frame.items.map(item=>item.tile.gpuTile)},
+   ...(state.bitmap?{bitmap:{width:frame.width*frame.dpr,height:frame.height*frame.dpr,close(){}}}:{}),
+  })
   if(state.deferAck)state.acks.push(ack);else ack()
  }
  releasePresented(ids:number[]){state.released.push(...ids)}
@@ -38,13 +41,18 @@ vi.mock('./canvas-raster-plan',()=>({canvasRasterPlan:(view:{zoom:number},_dpr:n
 vi.mock('./tile-computation-key',()=>({periodicComputationCamera:(camera:unknown)=>camera,tileComputationDependsOnCamera:()=>false,tileComputationKey:(tile:RasterTile)=>tile.key}))
 vi.mock('./tile-plan-aligned',async importOriginal=>({
  ...await importOriginal<typeof import('./tile-plan-aligned')>(),
- planTilesWithPrefetchRim:(_bounds:unknown,zoom:number)=>({
-  viewport:Array.from({length:state.viewportTiles},(_,index)=>({
-   key:`${zoom}:${index}`,x:(index%2)*512,y:Math.floor(index/2)*512,width:514,height:514,zoom,gutter:1,phaseX:0,phaseY:0,
-  })),
-  rim:state.prefetchEnabled?[{key:`${zoom}:rim`,x:1024,y:0,width:514,height:514,zoom,gutter:1,phaseX:0,phaseY:0,prefetch:true}]:[],
-  cacheLimitSkipped:0,
- }),
+ planTilesWithPrefetchRim: (bounds:{x:number;y:number}, zoom:number) => {
+  const left = state.positionedTiles ? 512 * Math.floor(bounds.x * zoom / 512) : 0
+  const top = state.positionedTiles ? 512 * Math.floor(bounds.y * zoom / 512) : 0
+  return {
+   viewport:Array.from({length:state.viewportTiles},(_,index)=>({
+    key:state.positionedTiles?`${zoom}:${left}:${top}:${index}`:`${zoom}:${index}`,
+    x:left+(index%2)*512,y:top+Math.floor(index/2)*512,width:514,height:514,zoom,gutter:1,phaseX:0,phaseY:0,
+   })),
+   rim:state.prefetchEnabled?[{key:`${zoom}:rim`,x:1024,y:0,width:514,height:514,zoom,gutter:1,phaseX:0,phaseY:0,prefetch:true}]:[],
+   cacheLimitSkipped:0,
+  }
+ },
 }))
 import {NativeSourceSurface,type NativeSourceStatus} from './NativeSourceSurface'
 
@@ -61,7 +69,7 @@ beforeEach(()=>{
  vi.stubGlobal('requestAnimationFrame',(fn:FrameRequestCallback)=>{frames.set(++sequence,fn);return sequence})
  vi.stubGlobal('cancelAnimationFrame',(id:number)=>frames.delete(id))
  Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'transferControlToOffscreen',{value:()=>({})})
- Object.assign(state,{jobs:[],frames:[],released:[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,viewportTiles:4,prefetchEnabled:false,preview:false,deferAck:false,acks:[] as (()=>void)[],notify:undefined as undefined|((stats:Record<string,unknown>)=>void)})
+ Object.assign(state,{jobs:[],frames:[],released:[],active:0,maxActive:0,disposed:0,phaseExact:true,positionedTiles:false,motionMultiplier:1,viewportTiles:4,prefetchEnabled:false,preview:false,bitmap:false,deferAck:false,acks:[] as (()=>void)[],notify:undefined as undefined|((stats:Record<string,unknown>)=>void)})
  root=createRoot(document.getElementById('root')!)
 })
 afterEach(async()=>{await act(async()=>{root.unmount();await pause()});dom.window.close();vi.unstubAllGlobals();expect(state.active).toBe(0)})
@@ -116,6 +124,49 @@ test('a settled dense source streams visible tiles and cancels pending work on a
  expect(state.maxActive).toBe(1)
  await act(async()=>{deliver(settled,1,14);paint()})
  expect(state.released).toContain(14)
+})
+
+test('an exact camera return restores the displayed bitmap’s clear status without another GPU submission', async () => {
+ const transfer = vi.fn()
+ vi.stubGlobal('OffscreenCanvas', class {})
+ vi.stubGlobal('ImageBitmapRenderingContext', class {})
+ Object.defineProperty(dom.window.HTMLCanvasElement.prototype, 'getContext', {
+  configurable: true,
+  value: (kind: string) => kind === 'bitmaprenderer' ? { transferFromImageBitmap: transfer } : null,
+ })
+ state.bitmap = true
+ state.positionedTiles = true
+ const overview = { ...source, nodes: 4000, rasterProfile: 'analytic' as const, colorManaged: false,
+  bounds: { x: 0, y: 0, width: 16_000, height: 5_000 } }
+ const initial = { x: 0, y: 0, zoom: 0.25 }
+
+ await draw(initial, overview)
+ await act(async () => { await new Promise(resolve => setTimeout(resolve, 45)) })
+ let tileId = 80
+ for (let attempt = 0; attempt < 4 && !statuses.at(-1)?.sharp; attempt++) {
+  const job = state.jobs.find(item => item.active)
+  if (!job) break
+  await act(async () => {
+   job.options.tileViewport!.forEach((_, index) => deliver(job, index, ++tileId))
+   job.finish()
+   await pause()
+   paint()
+  })
+ }
+ expect(statuses.at(-1)).toMatchObject({ phase: 'ready', sharp: true, view: initial })
+ const submissions = state.frames.length
+ const transfers = transfer.mock.calls.length
+ expect(transfers).toBeGreaterThan(0)
+
+ await draw({ x: -1600, y: 0, zoom: initial.zoom }, overview)
+ await act(async () => paint())
+ expect(statuses.at(-1)?.sharp).toBe(false)
+ await draw(initial, overview)
+ await act(async () => paint())
+
+ expect(state.frames).toHaveLength(submissions)
+ expect(transfer).toHaveBeenCalledTimes(transfers)
+ expect(statuses.at(-1)).toMatchObject({ phase: 'ready', done: 4, total: 4, sharp: true, view: initial })
 })
 
 test('a same-token revision change cannot keep the cached camera sharp',async()=>{
@@ -396,6 +447,31 @@ test.each([20, 4000])('a large pan after zoom-out replaces stale work for a sour
   if(nodes>20)expect(next?.options.view).toEqual({x:-1200,y:0,zoom:.5})
   expect(state.maxActive).toBe(1)
   expect(statuses.some(value=>value.phase==='error')).toBe(false)
+})
+
+test('an overlapping zoom-out tile cannot block a pan when its visible part is already resident', async () => {
+ state.positionedTiles = true
+ await draw()
+ for (let batch = 0; batch < 2; batch++) {
+  const job = state.jobs[batch]
+  await act(async () => {
+   deliver(job, 0, 450 + batch * 2)
+   deliver(job, 1, 451 + batch * 2)
+   job.finish()
+   await pause()
+   paint()
+  })
+ }
+ expect(statuses.at(-1)?.sharp).toBe(true)
+ await draw({ x: 0, y: 0, zoom: .8 })
+ const zoom = state.jobs.find(job => job.active)!
+ expect(zoom.options.tileViewport?.[0].key).toBe('0.8:0:0:0')
+ await draw({ x: -512, y: 0, zoom: .8 })
+ expect(zoom.signal?.aborted).toBe(true)
+ const pan = state.jobs.find(job => job.active)
+ expect(pan?.options.tileViewport?.[0].key).toBe('0.8:512:0:0')
+ expect(state.maxActive).toBe(1)
+ expect(statuses.some(status => status.phase === 'error')).toBe(false)
 })
 
 test('pasteboard at 8% queues one coarse page tile and a pan publishes it',async()=>{

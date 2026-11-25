@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '../engine'
-import { desktopBridge, type DesktopBridge } from '../desktop'
-import { useInterfacePreferences } from '../interface-preference'
+import { desktopBridge, type DesktopBridge, type PluginStorageOrigin } from '../desktop'
+import { interfacePreference, useInterfacePreferences } from '../interface-preference'
+import { figmaDevMode, useFigmaDevMode } from '../figma-dev-mode'
 import { modalKeyDown, useModalOwnership } from '../modal-keyboard'
 import { acceptedDeclaredPlugins, type DeclaredPlugin } from './catalog'
-import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, pluginEditorEvents, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
+import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, pluginEditorEvents, PluginApiError, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
+import type { PluginStorageRequest } from './rich-host/client-storage'
+import { pluginDocumentChanges } from './rich-host/document-changes'
+import { PLUGIN_LIMITS } from './rich-host/limits'
+import { assertPluginSource, missingPluginSource, pluginBundleFromSources, pluginEditorType, pluginUiPaths, type PluginLaunchMode } from './rich-host/manifest'
 import { samplePlugin } from './sample-plugin'
 import './plugin-panel.css'
 
@@ -16,16 +21,16 @@ const copy = {
     load: '加载插件文件夹…',
     archive: '加载插件压缩包…',
     stop: '停止插件',
-    intro: '示例会在当前页面创建三个带标签的矩形。桌面版在启动时启用本机 plugins 文件夹里已声明的插件，也可以手动加载含 manifest.json 的文件夹，或一个 .zip / .figma 压缩包。启动扫描不会改画布，也不会执行压缩包。',
+    intro: '示例会在当前页面创建三个带标签的矩形。桌面版会扫描本机 plugins 文件夹。也可以手动加载含 manifest.json 的文件夹或 .zip / .figma 压缩包。',
     desktopUi: '插件界面在单独的沙箱窗口中打开。',
     webUi: '插件主程序已运行。插件界面窗口只在桌面版提供。',
     matrix: 'API 覆盖',
     path: '示例文件夹：frontend/design-client/plugins/labeled-rectangles',
-    enabled: '启动时已启用',
+    enabled: '本机插件',
     run: '运行',
     commands: '选择要运行的命令',
-    none: '这次启动没有启用本机插件。放入插件文件夹后重新打开桌面应用。',
-    missing: '这个本机插件已不再启用。',
+    none: '未找到本机插件。放入插件文件夹后重新打开此面板。',
+    missing: '当前编辑模式无法运行这个本机插件。',
   },
   en: {
     title: 'Figma plugins',
@@ -34,16 +39,16 @@ const copy = {
     load: 'Load plugin folder…',
     archive: 'Load plugin archive…',
     stop: 'Stop plugin',
-    intro: 'The sample creates three labeled rectangles on the current page. The desktop app enables declared plugins from its local plugins folder at startup, and can also load a folder that contains manifest.json or a .zip / .figma archive. The startup scan does not change the canvas and does not run an archive.',
+    intro: 'The sample creates three labeled rectangles on the current page. The desktop app scans its local plugins folder. You can also load a folder with manifest.json or a .zip / .figma archive.',
     desktopUi: 'The plugin interface opens in its own sandboxed window.',
     webUi: 'The plugin main script ran. The plugin UI window is available in the desktop app.',
     matrix: 'API coverage',
     path: 'Sample folder: frontend/design-client/plugins/labeled-rectangles',
-    enabled: 'Enabled at startup',
+    enabled: 'Local plugins',
     run: 'Run',
     commands: 'Choose a command',
-    none: 'No local plugins were enabled at startup. Add a plugin folder and reopen the desktop app.',
-    missing: 'That local plugin is no longer enabled.',
+    none: 'No local plugins found. Add a plugin folder and reopen this panel.',
+    missing: 'That local plugin is unavailable in this editor mode.',
   },
 } as const
 
@@ -54,7 +59,10 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   onClose: () => void
   returnFocus?: HTMLElement | null
 }) {
-  const { locale } = useInterfacePreferences()
+  const { locale, uiMode } = useInterfacePreferences()
+  const devMode = useFigmaDevMode()
+  const mode: PluginLaunchMode = uiMode === 'figma' && devMode ? 'inspect' : 'default'
+  const editorType = pluginEditorType(mode)
   const text = copy[locale]
   const counts = {
     supported: PLUGIN_API_COVERAGE.filter(entry => entry.status === 'supported').length,
@@ -65,9 +73,11 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   const [error, setError] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
   const [running, setRunning] = useState(false)
-  const [pending, setPending] = useState<PluginBundle | null>(null)
+  const [pending, setPending] = useState<{ bundle: PluginBundle; source?: PluginStorageOrigin } | null>(null)
   const [enabled, setEnabled] = useState<DeclaredPlugin[] | null>(null)
   const controller = useRef<PluginController | null>(null)
+  const runAbort = useRef<AbortController | null>(null)
+  const endStorage = useRef<(() => void) | null>(null)
   const backdrop = useRef<HTMLDivElement>(null)
   const closeButton = useRef<HTMLButtonElement>(null)
   useModalOwnership(backdrop, closeButton, returnFocus)
@@ -78,9 +88,14 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   const uiOpen = useRef(false)
   const unlisten = useRef<(() => void) | null>(null)
   const stopRef = useRef<() => void>(() => {})
+  const lastMode = useRef(mode)
 
   function stop() {
     generation.current += 1
+    runAbort.current?.abort()
+    runAbort.current = null
+    endStorage.current?.()
+    endStorage.current = null
     controller.current?.close()
     controller.current = null
     uiOpen.current = false
@@ -92,17 +107,27 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
 
   useEffect(() => stop, [desktop])
   stopRef.current = stop
+  useEffect(() => {
+    if (lastMode.current === mode) return
+    lastMode.current = mode
+    setPending(null)
+    setStatus('')
+    setError('')
+    stopRef.current()
+  }, [mode])
 
   useEffect(() => {
     if (typeof editor.subscribe !== 'function') return
     let watch = {
       pageId: editor.state.page, selection: editor.state.selection.join('\0'), revision: editor.state.version,
       documentId: editor.state.doc.id, session: editor.sessionGeneration,
+      authored: editor.authoredDocument,
     }
     return editor.subscribe(() => {
       const next = {
         pageId: editor.state.page, selection: editor.state.selection.join('\0'), revision: editor.state.version,
         documentId: editor.state.doc.id, session: editor.sessionGeneration,
+        authored: editor.authoredDocument,
       }
       const previous = watch
       watch = next
@@ -113,17 +138,18 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
         return
       }
       const events = pluginEditorEvents(previous, next, active.applying)
+      const failed = (failure: unknown) => {
+        if (controller.current !== active) return
+        setError(failure instanceof Error ? failure.message : String(failure))
+        stopRef.current()
+      }
       for (const event of events) {
+        if (!active.watches(event)) continue
         try {
-          const delivered = active.emit(event)
-          if (delivered) void Promise.resolve(delivered).catch(failure => {
-            setError(failure instanceof Error ? failure.message : String(failure))
-            stopRef.current()
-          })
-        } catch (failure) {
-          setError(failure instanceof Error ? failure.message : String(failure))
-          stopRef.current()
-        }
+          const changes = event === 'documentchange' ? pluginDocumentChanges(previous.authored, next.authored) : undefined
+          const delivered = active.emit(event, changes)
+          if (delivered) void delivered.catch(failed)
+        } catch (failure) { failed(failure) }
       }
     })
   }, [editor])
@@ -134,43 +160,74 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     let live = true
     void list().then(result => {
       if (!live) return
-      if (result.status === 'ok') setEnabled(acceptedDeclaredPlugins(result.plugins))
+      if (result.status === 'ok') setEnabled(acceptedDeclaredPlugins(result.plugins, editorType))
       else if (result.status === 'error' || result.status === 'conflict') { setEnabled([]); setError(result.message) }
       else setEnabled([])
     }).catch(cause => {
       if (live) { setEnabled([]); setError(cause instanceof Error ? cause.message : String(cause)) }
     })
     return () => { live = false }
-  }, [desktop])
+  }, [desktop, editorType])
 
   async function run(manifestText: string, mainSource: string, uiHtml: string, notes: string[], command?: string) {
     try {
       const manifest = parseRichManifest(JSON.parse(manifestText))
-      await runBundle({ manifest, main: mainSource, ui: uiHtml || null }, notes, command)
+      await runBundle({ manifest, main: mainSource, ui: uiHtml || null }, notes, { sample: true }, command)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
       stop()
     }
   }
 
-  async function runBundle(bundle: PluginBundle, notes: string[], command?: string) {
+  async function runBundle(bundle: PluginBundle, notes: string[], source?: PluginStorageOrigin, command?: string) {
     stop()
     const token = generation.current
     setError('')
     setWarnings(notes)
+    if (!bundle.manifest.editorType.includes(editorType)) { setError(text.missing); return }
     // A manifest menu is a choice. Loading the file must not run commands[0].
     if (command === undefined && bundle.manifest.commands.length > 0) {
-      setPending(bundle)
+      setPending({ bundle, source })
       setStatus('')
       setRunning(false)
       return
     }
     setPending(null)
     setRunning(true)
+    const abort = new AbortController()
+    runAbort.current = abort
+    const failed = (failure: unknown) => {
+      if (token !== generation.current) return
+      setError(failure instanceof Error ? failure.message : String(failure))
+      stop()
+    }
     try {
       const manifest = bundle.manifest
+      const nativeStorage = desktop?.plugins?.storage
+      let storageRequest: PluginStorageRequest | undefined
+      if (nativeStorage) {
+        if (!source) throw new PluginApiError('storage_failed', 'Plugin storage needs an authorized package')
+        const opened = await nativeStorage.begin({ source })
+        if (opened.status !== 'ok') throw new PluginApiError('storage_failed', 'Could not open plugin storage')
+        const lease = opened.token
+        const end = () => { void nativeStorage.end({ token: lease }).catch(() => {}) }
+        if (token !== generation.current) { end(); return }
+        endStorage.current = end
+        storageRequest = async operation => {
+          const saved = await nativeStorage.call({ token: lease, operation })
+          if (saved.status === 'ok') return saved.value
+          if (saved.status === 'cancelled') throw new PluginApiError('storage_failed', 'Plugin storage request cancelled')
+          const code = saved.code === 'PLUGIN_STORAGE_LIMIT' ? 'plugin_limit' : 'storage_failed'
+          throw new PluginApiError(code, saved.message)
+        }
+      }
       const next = await openPlugin(editor, bundle, {
         command,
+        mode,
+        isModeCurrent: () => mode === (interfacePreference.getSnapshot().uiMode === 'figma' && figmaDevMode() ? 'inspect' : 'default'),
+        signal: abort.signal,
+        onError: failed,
+        storageRequest,
         systemFonts: desktop?.fonts ? {
           list: async () => { const listed = await desktop.fonts!.list(); return listed.status === 'ok' ? listed.fonts : null },
           read: async request => { const read = await desktop.fonts!.read(request); return read.status === 'ok' ? { face: read.font, data: read.data } : null },
@@ -183,14 +240,19 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
             uiOpen.current = true
             // The host validates an exact record; visibility is handled here,
             // so only the contracted keys cross the bridge.
-            void desktop.plugins.openUi({ html: ui.html, width: ui.width, height: ui.height, title: ui.title }).then(opened => {
+            void desktop.plugins.openUi({
+              html: ui.html, width: ui.width, height: ui.height, title: ui.title,
+              ...(manifest.uiNetworkDomains ? { allowedDomains: manifest.uiNetworkDomains } : {}),
+            }).then(opened => {
               if (token !== generation.current) return
               if (opened.status === 'error') setError(opened.message)
               else setStatus(text.desktopUi)
             })
           } else setStatus(text.webUi)
         },
-        onPostMessage: message => { void desktop?.plugins?.postUi({ pluginMessage: message }) },
+        onPostMessage: message => {
+          if (token === generation.current) void desktop?.plugins?.postUi({ pluginMessage: message })
+        },
         onClose: message => {
           // closePlugin runs inside a guest host call; finalize the panel only
           // after that turn returns, so a finished plugin frees its window,
@@ -206,13 +268,17 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
       controller.current = next
       setStatus(manifest.name)
       if (desktop?.plugins) {
-        const offMessage = desktop.plugins.onUiMessage(message => { void next.deliver(message.pluginMessage) })
+        const offMessage = desktop.plugins.onUiMessage(message => {
+          if (token !== generation.current) return
+          try {
+            const delivered = next.deliver(message.pluginMessage)
+            if (delivered) void delivered.catch(failed)
+          } catch (failure) { failed(failure) }
+        })
         const offClosed = desktop.plugins.onUiClosed(() => { if (token === generation.current) stop() })
         unlisten.current = () => { offMessage(); offClosed() }
       }
-    } catch (cause) {
-      if (token === generation.current) { setError(cause instanceof Error ? cause.message : String(cause)); stop() }
-    }
+    } catch (cause) { failed(cause) }
   }
 
   async function runSample() {
@@ -222,12 +288,23 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   async function runManifest(grant: string, manifestText: string) {
     const plugins = desktop?.plugins
     if (!plugins) return
-    const manifest = parseRichManifest(JSON.parse(manifestText))
-    const paths = manifest.ui ? [manifest.main, manifest.ui] : [manifest.main]
-    const read = await plugins.read({ grant, paths })
-    if (read.status === 'cancelled') return
-    if (read.status !== 'ok') { setError(read.message); return }
-    await run(manifestText, read.files[manifest.main] ?? '', manifest.ui ? read.files[manifest.ui] ?? '' : '', [])
+    const manifest = parseRichManifest(JSON.parse(manifestText), { desktopFolder: true })
+    const paths = [manifest.main, ...pluginUiPaths(manifest)]
+    const files = new Map<string, string>()
+    let remaining = PLUGIN_LIMITS.uiBytes
+    for (let first = 0; first < paths.length; first += 2) {
+      const requested = paths.slice(first, first + 2)
+      const read = await plugins.read({ grant, paths: requested })
+      if (read.status === 'cancelled') return
+      if (read.status !== 'ok') { setError(read.message); return }
+      for (const path of requested) {
+        const content = read.files[path]
+        if (typeof content !== 'string') throw missingPluginSource(manifest, path)
+        if (path !== manifest.main) remaining -= assertPluginSource(content, path, remaining)
+        files.set(path, content)
+      }
+    }
+    await runBundle(pluginBundleFromSources(manifest, files), [], { folderGrant: grant })
   }
 
   async function runListed(plugin: DeclaredPlugin) {
@@ -246,8 +323,19 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
 
   async function loadArchive(file: File) {
     try {
-      const bundle = pluginBundleFromZip(new Uint8Array(await file.arrayBuffer()))
-      await runBundle(bundle, [])
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const compileSource = desktop?.plugins?.compileSource
+      const bundle = compileSource ? await pluginBundleFromZip(bytes, async source => {
+        const compiled = await compileSource({ source })
+        if (compiled.status === 'ok') return compiled.script
+        throw new PluginApiError('invalid_plugin', compiled.status === 'cancelled' ? 'Plugin source compilation cancelled' : compiled.message)
+      }) : pluginBundleFromZip(bytes)
+      let source: PluginStorageOrigin | undefined
+      if (desktop?.plugins?.storage) {
+        const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+        source = { archiveDigest: Array.from(hash, byte => byte.toString(16).padStart(2, '0')).join('') }
+      }
+      await runBundle(bundle, [], source)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
       stop()
@@ -277,8 +365,8 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
           {pending && <div className="plugin-command-list">
             <h3>{text.commands}</h3>
             <ul className="plugin-local-list" aria-label={text.commands}>
-              {pending.manifest.commands.map((item, index) => <li key={`${index}:${item.command}`}>
-                <button type="button" disabled={running} onClick={() => void runBundle(pending, warnings, item.command)}>{item.name}</button>
+              {pending.bundle.manifest.commands.map((item, index) => <li key={`${index}:${item.command}`}>
+                <button type="button" disabled={running} onClick={() => void runBundle(pending.bundle, warnings, pending.source, item.command)}>{item.name}</button>
               </li>)}
             </ul>
           </div>}
@@ -308,7 +396,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
           </details>
         </section>
         <footer>
-          <button type="button" className="plugin-panel-primary" disabled={running} onClick={() => void runSample()}>{text.sample}</button>
+          <button type="button" className="plugin-panel-primary" disabled={running || mode === 'inspect'} onClick={() => void runSample()}>{text.sample}</button>
           {desktop?.plugins ? <button type="button" disabled={running} onClick={() => void loadFolder()}>{text.load}</button> : null}
           <button type="button" disabled={running} onClick={() => archive.current?.click()}>{text.archive}</button>
           <input ref={archive} hidden type="file" accept=".zip,.figma,application/zip" data-testid="plugin-archive" onChange={event => {

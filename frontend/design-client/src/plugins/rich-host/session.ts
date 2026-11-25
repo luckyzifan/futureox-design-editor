@@ -1,17 +1,25 @@
 import { createEditorDesignAutomation } from '../../automation'
-import { captureDesignPreview } from '../../automation/export'
+import { capturePluginRegion } from '../../automation/export'
+import type { DesignSystem } from '../../design-system'
 import { apply, bounds, worldMatrix } from '../../geometry'
 import type { Editor } from '../../engine'
 import {
   defaultLayout, defaultSizing, defaultTextStyle, effect, paint, stroke,
   type AutoLayout, type Constraints, type DesignNode, type Effect, type Kind, type Matrix, type Paint, type Sizing, type Stroke, type TextStyle,
 } from '../../model'
-import { clientStorageDelete, clientStorageGet, clientStorageKeys, clientStorageSet, defaultPluginStorage, type PluginStorage } from './client-storage'
+import {
+  clientStorageDelete, clientStorageGet, clientStorageKeys, clientStorageSet, createClientStorageWriter, defaultPluginStorage,
+  encodedStorageKey, memoryPluginStorage, pluginStorageResult, storageKey,
+  type ClientStorageWrite, type PluginStorage, type PluginStorageOperation, type PluginStorageRequest,
+} from './client-storage'
 import { bytesFromDataUrl, dataUrlForImage, imageContentId, imageMime, imageSize } from './images'
 import { PLUGIN_FETCH_METHODS, matchNetworkAccess, pluginFetchHeaders, type PluginFetch } from './network'
 import { figmaColorToHex, hexToFigmaColor } from './colors'
 import { PluginApiError, PluginClosed } from './errors'
 import { PLUGIN_LIMITS } from './limits'
+import { pluginEditorType, type PluginLaunchMode } from './manifest'
+import { styledTextSegments } from './text-segments'
+import type { PluginEditorEvent } from './ui-document'
 import {
   pluginDataEmpty, pluginDataGet, pluginDataKeys, pluginDataSet, readPluginData, sharedPluginDataGet, sharedPluginDataKeys, sharedPluginDataSet,
   pluginDataExtension, type PluginDataScope, type PluginDataStore,
@@ -66,8 +74,11 @@ export type PluginSessionOptions = {
   name: string
   pluginId: string
   command?: string
+  mode?: PluginLaunchMode
+  isModeCurrent?: () => boolean
   uiHtml: string | null
   storage?: PluginStorage
+  storageRequest?: PluginStorageRequest
   networkDomains?: readonly string[]
   fetch?: PluginFetch
   hooks?: Hooks
@@ -81,7 +92,7 @@ export type PluginSystemFonts = {
   read(request: { id: string }): Promise<{ face: PluginSystemFontFace; data: string } | null>
 }
 export type PluginFontJob = { id: string; family: string; style: string }
-export type PluginExportJob = { id: string; nodeId: string; pageId: string; format: 'png' | 'jpeg'; scale: number }
+export type PluginExportJob = { id: string; nodeId: string; pageId: string; format: 'png' | 'jpeg' | 'pdf'; scale: number }
 
 const KINDS = new Set<Kind>(['slice', 'frame', 'section', 'group', 'rectangle', 'ellipse', 'polygon', 'star', 'line', 'vector', 'text'])
 const TRANSFORM_KEYS = new Set(['x', 'y', 'rotation'])
@@ -312,18 +323,26 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   const api = createEditorDesignAutomation(editor, undefined, [pluginDataExtension])
   const pluginName = options.name
   const pluginId = options.pluginId
-  const storage = options.storage ?? defaultPluginStorage()
+  const mode = options.mode ?? 'default'
+  const storage = options.storage ?? (options.storageRequest ? memoryPluginStorage() : defaultPluginStorage())
+  const storageWriter = createClientStorageWriter()
+  const storageJobs: { id: number; operation: PluginStorageOperation; bytes: number }[] = []
+  let storageBytes = 0
+  let storageSerial = 0
   const networkDomains = options.networkDomains ?? []
   const images = new Map<string, PluginImage>()
   const imageUrls = new Map<string, string>()
   const networkJobs: { id: number; url: string; method: string; headers: Record<string, string>; body: string | null }[] = []
   const fontJobs: PluginFontJob[] = []
   const exportJobs: PluginExportJob[] = []
+  const timers = new Map<number, { due: number; period: number | null }>()
   const systemFonts = options.systemFonts
   const systemFontAliases = new Map<string, string>()
   const systemFaceImports = new Map<string, string>()
   let fontJobSerial = 0
   let exportJobSerial = 0
+  let timerSerial = 0
+  let intervalCallbacks = 0
   const documentId = editor.state.doc.id
   const sessionId = editor.sessionGeneration
   const commands: Command[] = []
@@ -331,7 +350,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   const logs: string[] = []
   let ui: PluginUiState | null = null
   let uiShown = false
-  let listening = false
+  const listeners = new Set<PluginEditorEvent>()
   let closed = false
   let closeMessage = ''
   let flushing = false
@@ -345,9 +364,15 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   function failIfReplaced() {
     if (editor.state.doc.id !== documentId || editor.sessionGeneration !== sessionId)
       throw new PluginApiError('document_changed', 'The open document changed while the plugin was running')
+    if (options.isModeCurrent && !options.isModeCurrent())
+      throw new PluginApiError('editor_mode_changed', 'The editor mode changed while the plugin was running')
+  }
+  function requireDesignWrite() {
+    if (mode === 'inspect') throw new PluginApiError('permission_denied', 'Dev inspection plugins cannot edit the design')
   }
   function execute(method: string, params: Record<string, unknown>, mutate: boolean) {
     failIfReplaced()
+    if (mutate && method !== 'batch.apply') requireDesignWrite()
     if (mutate) applying += 1
     try {
       const response = api.execute({
@@ -363,6 +388,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   }
   function batch(operations: AutomationOp[]) {
     if (!operations.length) return null
+    if (mode === 'inspect' && operations.some(operation => operation.method !== 'plugin.data.replace')) requireDesignWrite()
     const label = `Plugin: ${pluginName}`.replace(/[\u0000-\u001f]/g, ' ').slice(0, 200)
     const result = execute('batch.apply', { operations, label }, true)
     flushes += 1
@@ -378,6 +404,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return id
   }
   function ensureRoom() {
+    requireDesignWrite()
     if (commands.length >= PLUGIN_LIMITS.batchOps) flush()
   }
   function hasMove(id: string) {
@@ -466,14 +493,13 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   }
   /** Product CPU raster export (the same path as the export panel preview).
    * The QuickJS transport caps the base64 payload, so large rasters reject. */
-  async function captureRasterExport(job: PluginExportJob) {
+  async function captureRasterExport(job: PluginExportJob, signal: AbortSignal) {
     failIfReplaced()
-    const preview = await captureDesignPreview(editor.state.doc, { pageId: job.pageId, nodeIds: [job.nodeId], format: job.format, scale: job.scale })
-    const dataUrl = String(preview?.dataUrl ?? '')
-    const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
-    if (!base64) throw new PluginApiError('export_failed', 'Raster export did not return image bytes')
-    if (base64.length > PLUGIN_LIMITS.payloadBytes / 2) throw new PluginApiError('export_limit', `Raster export exceeds the plugin transport; lower the scale or use SVG`)
-    return { base64 }
+    const result = await capturePluginRegion(editor.state.doc, {
+      pageId: job.pageId, nodeIds: [job.nodeId], format: job.format, scale: job.scale, signal,
+    }, PLUGIN_LIMITS.payloadBytes / 2)
+    failIfReplaced()
+    return result
   }
   function requireFont(family: string, style: string) {
     if (/italic/i.test(style)) throw new PluginApiError('unsupported_api', `Italic styles are not available (${style})`)
@@ -1050,6 +1076,9 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return ''
   }
   function variableValue(value: unknown, kind: 'color' | 'number' | 'boolean' | 'string') {
+    if (value && typeof value === 'object' && 'type' in value && value.type === 'VARIABLE_ALIAS') {
+      return { alias: shortText('id' in value ? value.id : null, 'alias id', 128) }
+    }
     if (kind === 'color') return typeof value === 'string' ? shortText(value, 'color', 32) : figmaColorToHex(value).hex
     if (kind === 'number') return finite(value, 'value', -1e7, 1e7)
     if (kind === 'boolean') return boolean(value, 'value')
@@ -1064,8 +1093,6 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return found.modes
   }
   function variableKindOf(id: string) {
-    const pending = commands.find(command => command.type === 'variableCreate' && command.id === id)
-    if (pending?.type === 'variableCreate') return pending.kind
     return (execute('variable.get', { variableId: id }, false) as { kind: 'color' | 'number' | 'boolean' | 'string' }).kind
   }
   function collectionView(id: string) {
@@ -1083,14 +1110,18 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     const variables = execute('variable.list', { collectionId: id }, false) as { id: string }[]
     return { id, name: found.name, defaultModeId: found.defaultMode, modes: found.modes.map(name => ({ modeId: name, name })), variableIds: variables.map(item => item.id) }
   }
-  function variableView(id: string) {
-    const pending = commands.find(command => command.type === 'variableCreate' && command.id === id)
-    if (pending?.type === 'variableCreate') {
-      return { id, name: pending.name, collectionId: pending.collectionId, resolvedType: pending.kind === 'color' ? 'COLOR' : pending.kind === 'number' ? 'FLOAT' : pending.kind === 'boolean' ? 'BOOLEAN' : 'STRING' }
-    }
+  function variableView(id: string, includeValues: boolean) {
     try {
-      const record = execute('variable.get', { variableId: id }, false) as { id: string; name: string; collection: string; kind: string }
-      return { id: record.id, name: record.name, collectionId: record.collection, resolvedType: record.kind === 'color' ? 'COLOR' : record.kind === 'number' ? 'FLOAT' : record.kind === 'boolean' ? 'BOOLEAN' : 'STRING' }
+      const record = execute('variable.get', { variableId: id }, false) as DesignSystem['variables'][string] & { id: string }
+      const resolvedType = { color: 'COLOR', number: 'FLOAT', boolean: 'BOOLEAN', string: 'STRING' }[record.kind]
+      const info = { id: record.id, name: record.name, collectionId: record.collection, resolvedType }
+      if (!includeValues) return info
+      const valuesByMode = Object.fromEntries(Object.entries(record.values).map(([mode, value]) => {
+        if (typeof value === 'object') return [mode, { type: 'VARIABLE_ALIAS', id: value.alias }]
+        if (record.kind === 'color' && typeof value === 'string') return [mode, hexToFigmaColor(value)]
+        return [mode, value]
+      }))
+      return { ...info, valuesByMode }
     } catch (error) {
       if (error instanceof PluginApiError && error.message.includes('Unknown variable')) return null
       throw error
@@ -1110,16 +1141,99 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return value as string[]
   }
 
+  function nextTimer(repeating: boolean) {
+    let next: { id: number; due: number } | null = null
+    for (const [id, { due, period }] of timers) {
+      if ((period !== null) === repeating && (!next || due < next.due)) next = { id, due }
+    }
+    return next
+  }
+
+  function queueStorage(operation: PluginStorageOperation) {
+    let bytes = 256
+    if (operation.kind === 'set') {
+      if (operation.value.kind === 'json') bytes += new TextEncoder().encode(operation.value.json).byteLength
+      if (operation.value.kind === 'bytes') bytes += operation.value.parts.reduce((sum, part) => sum + part.length, 0)
+    }
+    if (storageJobs.length >= 64 || storageBytes + bytes > 8 * 1024 * 1024)
+      throw new PluginApiError('plugin_limit', 'Too much pending clientStorage work')
+    const id = ++storageSerial
+    storageJobs.push({ id, operation, bytes })
+    storageBytes += bytes
+    return { storageJob: id }
+  }
+
+  function clientStorageOperation(op: string, body: Record<string, unknown>) {
+    const native = options.storageRequest
+    if (op === 'clientStorageKeys') return native ? queueStorage({ kind: 'keys' }) : clientStorageKeys(storage, pluginId)
+    const name = storageKey(body.key)
+    if (op === 'clientStorageGet') return native
+      ? queueStorage({ kind: 'get', key: encodedStorageKey(name) }) : clientStorageGet(storage, pluginId, name)
+    if (op === 'clientStorageDelete') {
+      if (native) {
+        storageWriter.cancel(name)
+        return queueStorage({ kind: 'delete', key: encodedStorageKey(name) })
+      }
+      clientStorageDelete(storage, pluginId, name)
+      return null
+    }
+    let write: string | ClientStorageWrite
+    if (body.kind === 'undefined') write = { kind: 'undefined' }
+    else if (body.kind === 'bytes') {
+      if (typeof body.part !== 'number' || typeof body.parts !== 'number' || typeof body.rawBytes !== 'number')
+        throw new PluginApiError('invalid_value', 'clientStorage bytes are incomplete')
+      write = { kind: 'bytes', part: body.part, parts: body.parts, rawBytes: body.rawBytes, base64: shortText(body.base64, 'clientStorage', 200_000) }
+    } else {
+      if (typeof body.json !== 'string') throw new PluginApiError('invalid_value', 'clientStorage value must be JSON')
+      write = body.json
+    }
+    if (native) {
+      const value = storageWriter.prepare(name, write)
+      return value ? queueStorage({ kind: 'set', key: encodedStorageKey(name), value }) : null
+    }
+    clientStorageSet(storage, pluginId, name, write)
+    return null
+  }
+
   return {
     notifications, logs,
-    get ui() { return ui }, get uiShown() { return uiShown }, get listening() { return listening }, get applying() { return applying > 0 },
+    get ui() { return ui }, get uiShown() { return uiShown }, get listening() { return listeners.size > 0 }, get applying() { return applying > 0 },
+    watches: (type: PluginEditorEvent) => listeners.has(type),
     get closed() { return closed }, get closeMessage() { return closeMessage }, get flushes() { return flushes },     get pluginId() { return pluginId },
     flush,
     /** Drop the queued turn after a failed run. Already flushed history stays. */
     abandonTurn() {
       commands.splice(0)
       pluginStoreDirty = false
+      timers.clear()
+      storageJobs.splice(0)
+      storageBytes = 0
+      storageWriter.clear()
     },
+    hasStorageJobs: () => storageJobs.length > 0,
+    takeStorageJob() {
+      const job = storageJobs.shift()
+      if (job) storageBytes -= job.bytes
+      return job
+    },
+    async performStorage(operation: PluginStorageOperation) {
+      if (!options.storageRequest) throw new PluginApiError('storage_failed', 'Client storage is unavailable')
+      return pluginStorageResult(operation, await options.storageRequest(operation))
+    },
+    assertCurrent: failIfReplaced,
+    hasTimers: () => nextTimer(false) !== null,
+    nextTimer: () => nextTimer(false),
+    nextInterval: () => nextTimer(true),
+    advanceInterval(id: number) {
+      const timer = timers.get(id)
+      if (!timer || timer.period === null || timer.due > performance.now()) return false
+      failIfReplaced()
+      if (++intervalCallbacks > PLUGIN_LIMITS.intervalCallbacksPerRun)
+        throw new PluginApiError('plugin_limit', 'Plugin intervals exceeded the callback limit')
+      timer.due = performance.now() + timer.period
+      return true
+    },
+    consumeTimer: (id: number) => timers.delete(id),
     hasNetwork: () => networkJobs.length > 0,
     takeNetwork: () => networkJobs.shift() ?? null,
     hasFontJobs: () => fontJobs.length > 0,
@@ -1131,12 +1245,35 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     captureRasterExport,
     call(op: string, payload: unknown): unknown {
       if (closed) throw new PluginClosed(closeMessage)
+      failIfReplaced()
       calls += 1
       if (calls > PLUGIN_LIMITS.hostCalls) throw new PluginApiError('plugin_limit', `Plugin exceeded ${PLUGIN_LIMITS.hostCalls} host calls`)
       const body = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
+      if (op === 'textSegments') {
+        flush()
+        const result = execute('node.get', { id: shortText(body.id, 'id', 80) }, false) as { node: DesignNode }
+        return styledTextSegments(result.node, body.fields, body.start, body.end)
+      }
       if (op === 'log') {
         const message = String(body.message ?? '').slice(0, PLUGIN_LIMITS.logChars)
         if (logs.length < PLUGIN_LIMITS.logLines) logs.push(message)
+        return null
+      }
+      if (op === 'logClear') {
+        logs.length = 0
+        return null
+      }
+      if (op === 'timerSchedule') {
+        failIfReplaced()
+        const delay = finite(body.delay, 'Timer delay', 0, PLUGIN_LIMITS.timerDelayMs)
+        if (timers.size >= PLUGIN_LIMITS.pendingTimers) throw new PluginApiError('plugin_limit', 'Too many pending plugin timers')
+        const id = ++timerSerial
+        const period = body.repeat === true ? Math.max(delay, PLUGIN_LIMITS.minIntervalMs) : null
+        timers.set(id, { due: performance.now() + (period ?? delay), period })
+        return id
+      }
+      if (op === 'timerCancel') {
+        if (typeof body.id === 'number') timers.delete(body.id)
         return null
       }
       if (op === 'notify') {
@@ -1149,14 +1286,22 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       if (op === 'close') {
         flush()
         closed = true
+        timers.clear()
         closeMessage = shortText(body.message ?? '', 'closePlugin', PLUGIN_LIMITS.notifyChars)
         options.hooks?.onClose?.(closeMessage)
         throw new PluginClosed(closeMessage)
       }
       if (op === 'meta') return {
-        pluginId, command: options.command ?? null, editorType: 'figma', mode: 'default', fileKey: null,
+        pluginId, command: options.command ?? null, editorType: pluginEditorType(mode), mode, fileKey: null,
       }
-      if (op === 'listen') { listening = true; return null }
+      if (op === 'listen') {
+        const type = body.type
+        if (type !== 'documentchange' && type !== 'currentpagechange' && type !== 'selectionchange')
+          throw new PluginApiError('invalid_value', 'Unknown plugin editor event')
+        if (body.active === false) listeners.delete(type)
+        else listeners.add(type)
+        return null
+      }
       if (op === 'commitUndo') { flush(); return null }
       if (op === 'showUI') {
         const html = typeof body.html === 'string' ? body.html : options.uiHtml
@@ -1206,24 +1351,8 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         editor.requestReveal(ids(body.ids, 'scrollAndZoomIntoView'))
         return null
       }
-      if (op === 'clientStorageGet') return clientStorageGet(storage, pluginId, body.key)
-      if (op === 'clientStorageKeys') return clientStorageKeys(storage, pluginId)
-      if (op === 'clientStorageSet') {
-        if (body.kind === 'undefined') clientStorageSet(storage, pluginId, body.key, { kind: 'undefined' })
-        else if (body.kind === 'bytes') {
-          if (typeof body.part !== 'number' || typeof body.parts !== 'number' || typeof body.rawBytes !== 'number')
-            throw new PluginApiError('invalid_value', 'clientStorage bytes are incomplete')
-          clientStorageSet(storage, pluginId, body.key, {
-            kind: 'bytes', part: body.part, parts: body.parts, rawBytes: body.rawBytes,
-            base64: shortText(body.base64, 'clientStorage', 200_000),
-          })
-        } else {
-          if (typeof body.json !== 'string') throw new PluginApiError('invalid_value', 'clientStorage value must be JSON')
-          clientStorageSet(storage, pluginId, body.key, body.json)
-        }
-        return null
-      }
-      if (op === 'clientStorageDelete') { clientStorageDelete(storage, pluginId, body.key); return null }
+      if (op === 'clientStorageGet' || op === 'clientStorageKeys' || op === 'clientStorageSet' || op === 'clientStorageDelete')
+        return clientStorageOperation(op, body)
       if (op === 'pluginDataGet' || op === 'pluginDataKeys' || op === 'pluginDataSet' || op === 'sharedPluginDataGet' || op === 'sharedPluginDataKeys' || op === 'sharedPluginDataSet') {
         const scope = dataScope(body.scope)
         const id = shortText(body.id, 'id', 80)
@@ -1463,20 +1592,21 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         flush()
         const id = shortText(body.id, 'id', 80)
         const format = String(body.format || 'PNG').toUpperCase()
-        if (format !== 'PNG' && format !== 'JPG') throw new PluginApiError('unsupported_api', 'Raster exportAsync supports PNG and JPG. PDF is not available.')
+        if (format !== 'PNG' && format !== 'JPG' && format !== 'PDF') throw new PluginApiError('unsupported_api', 'Renderer exportAsync supports PNG, JPG and PDF')
         const scale = body.scale === undefined ? 1 : finite(body.scale, 'scale', 0.1, 4)
         const result = execute('node.get', { id }, false) as { pageId?: string } | null
         if (!result || typeof result.pageId !== 'string') throw new PluginApiError('invalid_value', `Node ${id} was not found`)
         exportJobSerial += 1
         const jobId = `export-${exportJobSerial}`
-        exportJobs.push({ id: jobId, nodeId: id, pageId: result.pageId, format: format === 'JPG' ? 'jpeg' : 'png', scale })
+        const output = format === 'JPG' ? 'jpeg' : format === 'PDF' ? 'pdf' : 'png'
+        exportJobs.push({ id: jobId, nodeId: id, pageId: result.pageId, format: output, scale })
         return { pending: jobId }
       }
       if (op === 'export') {
         flush()
         const id = shortText(body.id, 'id', 80)
         const format = String(body.format || 'PNG').toUpperCase()
-        if (format !== 'SVG') throw new PluginApiError('unsupported_api', 'exportAsync supports SVG in this host. PNG, JPG, and PDF use the editor export panel.')
+        if (format !== 'SVG') throw new PluginApiError('unsupported_api', 'This export operation requires SVG')
         const scale = body.scale === undefined ? undefined : finite(body.scale, 'scale', 0.01, 4)
         const exported = operationResult(execute('vector.export', { nodeIds: [id], textMode: 'outlines', fontMode: 'references', ...(scale === undefined ? {} : { scale }) }, false))
         const text = exported.content
@@ -1540,7 +1670,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       }
       if (op === 'variableRead') {
         flush()
-        return variableView(shortText(body.id, 'id', 128))
+        return variableView(shortText(body.id, 'id', 128), body.includeValues === true)
       }
       if (op === 'variableCreate') {
         const kind = variableKind(body.resolvedType)
@@ -1561,8 +1691,20 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         const id = shortText(body.id, 'id', 128)
         const mode = shortText(body.mode, 'mode', 80)
         const pending = commands.find(command => command.type === 'variableCreate' && command.id === id)
-        const value = variableValue(body.value, pending && pending.type === 'variableCreate' ? pending.kind : variableKindOf(id))
-        if (pending && pending.type === 'variableCreate') { pending.values[mode] = value; return null }
+        const value = variableValue(body.value, pending?.type === 'variableCreate' ? pending.kind : variableKindOf(id))
+        if (pending?.type === 'variableCreate') {
+          const setter = commands.find(command => command.type === 'variableSet' && command.id === id && command.mode === mode)
+          if (setter?.type === 'variableSet') {
+            setter.value = value
+            return null
+          }
+          // A target created later in the same batch must exist before its
+          // alias is checked by the shared document operation.
+          if (typeof value !== 'object') {
+            pending.values[mode] = value
+            return null
+          }
+        }
         ensureRoom()
         commands.push({ type: 'variableSet', id, mode, value })
         return null

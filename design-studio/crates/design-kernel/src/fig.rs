@@ -1097,6 +1097,7 @@ fn blank_paint(kind: &str) -> Paint {
         angle: 0.,
         stops: Vec::new(),
         image: None,
+        video: None,
         fit: "cover".into(),
         blend: "normal".into(),
         adjust: None,
@@ -1137,7 +1138,8 @@ fn has_fig_automatic_line_height(change: &Value, size: f64) -> bool {
     let height = &change["lineHeight"];
     if str_of(height, "units") != Some("PERCENT") || height["value"].as_f64() != Some(100.)
         || !matches!(str_of(change, "textAutoResize"), Some("WIDTH_AND_HEIGHT" | "HEIGHT"))
-        || change["textData"]["styleOverrideTable"].as_array().is_some_and(|runs| !runs.is_empty())
+        || change["textData"]["styleOverrideTable"].as_array()
+            .is_some_and(|runs| runs.iter().any(|run| run.get("lineHeight").is_some()))
     {
         return false;
     }
@@ -1156,7 +1158,8 @@ fn has_fig_automatic_line_height(change: &Value, size: f64) -> bool {
         && derived["layoutSize"]["y"].as_f64().is_some_and(|height|
             (height - lines.len() as f64 * advance).abs() < 1e-3)
         && lines.iter().enumerate().all(|(index, line)|
-            line["lineHeight"].as_f64().is_some_and(|height| (height - intrinsic).abs() < 1e-3)
+            line["lineHeight"].as_f64().is_some_and(|height|
+                (height - intrinsic).abs() < 1e-3 || (height - advance).abs() < 1e-3)
                 && line["lineY"].as_f64().is_some_and(|y| (y - index as f64 * advance).abs() < 1e-3))
 }
 
@@ -1303,8 +1306,14 @@ impl FigImporter {
 
     // Inspect nested paints/overrides as well as node fields before publishing.
     fn validate_record(&self, value: &Value) -> Result<(), Error> {
+        let retain_noise = value.get("styleType").is_none()
+            && str_of(value, "type").and_then(kind_of).is_some();
+        self.validate_record_value(value, retain_noise)
+    }
+
+    fn validate_record_value(&self, value: &Value, retain_noise: bool) -> Result<(), Error> {
         match value {
-            Value::Array(xs) => for x in xs { self.validate_record(x)?; },
+            Value::Array(xs) => for x in xs { self.validate_record_value(x, false)?; },
             Value::Object(fields) => {
                 if let Some(space) = str_of(value, "interpolationColorSpace") {
                     if space != "DEFAULT" { return Err(Error::Unsupported(format!("interpolationColorSpace={space}"))); }
@@ -1345,11 +1354,12 @@ impl FigImporter {
                 }
                 for effect in value.get("effects").and_then(Value::as_array).into_iter().flatten() {
                     let kind = str_of(effect, "type").unwrap_or("");
-                    if !matches!(kind, "DROP_SHADOW" | "INNER_SHADOW" | "FOREGROUND_BLUR" | "LAYER_BLUR" | "BACKGROUND_BLUR" | "GLASS" | "GRAIN") {
+                    if !(retain_noise && kind == "NOISE")
+                        && !matches!(kind, "DROP_SHADOW" | "INNER_SHADOW" | "FOREGROUND_BLUR" | "LAYER_BLUR" | "BACKGROUND_BLUR" | "GLASS" | "GRAIN") {
                         return Err(Error::Unsupported(format!("effectType={kind}")));
                     }
                 }
-                for field in fields.values() { self.validate_record(field)?; }
+                for field in fields.values() { self.validate_record_value(field, false)?; }
             },
             _ => {},
         }
@@ -1635,6 +1645,10 @@ impl FigImporter {
             node.export_settings = settings.into();
             if incomplete { untranslated.push("exportSettings(partial)".into()); }
         }
+        if let Some(behavior) = str_of(change, "scrollBehavior").filter(|value| *value != "SCROLLS") {
+            node.bindings.insert("figScrollBehavior".into(), behavior.into());
+            untranslated.push(format!("scrollBehavior={behavior} retained as non-executable source metadata"));
+        }
 
         // corners: per-corner radii with the scalar as fallback (TS :557-563).
         // kernel `corner_radius` is polygon/star corner rounding only
@@ -1757,7 +1771,8 @@ impl FigImporter {
             }
         }
         if let Some(effects) = change.get("effects").and_then(Value::as_array) {
-            for e in effects {
+            let mut noise = Vec::new();
+            for (index, e) in effects.iter().enumerate() {
                 let etype = str_of(e, "type").unwrap_or("");
                 // Native FOREGROUND_BLUR is the layer blur. Older kiwi schemas
                 // and the REST/plugin name LAYER_BLUR are the same kernel blur.
@@ -1769,6 +1784,10 @@ impl FigImporter {
                     "BACKGROUND_BLUR" => "background-blur",
                     "GLASS" => "glass",
                     "GRAIN" => "texture",
+                    "NOISE" => {
+                        noise.push(serde_json::json!({ "index": index, "effect": e }));
+                        continue;
+                    }
                     _ => continue,
                 };
                 let (ox, oy) = e
@@ -1831,6 +1850,11 @@ impl FigImporter {
                     color_controls: None,
                     zoom_blur: None, motion_angle: 0., motion_zoom_origin: None,
                 });
+            }
+            if !noise.is_empty() {
+                node.bindings.insert("figNoiseEffects".into(), serde_json::to_string(&noise)
+                    .map_err(|error| Error::Malformed(error.to_string()))?);
+                untranslated.push("NOISE retained as source metadata; not rendered".into());
             }
         }
 
@@ -2208,6 +2232,89 @@ impl FigImporter {
         Ok((fill, rule))
     }
 
+    fn styled_mixed_vector(&self, record: &Value, notes: &mut Vec<String>) -> Result<Option<(Node, Vec<Node>)>, Error> {
+        let Some(entries) = record["fillGeometry"].as_array().filter(|entries|
+            entries.iter().any(|entry| matches!(str_of(entry, "windingRule"), Some("ODD" | "EVENODD")))
+            && entries.iter().any(|entry| str_of(entry, "windingRule") == Some("NONZERO")))
+        else { return Ok(None) };
+        if str_of(record, "type") != Some("VECTOR") { return Ok(None) }
+        if bool_of(record, "mask") == Some(true) || record.get("strokeBrushGuid").is_some() {
+            return Err(Error::Unsupported("Mixed FIG fill geometry requires an ordinary vector layer".into()));
+        }
+        let source = &record["vectorData"];
+        let blob = source["vectorNetworkBlob"].as_u64().and_then(|id| self.kiwi_blobs.get(id as usize))
+            .ok_or_else(|| Error::Malformed("Mixed FIG fill geometry has no source network".into()))?;
+        let mut without_geometry = record.clone();
+        if let Some(fields) = without_geometry.as_object_mut() {
+            fields.remove("fillGeometry");
+            fields.remove("vectorData");
+        }
+        let mut layer = self.node(&without_geometry, notes)?;
+        let normalized = source.get("normalizedSize");
+        let scale = normalized.map(|size| (
+            positive_axis_scale(layer.width, f64_of(Some(size), "x")),
+            positive_axis_scale(layer.height, f64_of(Some(size), "y")),
+        )).unwrap_or((1., 1.));
+        let decoded = crate::fig_geometry::decode_network_stroke(blob, scale.0, scale.1)
+            .map_err(Error::Malformed)?;
+        if decoded.region_styles.len() != entries.len() {
+            return Err(Error::Unsupported("Mixed FIG fill geometry does not cover every source region".into()));
+        }
+        let mut children = Vec::with_capacity(entries.len() + 1);
+        let mut commands = 0usize;
+        for (index, entry) in entries.iter().enumerate() {
+            let style = entry["styleID"].as_u64().unwrap_or(0);
+            let (path, rule) = self.baked_geometry(std::slice::from_ref(entry))?;
+            if u64::from(decoded.region_styles[index]) != style || decoded.region_windings[index] != rule {
+                return Err(Error::Unsupported("Mixed FIG baked fill does not match its source region".into()));
+            }
+            commands += path.commands.len();
+            if commands > crate::vector_geometry::MAX_COMMANDS {
+                return Err(Error::Malformed("FIG baked geometry exceeds its command allowance".into()));
+            }
+            let paints = if style == 0 {
+                layer.fills.clone()
+            } else {
+                let table = source["styleOverrideTable"].as_array().into_iter().flatten();
+                let mut matches = table.filter(|entry| entry["styleID"].as_u64() == Some(style));
+                let definition = matches.next().filter(|_| matches.next().is_none())
+                    .ok_or_else(|| Error::Unsupported("Mixed FIG region has no unique paint style".into()))?;
+                if let Some(link) = definition.get("inheritFillStyleID")
+                    && !(link["sessionID"].as_u64() == Some(u64::from(u32::MAX))
+                        && link["localID"].as_u64() == Some(u64::from(u32::MAX))) {
+                    return Err(Error::Unsupported("Mixed FIG regions with inherited paint styles are not supported".into()));
+                }
+                let source_paints = definition["fillPaints"].as_array()
+                    .ok_or_else(|| Error::Unsupported("Mixed FIG region has no literal fill paints".into()))?;
+                let paints: Vec<_> = source_paints.iter().filter_map(|paint| self.paint(paint, notes)).collect();
+                if paints.len() != source_paints.len() {
+                    return Err(Error::Unsupported("Mixed FIG region fill cannot be represented".into()));
+                }
+                paints
+            };
+            let mut fill = crate::facet::sample_node(&format!("{}:region:{index}", layer.id), "vector");
+            fill.name = format!("Fill region {}", index + 1);
+            fill.width = layer.width;
+            fill.height = layer.height;
+            fill.fills = paints;
+            fill.vector_geometry = Some(crate::vector_geometry::VectorGeometry::from_paths(&path, &path, rule)
+                .map_err(Error::Malformed)?.into());
+            children.push(fill);
+        }
+        if !layer.strokes.is_empty() {
+            let mut stroke = crate::facet::sample_node(&format!("{}:region-stroke", layer.id), "vector");
+            stroke.name = "Source stroke".into();
+            stroke.width = layer.width;
+            stroke.height = layer.height;
+            stroke.strokes = std::mem::take(&mut layer.strokes);
+            stroke.vector_geometry = decoded.vector_geometry;
+            children.push(stroke);
+        }
+        layer.kind = "group".into();
+        layer.fills.clear();
+        Ok(Some((layer, children)))
+    }
+
     fn bake_brush_stroke(&self, node: &mut Node, change: &Value, notes: &mut Vec<String>) -> Option<(Option<Node>, Node)> {
         let reference = guid_string(change.get("strokeBrushGuid")?);
         if node.strokes.is_empty() {
@@ -2278,6 +2385,8 @@ impl FigImporter {
             .get("paragraphIndent")
             .and_then(Value::as_f64)
             .unwrap_or(0.);
+        style.list_spacing = change.get("listSpacing").and_then(Value::as_f64)
+            .filter(|value| (0. ..=10000.).contains(value));
         style.align = match str_of(change, "textAlignHorizontal") {
             Some("CENTER") => "center",
             Some("RIGHT") => "end",
@@ -3128,7 +3237,16 @@ pub fn document_from_canvas(
                 .to_string();
             canvases.push((position, id.clone()));
         } else {
-            let mut node = importer.node(record, &mut untranslated)?;
+            let mut node = if let Some((layer, regions)) = importer.styled_mixed_vector(record, &mut untranslated)? {
+                let children = children_of.entry(layer.id.clone()).or_default();
+                for (index, region) in regions.into_iter().enumerate() {
+                    children.push((format!("{index:06}"), region.id.clone()));
+                    nodes.insert(region.id.clone(), region);
+                }
+                layer
+            } else {
+                importer.node(record, &mut untranslated)?
+            };
             importer.import_layout(&mut node, record, parent, &mut untranslated)?;
             nodes.insert(id.clone(), node);
             let parent_id = record

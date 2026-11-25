@@ -2,6 +2,12 @@ import { PluginApiError } from './errors'
 import { PLUGIN_LIMITS } from './limits'
 
 export type PluginCommand = { name: string; command: string }
+export type PluginLaunchMode = 'default' | 'inspect'
+
+export function pluginEditorType(mode: PluginLaunchMode) {
+  return mode === 'inspect' ? 'dev' : 'figma'
+}
+const LOCAL_FOLDER_ID_PREFIX = 'futureox.local.folder:'
 
 export type PluginManifest = {
   name: string
@@ -9,11 +15,13 @@ export type PluginManifest = {
   api: '1.0.0'
   main: string
   ui: string | null
+  uiFiles?: Readonly<Record<string, string>>
   editorType: string[]
   commands: PluginCommand[]
   /** True when the manifest asked for domains other than none. Fetch is limited to these origins. */
   networkIgnored: boolean
   networkDomains: string[]
+  uiNetworkDomains?: string[]
   /** Declared permissions are recorded and not granted. */
   permissionsIgnored: string[]
 }
@@ -22,6 +30,7 @@ export type PluginBundle = {
   manifest: PluginManifest
   main: string
   ui: string | null
+  uiFiles?: Readonly<Record<string, string>>
 }
 
 function text(value: unknown, label: string, max: number): string {
@@ -70,36 +79,50 @@ function menuCommands(value: unknown, into: PluginCommand[], depth: number) {
   }
 }
 
+function namedUiFiles(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const entries = Object.entries(value)
+  if (entries.length === 0 || entries.length > PLUGIN_LIMITS.uiFiles)
+    throw new PluginApiError('invalid_manifest', `ui must declare 1–${PLUGIN_LIMITS.uiFiles} files`)
+  return Object.fromEntries(entries.map(([name, file]) => {
+    if (text(name, 'UI name', 80) !== name) throw new PluginApiError('invalid_manifest', 'UI names must not have surrounding whitespace')
+    return [name, pluginRelativePath(file, '.html')]
+  }))
+}
+
 /** Parse a Figma-style manifest. Network and permissions are not granted; the plugin can still load. */
-export function parsePluginManifest(value: unknown): PluginManifest {
+export function parsePluginManifest(value: unknown, { desktopFolder = false } = {}): PluginManifest {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new PluginApiError('invalid_manifest', 'manifest.json must be an object')
   const record = value as Record<string, unknown>
   const name = text(record.name, 'name', 80)
-  const id = text(String(record.id ?? ''), 'id', 128)
+  const id = typeof record.id === 'number' && Number.isSafeInteger(record.id) && record.id > 0
+    ? String(record.id) : text(record.id, 'id', 128)
+  if (id.startsWith(LOCAL_FOLDER_ID_PREFIX) && (!desktopFolder || !/^[0-9a-f]{64}$/.test(id.slice(LOCAL_FOLDER_ID_PREFIX.length))))
+    throw new PluginApiError('invalid_manifest', 'This plugin id is reserved for an installed local folder')
   if (record.api !== '1.0.0') throw new PluginApiError('invalid_manifest', 'api must be "1.0.0"')
   const main = pluginRelativePath(record.main, '.js')
-  const uiValue = record.ui && typeof record.ui === 'object' && !Array.isArray(record.ui)
-    ? (record.ui as Record<string, unknown>).main
-    : record.ui
-  const ui = uiValue === undefined ? null : pluginRelativePath(uiValue, '.html')
+  const uiFiles = namedUiFiles(record.ui)
+  const ui = uiFiles ? uiFiles.main ?? null : record.ui === undefined ? null : pluginRelativePath(record.ui, '.html')
   let editorType = ['figma']
   if (record.editorType !== undefined) {
     if (!Array.isArray(record.editorType) || record.editorType.some(item => typeof item !== 'string'))
       throw new PluginApiError('invalid_manifest', 'editorType must be an array of strings')
     editorType = record.editorType
-    if (!editorType.includes('figma'))
-      throw new PluginApiError('invalid_manifest', 'Only editorType "figma" can run in Futureox Design')
+    if (!editorType.includes('figma') && !editorType.includes('dev'))
+      throw new PluginApiError('invalid_manifest', 'Futureox Design supports Figma design and Dev inspection plugins')
   }
   if (record.documentAccess !== undefined && typeof record.documentAccess !== 'string')
     throw new PluginApiError('invalid_manifest', 'documentAccess must be a string. The open document is already local.')
   let networkDomains: string[] = []
+  let uiNetworkDomains: string[] = []
   const network = record.networkAccess
   if (network != null) {
     if (typeof network !== 'object' || Array.isArray(network))
       throw new PluginApiError('invalid_manifest', 'networkAccess must be an object')
     const access = network as Record<string, unknown>
-    networkDomains = [...domainList(access.allowedDomains, 'allowedDomains'), ...domainList(access.devAllowedDomains, 'devAllowedDomains')]
+    uiNetworkDomains = domainList(access.allowedDomains, 'allowedDomains')
+    networkDomains = [...uiNetworkDomains, ...domainList(access.devAllowedDomains, 'devAllowedDomains')]
     if (networkDomains.length > 40) throw new PluginApiError('invalid_manifest', 'networkAccess lists too many domains')
     if (access.reasoning !== undefined && typeof access.reasoning !== 'string')
       throw new PluginApiError('invalid_manifest', 'networkAccess.reasoning must be a string')
@@ -113,16 +136,59 @@ export function parsePluginManifest(value: unknown): PluginManifest {
   }
   const commands: PluginCommand[] = []
   menuCommands(record.menu, commands, 0)
-  return { name, id, api: '1.0.0', main, ui, editorType, commands, networkIgnored, networkDomains, permissionsIgnored }
+  return {
+    name, id, api: '1.0.0', main, ui, ...(uiFiles ? { uiFiles } : {}), editorType, commands, networkIgnored, networkDomains, permissionsIgnored,
+    ...(uiNetworkDomains.length ? { uiNetworkDomains } : {}),
+  }
 }
 
 export function assertPluginSource(source: string, label: string, maxBytes: number) {
   if (typeof source !== 'string') throw new PluginApiError('invalid_plugin', `${label} must be text`)
   const bytes = new TextEncoder().encode(source).byteLength
   if (bytes > maxBytes) throw new PluginApiError('plugin_too_large', `${label} is ${bytes} bytes; the limit is ${maxBytes}`)
+  return bytes
 }
 
 export function assertPluginBundle(bundle: PluginBundle) {
   assertPluginSource(bundle.main, bundle.manifest.main, PLUGIN_LIMITS.mainBytes)
-  if (bundle.ui != null) assertPluginSource(bundle.ui, bundle.manifest.ui || 'ui.html', PLUGIN_LIMITS.uiBytes)
+  const entries = Object.entries(bundle.manifest.uiFiles ?? {})
+  const files = bundle.uiFiles ?? {}
+  if (entries.length !== Object.keys(files).length || entries.some(([name]) => !Object.hasOwn(files, name)))
+    throw new PluginApiError('invalid_plugin', 'Plugin UI files must match the manifest')
+  if (entries.length === 0) {
+    if (bundle.ui != null) assertPluginSource(bundle.ui, bundle.manifest.ui || 'ui.html', PLUGIN_LIMITS.uiBytes)
+    return
+  }
+  if (bundle.ui !== (Object.hasOwn(files, 'main') ? files.main : null))
+    throw new PluginApiError('invalid_plugin', 'Default plugin UI must match the manifest')
+  let remaining = PLUGIN_LIMITS.uiBytes
+  for (const [name, path] of entries) remaining -= assertPluginSource(files[name], path, remaining)
+}
+
+export function pluginUiPaths(manifest: PluginManifest) {
+  if (manifest.uiFiles) return [...new Set(Object.values(manifest.uiFiles))]
+  return manifest.ui ? [manifest.ui] : []
+}
+
+export function missingPluginSource(manifest: PluginManifest, path: string) {
+  return new PluginApiError('invalid_plugin', path === manifest.main
+    ? `Missing built plugin entry ${path}. Build the plugin to generate the JavaScript named by main.`
+    : `Missing plugin UI file ${path}`)
+}
+
+export function pluginBundleFromSources(manifest: PluginManifest, files: ReadonlyMap<string, string>): PluginBundle {
+  const source = (path: string) => {
+    const content = files.get(path)
+    if (content === undefined) throw missingPluginSource(manifest, path)
+    return content
+  }
+  const uiFiles = manifest.uiFiles && Object.fromEntries(Object.entries(manifest.uiFiles).map(([name, path]) => [name, source(path)]))
+  const bundle = {
+    manifest,
+    main: source(manifest.main),
+    ui: manifest.ui ? source(manifest.ui) : null,
+    ...(uiFiles ? { uiFiles } : {}),
+  }
+  assertPluginBundle(bundle)
+  return bundle
 }

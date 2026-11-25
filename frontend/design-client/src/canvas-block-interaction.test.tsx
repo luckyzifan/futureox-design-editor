@@ -7,7 +7,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Canvas } from './Canvas'
 import { Editor } from './engine'
-import { blank, node, uid, type DesignNode } from './model'
+import { blank, node, uid, type DesignDocument, type DesignNode } from './model'
 import { shortcutPreference } from './shortcut-preference'
 import { scene, worldMatrix, inverse, multiply } from './geometry'
 import { armComponentPlacement } from './component-placement'
@@ -59,8 +59,9 @@ afterEach(async () => {
   vi.unstubAllGlobals(); vi.restoreAllMocks(); expect(errors).toEqual([])
 })
 const host = () => mount.querySelector<HTMLElement>('[data-testid="canvas"]')!
-async function render(nodes: DesignNode[], roots = nodes.map(n => n.id), otherRoots: string[] = []) {
+async function render(nodes: DesignNode[], roots = nodes.map(n => n.id), otherRoots: string[] = [], rasterProfile?: DesignDocument['rasterProfile']) {
   const doc = blank('Selection workflows'); doc.nodes = Object.fromEntries(nodes.map(n => [n.id, n])); doc.pages[0].children = roots
+  if (rasterProfile) doc.rasterProfile = rasterProfile
   if (otherRoots.length) doc.pages.push({ ...doc.pages[0], id: uid(), name: 'Other page', children: otherRoots })
   editor.load(doc); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false })
   await act(async () => { root.render(<Canvas editor={editor} />); for (let i = 0; i < 6; i++) await Promise.resolve() })
@@ -287,6 +288,28 @@ test('rotation uses affine pose preview and pointerup commits its final input be
  expect(end).toHaveBeenCalledWith(editor.state.doc);expect(editor.interactionActive).toBe(false)
  expect(mount.querySelector<HTMLElement>('[data-testid="canvas-selection-outline"]')!.style.transform).toBe('')
  await act(async()=>editor.undo());expect(editor.state.doc).toEqual(before);expect(editor.canUndo).toBe(false)
+})
+test.each(['figma', 'figmaSoftware'] as const)('rotation uses the document renderer during a %s drag', async rasterProfile => {
+ const shape = node('rectangle', 100, 100, 100, 80)
+ const before = await render([shape], [shape.id], [], rasterProfile)
+ await act(async () => { editor.select([shape.id]); editor.set({ snap: false }) })
+ const handle = mount.querySelector<HTMLElement>('[data-testid="rotate-corner-0"]')!
+ const x = Number(handle.dataset.anchorX), y = Number(handle.dataset.anchorY)
+
+ await act(async () => pointer('pointerdown', x, y, {}, handle))
+ await act(async () => pointer('pointermove', 220, 140))
+ await flushFrames()
+ expect(mount.querySelector('[data-testid="rotation-source-paint"]')).toBeNull()
+ const preview = editor.state.doc.nodes[shape.id].transform
+ expect(preview).not.toEqual(before.nodes[shape.id].transform)
+ expect(editor.canUndo).toBe(false)
+
+ await act(async () => pointer('pointerup', 220, 140))
+ expect(editor.state.doc.nodes[shape.id].transform).toEqual(preview)
+ expect(editor.canUndo).toBe(true)
+ await act(async () => editor.undo())
+ expect(editor.state.doc).toEqual(before)
+ expect(editor.canUndo).toBe(false)
 })
 test('repeated camera changes and document replacement retire queued stale pointer ownership and permit the next edit',async()=>{
  const rectangle=node('rectangle',100,100,100,80);const before=await render([rectangle])
