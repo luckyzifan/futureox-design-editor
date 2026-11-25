@@ -4118,7 +4118,7 @@ mod program_identity_tests {
             let mut original = std::collections::hash_map::DefaultHasher::new();
             data.len().hash(&mut original);
             for value in &data { value.to_bits().hash(&mut original); }
-            let cached = CachedProgram::new(crate::area_program::AreaProgram { rect: Rect::default(), data });
+            let cached = CachedProgram::new(crate::area_program::AreaProgram { rect: Rect::default(), data }, None);
             assert_eq!(cached.fingerprint, original.finish(), "{size} words");
         }
     }

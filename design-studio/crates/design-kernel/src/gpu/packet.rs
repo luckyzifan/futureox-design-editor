@@ -735,8 +735,7 @@ impl crate::Engine {
         // changes, so that cancellation cannot force a whole-page rebuild.
         self.frame_scene.clipped_pose_transport &= clipped_pose_transport;
         let request_key=if !self.frame_scene.scope.is_empty()&&fields.get("animation").is_none_or(serde_json::Value::is_null){
-let mut key=serde_json::to_string(&semantic).map_err(|e|e.to_string())?;
-            if curve_resources_requested(Some(&fields)) { key.push('\0'); }
+let key=packet_request_key(&semantic,&fields)?;
             (key.len()<=65536).then_some(key)
         }else{None};
         if let (Some(revision),Some(key))=(self.static_scene_revision(),request_key.as_ref()) {
