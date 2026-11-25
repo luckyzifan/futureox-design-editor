@@ -30,6 +30,8 @@ const number = (value: number) => {
 }
 const px = (value: number) => `${number(value)}px`
 const TRANSPARENT_GRADIENT = 'linear-gradient(transparent,transparent)'
+// True in the engines that fade a single background layer; false in Firefox.
+const CROSS_FADE = 'background-image:-webkit-cross-fade(url(a.png),url(b.png),0%)'
 function cssColor(value: string): string | undefined {
   if (/^#[\da-f]{3,4}$/i.test(value) || /^#(?:[\da-f]{6}|[\da-f]{8})$/i.test(value)) return value.toLowerCase()
   if (/^(?:transparent|black|white|red|green|blue|gray|grey|currentcolor)$/i.test(value)) return value.toLowerCase()
@@ -191,7 +193,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     const token = scssSession.number(resolved.nodes[nodeId], opacityPath, opacity, inverse ? 'inverse-percent' : 'percent', literal)
     return token === literal ? undefined : token
   }
-  const paintCss = (paint: Paint, nodeId: string, width: number, height: number, colorPath?: string): { css?: string; scss?: string; prefixed?: string; prefixedScss?: string } => {
+  const paintCss = (paint: Paint, nodeId: string, width: number, height: number, colorPath?: string): { css?: string; scss?: string; prefixed?: string; prefixedScss?: string; fade?: { opacity: string; opacityScss?: string } } => {
     if (paint.blend !== 'normal' || paint.opacity !== 1) warn('PAINT_COMPOSITING', 'Per-paint blend and opacity may differ from the native compositor.', nodeId)
     const pair = (css?: string, scss = css) => ({ css, scss })
     const opacityPath = colorPath?.endsWith('.color') ? `${colorPath.slice(0, -'color'.length)}opacity` : undefined
@@ -215,18 +217,18 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
       const url = `url(${cssString(uri)})`
       const alpha = Math.max(0, Math.min(1, paint.opacity))
       if (alpha === 1) return pair(url)
-      // Use a transparent partner without intrinsic dimensions so fading the
-      // image preserves its aspect ratio for contain and cover.
-      const keep = `${number(alpha * 100)}%`
-      const toward = `${number((1 - alpha) * 100)}%`
-      const modern = (weight: string) => `cross-fade(${url} ${weight},transparent)`
-      // The prefixed form weights the transparent partner.
-      const prefixed = (weight: string) => `-webkit-cross-fade(${url},${TRANSPARENT_GRADIENT},${weight})`
-      const scssKeep = opacityPercent(nodeId, opacityPath, paint.opacity)
-      const scssToward = opacityPercent(nodeId, opacityPath, paint.opacity, true)
+      // Only Chromium and WebKit fade one background layer, and only through
+      // the prefixed three-argument cross-fade, whose percentage weights the
+      // second image. A gradient stands in for transparency because neither
+      // accepts a colour there. Other engines get the plain image on a box of
+      // its own, so the url and the opacity travel with the layer.
+      const toward = opacityPercent(nodeId, opacityPath, paint.opacity, true)
+      const keep = opacityPercent(nodeId, opacityPath, paint.opacity)
       return {
-        css: modern(keep), scss: scssKeep && modern(scssKeep),
-        prefixed: prefixed(toward), prefixedScss: scssToward && prefixed(scssToward),
+        css: url, scss: url,
+        prefixed: `-webkit-cross-fade(${url},${TRANSPARENT_GRADIENT},${number((1 - alpha) * 100)}%)`,
+        prefixedScss: toward && `-webkit-cross-fade(${url},${TRANSPARENT_GRADIENT},${toward})`,
+        fade: { opacity: `${number(alpha * 100)}%`, opacityScss: keep },
       }
     }
     if (paint.kind === 'linear' || paint.kind === 'radial') {
@@ -311,6 +313,8 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
   }
   let right = 1, bottom = 1
   const strokeRules: { css: string; scss: string }[] = []
+  // Feature-tested rules for fills that need a fade; they follow the node rules.
+  const supportRules: { css: string; scss: string }[] = []
   for (const [index, { node, parentId }] of entries.entries()) {
     const n = node, selector = nodeIdMap[n.id].selector, declarations: string[] = [], scssDeclarations: string[] = []
     const decl = (...css: string[]) => { declarations.push(...css); if (scssSession) scssDeclarations.push(...css) }
@@ -357,6 +361,9 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     const strokes = n.strokes.filter(s => s.visible && s.paint.visible)
     const stroke = strokes[0]
     const strokeOutline = stroke?.paint.kind === 'solid' && (stroke.align === 'center' || stroke.align === 'outside')
+    const strokeColor = stroke?.paint.kind === 'solid' ? paintCss(stroke.paint, n.id, n.width, n.height) : undefined
+    // An inner or centred stroke paints on the node's ::before.
+    const beforeIsStroke = !!strokeColor?.css && stroke!.align !== 'outside'
     if (['vector', 'polygon', 'star', 'line'].includes(n.kind)) {
       warn('UNSUPPORTED_SHAPE', `${n.kind} geometry uses a bounding-box placeholder; use native SVG/image export for its exact shape.`, n.id)
       if (!strokeOutline) decl('outline:1px dashed #999')
@@ -378,19 +385,49 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
         const size = item.paint.kind === 'image'
           ? item.paint.fit === 'stretch' ? '100% 100%' : item.paint.fit
           : 'auto'
-        return [{ css: wrap(value.css), scss: wrap(value.scss ?? value.css), size, prefixed: value.prefixed, prefixedScss: value.prefixedScss }]
+        return [{ css: wrap(value.css), scss: wrap(value.scss ?? value.css), size, prefixed: value.prefixed, prefixedScss: value.prefixedScss, fade: value.fade }]
       })
       if (layers.length) {
         layers.reverse()
-        if (layers.some(item => item.prefixed)) declPair(`background-image:${layers.map(item => item.prefixed ?? item.css).join(',')}`, `background-image:${layers.map(item => item.prefixedScss ?? item.prefixed ?? item.scss).join(',')}`)
-        declPair(`background-image:${layers.map(item => item.css).join(',')}`, `background-image:${layers.map(item => item.scss).join(',')}`)
+        const faded = layers.filter(item => item.fade)
+        if (!faded.length) {
+          declPair(`background-image:${layers.map(item => item.css).join(',')}`, `background-image:${layers.map(item => item.scss).join(',')}`)
+        } else {
+          // Every node carries a transform, so it is its own stacking context
+          // and a positioned pseudo-element at z-index -1 paints above the
+          // node's fills and below its children. That places one faded image
+          // exactly when it is the top fill, or the bottom fill below fills
+          // that can move to a second pseudo-element. Anything else keeps the
+          // node's other fills and paints the topmost faded image above them.
+          type Layer = typeof layers[number]
+          const listing = (items: Layer[], pick: (item: Layer) => string) => [
+            `background-image:${items.map(pick).join(',')}`,
+            ...(items.some(item => item.size !== 'auto') ? [`background-size:${items.map(item => item.size).join(',')}`, 'background-position:center', 'background-repeat:no-repeat'] : []),
+          ].join(';')
+          const box = (part: string, body: string) => `${selector}${part}{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;${body}}`
+          const only = faded.length === 1 ? layers.indexOf(faded[0]!) : -1
+          const under = only > 0 && only === layers.length - 1 && !beforeIsStroke
+          if (only !== 0 && !under) warn('IMAGE_OPACITY_FALLBACK', 'Without cross-fade support only the topmost faded image fill is painted, above the other fills of the node.', n.id)
+          const own = layers.filter((item, index) => !item.fade && !(under && index < only))
+          const lifted = under ? layers.slice(0, only) : []
+          if (own.length) declPair(listing(own, item => item.css), listing(own, item => item.scss))
+          const image = faded[0]!, fade = image.fade!
+          const fadedPaint = (opacity: string) => `background-image:${image.css};background-size:${image.size}${image.size === 'auto' ? '' : ';background-position:center;background-repeat:no-repeat'};opacity:${opacity}`
+          const exactCss = listing(layers, item => item.prefixed ?? item.css)
+          const exactScss = listing(layers, item => item.prefixedScss ?? item.prefixed ?? item.scss)
+          supportRules.push(
+            { css: `@supports (${CROSS_FADE}){${selector}{${exactCss}}}`, scss: `@supports (${CROSS_FADE}){${selector}{${exactScss}}}` },
+            { css: `@supports not (${CROSS_FADE}){${box(under ? '::before' : '::after', fadedPaint(fade.opacity))}${lifted.length ? box('::after', listing(lifted, item => item.css)) : ''}}`,
+              scss: `@supports not (${CROSS_FADE}){${box(under ? '::before' : '::after', fadedPaint(fade.opacityScss ?? fade.opacity))}${lifted.length ? box('::after', listing(lifted, item => item.scss)) : ''}}` },
+          )
+        }
       }
-      if (layers.some(layer => layer.size !== 'auto')) {
+      if (layers.some(layer => layer.size !== 'auto') && !layers.some(layer => layer.fade)) {
         decl(`background-size:${layers.map(layer => layer.size).join(',')}`, 'background-position:center', 'background-repeat:no-repeat')
       }
     }
-    if (stroke?.paint.kind === 'solid') {
-      const color = paintCss(stroke.paint, n.id, n.width, n.height)
+    if (stroke?.paint.kind === 'solid' && strokeColor) {
+      const color = strokeColor
       if (color.css) {
         const strokeIndex = n.strokes.indexOf(stroke)
         const widthCss = px(stroke.width)
@@ -471,6 +508,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     pushRule(`${selector}{${declarations.join(';')}}`, scssSession ? `${selector}{${scssDeclarations.join(';')}}` : undefined, n.id)
   }
   for (const rule of strokeRules) pushRule(rule.css, rule.scss)
+  for (const rule of supportRules) pushRule(rule.css, rule.scss)
   pushRule(`.design-scene{width:${px(right)};height:${px(bottom)};background:${cssColor(page.background) ?? 'transparent'}}`)
   const renderText = (n: DesignNode) => {
     if (!n.textRuns?.length) return htmlEscape(n.text)

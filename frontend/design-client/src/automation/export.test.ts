@@ -142,6 +142,19 @@ function ruleFor(css: string, selector: string) {
   expect(start).toBeGreaterThanOrEqual(0)
   return css.slice(start, css.indexOf('}', start) + 1)
 }
+/** A rule with nested rules, such as an @supports block, up to its closing brace. */
+function blockFor(css: string, marker: string) {
+  const start = css.indexOf(marker)
+  expect(start).toBeGreaterThanOrEqual(0)
+  let depth = 0
+  for (let i = css.indexOf('{', start); i < css.length; i++) {
+    if (css[i] === '{') depth++
+    else if (css[i] === '}' && --depth === 0) return css.slice(start, i + 1)
+  }
+  throw new Error(`Unclosed block at ${marker}`)
+}
+const FADED_IMAGE = 'data:image/png;base64,iVBORw0KGgo='
+const ESCAPED_IMAGE = 'url("data\\3a image\\2f png\\3b base64\\2c iVBORw0KGgo\\3d ")'
 
 describe('CSS export of paint, stroke, flow, text, and blur', () => {
   it('fades only the image fill and leaves the node, stroke, and other fill alone', () => {
@@ -152,25 +165,89 @@ describe('CSS export of paint, stroke, flow, text, and blur', () => {
     const image = paint('#fff', 'image')
     image.opacity = 0.25
     image.fit = 'contain'
-    image.image = 'data:image/png;base64,iVBORw0KGgo='
+    image.image = FADED_IMAGE
     frame.fills = [under, image]
     frame.strokes = [{ ...stroke('#ff0000', 4), align: 'inside' }]
     document.nodes = { [frame.id]: frame }
     document.pages[0].children = [frame.id]
     const result = exportDesignCode(document)
+    // The node rule holds what every engine parses: the node opacity and the
+    // fill that needs no fade. A fade written here would take that fill down
+    // with it wherever the fade is not understood.
     const rule = ruleFor(result.css, '#design-node-1')
     expect(rule).toContain('opacity:1')
-    expect(rule).not.toContain('opacity:0.25')
-    expect(rule).toContain('-webkit-cross-fade(')
-    expect(rule).toContain(',linear-gradient(transparent,transparent),75%)')
-    expect(rule).toContain('cross-fade(')
-    expect(rule).toContain(' 25%,transparent)')
-    expect(rule).toContain('background-size:contain,auto')
-    expect(rule).toContain('linear-gradient(#00ff00,#00ff00)')
+    expect(rule).not.toContain('opacity:25%')
+    expect(rule).toContain('background-image:linear-gradient(#00ff00,#00ff00)')
+    expect(rule).not.toContain('cross-fade(')
     expect(rule).not.toContain('color-mix(in srgb, #00ff00')
     expect(rule).not.toContain('border:')
+    // Chromium and WebKit fade one layer only through the prefixed
+    // three-argument form. No tested engine parses the unprefixed one, and
+    // declarations that use it alone are dropped.
+    const exact = blockFor(result.css, '@supports (')
+    expect(exact).toContain(`@supports (background-image:-webkit-cross-fade(url(a.png),url(b.png),0%)){#design-node-1{`)
+    expect(exact).toContain(`-webkit-cross-fade(${ESCAPED_IMAGE},linear-gradient(transparent,transparent),75%),linear-gradient(#00ff00,#00ff00)`)
+    expect(exact).not.toMatch(/(^|[^-])cross-fade\(/)
+    expect(exact).toContain('background-size:contain,auto;background-position:center;background-repeat:no-repeat')
+    // Firefox has no cross-fade: the image moves to a box above the other
+    // fill and below the children, while the stroke keeps ::before.
+    const fallback = blockFor(result.css, '@supports not (')
+    expect(fallback).toContain('@supports not (background-image:-webkit-cross-fade(url(a.png),url(b.png),0%)){#design-node-1::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;')
+    expect(fallback).toContain(`background-image:${ESCAPED_IMAGE};background-size:contain;background-position:center;background-repeat:no-repeat;opacity:25%}`)
+    expect(fallback).not.toContain('#00ff00')
+    expect(fallback).not.toContain('::before')
     expect(ruleFor(result.css, '#design-node-1::before')).toContain('border:4px solid #ff0000')
     expect(result.warnings.some(warning => warning.code === 'PAINT_COMPOSITING' && warning.nodeId === frame.id)).toBe(true)
+    expect(result.warnings.some(warning => warning.code === 'IMAGE_OPACITY_FALLBACK')).toBe(false)
+  })
+
+  it('moves the fills above a bottom faded image to a second box without cross-fade', () => {
+    const document = blank('Image under')
+    document.schemaVersion = 31
+    const frame = node('frame', 0, 0, 80, 40), child = node('rectangle', 8, 8, 20, 20)
+    child.fills = [paint('#0000ff')]
+    frame.children = [child.id]
+    const image = paint('#fff', 'image')
+    image.opacity = 0.25
+    image.fit = 'stretch'
+    image.image = FADED_IMAGE
+    const overlay = paint('#ff0000')
+    overlay.opacity = 0.5
+    frame.fills = [image, overlay]
+    document.nodes = { [frame.id]: frame, [child.id]: child }
+    document.pages[0].children = [frame.id]
+    const result = exportDesignCode(document)
+    // Nothing stays on the node itself: both fills sit in boxes of their own.
+    expect(ruleFor(result.css, '#design-node-1')).not.toContain('background-image')
+    const veil = 'background-image:linear-gradient(color-mix(in srgb, #ff0000 50%, transparent),color-mix(in srgb, #ff0000 50%, transparent))'
+    expect(blockFor(result.css, '@supports (')).toContain(`${veil},-webkit-cross-fade(${ESCAPED_IMAGE},linear-gradient(transparent,transparent),75%)`)
+    const fallback = blockFor(result.css, '@supports not (')
+    const imageBox = fallback.indexOf('#design-node-1::before{'), veilBox = fallback.indexOf('#design-node-1::after{')
+    expect(imageBox).toBeGreaterThanOrEqual(0)
+    // ::after follows ::before in tree order, so the veil still covers the image.
+    expect(veilBox).toBeGreaterThan(imageBox)
+    expect(fallback.slice(imageBox, veilBox)).toContain(`background-image:${ESCAPED_IMAGE};background-size:100% 100%;background-position:center;background-repeat:no-repeat;opacity:25%}`)
+    expect(fallback.slice(veilBox)).toContain(`${veil}}`)
+    expect(result.warnings.some(warning => warning.code === 'IMAGE_OPACITY_FALLBACK')).toBe(false)
+  })
+
+  it('keeps the other fills and warns when a faded image sits between them', () => {
+    const document = blank('Image between')
+    document.schemaVersion = 31
+    const rectangle = node('rectangle', 0, 0, 80, 40)
+    const image = paint('#fff', 'image')
+    image.opacity = 0.25
+    image.image = FADED_IMAGE
+    rectangle.fills = [paint('#00ff00'), image, paint('#0000ff')]
+    document.nodes = { [rectangle.id]: rectangle }
+    document.pages[0].children = [rectangle.id]
+    const result = exportDesignCode(document)
+    expect(ruleFor(result.css, '#design-node-1')).toContain('background-image:linear-gradient(#0000ff,#0000ff),linear-gradient(#00ff00,#00ff00)')
+    const fallback = blockFor(result.css, '@supports not (')
+    expect(fallback).toContain('#design-node-1::after{')
+    expect(fallback).toContain('opacity:25%}')
+    expect(fallback).not.toContain('::before')
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'IMAGE_OPACITY_FALLBACK', nodeId: rectangle.id }))
   })
 
   it('places inside, center, and outside strokes on different sides of the box', () => {
