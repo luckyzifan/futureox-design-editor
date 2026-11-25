@@ -173,10 +173,8 @@ pub struct TiledFrame {
     pub bytes: Vec<u8>,
 }
 
-/// A composited device-pixel frame straight from residency — what a host
-/// that rebuilds the canvas per frame (wasm worker, native CPU-tiled host)
-/// presents. Unlike [`TiledFrame`] this carries no tile byte payload: the
-/// pixels are already composed, so nothing is concatenated for transfer.
+/// A composited device-pixel frame. Unlike [`TiledFrame`], it carries
+/// finished viewport pixels without a tile payload.
 pub struct AssembledFrame {
     pub status: UpdateStatus,
     pub level: usize,
@@ -185,6 +183,8 @@ pub struct AssembledFrame {
     pub telemetry: crate::render_telemetry::TelemetryReport,
     /// Visible residency the composition read (cached + freshly rasterised).
     pub visible_tiles: usize,
+    /// True when the current camera required a fresh viewport render.
+    pub exact_viewport: bool,
     pub rgba: Vec<u8>,
 }
 
@@ -211,9 +211,7 @@ pub fn assemble_rgba(frame: &TiledFrame, options: &RenderOptions) -> Vec<u8> {
 }
 
 /// Composite `(world rect, RGBA8 bytes)` tiles into the device viewport —
-/// the shared core behind [`assemble_rgba`] and the direct-from-residency
-/// path of [`crate::renderer::Engine::render_tiled_frame`], which skips the
-/// payload byte concatenation entirely.
+/// The engine also reads residency here without concatenating a tile payload.
 pub fn assemble_tiles<'a>(
     tiles: impl Iterator<Item = ([f64; 4], &'a [u8])>,
     level: f64,

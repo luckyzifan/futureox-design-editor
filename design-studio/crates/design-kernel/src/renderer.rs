@@ -3263,22 +3263,57 @@ impl Engine {
         }
     }
 
-    /// One device frame assembled from tiled residency: the Sketch-parity
-    /// update runs first (equal instructions rasterise nothing, damage
-    /// re-rasterises only dirty tiles), then the visible residency
-    /// composites into a `width × height` RGBA buffer. Bucket-snapped zooms
-    /// assemble with the byte-exact integer blit; off-bucket zooms resample
-    /// the bucket content — see [`crate::tiled_renderer::assemble_rgba`].
+    /// One settled device frame. Aligned cameras reuse tiled residency, and
+    /// other cameras rasterise on their requested device sampling lattice.
     pub fn render_tiled_frame(
         &mut self,
         options: &RenderOptions,
         damage: Option<&[crate::render_instruction::WorldRect]>,
     ) -> Result<crate::tiled_renderer::AssembledFrame, String> {
+        self.assemble_tiled_frame(options, damage, false)
+    }
+
+    /// An explicitly approximate preview may resample or shift bucket pixels.
+    /// Keep its reusable residency available when settling at another camera.
+    pub fn render_tiled_preview_frame(
+        &mut self,
+        options: &RenderOptions,
+        damage: Option<&[crate::render_instruction::WorldRect]>,
+    ) -> Result<crate::tiled_renderer::AssembledFrame, String> {
+        self.assemble_tiled_frame(options, damage, true)
+    }
+
+    fn assemble_tiled_frame(
+        &mut self,
+        options: &RenderOptions,
+        damage: Option<&[crate::render_instruction::WorldRect]>,
+        allow_bucket_preview: bool,
+    ) -> Result<crate::tiled_renderer::AssembledFrame, String> {
+        use crate::tiled_renderer::{AssembledFrame, UpdateStatus, level_index_for_scale};
         // Core update only — no payload byte concatenation, the composition
         // reads residency surfaces directly.
         let instruction = self.render_instruction_for(options)?;
         if options.pixel_preview.is_some() {
             return Err("Pixel preview presents a resampled frame".into());
+        }
+        let level_index = level_index_for_scale(instruction.level_scale);
+        if !allow_bucket_preview
+            && (options.view.zoom != instruction.level_scale
+                || options.view.x.fract() != 0.
+                || options.view.y.fract() != 0.)
+        {
+            let rgba = self.render_unretained(options)?;
+            let renderer = self.tiled_renderer();
+            return Ok(AssembledFrame {
+                status: UpdateStatus::Completed,
+                level: level_index,
+                previous_level: renderer.and_then(|renderer| renderer.previous_level()),
+                level_scale: instruction.level_scale,
+                telemetry: renderer.map(|renderer| renderer.telemetry().report_statistics()).unwrap_or_default(),
+                visible_tiles: 0,
+                exact_viewport: true,
+                rgba,
+            });
         }
         let mut renderer = std::mem::take(
             self.tiled
@@ -3290,7 +3325,6 @@ impl Engine {
         let telemetry = renderer.telemetry().report_statistics();
         self.tiled = Some(renderer);
         let status = status?;
-        let level_index = crate::tiled_renderer::level_index_for_scale(instruction.level_scale);
         let mut pairs: Vec<([f64; 4], &[u8])> = Vec::new();
         if let Some(level) = self.tiled_renderer().and_then(|r| r.level(level_index)) {
             for address in level.addresses_for_world(instruction.viewport)? {
@@ -3305,13 +3339,14 @@ impl Engine {
             instruction.level_scale,
             options,
         );
-        Ok(crate::tiled_renderer::AssembledFrame {
+        Ok(AssembledFrame {
             status,
             level: level_index,
             previous_level,
             level_scale: instruction.level_scale,
             telemetry,
             visible_tiles,
+            exact_viewport: false,
             rgba,
         })
     }

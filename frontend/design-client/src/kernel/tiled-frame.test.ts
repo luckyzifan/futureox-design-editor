@@ -51,11 +51,11 @@ test('off-bucket zoom assembles the bucket residency without a full raster', () 
   const { renderer: engine, pageId } = engineWithDocument()
   const options = optionsFor(pageId)
   try {
-    const cold = engine.assemble_tiled_rgba(options({ x: 0, y: 0, zoom: 0.9 }), 'null')
+    const cold = engine.assemble_tiled_rgba(options({ x: 0, y: 0, zoom: 0.9 }), 'null', true)
     expect(cold.byteLength).toBe(512 * 384 * 4)
     expect(cold.some(byte => byte !== 0)).toBe(true)
     // In-bucket zoom change: served from residency, no error, no size drift.
-    const warm = engine.assemble_tiled_rgba(options({ x: 0, y: 0, zoom: 0.85 }), 'null')
+    const warm = engine.assemble_tiled_rgba(options({ x: 0, y: 0, zoom: 0.85 }), 'null', true)
     expect(warm.byteLength).toBe(512 * 384 * 4)
     // Deep-interior probe stays byte-exact against a direct render at the
     // same zoom (constant regions survive premultiplied resampling).
@@ -73,10 +73,23 @@ test('returning to the bucket scale after an off-bucket zoom stays byte-exact', 
   const { renderer: engine, pageId } = engineWithDocument()
   const options = optionsFor(pageId)
   try {
-    engine.assemble_tiled_rgba(options({ x: -48, y: -24, zoom: 0.9 }), 'null')
+    engine.assemble_tiled_rgba(options({ x: -48, y: -24, zoom: 0.9 }), 'null', true)
     const assembled = engine.assemble_tiled_rgba(options({ x: -48, y: -24, zoom: 1 }), 'null')
     const direct = engine.render_rgba(options({ x: -48, y: -24, zoom: 1 }))
     expect(Array.from(assembled)).toEqual(Array.from(direct))
+  } finally {
+    engine.free()
+  }
+})
+
+test('settled off-bucket and fractional camera frames match the direct render', () => {
+  const { renderer: engine, pageId } = engineWithDocument()
+  const options = optionsFor(pageId)
+  try {
+    for (const view of [{ x: 0, y: 0, zoom: 0.9 }, { x: 0.25, y: -0.5, zoom: 1 }]) {
+      const raw = options(view)
+      expect(Buffer.compare(engine.assemble_tiled_rgba(raw, 'null'), engine.render_rgba(raw))).toBe(0)
+    }
   } finally {
     engine.free()
   }
