@@ -118,6 +118,7 @@ export function AutomationDialog({editor,desktop,onClose,onHistory}:{editor:Edit
         <button disabled={!status?.enabled} onClick={()=>void task(async()=>{const r=await bridge.copyConnection();setResult(r.copied?text.copied:text.notCopied)})}>{text.copyConnection}</button>
         <button disabled={!status?.enabled} onClick={()=>void task(async()=>{const r=await bridge.copyConnection('stdio');setResult(r.copied?text.copied:text.notCopied)})}>{text.copyStdio}</button>
         <button disabled={!status?.enabled} onClick={()=>void task(async()=>{const r=await bridge.copyConnection('figma-stdio');setResult(r.copied?text.copied:text.notCopied)})}>{text.copyFigmaStdio}</button>
+        {status?.figmaMcp?.url && <button disabled={!status.enabled} onClick={()=>void task(async()=>{const r=await bridge.copyConnection('figma-http');setResult(r.copied?text.copied:text.notCopied)})}>{text.copyFigmaHttp}</button>}
         <button disabled={!status?.enabled} onClick={()=>void task(async()=>{const r=await bridge.copyConnection('codex');setResult(r.copied?text.copied:text.notCopied)})}>{text.copyCodex}</button>
         {status?.figmaMcp?.url && <p>{text.figmaMcpUrl}{status.figmaMcp.url}{text.figmaMcpUrlRest}</p>}
         {status?.figmaMcp?.available === false && <p>{text.figmaMcpUnavailable}{status.figmaMcp.reason}</p>}

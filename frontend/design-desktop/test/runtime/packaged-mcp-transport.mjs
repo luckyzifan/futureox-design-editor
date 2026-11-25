@@ -200,10 +200,14 @@ export async function verifyPackagedMcpTransport({ resources, executable, hostSo
     const grant = await bridge.enable('write')
     token = grant.token
     http = await startDesktopFigmaMcp(grant, resources)
-    const headers = { 'content-type': 'application/json', authorization: 'Bearer ' + grant.token }
+    const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer ' + grant.token }
     const post = async message => fetch(http.url, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', ...message }), signal: AbortSignal.timeout(8000) })
-    assert.equal((await (await post({ id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'package', version: '1' } } })).json()).result.protocolVersion, '2025-11-25')
-    await post({ method: 'notifications/initialized' })
+    const httpInit = await post({ id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'package', version: '1' } } })
+    headers['mcp-session-id'] = httpInit.headers.get('mcp-session-id')
+    assert.ok(headers['mcp-session-id'])
+    headers['mcp-protocol-version'] = (await httpInit.json()).result.protocolVersion
+    assert.equal(headers['mcp-protocol-version'], '2025-11-25')
+    assert.equal((await post({ method: 'notifications/initialized' })).status, 202)
     const listed = await (await post({ id: 2, method: 'tools/list' })).json()
     assert.ok(listed.result.tools.some(tool => tool.name === 'download_assets'))
     const endpoints = desktopMcpPaths(resourceLink)

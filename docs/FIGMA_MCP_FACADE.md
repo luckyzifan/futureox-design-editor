@@ -20,7 +20,7 @@ node /absolute/path/futureox-desgin/frontend/design-mcp/src/figma-cli.mjs
 
 Environment: `FUTUREOX_DESIGN_SOCKET`, `FUTUREOX_DESIGN_SESSION`, `FUTUREOX_DESIGN_BRIDGE_TOKEN`. Do not pass the token as an argument.
 
-Loopback HTTP is `http://127.0.0.1:<port>/mcp`. Send `Authorization: Bearer <token>`. The desktop starts this listener when automation is enabled. If that build cannot load the adapter, run `frontend/design-mcp/src/figma-http.mjs` with the same variables; it prints the URL to stderr and does not print the token.
+Loopback HTTP is `http://127.0.0.1:<port>/mcp`. The desktop starts this listener when automation is enabled. **Copy Figma-compatible HTTP config** includes its current URL and `Authorization: Bearer <token>`. If the desktop cannot load the adapter, run `frontend/design-mcp/src/figma-http.mjs` with the same variables. The standalone launcher prints the URL to stderr and keeps the token out of logs.
 
 Cursor-style client config:
 
@@ -37,7 +37,7 @@ Cursor-style client config:
 
 Codex-style stdio config uses `node` and `frontend/design-mcp/src/figma-cli.mjs`, forwarding the three environment variables. Do not commit the token.
 
-The HTTP listener uses the [JSON response option of MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports). Use the URL and bearer token from the active desktop automation session. Native clients can omit the `Origin` header. When present it must match the listener origin. The listener returns `405` for a GET event stream and `400` for an unsupported `MCP-Protocol-Version` header. A new `initialize` starts a fresh MCP session on the authorized connection.
+The HTTP listener implements Streamable HTTP with JSON responses. Use the URL and bearer token from the active desktop automation grant. Native clients can omit the `Origin` header. When present it must match the listener origin. A successful `initialize` returns a distinct `Mcp-Session-Id`. Send it and the negotiated `MCP-Protocol-Version` on subsequent requests. `DELETE` releases that session. The listener holds up to eight clients per grant and retires idle sessions after 30 minutes of inactivity. The listener returns `405` for a GET event stream and `400` for an unsupported protocol version. [MCP Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
 
 ## Web editor
 

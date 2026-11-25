@@ -49,11 +49,12 @@ describe('automation actual DOM controls (no browser/GPU)',()=>{
   })
   it('connection controls call explicit scoped native gates and unsubscribe',async()=>{
     const unsubscribe=vi.fn(), disabled={enabled:false,connectedClients:0,pendingRequests:0,journal:[]}
-    const automation={status:vi.fn(async()=>disabled),onStatus:vi.fn(()=>unsubscribe),enable:vi.fn(async({scope}:{scope:'read'|'write'})=>({...disabled,enabled:true,scope})),disable:vi.fn(async()=>disabled),copyConnection:vi.fn(async()=>({copied:true}))}
+    const automation={status:vi.fn(async()=>disabled),onStatus:vi.fn(()=>unsubscribe),enable:vi.fn(async({scope}:{scope:'read'|'write'})=>({...disabled,enabled:true,scope,figmaMcp:{url:'http://127.0.0.1:4321/mcp'}})),disable:vi.fn(async()=>disabled),copyConnection:vi.fn(async()=>({copied:true}))}
     await act(async()=>root.render(<AutomationDialog editor={editor} desktop={{automation} as unknown as DesktopBridge} onClose={()=>{}}/>))
     expect(automation.enable).not.toHaveBeenCalled();await click('启用只读');expect(automation.enable).toHaveBeenLastCalledWith({scope:'read'})
     await click('启用读写');expect(automation.enable).toHaveBeenLastCalledWith({scope:'write'});await click('复制连接详情');expect(automation.copyConnection).toHaveBeenCalledTimes(1)
     await click('复制 Figma 兼容 stdio 配置');expect(automation.copyConnection).toHaveBeenLastCalledWith('figma-stdio')
+    await click('复制 Figma 兼容 HTTP 配置');expect(automation.copyConnection).toHaveBeenLastCalledWith('figma-http')
     await click('停用');expect(automation.disable).toHaveBeenCalledTimes(1);await act(async()=>root.render(<div/>));expect(unsubscribe).toHaveBeenCalledTimes(1)
   })
   it('additional scopes default to none and require explicit enable after selecting their independent values',async()=>{

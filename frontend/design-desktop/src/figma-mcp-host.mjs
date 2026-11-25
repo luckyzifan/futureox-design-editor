@@ -30,6 +30,13 @@ export function packagedElectronLaunchEnv(baseEnv = process.env, platform = proc
 export function desktopMcpClientConfig(connection, {
   resourcesPath, format, executable = process.execPath, env = process.env, platform = process.platform,
 } = {}) {
+  if (format === 'figma-http') {
+    const url = connection.figmaMcp?.url
+    if (!url) return null
+    return { mcpServers: { futureox_design_figma_http: {
+      type: 'http', url, headers: { Authorization: `Bearer ${connection.token}` },
+    } } }
+  }
   const paths = desktopMcpPaths(resourcesPath)
   const figma = format === 'figma-stdio'
   const name = figma ? 'futureox_design_figma' : 'futureox_design'

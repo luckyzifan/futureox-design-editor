@@ -54,7 +54,7 @@ export interface DesktopAutomationTransport {
   status(): Promise<AutomationBridgeStatus>
   enable(value: { scope: 'read' | 'write'; workspaceScope?: 'read' | 'write'; settingsScope?: 'read' | 'write' }): Promise<AutomationBridgeStatus>
   disable(): Promise<AutomationBridgeStatus>
-  copyConnection(format?: 'stdio' | 'codex' | 'figma-stdio'): Promise<{ copied: boolean }>
+  copyConnection(format?: 'stdio' | 'codex' | 'figma-stdio' | 'figma-http'): Promise<{ copied: boolean }>
   onStatus(callback: (value: AutomationBridgeStatus) => void): () => void
   recordEdit(value: EditorEditEvent): Promise<{ accepted: boolean }>
   register(value: { documentId: string; session: number; name: string; methods: AutomationMethod[] } | null): Promise<unknown>
