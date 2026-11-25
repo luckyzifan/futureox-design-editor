@@ -74,6 +74,7 @@ async function render(nodes: DesignNode[], roots = nodes.map(n => n.id), otherRo
   const doc = blank('Selection workflows'); if (nodes.some(n => n.constrainProportions)) doc.schemaVersion = 7; doc.nodes = Object.fromEntries(nodes.map(n => [n.id, n])); doc.pages[0].children = roots
   if (nodes.some(n => n.graphic)) doc.schemaVersion = 23
   else if (doc.schemaVersion < 4 && nodes.some(n => n.component || n.instance)) doc.schemaVersion = 4
+  if (nodes.some(n => n.spatial)) doc.schemaVersion = nodes.some(n => n.spatial?.preserve3d) ? 25 : 24
   if (otherRoots.length) doc.pages.push({ ...doc.pages[0], id: uid(), name: 'Other page', children: otherRoots })
   editor.load(doc); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false })
   await act(async () => { root.render(<Canvas editor={editor} />); for (let i = 0; i < 6; i++) await Promise.resolve() })
@@ -433,6 +434,85 @@ test('T02 right-hand angle is clockwise-positive and shows two decimals before p
   expect(mount.querySelector<HTMLInputElement>('input[aria-label="旋转 °"]')!.value).toBe('30.00')
   expect(selectionMetric(editor.state.doc.nodes[n.id], 'rotation', editor.state.doc)).toBeCloseTo(30, 6)
 })
+
+async function renderSpatialLayer(shared = false) {
+  const frame = node('frame', 30, -12, 300, 200), shape = node('rectangle', 60, 80, 100, 60)
+  frame.clip = false
+  frame.children = [shape.id]
+  frame.spatial = { perspective: { distance: 540, visible: true }, ...(shared ? { preserve3d: true } : {}) }
+  shape.spatial = { pose: { rotateX: 30, rotateY: 25, rotateZ: 0, depth: 108, origin: [.5, .5],
+    visible: true, backfaceVisible: true } }
+  await render([frame, shape], [frame.id])
+  await act(async () => editor.select([shape.id]))
+  await camera(2)
+  return shape
+}
+function spatialHandle(name: string) {
+  const element = mount.querySelector<SVGGElement>(`[data-testid="spatial-${name}"]`)
+  expect(element).toBeTruthy()
+  return { element: element!, point: { x: Number(element!.dataset.anchorX), y: Number(element!.dataset.anchorY) } }
+}
+async function spatialPreview(point: { x: number; y: number }) {
+  await at('pointermove', point)
+  await act(async () => {
+    const callbacks = [...frames.values()]
+    frames.clear()
+    callbacks.forEach(callback => callback(performance.now()))
+  })
+}
+function worldPivot(u: number, v: number) {
+  return { x: 30 + 150 + (60 + 100 * u - 150) / .8, y: -12 + 100 + (80 + 60 * v - 100) / .8 }
+}
+
+test.each([false, true])('3D origin follows the projected camera and persists arbitrary fractions (shared %s)', async shared => {
+  const shape = await renderSpatialLayer(shared)
+  const before = editor.state.doc, revision = editor.state.version
+  expect(mount.querySelector('[data-testid="rotate-corner-1"]')).toBeNull()
+  const handle = spatialHandle('origin'), target = worldPivot(.2, .3)
+  expect(handle.point.x).toBeCloseTo(worldPivot(.5, .5).x, 8)
+  expect(handle.point.y).toBeCloseTo(worldPivot(.5, .5).y, 8)
+  await at('pointerdown', handle.point, handle.element)
+  await spatialPreview(target)
+  const preview = editor.state.doc.nodes[shape.id].spatial!.pose!
+  expect(preview.origin[0]).toBeCloseTo(.2, 8)
+  expect(preview.origin[1]).toBeCloseTo(.3, 8)
+  expect(editor.state.version).toBe(revision)
+  expect(editor.canUndo).toBe(false)
+  await at('pointerup', target)
+  const committed = editor.state.doc
+  expect(editor.state.version).toBe(revision + 1)
+  expect(committed.nodes[shape.id].transform).toEqual(before.nodes[shape.id].transform)
+  expect(committed.nodes[shape.id].spatial!.pose).toEqual(preview)
+  expect(validateDocument(decodeDocumentBinary(encodeDocumentBinary(committed))).nodes[shape.id].spatial).toEqual(committed.nodes[shape.id].spatial)
+  await history(before)
+})
+
+test('3D axis handles change one authored rotation each; Escape restores the last committed pose', async () => {
+  const shape = await renderSpatialLayer()
+  for (const axis of ['X', 'Y', 'Z'] as const) {
+    const before = editor.state.doc, version = editor.state.version
+    const handle = spatialHandle(`rotate-${axis.toLowerCase()}`), pivot = spatialHandle('origin').point
+    const target = axis === 'X' ? { x: handle.point.x, y: handle.point.y + 15 } :
+      axis === 'Y' ? { x: handle.point.x + 15, y: handle.point.y } : turn(handle.point, pivot, 30)
+    await at('pointerdown', handle.point, handle.element)
+    await spatialPreview(target)
+    const field = `rotate${axis}` as const, original = before.nodes[shape.id].spatial!.pose!
+    expect(editor.state.doc.nodes[shape.id].spatial!.pose![field]).toBeCloseTo(original[field] + 30, 4)
+    expect(editor.state.version).toBe(version)
+    if (axis === 'Z') {
+      await act(async () => key('Escape'))
+      expect(editor.state.doc).toEqual(before)
+      expect(editor.state.version).toBe(version)
+      expect(editor.interactionActive).toBe(false)
+    } else {
+      await at('pointerup', target)
+      const after = editor.state.doc.nodes[shape.id].spatial!.pose!
+      expect(after).toEqual({ ...original, [field]: after[field] })
+      expect(editor.state.version).toBe(version + 1)
+    }
+  }
+})
+
 for(const finish of ['Escape','pointercancel']) {
  test(`T03 mirrored nested rotation ${finish}: exact document rollback and no history`,async()=>{
   const parent=node('frame',400,200,300,300),n=node('rectangle',100,50,100,80),sibling=node('rectangle',220,10,20,20);parent.transform=[-1,0,0,1,400,200];parent.children=[n.id,sibling.id]

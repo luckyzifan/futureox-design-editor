@@ -39,9 +39,15 @@ export function pickingPreparationResources() { return ready ? preparationResour
 let geometryEpoch: object = {}
 export const pickingGeometryEpoch = () => geometryEpoch
 const spatialViews = new WeakMap<DesignDocument, DesignDocument>()
+export type SpatialPivotPlane = readonly [readonly [number, number, number], readonly [number, number, number], readonly [number, number, number]]
 type SpatialPatch = Pick<DesignNode, 'visible' | 'transform' | 'vectorGeometry'> &
-  { hideFills?: boolean; hideStrokes?: boolean; composed?: boolean }
+  { hideFills?: boolean; hideStrokes?: boolean; composed?: boolean; pivotPlane?: SpatialPivotPlane }
 const composedSpatialRoots = new WeakMap<DesignDocument, Set<string>>()
+const spatialPivotPlanes = new WeakMap<DesignDocument, ReadonlyMap<string, SpatialPivotPlane>>()
+export function kernelSpatialPivotPlane(doc: DesignDocument, id: string): SpatialPivotPlane | undefined {
+  kernelSpatialDocument(doc)
+  return spatialPivotPlanes.get(doc)?.get(id)
+}
 export function requiresSpatialRaster(doc: DesignDocument, selected: readonly string[] = []) {
   kernelSpatialDocument(doc)
   const roots = composedSpatialRoots.get(doc)
@@ -72,7 +78,13 @@ export function kernelSpatialDocument(doc: DesignDocument): DesignDocument {
   if (cached) return cached
   const patches = JSON.parse(spatial_projections_json(JSON.stringify(doc))) as Record<string, SpatialPatch>
   const view = applySpatialPatches(doc, patches)
-  composedSpatialRoots.set(doc, new Set(Object.keys(patches).filter(id => patches[id].composed)))
+  const composed = new Set<string>(), pivots = new Map<string, SpatialPivotPlane>()
+  for (const [id, patch] of Object.entries(patches)) {
+    if (patch.composed) composed.add(id)
+    if (patch.pivotPlane) pivots.set(id, patch.pivotPlane)
+  }
+  composedSpatialRoots.set(doc, composed)
+  if (pivots.size) spatialPivotPlanes.set(doc, pivots)
   spatialViews.set(doc, view)
   spatialViews.set(view, view)
   return view
