@@ -52,7 +52,7 @@ impl crate::Engine {
         let mut source = source(options, 0, 0, width, height)?;
         if source.raster_profile.is_software() && self.source_compile_context.is_none() {
             self.resolve_layout()?;
-            if self.doc.as_ref().is_some_and(|doc| measured_phase_gradient(doc, options)) {
+            if self.doc.as_ref().is_some_and(|doc| measured_export_arithmetic(doc, options, &source)) {
                 source.raster_profile = RasterProfile::Figma;
             }
         }
@@ -96,11 +96,13 @@ impl crate::Engine {
     }
 }
 
-/// The Chrome phase controls establish one opaque gradient under a normal
-/// rectangular clip, with an optional single isolating opacity. Use the
-/// measured lookup, dither, opacity and resolve together for that paint
-/// program. A crop must not change the decision or the jitter phase.
-fn measured_phase_gradient(doc: &crate::scene::Document, options: &RenderOptions) -> bool {
+/// The Chrome phase and material controls establish the lookup, texture
+/// capture and resolve of one opaque gradient inside a rectangular clip.
+/// A crop must not change the decision or the jitter phase.
+fn measured_export_arithmetic(
+    doc: &crate::scene::Document, options: &RenderOptions, source: &RenderOptions,
+) -> bool {
+    use crate::math::Transform;
     use crate::scene::{Node, Paint};
     let opaque = |color: &str| {
         crate::color::unmanaged_straight(color).is_ok_and(|channels| channels[3] == 1.)
@@ -116,9 +118,9 @@ fn measured_phase_gradient(doc: &crate::scene::Document, options: &RenderOptions
             && !node.mask && node.mask_chain.is_none() && node.boolean_operation.is_none()
             && node.network.is_none() && node.vector_geometry.is_none()
             && node.repeat.is_none() && node.spatial.is_none() && node.instance.is_none()
-            && node.effects.iter().all(|effect| !effect.visible)
             && node.strokes.iter().all(|stroke| !stroke.visible || stroke.width == 0.)
     };
+    let effect_free = |node: &Node| node.effects.iter().all(|effect| !effect.visible);
     if doc.color_management.is_some() || options.transparent || options.grid || options.checkerboard
         || options.animation.is_some() || options.interactive_effects
         || options.view.zoom != 1. || options.view.x.fract() != 0. || options.view.y.fract() != 0.
@@ -129,7 +131,9 @@ fn measured_phase_gradient(doc: &crate::scene::Document, options: &RenderOptions
     let [root] = page.children.as_slice() else { return false };
     let root = &doc.nodes[root];
     let [child] = root.children.as_slice() else { return false };
-    if root.kind != "frame" || !plain_box(root) || !root.clip || root.opacity != 1. || !opaque(&page.background) {
+    if root.kind != "frame" || !plain_box(root) || !effect_free(root) || !root.clip
+        || root.opacity != 1. || !opaque(&page.background)
+    {
         return false;
     }
     let mut fills = root.fills.iter().filter(visible_paint);
@@ -140,13 +144,15 @@ fn measured_phase_gradient(doc: &crate::scene::Document, options: &RenderOptions
         return false;
     }
     let mut leaf = &doc.nodes[child];
-    if leaf.kind == "frame" {
+    let isolated = leaf.kind == "frame";
+    if isolated {
         let [child] = leaf.children.as_slice() else { return false };
         // The shader uses zero as its sentinel for painting without group
         // scaling. The measured isolation pass needs a normal positive
         // uniform even on hardware that flushes subnormal values to zero.
         let opacity = leaf.opacity as f32;
-        if !plain_box(leaf) || !leaf.clip || !opacity.is_normal() || !(0. < opacity && opacity < 1.)
+        if !plain_box(leaf) || !effect_free(leaf) || !leaf.clip
+            || !opacity.is_normal() || !(0. < opacity && opacity < 1.)
             || leaf.fills.iter().any(|paint| visible_paint(&paint))
         {
             return false;
@@ -161,11 +167,32 @@ fn measured_phase_gradient(doc: &crate::scene::Document, options: &RenderOptions
     let mut fills = leaf.fills.iter().filter(visible_paint);
     let Some(gradient) = fills.next() else { return false };
     let [first, last] = gradient.stops.as_slice() else { return false };
-    fills.next().is_none() && gradient.opacity == 1.
-        && crate::figma_gradient::canonical_angle(gradient).is_some_and(|angle| angle.rem_euclid(360.) == 0.)
-        && crate::figma_gradient::supported(gradient, leaf.transform)
-        && first.offset == 0. && last.offset == 1.
-        && opaque(&first.color) && opaque(&last.color)
+    let Some(angle) = crate::figma_gradient::canonical_angle(gradient) else { return false };
+    let angle = angle.rem_euclid(360.);
+    // The material controls fit one canonical capture tile. Bound the
+    // replay preflight here without enumerating a large scene on each crop.
+    // Use the same gate when a neutral texture is removed from the paint.
+    let measured_material = !isolated && angle == 45.
+        && root.width.max(root.height) * source.view.zoom <= f64::from(crate::texture_replay::TILE);
+    if fills.next().is_some() || gradient.opacity != 1.
+        || !(angle == 0. || measured_material)
+        || !crate::figma_gradient::supported(gradient, leaf.transform)
+        || first.offset != 0. || last.offset != 1. || !opaque(&first.color) || !opaque(&last.color)
+    {
+        return false;
+    }
+    let Some(effect) = leaf.effects.iter().find(|effect| effect.visible) else { return true };
+    if !measured_material || effect.kind != "texture" {
+        return false;
+    }
+    // The replay already verifies the entire capture, including every tile
+    // and sample. This one-leaf frame has no sibling or effect that can read
+    // its output. The calibrated resolve belongs to the same paint program,
+    // even when the replay passes a neutral texture through as plain paint.
+    let view = source.view;
+    let camera = Transform([view.zoom, 0., 0., view.zoom, view.x, view.y]);
+    let matrix = camera.concat(root.transform).concat(leaf.transform);
+    crate::texture_replay::recipe(doc, leaf, matrix, effect).is_ok_and(|replay| replay.is_some())
 }
 
 pub(crate) fn full_frame_vector(frame: &crate::scene::Node, node: &crate::scene::Node) -> bool {

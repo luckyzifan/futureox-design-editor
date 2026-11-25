@@ -186,6 +186,24 @@ fn software_export_resolves_official_colored_curves_exactly() {
 }
 
 #[test]
+fn software_texture_replay_matches_the_frozen_material_exports() {
+    let directory = "material-parameters-2026-10-08";
+    let mut count = 0;
+    for case in cases("material-parameters-2026-10-08/cases.json") {
+        let id = case["id"].as_str().unwrap();
+        if !id.starts_with("MaterialQA-texture-") {
+            continue;
+        }
+        assert_eq!(case["strictComparable"], true, "{id}");
+        let expected = png(directory, &case);
+        let actual = render_profile(&case["document"], &case["options"], "figmaSoftware");
+        assert_eq!(gap(&actual, &expected), (0, 0), "{id}");
+        count += 1;
+    }
+    assert_eq!(count, 8);
+}
+
+#[test]
 fn zero_texture_radius_keeps_software_gradient_pixels() {
     let case = cases("material-parameters-2026-10-08/cases.json")
         .into_iter()
@@ -197,6 +215,37 @@ fn zero_texture_radius_keeps_software_gradient_pixels() {
     let actual = render_profile(&case["document"], &case["options"], "figmaSoftware");
     let ordinary = render_profile(&untextured, &case["options"], "figmaSoftware");
     assert_eq!(gap(&actual, &ordinary), (0, 0));
+    let expected = png("material-parameters-2026-10-08", &case);
+    assert_eq!(gap(&ordinary, &expected), (0, 0));
+}
+
+#[test]
+fn material_resolve_requires_a_whole_page_without_other_readers() {
+    use futureox_design_kernel::math::Rect;
+    let case = cases("material-parameters-2026-10-08/cases.json")
+        .into_iter()
+        .find(|case| case["id"] == "MaterialQA-texture-size-8")
+        .unwrap();
+    let mut document = case["document"].clone();
+    let mut options = case["options"].clone();
+    options["rasterProfile"] = json!("figmaSoftware");
+    let options: RenderOptions = serde_json::from_value(options).unwrap();
+    let mut engine = Engine::new();
+    let crop = Rect::new(0, 0, 16, 16);
+    for calibrated in [true, false] {
+        engine.load_document(&document.to_string()).unwrap();
+        let whole = engine.compile_gpu(&options).unwrap();
+        let cropped = engine.compile_gpu_region(&options, crop, None).unwrap();
+        assert_eq!(whole.software_raster, !calibrated);
+        assert_eq!(cropped.software_raster, !calibrated);
+        if calibrated {
+            document["nodes"]["frame"]["children"] = json!(["a", "sibling"]);
+            document["nodes"]["sibling"] = json!({
+                "id": "sibling", "kind": "rectangle", "width": 16, "height": 16,
+                "fills": [{"kind": "solid", "color": "#6699dd"}]
+            });
+        }
+    }
 }
 
 #[test]
