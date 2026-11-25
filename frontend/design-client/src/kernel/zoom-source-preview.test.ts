@@ -42,6 +42,47 @@ test('halo admission keeps its kernel wording', () => {
   expect(isZoomSourceHaloAdmission('PREVIEW_CANCELLED')).toBe(false)
 })
 
+function scaledNeighbor(scale: number, x: number, y: number, width: number, height: number) {
+  const doc = page(2.5, 'covering').doc
+  const image = doc.nodes[doc.pages[0].children[0]]
+  image.transform = [scale, 0, 0, scale, x, y]
+  image.width = width
+  image.height = height
+  image.effects[0].radius = 2.5
+  const ellipse = doc.nodes[doc.pages[0].children[1]]
+  ellipse.effects[0].zoomBlur = { amount: 24, center: [0.5, 0.5] }
+  return doc
+}
+
+test('placed node scale matches kernel zoom-source admission', () => {
+  const modest = { x: 0, y: 0, width: 800 / 150, height: 600 / 150 }
+  const wide = { x: 0, y: 0, width: 2410 / 301.2, height: 904 / 301.2 }
+  const up = scaledNeighbor(2, 10, 0.2, 1.5, 1.5)
+  const flat = scaledNeighbor(1, 10, 0.2, 1.5, 1.5)
+  const down = scaledNeighbor(0.25, 10, 0.2, 1.5, 1.5)
+  expect(zoomSourcePreviewExceedsDeviceHalo(up, up.pages[0].id, 150, modest)).toBe(true)
+  expect(zoomSourcePreviewExceedsDeviceHalo(flat, flat.pages[0].id, 150, modest)).toBe(false)
+  expect(zoomSourcePreviewExceedsDeviceHalo(down, down.pages[0].id, 301.2, wide)).toBe(false)
+  const parent = scaledNeighbor(1, 0, 0, 20, 20)
+  const neighbor = parent.nodes[parent.pages[0].children[0]]
+  const group = node('group', 0, 0, 40, 40)
+  group.transform = [2, 0, 0, 2, 0, 0]
+  group.children = [neighbor.id]
+  neighbor.transform = [1, 0, 0, 1, 0, 0]
+  parent.nodes[group.id] = group
+  parent.pages[0].children[0] = group.id
+  expect(zoomSourcePreviewExceedsDeviceHalo(parent, parent.pages[0].id, 150, modest)).toBe(true)
+  group.transform = [1, 0, 0, 1, 0, 0]
+  expect(zoomSourcePreviewExceedsDeviceHalo(parent, parent.pages[0].id, 150, modest)).toBe(false)
+  const turn = 2 * Math.cos(Math.PI / 6)
+  const rise = 2 * Math.sin(Math.PI / 6)
+  neighbor.transform = [turn, rise, -rise, turn, 0, 0]
+  neighbor.width = 20
+  neighbor.height = 20
+  parent.pages[0].children[0] = neighbor.id
+  expect(zoomSourcePreviewExceedsDeviceHalo(parent, parent.pages[0].id, 150, modest)).toBe(true)
+})
+
 test('gaussian support matches the kernel formula', () => {
   const effect: Effect = { id: 'e', kind: 'gaussian-blur', visible: true, radius: 9.564871788024902, x: 0, y: 0, spread: 0, color: '#000', opacity: 1, amount: 0 }
   expect(zoomSourceFilterHaloDevicePixels(effect, 301.2)).toBeCloseTo(3 * 9.564871788024902 * 301.2 + 2, 6)
