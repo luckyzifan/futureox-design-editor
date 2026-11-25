@@ -542,36 +542,65 @@ float textureClipWeight(highp sampler2D math,float original,float displaced){
  uint a=textureClipAlphaIndex(original);uint b=textureClipAlphaIndex(displaced);
  return textureClipWeightQ4(math,a,b);
 }
-vec4 figmaByteValue(uvec4 bytes){
- if(softwareRasterByte()){return softwareByteValue(bytes);}
+vec4 figmaExactByteValue(uvec4 bytes){
  return vec4(figmaNormalizeQ4(bytes.x*16u),figmaNormalizeQ4(bytes.y*16u),figmaNormalizeQ4(bytes.z*16u),figmaNormalizeQ4(bytes.w*16u));
 }
-uvec4 figmaExportStep(uvec4 previous,vec4 source,float weight){
- if(softwareRasterByte()){return softwareBlendBytes(previous,softwareEncodeBytes(source),softwareEncodeByte(weight));}
- vec4 dst=figmaByteValue(previous);
+vec4 figmaByteValue(uvec4 bytes){
+ if(softwareRasterByte()){return softwareByteValue(bytes);}
+ return figmaExactByteValue(bytes);
+}
+uvec4 figmaExportStep(uvec4 previous,vec4 source,float weight,bool software){
+ if(software){return softwareBlendBytes(previous,softwareEncodeBytes(source),softwareEncodeByte(weight));}
+ vec4 dst=figmaExactByteValue(previous);
  vec4 value=clamp(vec4(constantColorBlendRN(source.x,dst.x,weight),constantColorBlendRN(source.y,dst.y,weight),constantColorBlendRN(source.z,dst.z,weight),constantColorBlendRN(source.w,dst.w,weight)),vec4(0),vec4(1));
  return uvec4(figmaEncodeUnorm8(value.x),figmaEncodeUnorm8(value.y),figmaEncodeUnorm8(value.z),figmaEncodeUnorm8(value.w));
 }
-vec4 figmaFourPass(vec4 a,vec4 b,vec4 c,vec4 d){
- uvec4 result=figmaExportStep(uvec4(0u),d,1.);
- result=figmaExportStep(result,a,0.5);
- result=figmaExportStep(result,c,uintBitsToFloat(0x3eaaaaabu));
- result=figmaExportStep(result,b,0.25);
- return figmaByteValue(result);
+vec4 figmaFourPass(vec4 a,vec4 b,vec4 c,vec4 d,bool software){
+ uvec4 result=figmaExportStep(uvec4(0u),d,1.,software);
+ result=figmaExportStep(result,a,0.5,software);
+ result=figmaExportStep(result,c,uintBitsToFloat(0x3eaaaaabu),software);
+ result=figmaExportStep(result,b,0.25,software);
+ if(software){return softwareByteValue(result);}
+ return figmaExactByteValue(result);
 }
 vec4 figmaQuarterSum(uvec4 sum){
  return vec4(figmaNormalizeQ4(sum.x*4u),figmaNormalizeQ4(sum.y*4u),figmaNormalizeQ4(sum.z*4u),figmaNormalizeQ4(sum.w*4u));
 }
-vec4 softwareSpatialSample(highp sampler2D tex,vec2 p,vec4 r){
- uvec4 a=softwareEncodeBytes(at(tex,p,r));
- uvec4 b=softwareEncodeBytes(at(tex,p+vec2(1,0),r));
- uvec4 c=softwareEncodeBytes(at(tex,p+vec2(0,1),r));
- uvec4 d=softwareEncodeBytes(at(tex,p+vec2(1,1),r));
- return softwareByteValue(softwareSampleBytes(a,b,c,d,128u,128u));
+void softwareSpatialTaps(highp sampler2D tex,vec2 p,vec4 r,out uvec4 taps[4]){
+ taps[0]=softwareEncodeBytes(at(tex,p,r));
+ taps[1]=softwareEncodeBytes(at(tex,p+vec2(1,0),r));
+ taps[2]=softwareEncodeBytes(at(tex,p+vec2(0,1),r));
+ taps[3]=softwareEncodeBytes(at(tex,p+vec2(1,1),r));
+}
+vec4 softwareSpatialSample(uvec4 taps[4]){
+ return softwareByteValue(softwareSampleBytes(taps[0],taps[1],taps[2],taps[3],128u,128u));
+}
+// Check the four taps of each plane against the same two opaque colors.
+bool recordOpaqueCoverageEndpoints(uvec4 taps[4],uvec4 first,inout uvec4 second){
+ for(int i=0;i<4;i++){
+  uvec4 pixel=taps[i];
+  if(pixel.a!=255u){return false;}
+  if(any(notEqual(pixel,first))&&any(notEqual(pixel,second))){
+   if(any(notEqual(second,first))){return false;}
+   second=pixel;
+  }
+ }
+ return true;
+}
+vec4 exportTapSum(uvec4 taps[4]){
+ return figmaQuarterSum(taps[0]+taps[1]+taps[2]+taps[3]);
 }
 vec4 figmaSpatialResolve(vec2 p){
  if(softwareRasterByte()){
-  return figmaFourPass(softwareSpatialSample(sourceA,p,u[1]),softwareSpatialSample(sourceB,p,u[2]),softwareSpatialSample(sourceC,p,u[3]),softwareSpatialSample(sourceD,p,u[1]));
+  uvec4 a[4],b[4],c[4],d[4];
+  softwareSpatialTaps(sourceA,p,u[1],a);softwareSpatialTaps(sourceB,p,u[2],b);
+  softwareSpatialTaps(sourceC,p,u[3],c);softwareSpatialTaps(sourceD,p,u[1],d);
+  uvec4 first=a[0],second=first;
+  bool coverage=recordOpaqueCoverageEndpoints(a,first,second)&&recordOpaqueCoverageEndpoints(b,first,second)&&
+   recordOpaqueCoverageEndpoints(c,first,second)&&recordOpaqueCoverageEndpoints(d,first,second);
+  bool chromatic=first.r!=first.g||first.g!=first.b||second.r!=second.g||second.g!=second.b;
+  if(coverage&&any(notEqual(second,first))&&chromatic){return figmaFourPass(exportTapSum(a),exportTapSum(b),exportTapSum(c),exportTapSum(d),false);}
+  return figmaFourPass(softwareSpatialSample(a),softwareSpatialSample(b),softwareSpatialSample(c),softwareSpatialSample(d),true);
  }
  uvec4 a=uvec4(0u);uvec4 b=uvec4(0u);uvec4 c=uvec4(0u);uvec4 d=uvec4(0u);
  for(uint y=0u;y<2u;y=y+1u){for(uint x=0u;x<2u;x=x+1u){
@@ -579,7 +608,7 @@ vec4 figmaSpatialResolve(vec2 p){
   a=a+uvec4(round(at(sourceA,q,u[1])*255.));b=b+uvec4(round(at(sourceB,q,u[2])*255.));
   c=c+uvec4(round(at(sourceC,q,u[3])*255.));d=d+uvec4(round(at(sourceD,q,u[1])*255.));
  }}
- return figmaFourPass(figmaQuarterSum(a),figmaQuarterSum(b),figmaQuarterSum(c),figmaQuarterSum(d));
+ return figmaFourPass(figmaQuarterSum(a),figmaQuarterSum(b),figmaQuarterSum(c),figmaQuarterSum(d),false);
 }
 vec4 materialTexture(vec2 p){
  vec2 delta=at(sourceB,p,u[2]).xy;vec4 first=materialSample(p,delta);
@@ -1170,7 +1199,7 @@ vec4 sketchLayerGaussian(vec2 p){
  return vec4(value)/255.;
 }
 vec4 shade(vec2 p){
- int mode=COMPOSITOR_MODE;if(mode==98)return sketchLayerGaussian(p);if(BYTE_SURFACE&&mode==43)return textureReplayEffect(p);if(BYTE_SURFACE&&mode==44)return textureReplayCopyback(p);if(BYTE_SURFACE&&mode==45)return textureReplaySource(p);if(BYTE_SURFACE&&mode==42)return measuredGradientOver(p);if(BYTE_SURFACE&&mode==40)return captureDownscale(p);if(BYTE_SURFACE&&mode==41)return captureTriangle(p);if(BYTE_SURFACE&&mode==36)return figmaFourPass(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]));if(BYTE_SURFACE&&mode==35)return solidPaintOver(p);if(mode==34)return analyticGlass(p);if(mode==33)return bytePreview(p);if(mode==61)return motionBlurPixel(p);if(mode==62)return zoomBlurPixel(p);if(mode==63)return vec4(min(1.,smp(sourceA,p,u[1]).a*u[10].y));if(mode==46)return gradientBlurComposite(p);if(mode==65)return progressiveTent(p);if(mode==64)return sketchBlurBox(p);if(mode==8&&u[10].z>.5)return materialTexture(p);if(mode==11&&u[10].w>.5)return materialGlass(p);vec4 a=smp(sourceA,p,u[1]);
+ int mode=COMPOSITOR_MODE;if(mode==98)return sketchLayerGaussian(p);if(BYTE_SURFACE&&mode==43)return textureReplayEffect(p);if(BYTE_SURFACE&&mode==44)return textureReplayCopyback(p);if(BYTE_SURFACE&&mode==45)return textureReplaySource(p);if(BYTE_SURFACE&&mode==42)return measuredGradientOver(p);if(BYTE_SURFACE&&mode==40)return captureDownscale(p);if(BYTE_SURFACE&&mode==41)return captureTriangle(p);if(BYTE_SURFACE&&mode==36)return figmaFourPass(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]),softwareRasterByte());if(BYTE_SURFACE&&mode==35)return solidPaintOver(p);if(mode==34)return analyticGlass(p);if(mode==33)return bytePreview(p);if(mode==61)return motionBlurPixel(p);if(mode==62)return zoomBlurPixel(p);if(mode==63)return vec4(min(1.,smp(sourceA,p,u[1]).a*u[10].y));if(mode==46)return gradientBlurComposite(p);if(mode==65)return progressiveTent(p);if(mode==64)return sketchBlurBox(p);if(mode==8&&u[10].z>.5)return materialTexture(p);if(mode==11&&u[10].w>.5)return materialGlass(p);vec4 a=smp(sourceA,p,u[1]);
  if(u[60].x>.5){
   if(mode==3||mode==15){float opacity=u[4].z;if(u[4].w>.5)opacity=mulRN(opacity,at(sourceC,p,u[3]).a);vec4 src=mulRN4(a,vec4(opacity));if(mode==15)return src;return over(smp(sourceB,p,u[2]),src,int(u[4].y));}
   if(mode==8){return legacyTexture(p,true);}

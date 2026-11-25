@@ -210,9 +210,29 @@ fn software_binary_coverage_sample(pixels: [[u8; 4]; 4]) -> [u8; 4] {
     crate::software_raster::sample_bytes(pixels, 128, 128)
 }
 
+fn opaque_color_endpoints(planes: &[[[u8; 4]; 4]; 4]) -> bool {
+    let first = planes[0][0];
+    let mut second = None;
+    for &pixel in planes.iter().flatten() {
+        if pixel[3] != 255 {
+            return false;
+        }
+        if pixel == first {
+            continue;
+        }
+        if *second.get_or_insert(pixel) != pixel {
+            return false;
+        }
+    }
+    let chromatic = |[r, g, b, _]: [u8; 4]| r != g || g != b;
+    second.is_some_and(|color| chromatic(first) || chromatic(color))
+}
+
 /// Same four jitter planes and 2x source density, with byte-precision
 /// horizontal/vertical filtering and separately rounded UNORM blend terms.
-/// This is an explicit arithmetic contract, not an adaptive quality mode.
+/// The measured resolve for colored opaque coverage uses the exact spatial
+/// sum and jitter weights when two endpoints span the neighborhood. The
+/// achromatic filter and general-color paths keep their byte arithmetic.
 pub fn resolve_software_sample_planes_2x(samples: [&[u8]; 4], width: u32, height: u32) -> Vec<u8> {
     assert!(
         samples
@@ -222,12 +242,20 @@ pub fn resolve_software_sample_planes_2x(samples: [&[u8]; 4], width: u32, height
     let mut out = vec![0; width as usize * height as usize * 4];
     for y in 0..height as usize {
         for x in 0..width as usize {
-            let mut accumulated = [0_u8; 4];
-            for (pass, index) in EXPORT_ORDER.into_iter().enumerate() {
-                let pixels = std::array::from_fn(|corner| {
+            let planes = EXPORT_ORDER.map(|index| {
+                std::array::from_fn(|corner| {
                     let i = ((y * 2 + corner / 2) * width as usize * 2 + x * 2 + corner % 2) * 4;
                     premultiplied_bytes(samples[index], i).map(|v| v as u8)
-                });
+                })
+            });
+            let coverage = opaque_color_endpoints(&planes);
+            let mut accumulated = [0_u8; 4];
+            for (pass, pixels) in planes.into_iter().enumerate() {
+                if coverage {
+                    let source = pair_source(pixels.map(|pixel| pixel.map(u32::from)));
+                    accumulated = accumulate_export(accumulated, source, pass + 1);
+                    continue;
+                }
                 let source = software_binary_coverage_sample(pixels);
                 let factor =
                     crate::software_raster::encode_unorm8((1.0_f64 / (pass + 1) as f64) as f32);
