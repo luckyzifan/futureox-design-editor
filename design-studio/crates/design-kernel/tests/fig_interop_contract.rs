@@ -25,7 +25,10 @@ fn fig_scroll_behavior_survives_fd_round_trip_as_inert_receipt() {
     let value = serde_json::to_value(&doc).unwrap();
     assert_eq!(value.pointer(path), Some(&json!("FIXED_WHEN_CHILD_OF_SCROLLING_FRAME")));
     assert!(!doc.nodes["fig-2-5"].bindings.contains_key("figScrollBehavior"));
-    let restored: Document = serde_json::from_value(value).unwrap();
+    let encoded = futureox_design_kernel::binfmt::encode_authored_json(&value.to_string()).unwrap();
+    let restored: Document = serde_json::from_str(
+        &futureox_design_kernel::binfmt::decode_authored_json(&encoded).unwrap(),
+    ).unwrap();
     restored.validate().unwrap();
     assert_eq!(serde_json::to_value(restored).unwrap().pointer(path),
         Some(&json!("FIXED_WHEN_CHILD_OF_SCROLLING_FRAME")));
