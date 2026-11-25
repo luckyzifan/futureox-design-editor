@@ -16,6 +16,7 @@ import { modalOwnsKeyboard } from './modal-keyboard'
 import { DesktopSession } from './desktop-session'
 import type { DesktopBridge } from './desktop'
 import { interfacePreference } from './interface-preference'
+import { emptySystem, setVariableMode } from './design-system'
 const bootstrap = await vi.hoisted(async () => {
   // @ts-expect-error jsdom runtime dependency
   const { JSDOM } = await import('jsdom')
@@ -70,6 +71,34 @@ test('Figma solid fill previews immediately and closing writes one undoable edit
   await act(async () => editor.undo())
   expect(editor.authoredDocument).toEqual(base)
   expect(editor.canUndo).toBe(false)
+})
+test('Figma picker binds an existing color variable to the exact fill as one undoable edit', async () => {
+  interfacePreference.set({ uiMode: 'figma', locale: 'zh-CN' })
+  const doc = structuredClone(editor.authoredDocument)
+  const system = doc.designSystem = emptySystem()
+  doc.schemaVersion = 6
+  system.collections.theme = { name: 'Theme', defaultMode: 'Light', modes: ['Light', 'Dark'] }
+  system.variables.brand = { name: 'Brand', kind: 'color', collection: 'theme', values: { Light: '#112244', Dark: '#ffeecc' } }
+  system.variables.margin = { name: 'Margin', kind: 'number', collection: 'theme', values: { Light: 1, Dark: 2 } }
+  editor.load(doc); editor.select([id])
+  const before = editor.authoredDocument, version = editor.state.version
+  await act(async () => root.render(<PendingEditContext.Provider value={editor}><Inspector editor={editor} /></PendingEditContext.Provider>))
+  await click(button('颜色'))
+  await type(field('填充不透明度 %'), '45')
+  await click(button('变量'))
+  const picker = dialog()!.querySelector<HTMLSelectElement>('select[aria-label="本地颜色变量"]')!
+  expect(document.activeElement).toBe(picker)
+  expect([...picker.options].map(option => option.value)).toEqual(['', 'brand'])
+  await act(async () => { picker.value = 'brand'; picker.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(dialog()).toBeNull()
+  expect(editor.state.version).toBe(version + 1)
+  expect(editor.state.doc.nodes[id].bindings).toEqual({ 'fills.0.color': 'brand' })
+  expect(editor.state.doc.nodes[id].fills[0]).toMatchObject({ color: '#112244', opacity: .45, id: before.nodes[id].fills[0].id })
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+  await act(async () => { editor.redo(); editor.change('Dark', document => setVariableMode(document, 'theme', 'Dark')) })
+  expect(editor.state.doc.nodes[id].fills[0].color).toBe('#ffeecc')
 })
 async function key(input: Element, key: string, options: object = {}) { await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options }))) }
 async function click(element: Element) { await act(async () => element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))) }

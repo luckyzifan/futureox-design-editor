@@ -10,6 +10,7 @@ import { validColor } from './color'
 import { applyNotationChannel, collectFileColors, formatHex, hsbToRgb, notationChannels, parseHex, rgbToHsb, type ColorNotation } from './color-field'
 import { eyedropperChord, rememberPaintChannel, type PaintChannel } from './eyedropper-target'
 import { useInterfacePreferences } from './interface-preference'
+import { executeDesignSystemOperation } from './automation/design-system'
 
 type KindChoice = Paint['kind'] | 'none'
 type KindPatch = { color: string; opacity: number }
@@ -40,7 +41,8 @@ export function SolidFillColorInput({ target, value, label, opacity = false, kin
       {buttonText ?? (opacity ? `${value}%` : <span className="sr-only">{label}</span>)}
     </button>
     {error && <span role="alert">{tr(error)}</span>}
-    {session && <ColorPickerPopover session={session} trigger={trigger} focusOpacity={opacity} kind={kind} onKind={onKind} onClose={() => setSession(null)} />}
+    {session && <ColorPickerPopover session={session} trigger={trigger} focusOpacity={opacity} kind={kind} onKind={onKind}
+      fillTarget={target} onClose={() => setSession(null)} />}
   </span>
 }
 
@@ -93,9 +95,10 @@ export function LoosePaintColor({ label, color, opacity, hex, kind, onChange, on
   </>
 }
 
-export function ColorPickerPopover({ session, trigger, focusOpacity = false, onClose, kind, onKind }: {
+export function ColorPickerPopover({ session, trigger, focusOpacity = false, onClose, kind, onKind, fillTarget }: {
   session: ColorEditSession; trigger: RefObject<HTMLButtonElement | null>; focusOpacity?: boolean; onClose: () => void
   kind?: Paint['kind']; onKind?: (kind: KindChoice, patch?: KindPatch) => void
+  fillTarget?: SolidFillTarget
 }) {
   const [, render] = useState(0)
   const closed = useRef(false), close = useRef(onClose)
@@ -105,18 +108,37 @@ export function ColorPickerPopover({ session, trigger, focusOpacity = false, onC
     else if (!closed.current) { closed.current = true; close.current() }
   }), [session])
   const draft = session.draft
+  const bindVariable = (variableId: string) => {
+    if (!fillTarget || !session.active || !session.canCommit) return
+    const editor = session.editor
+    const { nodeId, fillIndex, fillId } = fillTarget
+    const authored = editor.authoredDocument, selection = editor.state.selection
+    const generation = editor.sessionGeneration, { page, version } = editor.state
+    const opacity = editor.state.doc.nodes[nodeId].fills[fillIndex].opacity
+    session.cancel()
+    if (editor.authoredDocument !== authored || editor.sessionGeneration !== generation ||
+        editor.state.page !== page || editor.state.version !== version ||
+        editor.state.selection.join('\n') !== selection.join('\n')) return
+    editor.change('绑定颜色变量', document => {
+      const fill = document.nodes[nodeId]?.fills[fillIndex]
+      if (!fill || fill.id !== fillId || fill.kind !== 'solid') throw new Error('填充已变化，请重新选择颜色变量')
+      fill.opacity = opacity
+      executeDesignSystemOperation(document, 'variable.bind', { nodeId, path: `fills.${fillIndex}.color`, variableId }, { pageId: page, selection })
+    })
+  }
   return <MacColorDialog trigger={trigger} focusOpacity={focusOpacity} preview
-    color={draft.color} opacity={draft.opacity} valid={session.valid} error={session.error} kind={kind}
+    color={draft.color} opacity={draft.opacity} valid={session.canCommit} error={session.error} kind={kind}
     onUpdate={patch => { session.update(patch); render(value => value + 1) }}
     onComposition={composing => session.setComposing(composing)}
     onCommit={() => session.commit()}
     onCancel={() => session.cancel()}
     onSample={() => void session.sample((signal, lease) => requestCanvasColor(session.editor, signal, lease))}
     onKind={onKind ? kindName => { if (!session.commit()) return; onKind(kindName) } : undefined}
+    onBindVariable={fillTarget ? bindVariable : undefined}
   />
 }
 
-function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opacity: opacityValue, valid, error, kind, onUpdate, onComposition, onCommit, onCancel, onSample, onKind }: {
+function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opacity: opacityValue, valid, error, kind, onUpdate, onComposition, onCommit, onCancel, onSample, onKind, onBindVariable }: {
   trigger: RefObject<HTMLButtonElement | null>; focusOpacity: boolean; preview: boolean
   color: string; opacity: string; valid: boolean; error: string; kind?: Paint['kind']
   onUpdate: (patch: Partial<ColorDraft>) => void
@@ -125,14 +147,17 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
   onCancel: () => void
   onSample: () => void
   onKind?: (kind: KindChoice, patch?: KindPatch) => void
+  onBindVariable?: (variableId: string) => void
 }) {
   const { tr } = usePropertyText()
   const { uiMode } = useInterfacePreferences()
   const liveSolidFill = uiMode === 'figma' && preview && kind === 'solid'
   const editor = useContext(PendingEditContext)
   const panel = useRef<HTMLDivElement>(null), color = useRef<HTMLInputElement>(null), opacity = useRef<HTMLInputElement>(null)
+  const variablePicker = useRef<HTMLSelectElement>(null), variableTrigger = useRef<HTMLButtonElement>(null)
   const [notation, setNotation] = useState<ColorNotation>('HEX')
   const [tab, setTab] = useState<'custom' | 'libraries'>('custom')
+  const [variablesOpen, setVariablesOpen] = useState(false)
   const [menu, setMenu] = useState(false), [cssMenu, setCssMenu] = useState(false)
   const [displayMode, setDisplayMode] = useState<'native' | 'hex'>('native')
   const [heldHue, setHeldHue] = useState(() => { const rgb = parseHex(colorValue); return rgb ? rgbToHsb(rgb[0], rgb[1], rgb[2]).h : 0 })
@@ -144,6 +169,7 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
   const hsb = rgb ? rgbToHsb(rgb[0], rgb[1], rgb[2]) : null
   const hue = hsb && hsb.s > 0.001 ? hsb.h : heldHue
   useEffect(() => { if (hsb && hsb.s > 0.001) setHeldHue(hsb.h) }, [draft.color])
+  useLayoutEffect(() => { if (variablesOpen) variablePicker.current?.focus({ preventScroll: true }) }, [variablesOpen])
   useLayoutEffect(() => {
     const place = () => {
       const rect = trigger.current?.getBoundingClientRect(), box = panel.current?.getBoundingClientRect()
@@ -198,6 +224,9 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
     update({ color: formatHex(hsbToRgb(hue, saturation, brightness)) })
   }
   const fileColors = editor ? collectFileColors(editor.state.doc, editor.state.page) : { styles: [], colors: [] }
+  const system = editor?.state.doc.designSystem
+  const colorVariables = variablesOpen ? Object.entries(system?.variables ?? {}).filter(([, variable]) => variable.kind === 'color') : []
+  const canBindVariable = liveSolidFill && !!onBindVariable
   const channels = simple && notation !== 'HEX' ? notationChannels(draft.color, notation) : null
   const platform = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other'
   return createPortal(<div ref={panel} role="dialog" aria-label={tr('填充颜色和不透明度')} aria-modal="false"
@@ -206,7 +235,11 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
       if (composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
       if (eyedropperChord(event, platform)) { event.preventDefault(); event.stopPropagation(); onSample(); return }
       if (event.key === 'Escape' || ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'z' && !event.shiftKey)) {
-        if (event.key === 'Escape' && (menu || cssMenu)) { event.preventDefault(); event.stopPropagation(); setMenu(false); setCssMenu(false); return }
+        if (event.key === 'Escape' && (menu || cssMenu || variablesOpen)) {
+          event.preventDefault(); event.stopPropagation(); setMenu(false); setCssMenu(false); setVariablesOpen(false)
+          if (variablesOpen) variableTrigger.current?.focus({ preventScroll: true })
+          return
+        }
         event.preventDefault(); event.stopPropagation(); onCancel(); return
       }
       if (event.key === 'Enter' && !(event.target as Element).closest('button,select')) {
@@ -223,7 +256,7 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
       onClick={() => { if (liveSolidFill) onCommit(); else onCancel() }}>×</button>
     <div className="property-color-tabs" role="tablist" aria-label={tr('颜色来源')}>
       <button type="button" role="tab" aria-selected={tab === 'custom'} onClick={() => setTab('custom')}>{tr('自定义')}</button>
-      <button type="button" role="tab" aria-selected={tab === 'libraries'} onClick={() => setTab('libraries')}>{tr('资料库')}</button>
+      <button type="button" role="tab" aria-selected={tab === 'libraries'} onClick={() => { setVariablesOpen(false); setTab('libraries') }}>{tr('资料库')}</button>
     </div>
     <button type="button" className="property-color-add" disabled title={tr('颜色样式从本文件读取')}>+</button>
     {tab === 'libraries' ? <div className="property-color-libraries">
@@ -235,9 +268,18 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
       <div className="property-color-kinds" role="toolbar" aria-label={tr('填充类型')}>
         {(['solid', 'linear', 'radial', 'angular', 'diamond', 'image'] as const).map(id => <button type="button" key={id} aria-label={tr(kindLabel[id])} aria-pressed={kind === id} onClick={() => onKind?.(id)}>{typeIcon(id)}</button>)}
         <button type="button" aria-label={tr('视频')} disabled title={tr('视频填充尚未提供')}>{typeIcon('video')}</button>
-        <button type="button" aria-label={tr('变量')} disabled title={tr('变量填色尚未提供')}>{typeIcon('variables')}</button>
+        <button ref={variableTrigger} type="button" aria-label={tr('变量')} aria-expanded={canBindVariable ? variablesOpen : undefined}
+          disabled={!canBindVariable} title={tr(canBindVariable ? '本地颜色变量' : '变量填色尚未提供')}
+          onClick={() => setVariablesOpen(value => !value)}>{typeIcon('variables')}</button>
         <button type="button" aria-label={tr('去掉填充')} aria-pressed={false} onClick={() => onKind?.('none')}>{typeIcon('none')}</button>
       </div>
+      {canBindVariable && variablesOpen && (colorVariables.length ?
+        <select ref={variablePicker} aria-label={tr('本地颜色变量')} value="" disabled={!valid}
+          onChange={event => { if (event.target.value) onBindVariable?.(event.target.value) }}>
+          <option value="" disabled>{tr('选择颜色变量')}</option>
+          {colorVariables.map(([id, variable]) =>
+            <option key={id} value={id}>{system?.collections[variable.collection]?.name} / {variable.name}</option>)}
+        </select> : <p className="muted">{tr('此文件还没有颜色变量')}</p>)}
       {simple && <div className="property-color-area" data-color-area role="application" aria-label={tr('饱和度与亮度')}
         style={{ backgroundColor: `hsl(${hue} 100% 50%)`, backgroundImage: 'linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent)' }}
         onPointerDown={event => { rangeEvents.onPointerDown(event); pickArea(event) }}
