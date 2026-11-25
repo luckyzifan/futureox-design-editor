@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import { ImportOwner, importStep } from './import-ownership.ts'
 import { recordLocalError, localDiagnostics } from './local-diagnostics.ts'
+import { isPreparedDocument } from './prepared-document.ts'
 
 function deferred() {
   let resolve, reject
@@ -113,13 +114,21 @@ test('production imports capture ownership before read/hash/verify and wire canc
   }
   const input = app.slice(app.indexOf('  async function importDesignFile('), app.indexOf('  const switchLifetime'))
   assert.ok(input.indexOf('const request = fileImports.begin(editor)') < input.indexOf('readDesignFile(f, request.signal, diagnostic)'))
-  const accepted = app.match(/accept="([^"]*\.sketch[^"]*)"/)
+  // The accept list is a template literal: the fixed suffixes come first and
+  // the raster formats are appended from RASTER_FILE_ACCEPT.
+  const accepted = app.match(/accept={`([^`]*\.sketch[^`]*)\$\{RASTER_FILE_ACCEPT\}`}/)
   assert.ok(accepted, 'design input must advertise Sketch and other import formats')
   for (const format of ['.fd', '.json', '.svg', '.fig', '.sketch', '.pdf']) assert.ok(accepted[1].split(',').includes(format), format)
   assert.match(input, /switchDocument\(document, undefined, true, request\)/)
   assert.match(input, /request\.isLatest\(\) && editor\.state\.doc\.id === document\.id/)
-  assert.match(app, /desktopSession\.replace\(document, adoption\.isCurrent\)/)
-  assert.match(app, /onCloseRequested\(\(\{ requestId \}\) => \{\s+if \(largeDocument \|\| source\) return\s+fileImports\.invalidate\(\)/)
+  // A prepared document is adopted before its first frame; the home view only
+  // leaves while that adoption is still the latest request.
+  assert.match(app, /desktopSession\.replace\(input, adoption\.isCurrent, isPreparedDocument\(input\) \? \(\) => \{\s+if \(adoption\.isLatest\(\) && editor\.state\.doc\.id === input\.id\) setShowHome\(false\)\s+\} : undefined\)/)
+  // A tab close has its own branch; a window close retires the owned import
+  // unless a large document or a source copy keeps the editor busy.
+  const closeHandler = app.slice(app.indexOf('desktop?.onCloseRequested(({ requestId, intent }) => {'))
+  const closeGuard = closeHandler.indexOf('if (largeDocument || source) return')
+  assert.ok(closeGuard >= 0 && closeHandler.indexOf('fileImports.invalidate()') > closeGuard, 'a close request must keep the owned import while a large document or a source copy is open, and retire it otherwise')
   assert.match(app, /switchLifetime\.current\+\+\s+switchGate\.current = null\s+fileImports\.dispose\(\)/)
   assert.match(app, /fileImports\.invalidate\(\); setMenu\(false\); setShowCatalog\(true\)/)
   assert.match(app, /fileImports\.invalidate\(\); setShowCatalog\(false\)/)
@@ -129,13 +138,13 @@ test('production imports capture ownership before read/hash/verify and wire canc
 // WASM, a DOM or renderer. Storage doubles expose only the asynchronous boundaries.
 function switchHarness() {
   const source = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8')
-  const header = '  async function switchDocument(\n    document: DesignDocument,\n    record?: LocalRecord,\n    preserveCurrent = true,\n    request?: ImportRequest,\n  ) {'
+  const header = '  async function switchDocument(\n    input: DesignDocument | PreparedDocument,\n    record?: LocalRecord,\n    preserveCurrent = true,\n    request?: ImportRequest,\n  ) {'
   const end = '\n  async function trashLocalFile('
   assert.equal(source.split(header).length, 2, 'switchDocument signature changed; review extraction')
   assert.equal(source.split(end).length, 2, 'switchDocument boundary changed; review extraction')
   const start = source.indexOf(header), stop = source.indexOf(end, start)
   assert.ok(stop > start)
-  const callback = source.slice(start, stop).replace(header, 'async function switchDocument(document, record, preserveCurrent = true, request) {')
+  const callback = source.slice(start, stop).replace(header, 'async function switchDocument(input, record, preserveCurrent = true, request) {')
   const lifecycle = source.match(/  useEffect\(\(\) => \{\n    switchLifetime\.current\+\+[\s\S]*?\n  \}, \[fileImports\]\)/g)
   assert.equal(lifecycle?.length, 1, 'import lifecycle callback missing or ambiguous')
   const current = editor(), fileImports = new ImportOwner(), changes = [], notices = [], diagnostics = []
@@ -146,6 +155,8 @@ function switchHarness() {
   let cleanup
   const context = vm.createContext({
     editor: current, fileImports, desktopSession: undefined, source: undefined, ready: true,
+    // The production guard decides between an authored and a prepared document.
+    isPreparedDocument,
     beginEditorAction: () => ({ result() {}, finish() {} }),
     CanvasAction: { import: 'import' }, ActionSource: { lifecycle: 'lifecycle' },
     ActionOutcome: { cancelled: 'cancelled', observed: 'observed', rejected: 'rejected' },

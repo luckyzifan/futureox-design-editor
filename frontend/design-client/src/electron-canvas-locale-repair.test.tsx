@@ -149,7 +149,8 @@ test('visible toolbar tooltip refreshes its language without replacing the focus
 
 test('App source wires locale into tool-label memoization while keeping Editor initialization stable (source contract only)', () => {
   const source = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8')
-  expect(source).toContain('const { locale, uiMode } = useInterfacePreferences()')
+  // Further preference fields (such as the keyboard layout) may join the destructuring.
+  expect(source).toMatch(/const \{ locale, uiMode(?:, [a-zA-Z]+)* \} = useInterfacePreferences\(\)/)
   expect(source).toContain('libraryRailVisible(uiMode, libraryHostKind(desktopSession))')
   expect(source).toContain('const toolbarText = canvasText[locale]')
   expect(source.match(/localizedToolLabel\(tool\.id, locale, tool\.label\)/g)?.length).toBe(2)

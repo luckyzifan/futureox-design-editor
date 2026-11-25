@@ -1033,19 +1033,32 @@ test('old pool-only storage stays resident without a maintenance fence or destru
   expect(renderer.free.get('1536:2048')).toEqual([texture])
   expect(renderer.poolReleaseEpoch.get(texture)).toBe(1)
 })
-test('real allocation pressure fences regardless of unknown, current or incomplete pool epochs',async()=>{
-  for(const change of ['unknown','zero','current','incomplete','coordinates','retired','pressure','required']){
-    const {driver,renderer,texture,MiB}=completedPoolFixture()
+test('real allocation pressure fences when the pool epoch is unknown, current or incomplete, or other work is pending',async()=>{
+  for(const change of ['unknown','zero','current','incomplete','coordinates','retired']){
+    const {driver,renderer,texture}=completedPoolFixture()
     if(change==='unknown')renderer.poolReleaseEpoch.delete(texture)
     if(change==='zero')renderer.poolReleaseEpoch.set(texture,0)
     if(change==='current')renderer.poolReleaseEpoch.set(texture,2)
     if(change==='incomplete')driver.completedResourceEpoch=0
     if(change==='coordinates')renderer.coordinateMaps.add({width:1,height:1,bytes:16,resource:{}})
     if(change==='retired')renderer.retireUpload({width:1,height:1,bytes:16,resource:{}})
-    if(change==='pressure')renderer.bytes=200*MiB
     await renderer.reclaimScratch(renderer.frameBudget-renderer.bytes+1)
     expect((driver.checkpoint as any).mock.calls[0]).toHaveLength(2)
     expect(driver.destroy).toHaveBeenCalledWith(texture)
+  }
+})
+test('real allocation pressure retires a completed pool surface before waiting',async()=>{
+  // The surface's completion in an earlier frame already covers admission.
+  // It is destroyed and the working set returns inside the budget without a GPU wait.
+  for(const change of ['required','pressure']){
+    const {driver,renderer,texture,MiB}=completedPoolFixture()
+    if(change==='pressure')renderer.bytes=200*MiB
+    const required=renderer.frameBudget-renderer.bytes+1
+    expect(renderer.poolReleaseEpoch.get(texture)).toBeLessThanOrEqual(driver.completedResourceEpoch)
+    await renderer.reclaimScratch(required)
+    expect(driver.checkpoint).not.toHaveBeenCalled()
+    expect(driver.destroy).toHaveBeenCalledWith(texture)
+    expect(renderer.bytes+required).toBeLessThanOrEqual(renderer.frameBudget)
   }
 })
 test('reacquiring and returning an old texture replaces its pool completion proof',async()=>{
