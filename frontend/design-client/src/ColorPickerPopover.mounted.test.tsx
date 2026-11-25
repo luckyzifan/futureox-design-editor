@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { ColorInput } from './ColorInput'
 import { Inspector } from './Inspector'
 import { Editor } from './engine'
-import { blank, node, stroke } from './model'
+import { blank, node, stroke, validateDocument } from './model'
 import { defaultColorSettings } from './color'
 import { PendingEditContext } from './pending-edit-context'
 import { dispatchEditorCommand } from './editor-commands'
@@ -17,6 +17,7 @@ import { DesktopSession } from './desktop-session'
 import type { DesktopBridge } from './desktop'
 import { interfacePreference } from './interface-preference'
 import { emptySystem, setVariableMode } from './design-system'
+import { decodeDocumentBinary, encodeDocumentBinary } from './kernel/binfmt'
 const bootstrap = await vi.hoisted(async () => {
   // @ts-expect-error jsdom runtime dependency
   const { JSDOM } = await import('jsdom')
@@ -99,6 +100,34 @@ test('Figma picker binds an existing color variable to the exact fill as one und
   expect(editor.canUndo).toBe(false)
   await act(async () => { editor.redo(); editor.change('Dark', document => setVariableMode(document, 'theme', 'Dark')) })
   expect(editor.state.doc.nodes[id].fills[0].color).toBe('#ffeecc')
+})
+test('Figma Libraries creates and persists a named local color style from the current solid fill', async () => {
+  interfacePreference.set({ uiMode: 'figma', locale: 'zh-CN' })
+  const before = editor.authoredDocument, version = editor.state.version
+  await act(async () => root.render(<PendingEditContext.Provider value={editor}><Inspector editor={editor} /></PendingEditContext.Provider>))
+  await click(button('颜色'))
+  await click(button('资料库'))
+  await click(button('新建本地颜色样式'))
+  const name = dialog()!.querySelector<HTMLInputElement>('form input')!
+  expect(document.activeElement).toBe(name)
+  expect(button('创建颜色样式').disabled).toBe(true)
+  await type(name, '  Badge Blue  ')
+  await click(button('创建颜色样式'))
+  expect(dialog()).toBeNull()
+  const after = editor.authoredDocument
+  const [style] = Object.values(after.designSystem!.styles)
+  expect(style).toMatchObject({ name: 'Badge Blue', kind: 'paint', value: [{ kind: 'solid', color: '#123456', opacity: .6 }] })
+  expect(after.nodes[id]).toEqual(before.nodes[id])
+  expect(editor.state.version).toBe(version + 1)
+  const reopened = validateDocument(decodeDocumentBinary(encodeDocumentBinary(after)))
+  expect(reopened.designSystem!.styles).toEqual(after.designSystem!.styles)
+  await click(button('颜色'))
+  await click(button('资料库'))
+  expect(dialog()!.querySelector('[title="Badge Blue"]')).toBeTruthy()
+  await click(button('关闭颜色编辑'))
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument).toEqual(before)
+  expect(editor.canUndo).toBe(false)
 })
 async function key(input: Element, key: string, options: object = {}) { await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options }))) }
 async function click(element: Element) { await act(async () => element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))) }
