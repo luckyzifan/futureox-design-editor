@@ -401,6 +401,15 @@ describe('Figma plugin host', () => {
     }))).toThrow(/too large/)
   })
 
+  it('normalizes safe numeric ids and reserves generated ids for installed folders', () => {
+    const manifest = { name: 'Local', api: '1.0.0', main: 'code.js' }
+    expect(parsePluginManifest({ ...manifest, id: 738167123456 }).id).toBe('738167123456')
+    expect(() => parsePluginManifest({ ...manifest, id: Number.MAX_SAFE_INTEGER + 1 })).toThrow(/id must be a string/)
+    const id = `futureox.local.folder:${'1'.repeat(64)}`
+    expect(() => parsePluginManifest({ ...manifest, id })).toThrow(/reserved/)
+    expect(parsePluginManifest({ ...manifest, id }, { desktopFolder: true }).id).toBe(id)
+  })
+
   it('stores clientStorage outside the document and plugin data inside one undo', async () => {
     const storage = memoryPluginStorage()
     const current = editor()

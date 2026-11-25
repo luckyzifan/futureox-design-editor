@@ -18,15 +18,15 @@ const copy = {
     load: '加载插件文件夹…',
     archive: '加载插件压缩包…',
     stop: '停止插件',
-    intro: '示例会在当前页面创建三个带标签的矩形。桌面版在启动时启用本机 plugins 文件夹里已声明的插件，也可以手动加载含 manifest.json 的文件夹，或一个 .zip / .figma 压缩包。启动扫描不会改画布，也不会执行压缩包。',
+    intro: '示例会在当前页面创建三个带标签的矩形。桌面版会扫描本机 plugins 文件夹。也可以手动加载含 manifest.json 的文件夹或 .zip / .figma 压缩包。',
     desktopUi: '插件界面在单独的沙箱窗口中打开。',
     webUi: '插件主程序已运行。插件界面窗口只在桌面版提供。',
     matrix: 'API 覆盖',
     path: '示例文件夹：frontend/design-client/plugins/labeled-rectangles',
-    enabled: '启动时已启用',
+    enabled: '本机插件',
     run: '运行',
     commands: '选择要运行的命令',
-    none: '这次启动没有启用本机插件。放入插件文件夹后重新打开桌面应用。',
+    none: '未找到本机插件。放入插件文件夹后重新打开此面板。',
     missing: '这个本机插件已不再启用。',
   },
   en: {
@@ -36,15 +36,15 @@ const copy = {
     load: 'Load plugin folder…',
     archive: 'Load plugin archive…',
     stop: 'Stop plugin',
-    intro: 'The sample creates three labeled rectangles on the current page. The desktop app enables declared plugins from its local plugins folder at startup, and can also load a folder that contains manifest.json or a .zip / .figma archive. The startup scan does not change the canvas and does not run an archive.',
+    intro: 'The sample creates three labeled rectangles on the current page. The desktop app scans its local plugins folder. You can also load a folder with manifest.json or a .zip / .figma archive.',
     desktopUi: 'The plugin interface opens in its own sandboxed window.',
     webUi: 'The plugin main script ran. The plugin UI window is available in the desktop app.',
     matrix: 'API coverage',
     path: 'Sample folder: frontend/design-client/plugins/labeled-rectangles',
-    enabled: 'Enabled at startup',
+    enabled: 'Local plugins',
     run: 'Run',
     commands: 'Choose a command',
-    none: 'No local plugins were enabled at startup. Add a plugin folder and reopen the desktop app.',
+    none: 'No local plugins found. Add a plugin folder and reopen this panel.',
     missing: 'That local plugin is no longer enabled.',
   },
 } as const
@@ -240,7 +240,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   async function runManifest(grant: string, manifestText: string) {
     const plugins = desktop?.plugins
     if (!plugins) return
-    const manifest = parseRichManifest(JSON.parse(manifestText))
+    const manifest = parseRichManifest(JSON.parse(manifestText), { desktopFolder: true })
     const paths = [manifest.main, ...pluginUiPaths(manifest)]
     const files = new Map<string, string>()
     let remaining = PLUGIN_LIMITS.uiBytes

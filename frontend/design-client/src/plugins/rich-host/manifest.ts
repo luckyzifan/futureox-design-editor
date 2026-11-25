@@ -2,6 +2,7 @@ import { PluginApiError } from './errors'
 import { PLUGIN_LIMITS } from './limits'
 
 export type PluginCommand = { name: string; command: string }
+const LOCAL_FOLDER_ID_PREFIX = 'futureox.local.folder:'
 
 export type PluginManifest = {
   name: string
@@ -84,12 +85,15 @@ function namedUiFiles(value: unknown) {
 }
 
 /** Parse a Figma-style manifest. Network and permissions are not granted; the plugin can still load. */
-export function parsePluginManifest(value: unknown): PluginManifest {
+export function parsePluginManifest(value: unknown, { desktopFolder = false } = {}): PluginManifest {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new PluginApiError('invalid_manifest', 'manifest.json must be an object')
   const record = value as Record<string, unknown>
   const name = text(record.name, 'name', 80)
-  const id = text(String(record.id ?? ''), 'id', 128)
+  const id = typeof record.id === 'number' && Number.isSafeInteger(record.id) && record.id > 0
+    ? String(record.id) : text(record.id, 'id', 128)
+  if (id.startsWith(LOCAL_FOLDER_ID_PREFIX) && (!desktopFolder || !/^[0-9a-f]{64}$/.test(id.slice(LOCAL_FOLDER_ID_PREFIX.length))))
+    throw new PluginApiError('invalid_manifest', 'This plugin id is reserved for an installed local folder')
   if (record.api !== '1.0.0') throw new PluginApiError('invalid_manifest', 'api must be "1.0.0"')
   const main = pluginRelativePath(record.main, '.js')
   const uiFiles = namedUiFiles(record.ui)

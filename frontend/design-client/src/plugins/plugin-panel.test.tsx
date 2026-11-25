@@ -76,7 +76,7 @@ test('plugin host lists startup plugins and runs only the declared files', async
     await Promise.resolve()
   })
   expect(document.body.textContent).toContain('Declared')
-  expect(document.body.textContent).toContain('Enabled at startup')
+  expect(document.body.textContent).toContain('Local plugins')
   expect(document.body.textContent).not.toContain('Evil')
   expect(document.body.textContent).not.toContain('Bad')
   expect(document.body.textContent).not.toContain('/tmp/secret-root')
@@ -111,12 +111,12 @@ test('a startup menu launch runs that declared plugin', async () => {
     await Promise.resolve()
     await Promise.resolve()
   })
-  expect(document.body.textContent).toContain('启动时已启用')
+  expect(document.body.textContent).toContain('本机插件')
   expect(calls).toEqual([{ grant, paths: ['code.js', 'ui.html'] }])
   expect(document.body.textContent).toContain('测试停止')
 })
 
-test('an empty startup scan tells the desktop user to reopen after adding a plugin', async () => {
+test('an empty catalog tells the desktop user to reopen the panel after adding a plugin', async () => {
   interfacePreference.set({ locale: 'en' })
   const desktop = {
     plugins: {
@@ -132,7 +132,7 @@ test('an empty startup scan tells the desktop user to reopen after adding a plug
     await Promise.resolve()
     await Promise.resolve()
   })
-  expect(document.body.textContent).toContain('No local plugins were enabled at startup')
+  expect(document.body.textContent).toContain('No local plugins found. Add a plugin folder and reopen this panel.')
   expect([...document.querySelectorAll('button')].some(button => button.textContent === 'Run')).toBe(false)
 })
 

@@ -154,7 +154,8 @@ test('startup scan enables declared plugins and ignores symlinks, FigJam, duplic
     await assert.rejects(() => host.read(replaced.grant, ['code.js']))
     assert.equal((await host.read(enabled[1].grant, ['code.js'])).files['code.js'], 'figma.closePlugin()')
     const again = host.enableDeclared([scanned.plugins[0]])
-    await assert.rejects(() => host.read(enabled[0].grant, ['code.js']))
+    assert.equal(again[0].grant, enabled[0].grant)
+    await assert.rejects(() => host.read(enabled[1].grant, ['code.js']))
     assert.equal((await host.read(again[0].grant, ['code.js'])).files['code.js'], 'first()')
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -190,6 +191,33 @@ test('desktop scan admits named UI and requires every declared page within its s
     const [enabled] = host.enableDeclared(scanned.plugins)
     const loaded = await host.read(enabled.grant, ['nested/import.html', 'export.html'])
     assert.deepEqual(loaded.files, { 'nested/import.html': '<p>Import</p>', 'export.html': '<p>Export</p>' })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('desktop plugin ids are stable for locally granted folders and safe JSON numbers', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'futureox-plugin-ids-'))
+  const base = { name: 'Local', api: '1.0.0', main: 'code.js' }
+  try {
+    await writePlugin(path.join(root, 'a'), base)
+    await writePlugin(path.join(root, 'b'), base)
+    await writePlugin(path.join(root, 'numeric'), { ...base, id: 738167123456 })
+    await writePlugin(path.join(root, 'unsafe'), { ...base, id: Number.MAX_SAFE_INTEGER + 1 })
+    const first = await scanDeclaredPlugins(root)
+    const [a, b, numeric] = first.plugins.map(plugin => plugin.id)
+    assert.match(a, /^futureox\.local\.folder:[0-9a-f]{64}$/)
+    assert.notEqual(a, b)
+    assert.equal(numeric, '738167123456')
+    assert.equal(first.skipped, 1)
+    await writePlugin(path.join(root, 'reserved'), { ...base, id: a })
+    const again = await scanDeclaredPlugins(root)
+    assert.deepEqual(again.plugins.map(plugin => plugin.id), [a, b, numeric])
+    assert.equal(again.skipped, 2)
+    const host = createPluginDirectoryHost()
+    const picked = await host.take(path.join(root, 'a'))
+    assert.equal(JSON.parse(picked.manifestText).id, a)
+    assert.equal(picked.manifestText.includes(root), false)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

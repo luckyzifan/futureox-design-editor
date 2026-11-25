@@ -16,6 +16,8 @@ Choose **载入插件文件夹** / **Load plugin folder** and pick a directory t
 
 If the manifest has a `menu`, the panel lists those commands and runs the one you pick. `figma.command` is that command, or `undefined` when there is no menu.
 
+The desktop app scans its local `plugins` folder at startup and when the plugin panel requests the catalog. Installed folders without an ID get a stable local identity based on the folder. IDs written as JSON numbers must be positive safe integers. Larger IDs can be written as strings.
+
 `frontend/design-client/src/plugins/sample-ui/` is a small UI plugin. Its `ui.html` posts `{ pluginMessage: { type: "create-label", text } }`. The host answers with `{ pluginMessage, pluginId }`.
 
 - The desktop panel opens the page in a sandboxed Electron window with Node integration disabled and context isolation enabled. The window permits inline UI code and blocks network requests.

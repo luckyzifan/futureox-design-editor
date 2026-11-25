@@ -406,6 +406,7 @@ register('pet-event', event => petHost ? petHost.event(event) : { ok: true, acce
 let pluginDirectories = null
 let pluginUi = null
 let localPlugins = []
+let pluginScan = null
 let pendingPluginLaunch = null
 function pluginDirectoryHost() {
   if (!pluginDirectories) pluginDirectories = createPluginDirectoryHost()
@@ -414,18 +415,24 @@ function pluginDirectoryHost() {
 function publicDeclaredPlugin(plugin) {
   return { grant: plugin.grant, id: plugin.id, name: plugin.name, displayName: plugin.displayName, manifestText: plugin.manifestText }
 }
-async function loadDeclaredPlugins() {
-  localPlugins = []
-  try {
-    const scanned = await scanDeclaredPlugins(path.join(app.getPath('userData'), 'plugins'))
-    localPlugins = pluginDirectoryHost().enableDeclared(scanned.plugins)
-    if (localPlugins.length || scanned.skipped || scanned.truncated) {
+function loadDeclaredPlugins() {
+  if (pluginScan) return pluginScan
+  pluginScan = (async () => {
+    let scanned
+    try { scanned = await scanDeclaredPlugins(path.join(app.getPath('userData'), 'plugins')) }
+    catch {
+      scanned = { plugins: [], skipped: 0, truncated: false }
+      console.warn('Local plugin scan skipped')
+    }
+    const next = pluginDirectoryHost().enableDeclared(scanned.plugins)
+    const changed = next.length !== localPlugins.length || next.some((plugin, index) => plugin.grant !== localPlugins[index]?.grant)
+    localPlugins = next
+    if (changed) {
+      rebuildApplicationMenu()
       console.log(`LOCAL_PLUGINS_ENABLED ${localPlugins.length}${scanned.skipped ? ` skipped ${scanned.skipped}` : ''}${scanned.truncated ? ' truncated' : ''}`)
     }
-  } catch {
-    localPlugins = []
-    console.warn('Local plugin scan skipped')
-  }
+  })().finally(() => { pluginScan = null })
+  return pluginScan
 }
 function pluginUiHost() {
   if (!pluginUi) pluginUi = createPluginUiHost({
@@ -445,6 +452,7 @@ register('plugins-pick', async () => {
 }, false)
 register('plugins-list', async value => {
   if (value !== undefined) throw new Error('Unexpected arguments')
+  await loadDeclaredPlugins()
   return { status: 'ok', plugins: localPlugins.map(publicDeclaredPlugin) }
 }, false)
 register('plugins-read', async value => {

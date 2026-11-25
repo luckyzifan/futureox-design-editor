@@ -1,6 +1,6 @@
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 export const PLUGIN_MANIFEST_BYTES = 64 * 1024
 export const PLUGIN_FILE_BYTES = 1024 * 1024
@@ -9,6 +9,7 @@ export const LOCAL_PLUGIN_SCAN_LIMIT = 64
 export const LOCAL_PLUGIN_ENABLE_LIMIT = 32
 const suffixes = new Set(['js', 'mjs', 'html', 'json', 'css', 'svg'])
 const NAMED_UI_LIMIT = 16
+const LOCAL_FOLDER_ID_PREFIX = 'futureox.local.folder:'
 
 export function pluginRelativeParts(value) {
   if (typeof value !== 'string' || value.length < 1 || value.length > 128) throw new Error('Invalid plugin file')
@@ -55,7 +56,8 @@ export function parseDeclaredPluginManifest(text) {
   try { value = JSON.parse(text) } catch { throw new Error('Invalid plugin manifest') }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid plugin manifest')
   const name = requiredText(value.name, 64)
-  const id = requiredText(value.id, 128)
+  const id = typeof value.id === 'number' && Number.isSafeInteger(value.id) && value.id > 0
+    ? String(value.id) : requiredText(value.id, 128)
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id)) throw new Error('Invalid plugin manifest')
   requiredText(value.api, 32)
   const main = pluginRelativeParts(value.main).join('/')
@@ -66,6 +68,17 @@ export function parseDeclaredPluginManifest(text) {
     throw new Error('Invalid plugin manifest')
   }
   return { id, name, main, ui, ...(uiFiles ? { uiFiles } : {}) }
+}
+
+async function readLocalPluginManifest(root) {
+  const text = await readPluginFile(root, 'manifest.json')
+  let manifest
+  try { manifest = JSON.parse(text) } catch { return text }
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return text
+  if (typeof manifest.id === 'string' && manifest.id.trim().startsWith(LOCAL_FOLDER_ID_PREFIX)) throw new Error('Reserved local plugin id')
+  if (Object.hasOwn(manifest, 'id')) return text
+  const id = LOCAL_FOLDER_ID_PREFIX + createHash('sha256').update(root).digest('hex')
+  return JSON.stringify({ ...manifest, id })
 }
 
 function limitOption(value, max) {
@@ -108,7 +121,7 @@ export async function scanDeclaredPlugins(root, options = {}) {
       const folderReal = await realpath(listed)
       const rel = path.relative(rootReal, folderReal)
       if (rel !== name || path.isAbsolute(rel)) { skipped += 1; continue }
-      const manifestText = await readPluginFile(folderReal, 'manifest.json')
+      const manifestText = await readLocalPluginManifest(folderReal)
       const manifest = parseDeclaredPluginManifest(manifestText)
       if (seen.has(manifest.id)) { skipped += 1; continue }
       await readPluginFile(folderReal, manifest.main)
@@ -142,32 +155,37 @@ export async function readPluginFile(root, relative) {
 
 export function createPluginDirectoryHost() {
   const grants = new Map()
+  let declared = new Map()
   let picked = null
   return {
     async take(root) {
       const id = randomUUID()
       const rootReal = await realpath(root)
-      const manifestText = await readPluginFile(rootReal, 'manifest.json')
+      const manifestText = await readLocalPluginManifest(rootReal)
       if (picked) grants.delete(picked)
       picked = id
-      grants.set(id, { root: rootReal, declared: false })
+      grants.set(id, { root: rootReal })
       return { grant: id, manifestText, displayName: path.basename(rootReal) }
     },
-    /** Session grants for plugins declared at startup. Replaces earlier declared grants and keeps a picked folder. */
+    /** Refresh declarations and retain grants for unchanged packages and the picked folder. */
     enableDeclared(plugins) {
-      for (const [id, entry] of [...grants]) if (entry.declared) grants.delete(id)
       const enabled = []
-      const seen = new Set()
-      if (!Array.isArray(plugins)) return enabled
-      for (const plugin of plugins) {
+      const next = new Map()
+      for (const plugin of Array.isArray(plugins) ? plugins : []) {
         if (enabled.length >= LOCAL_PLUGIN_ENABLE_LIMIT) break
         if (!plugin || typeof plugin.root !== 'string' || typeof plugin.id !== 'string' || typeof plugin.name !== 'string' || typeof plugin.manifestText !== 'string') continue
-        if (seen.has(plugin.id)) continue
-        seen.add(plugin.id)
-        const grant = randomUUID()
-        grants.set(grant, { root: plugin.root, declared: true })
+        if (next.has(plugin.id)) continue
+        const previous = declared.get(plugin.id)
+        const unchanged = previous?.root === plugin.root && previous.manifestText === plugin.manifestText
+        const grant = unchanged ? previous.grant : randomUUID()
+        if (!unchanged) grants.set(grant, { root: plugin.root })
+        next.set(plugin.id, { grant, root: plugin.root, manifestText: plugin.manifestText })
         enabled.push({ grant, id: plugin.id, name: plugin.name, displayName: plugin.name, manifestText: plugin.manifestText })
       }
+      for (const [id, entry] of declared) {
+        if (next.get(id)?.grant !== entry.grant) grants.delete(entry.grant)
+      }
+      declared = next
       return enabled
     },
     async read(id, paths) {
@@ -176,6 +194,7 @@ export function createPluginDirectoryHost() {
       if (!Array.isArray(paths) || paths.length < 1 || paths.length > 2) throw new Error('Invalid plugin read')
       const files = {}
       for (const relative of paths) files[relative] = await readPluginFile(entry.root, relative)
+      if (grants.get(id) !== entry) throw Object.assign(new Error('Plugin folder is no longer authorized'), { code: 'PLUGIN_GRANT' })
       return { files }
     },
     clear() {
