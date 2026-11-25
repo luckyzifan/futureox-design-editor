@@ -31,9 +31,11 @@ const responseReservations = new Map([
   ['workspace.revisions', 2 * 1024 * 1024],
   ['catalog.list', 32 * 1024 * 1024],
   ['catalog.scan', 2 * 1024 * 1024],
+  ['plugin.storage.read', 8 * 1024 * 1024 + 64 * 1024],
 ])
 const responseReservation = (method) => responseReservations.get(method) || 4096
 const writeMethods = new Set(['automation.config.set', 'automation.audit.append', 'automation.task.put', 'sketch.session.resizeLegacyContainer', 'sketch.session.setTextOverride', 'sketch.session.setLeafFrame', 'sketch.session.saveAs', 'sketch.session.undo', 'sketch.session.redo', 'sketch.session.open', 'sketch.session.rename', 'sketch.session.close', 'save', 'recovery.write', 'recovery.remove', 'catalog.register', 'catalog.scan', 'workspace.commit', 'workspace.trash', 'workspace.restore'])
+writeMethods.add('plugin.storage.write')
 
 for(const method of ['large.open','large.apply','large.commitCanvas','large.sceneCommit','large.undo','large.redo','large.export'])writeMethods.add(method)
 // Keep execution deadlines and cooperative cancellation on the same long-job set.
@@ -41,7 +43,7 @@ for(const method of ['large.open','large.apply','large.commitCanvas','large.scen
 const largeDocumentJobs = new Set(['large.open','large.export','large.project','large.scene','large.canvasLayout','large.canvasSnapshot','large.apply','large.commitCanvas','large.sceneCommit','large.undo','large.redo'])
 
 export class Sidecar extends EventEmitter {
-  constructor(executable, recoveryDir, { timeoutMs = 30_000, queueTimeoutMs = 600_000, spawnProcess = spawn, catalogDb, workspaceDb, maxPendingBytes = MAX_PENDING_BYTES, sqliteCodec = null } = {}) {
+  constructor(executable, recoveryDir, { timeoutMs = 30_000, queueTimeoutMs = 600_000, spawnProcess = spawn, catalogDb, workspaceDb, pluginStorageDb, maxPendingBytes = MAX_PENDING_BYTES, sqliteCodec = null } = {}) {
     super()
     if (!Number.isSafeInteger(maxPendingBytes) || maxPendingBytes < 1 || maxPendingBytes > MAX_PENDING_BYTES)
       throw new TypeError('Invalid aggregate request byte limit')
@@ -67,7 +69,9 @@ export class Sidecar extends EventEmitter {
     this.exitPromise = new Promise((resolve) => {
       this.resolveExit = resolve
     })
-    this.child = spawnProcess(executable, ['--recovery-dir', recoveryDir, ...(catalogDb ? ['--catalog-db', catalogDb] : []), ...(workspaceDb ? ['--workspace-db', workspaceDb] : [])], {
+    this.child = spawnProcess(executable, ['--recovery-dir', recoveryDir,
+      ...(catalogDb ? ['--catalog-db', catalogDb] : []), ...(workspaceDb ? ['--workspace-db', workspaceDb] : []),
+      ...(pluginStorageDb ? ['--plugin-storage-db', pluginStorageDb] : [])], {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
       shell: false,

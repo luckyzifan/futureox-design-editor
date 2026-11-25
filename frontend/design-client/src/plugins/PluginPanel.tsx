@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '../engine'
-import { desktopBridge, type DesktopBridge } from '../desktop'
+import { desktopBridge, type DesktopBridge, type PluginStorageOrigin } from '../desktop'
 import { useInterfacePreferences } from '../interface-preference'
 import { modalKeyDown, useModalOwnership } from '../modal-keyboard'
 import { acceptedDeclaredPlugins, type DeclaredPlugin } from './catalog'
-import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, pluginEditorEvents, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
+import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, pluginEditorEvents, PluginApiError, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
+import type { PluginStorageRequest } from './rich-host/client-storage'
 import { PLUGIN_LIMITS } from './rich-host/limits'
 import { assertPluginSource, missingPluginSource, pluginBundleFromSources, pluginUiPaths } from './rich-host/manifest'
 import { samplePlugin } from './sample-plugin'
@@ -67,10 +68,11 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   const [error, setError] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
   const [running, setRunning] = useState(false)
-  const [pending, setPending] = useState<PluginBundle | null>(null)
+  const [pending, setPending] = useState<{ bundle: PluginBundle; source?: PluginStorageOrigin } | null>(null)
   const [enabled, setEnabled] = useState<DeclaredPlugin[] | null>(null)
   const controller = useRef<PluginController | null>(null)
   const runAbort = useRef<AbortController | null>(null)
+  const endStorage = useRef<(() => void) | null>(null)
   const backdrop = useRef<HTMLDivElement>(null)
   const closeButton = useRef<HTMLButtonElement>(null)
   useModalOwnership(backdrop, closeButton, returnFocus)
@@ -86,6 +88,8 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     generation.current += 1
     runAbort.current?.abort()
     runAbort.current = null
+    endStorage.current?.()
+    endStorage.current = null
     controller.current?.close()
     controller.current = null
     uiOpen.current = false
@@ -150,21 +154,21 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   async function run(manifestText: string, mainSource: string, uiHtml: string, notes: string[], command?: string) {
     try {
       const manifest = parseRichManifest(JSON.parse(manifestText))
-      await runBundle({ manifest, main: mainSource, ui: uiHtml || null }, notes, command)
+      await runBundle({ manifest, main: mainSource, ui: uiHtml || null }, notes, { sample: true }, command)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
       stop()
     }
   }
 
-  async function runBundle(bundle: PluginBundle, notes: string[], command?: string) {
+  async function runBundle(bundle: PluginBundle, notes: string[], source?: PluginStorageOrigin, command?: string) {
     stop()
     const token = generation.current
     setError('')
     setWarnings(notes)
     // A manifest menu is a choice. Loading the file must not run commands[0].
     if (command === undefined && bundle.manifest.commands.length > 0) {
-      setPending(bundle)
+      setPending({ bundle, source })
       setStatus('')
       setRunning(false)
       return
@@ -180,10 +184,29 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     }
     try {
       const manifest = bundle.manifest
+      const nativeStorage = desktop?.plugins?.storage
+      let storageRequest: PluginStorageRequest | undefined
+      if (nativeStorage) {
+        if (!source) throw new PluginApiError('storage_failed', 'Plugin storage needs an authorized package')
+        const opened = await nativeStorage.begin({ source })
+        if (opened.status !== 'ok') throw new PluginApiError('storage_failed', 'Could not open plugin storage')
+        const lease = opened.token
+        const end = () => { void nativeStorage.end({ token: lease }).catch(() => {}) }
+        if (token !== generation.current) { end(); return }
+        endStorage.current = end
+        storageRequest = async operation => {
+          const saved = await nativeStorage.call({ token: lease, operation })
+          if (saved.status === 'ok') return saved.value
+          if (saved.status === 'cancelled') throw new PluginApiError('storage_failed', 'Plugin storage request cancelled')
+          const code = saved.code === 'PLUGIN_STORAGE_LIMIT' ? 'plugin_limit' : 'storage_failed'
+          throw new PluginApiError(code, saved.message)
+        }
+      }
       const next = await openPlugin(editor, bundle, {
         command,
         signal: abort.signal,
         onError: failed,
+        storageRequest,
         systemFonts: desktop?.fonts ? {
           list: async () => { const listed = await desktop.fonts!.list(); return listed.status === 'ok' ? listed.fonts : null },
           read: async request => { const read = await desktop.fonts!.read(request); return read.status === 'ok' ? { face: read.font, data: read.data } : null },
@@ -257,7 +280,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
         files.set(path, content)
       }
     }
-    await runBundle(pluginBundleFromSources(manifest, files), [])
+    await runBundle(pluginBundleFromSources(manifest, files), [], { folderGrant: grant })
   }
 
   async function runListed(plugin: DeclaredPlugin) {
@@ -276,8 +299,14 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
 
   async function loadArchive(file: File) {
     try {
-      const bundle = pluginBundleFromZip(new Uint8Array(await file.arrayBuffer()))
-      await runBundle(bundle, [])
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const bundle = pluginBundleFromZip(bytes)
+      let source: PluginStorageOrigin | undefined
+      if (desktop?.plugins?.storage) {
+        const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+        source = { archiveDigest: Array.from(hash, byte => byte.toString(16).padStart(2, '0')).join('') }
+      }
+      await runBundle(bundle, [], source)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
       stop()
@@ -307,8 +336,8 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
           {pending && <div className="plugin-command-list">
             <h3>{text.commands}</h3>
             <ul className="plugin-local-list" aria-label={text.commands}>
-              {pending.manifest.commands.map((item, index) => <li key={`${index}:${item.command}`}>
-                <button type="button" disabled={running} onClick={() => void runBundle(pending, warnings, item.command)}>{item.name}</button>
+              {pending.bundle.manifest.commands.map((item, index) => <li key={`${index}:${item.command}`}>
+                <button type="button" disabled={running} onClick={() => void runBundle(pending.bundle, warnings, pending.source, item.command)}>{item.name}</button>
               </li>)}
             </ul>
           </div>}

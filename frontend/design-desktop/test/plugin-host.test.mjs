@@ -224,3 +224,30 @@ test('desktop plugin ids are stable for locally granted folders and safe JSON nu
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test('desktop folders load a bounded sibling TypeScript entry without executing its build', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'futureox-plugin-source-'))
+  const folder = path.join(root, 'source')
+  const manifest = { name: 'Typed plugin', id: 'typed.plugin', api: '1.0.0', main: 'code.js' }
+  try {
+    await writePlugin(folder, manifest, {
+      'code.ts': "const text: string = 'typed'; throw new Error(text)",
+      'package.json': '{"scripts":{"build":"node build.mjs"}}',
+      'build.mjs': "throw new Error('build was run')",
+    })
+    const found = await scanDeclaredPlugins(root)
+    assert.equal(found.plugins[0].id, manifest.id)
+    const host = createPluginDirectoryHost()
+    const [enabled] = host.enableDeclared(found.plugins)
+    const read = () => host.read(enabled.grant, ['code.js'])
+    const typed = (await read()).files['code.js']
+    assert.match(typed, /const text\s*= 'typed'/)
+    assert.match(typed, /throw new Error/)
+    await assert.rejects(() => host.read(enabled.grant, ['code.ts']))
+    await writeFile(path.join(folder, 'code.js'), 'figma.closePlugin("compiled")')
+    assert.equal((await read()).files['code.js'], 'figma.closePlugin("compiled")')
+    await rm(path.join(folder, 'code.js'))
+    await writeFile(path.join(folder, 'code.ts'), "import { run } from './helper.js'; run()")
+    await assert.rejects(read, error => error.code === 'PLUGIN_SOURCE_UNSUPPORTED')
+  } finally { await rm(root, { recursive: true, force: true }) }
+})

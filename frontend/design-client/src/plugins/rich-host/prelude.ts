@@ -309,6 +309,20 @@ function hexChannels(input) {
     alpha: hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1,
   }
 }
+const storageWaiters = new Map()
+function storageCompletion(result) {
+  if (!result || !result.storageJob) return Promise.resolve(result)
+  return new Promise(function (resolve, reject) {
+    storageWaiters.set(result.storageJob, { resolve: resolve, reject: reject })
+  })
+}
+globalThis.__finishPluginStorage = function (id, payload) {
+  const waiter = storageWaiters.get(id)
+  storageWaiters.delete(id)
+  if (!waiter) return
+  if (!payload.ok) waiter.reject(new Error(payload.code + ': ' + payload.message))
+  else waiter.resolve(payload.value)
+}
 const payments = Object.freeze({ status: Object.freeze({ type: 'NOT_SUPPORTED' }) })
 const figma = {
   get payments() { return payments },
@@ -406,8 +420,8 @@ const figma = {
   },
   clientStorage: {
     getAsync: function (key) {
-      return Promise.resolve().then(function () {
-        const result = host('clientStorageGet', { key: key })
+      return Promise.resolve().then(async function () {
+        const result = await storageCompletion(host('clientStorageGet', { key: key }))
         if (!result.found || result.kind === 'undefined') return undefined
         if (result.kind === 'bytes') {
           const parts = result.parts || []
@@ -430,28 +444,33 @@ const figma = {
       })
     },
     setAsync: function (key, value) {
-      return Promise.resolve().then(function () {
-        if (value === undefined) { host('clientStorageSet', { key: key, kind: 'undefined' }); return }
+      return Promise.resolve().then(async function () {
+        if (value === undefined) {
+          await storageCompletion(host('clientStorageSet', { key: key, kind: 'undefined' }))
+          return
+        }
         if (typeof Uint8Array === 'function' && value instanceof Uint8Array) {
           const chunk = 120000
           const parts = Math.max(1, Math.ceil(value.length / chunk))
+          let result = null
           for (let index = 0; index < parts; index++) {
             const slice = value.subarray(index * chunk, Math.min(value.length, (index + 1) * chunk))
-            host('clientStorageSet', { key: key, kind: 'bytes', part: index, parts: parts, rawBytes: value.length, base64: figma.base64Encode(slice) })
+            result = host('clientStorageSet', { key: key, kind: 'bytes', part: index, parts: parts, rawBytes: value.length, base64: figma.base64Encode(slice) })
           }
+          await storageCompletion(result)
           return
         }
         let json
         try { json = JSON.stringify(value) } catch (error) { throw new Error('invalid_value: clientStorage value must be JSON') }
         if (typeof json !== 'string') throw new Error('invalid_value: clientStorage value must be JSON')
-        host('clientStorageSet', { key: key, json: json })
+        await storageCompletion(host('clientStorageSet', { key: key, json: json }))
       })
     },
     deleteAsync: function (key) {
-      return Promise.resolve().then(function () { host('clientStorageDelete', { key: key }) })
+      return Promise.resolve().then(async function () { await storageCompletion(host('clientStorageDelete', { key: key })) })
     },
     keysAsync: function () {
-      return Promise.resolve().then(function () { return host('clientStorageKeys', null) })
+      return Promise.resolve().then(function () { return storageCompletion(host('clientStorageKeys', null)) })
     },
   },
   util: {

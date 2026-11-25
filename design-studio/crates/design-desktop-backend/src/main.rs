@@ -1,13 +1,13 @@
 #![forbid(unsafe_code)]
 use futureox_design_desktop_backend::{
-    Backend, catalog::Catalog, runtime, workspace::WorkspaceStore,
+    Backend, catalog::Catalog, plugin_storage::PluginStorage, runtime, workspace::WorkspaceStore,
 };
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);
     if args.next().as_deref() != Some(std::ffi::OsStr::new("--recovery-dir")) {
-        return Err("Usage: futureox-design-desktop-backend --recovery-dir <absolute app-owned directory> [--catalog-db <absolute app-owned file>] [--workspace-db <absolute app-owned file>]".into());
+        return Err("Usage: futureox-design-desktop-backend --recovery-dir <absolute app-owned directory> [--catalog-db <absolute app-owned file>] [--workspace-db <absolute app-owned file>] [--plugin-storage-db <absolute app-owned file>]".into());
     }
     let directory = args
         .next()
@@ -15,11 +15,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("Missing recovery directory")?;
     let mut catalog_path = None;
     let mut workspace_path = None;
+    let mut plugin_storage_path = None;
     while let Some(flag) = args.next() {
         let target = if flag == "--catalog-db" && catalog_path.is_none() {
             &mut catalog_path
         } else if flag == "--workspace-db" && workspace_path.is_none() {
             &mut workspace_path
+        } else if flag == "--plugin-storage-db" && plugin_storage_path.is_none() {
+            &mut plugin_storage_path
         } else {
             return Err("Unexpected or repeated argument".into());
         };
@@ -40,6 +43,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .is_some_and(|path| path == &catalog_path)
     {
         return Err("Workspace and catalog must use different files".into());
+    }
+    if plugin_storage_path.as_ref().is_some_and(|path| path == &catalog_path || Some(path) == workspace_path.as_ref()) {
+        return Err("Plugin storage requires its own database file".into());
     }
     // Startup filesystem work is bounded too; no async worker blocks on fsync.
     let backend = tokio::task::spawn_blocking(move || Backend::new(&directory)).await??;
@@ -65,6 +71,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Ok(Err(error)) => backend.with_catalog_unavailable(error.code),
         Err(_) => backend.with_catalog_unavailable("CATALOG_ERROR"),
     };
+    let backend = if let Some(path) = plugin_storage_path {
+        match PluginStorage::open(&path).await {
+            Ok(store) => backend.with_plugin_storage(store),
+            Err(error) => {
+                eprintln!("Plugin storage initialization: {}", error.code);
+                backend
+            }
+        }
+    } else { backend };
     let backend = Arc::new(backend);
     let result = runtime::serve(backend.clone(), tokio::io::stdin(), tokio::io::stdout()).await;
     backend.close_stores().await;

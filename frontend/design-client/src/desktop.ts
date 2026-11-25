@@ -1,5 +1,6 @@
 /** Capability-only bridge. Native paths, Node and raw IPC never enter the renderer. */
 import type { DeclaredPlugin } from './plugins/catalog'
+import type { PluginStorageOperation } from './plugins/rich-host/client-storage'
 export type DesktopResult<T = Record<never, never>> =
   | ({ status: 'ok'; warning?: string } & T)
   | { status: 'cancelled' }
@@ -9,11 +10,17 @@ export type DesktopFont = { id: string; family: string; style: string; postscrip
 export type DesktopFontData = { font: DesktopFont; data: string; index: number; sourceIndex: number; extracted: boolean }
 export type DesktopCommand = 'settings' | 'automation-settings' | 'plugins' | 'copy-properties'|'paste-properties'|'select-matching'|'select-inverse'| 'open' | 'openPending' | 'save' | 'saveAs' | 'duplicate-document' | 'new' | 'new-page' | 'recover' | 'zoomIn' | 'zoomOut' | 'zoom100' | 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'copy-as-png' | 'copy-as-svg' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'select-all' | 'duplicate' | 'group' | 'ungroup' | 'delete' | 'zoom-fit' | 'zoom-selection' | 'center-selection'
 export type PluginDirectoryGrant = { grant: string; manifestText: string; displayName: string }
+export type PluginStorageOrigin = { folderGrant: string } | { archiveDigest: string } | { sample: true }
 export interface PluginBridge {
   pick(): Promise<DesktopResult<PluginDirectoryGrant>>
   /** Refreshes plugins declared in the desktop plugins folder. No filesystem paths. */
   list(): Promise<DesktopResult<{ plugins: DeclaredPlugin[] }>>
   read(request: { grant: string; paths: string[] }): Promise<DesktopResult<{ files: Record<string, string> }>>
+  storage?: {
+    begin(request: { source: PluginStorageOrigin }): Promise<DesktopResult<{ token: string }>>
+    call(request: { token: string; operation: PluginStorageOperation }): Promise<DesktopResult<{ value: unknown }>>
+    end(request: { token: string }): Promise<DesktopResult>
+  }
   openUi(request: { html: string; width?: number; height?: number; title?: string }): Promise<DesktopResult>
   postUi(request: { pluginMessage: unknown }): Promise<DesktopResult>
   closeUi(): Promise<DesktopResult>

@@ -121,6 +121,7 @@ pub(crate) fn sqlite_connection_method(method: &str) -> bool {
     method.starts_with("workspace.")
         || method.starts_with("automation.")
         || method == "catalog.list"
+        || matches!(method, "plugin.storage.read" | "plugin.storage.write")
 }
 
 /// Drive a SQLite future from a synchronous caller. The desktop runtime does
@@ -160,6 +161,16 @@ pub(crate) async fn handle_sqlite_request(
 
 async fn dispatch_sqlite(backend: &Backend, method: &str, params: Value) -> Result<Value> {
     match method {
+        "plugin.storage.read" | "plugin.storage.write" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Request {
+                scope: String,
+                operation: crate::plugin_storage::Operation,
+            }
+            let request = parse_params::<Request>(params)?;
+            backend.plugin_storage()?.perform(&request.scope, request.operation, method == "plugin.storage.write").await
+        }
         method if method.starts_with("automation.") => {
             let method = method.to_owned();
             crate::automation::dispatch(backend.workspace()?, &method, params).await

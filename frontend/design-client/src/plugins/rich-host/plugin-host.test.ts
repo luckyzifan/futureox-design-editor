@@ -422,6 +422,21 @@ describe('Figma plugin host', () => {
       .toThrow(/Missing built plugin entry dist\/code\.js/)
   })
 
+  it('runs a desktop standalone TypeScript entry after bounded type stripping', async () => {
+    const filename = new URL('../../../../design-desktop/src/plugin-source.mjs', import.meta.url)
+    const { compilePluginTypeScript } = await import(filename.href)
+    const script = await compilePluginTypeScript(`
+      const label: string = 'From a typed entry'
+      figma.createRectangle().name = label
+      figma.closePlugin('typed')
+    `)
+    const current = editor()
+    const run = await openPlugin(current, bundle('TypedEntry', script))
+    expect(run.closeMessage).toBe('typed')
+    expect(named(current, 'From a typed entry')?.kind).toBe('rectangle')
+    run.close()
+  })
+
   it('reads the requested styled text fields across actual UTF-16 runs', async () => {
     const current = editor()
     current.change('Styled text', doc => {
@@ -914,6 +929,47 @@ describe('Figma plugin host', () => {
     const storage = memoryPluginStorage()
     clientStorageSet(storage, 'quota.plugin', 'ok', JSON.stringify('hi'))
     expect(() => clientStorageSet(storage, 'quota.plugin', 'big', JSON.stringify('x'.repeat(5 * 1024 * 1024)))).toThrow(PluginApiError)
+  })
+
+  it('waits for native clientStorage writes and round-trips staged bytes and UTF-16 keys', async () => {
+    const values = new Map<string, unknown>()
+    const notified: string[] = []
+    let firstWrite: (() => void) | undefined
+    const opening = openPlugin(editor(), bundle('NativeStorage', `
+      ;(async function () {
+        await figma.clientStorage.setAsync('hello', { n: 3 })
+        figma.notify('stored')
+        const name = 'emoji-\\ud83d'
+        const data = new Uint8Array(120005)
+        data[120004] = 77
+        await figma.clientStorage.setAsync(name, data)
+        const stored = await figma.clientStorage.getAsync(name)
+        if (stored.length !== data.length || stored[120004] !== 77) throw new Error('staged bytes')
+        if (!(await figma.clientStorage.keysAsync()).includes(name)) throw new Error('key')
+        if ((await figma.clientStorage.getAsync('hello')).n !== 3) throw new Error('json')
+        await figma.clientStorage.deleteAsync('hello')
+        if (await figma.clientStorage.getAsync('hello') !== undefined) throw new Error('removed')
+      })()
+    `), {
+      onNotify: message => notified.push(message),
+      storageRequest: async operation => {
+        if (operation.kind === 'set') {
+          if (!firstWrite) await new Promise<void>(resolve => { firstWrite = resolve })
+          values.set(operation.key, operation.value)
+          return null
+        }
+        if (operation.kind === 'keys') return [...values.keys()]
+        if (operation.kind === 'delete') { values.delete(operation.key); return null }
+        return values.get(operation.key) ?? null
+      },
+    })
+    await vi.waitFor(() => expect(firstWrite).toBeDefined())
+    expect(notified).toEqual([])
+    firstWrite!()
+    const run = await opening
+    expect(notified).toEqual(['stored'])
+    expect(values.size).toBe(1)
+    run.close()
   })
 
   it('resolves an image already stored on the document by its SHA-1', async () => {

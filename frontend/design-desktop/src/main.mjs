@@ -21,7 +21,7 @@ import { mkdtempSync, realpathSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, realpath } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import {
   APP_URL,
@@ -57,6 +57,7 @@ import { renderCheckConfig, renderCheckHandler } from './render-check.mjs'
 import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
 import { selectGpuWorkingBudgetMiB } from './gpu-working-budget.mjs'
 import { createPluginCatalogWatcher, createPluginDirectoryHost, scanDeclaredPlugins } from './plugin-package.mjs'
+import { createPluginStorageHost } from './plugin-storage-host.mjs'
 import { createPluginUiHost } from './plugin-ui.mjs'
 
 let interfaceLocale = 'zh-CN'
@@ -425,6 +426,16 @@ function pluginDirectoryHost() {
   if (!pluginDirectories) pluginDirectories = createPluginDirectoryHost()
   return pluginDirectories
 }
+const pluginStorage = createPluginStorageHost({
+  folderScope: grant => pluginDirectoryHost().storageScope(grant),
+  request: async (method, params, bytes, assertCurrent) => {
+    if (bytes < SQLITE_OFFTHREAD_BYTES) return backend.request(method, params)
+    const id = randomUUID()
+    const prepared = await sqliteCodec.encodeRequest(id, method, params)
+    assertCurrent()
+    return backend.requestFrame(method, id, prepared.frame, prepared.wireBytes)
+  },
+})
 function publicDeclaredPlugin(plugin) {
   return { grant: plugin.grant, id: plugin.id, name: plugin.name, displayName: plugin.displayName, manifestText: plugin.manifestText }
 }
@@ -480,6 +491,18 @@ register('plugins-list', async value => {
 register('plugins-read', async value => {
   record(value, ['grant', 'paths'])
   return { status: 'ok', ...await pluginDirectoryHost().read(value.grant, value.paths) }
+}, false)
+register('plugins-storage-begin', async value => {
+  const { source } = record(value, ['source'])
+  return { status: 'ok', token: pluginStorage.begin(source) }
+}, false)
+register('plugins-storage-call', async value => {
+  const { token, operation } = record(value, ['token', 'operation'])
+  return { status: 'ok', value: await pluginStorage.call(token, operation) }
+}, false)
+register('plugins-storage-end', async value => {
+  pluginStorage.end(record(value, ['token']).token)
+  return { status: 'ok' }
 }, false)
 register('plugins-ui-open', async value => {
   record(value, ['html', 'width', 'height', 'title'])
@@ -1405,6 +1428,7 @@ async function buildWindow() {
   })
   window.webContents.on('render-process-gone', () => {
     void automationBridge.close()
+    pluginStorage.clear()
     dirty = true
   })
   window.once('ready-to-show', () => {
@@ -1437,6 +1461,7 @@ async function buildWindow() {
     designAgent.dispose()
     if (pluginUi) pluginUi.close()
     if (pluginDirectories) pluginDirectories.clear()
+    pluginStorage.clear()
     clearTimeout(closeTimer)
     clearTimeout(windowStateTimer)
     window = undefined
@@ -1589,7 +1614,10 @@ else {
       }
       const { recoveryDir, catalogDb, workspaceDb } = workspaceRoots.config(workspaceRoots.current)
       await mkdir(recoveryDir, { recursive: true, mode: 0o700 })
-      backend = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb, sqliteCodec })
+      let pluginStorageDb
+      try { pluginStorageDb = path.join(await realpath(app.getPath('userData')), 'plugin-storage-v1.sqlite3') }
+      catch { console.warn('Local plugin storage profile is unavailable') }
+      backend = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb, pluginStorageDb, sqliteCodec })
       let startupError
       try {
         const health = await backend.request('health')

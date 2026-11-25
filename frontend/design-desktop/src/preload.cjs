@@ -71,6 +71,11 @@ contextBridge.exposeInMainWorld(
       pick: () => invoke('plugins-pick'),
       list: () => invoke('plugins-list'),
       read: value => invoke('plugins-read', value),
+      storage: Object.freeze({
+        begin: value => invoke('plugins-storage-begin', value),
+        call: value => invoke('plugins-storage-call', value),
+        end: value => invoke('plugins-storage-end', value),
+      }),
       openUi: value => invoke('plugins-ui-open', value),
       postUi: value => invoke('plugins-ui-post', value),
       closeUi: () => invoke('plugins-ui-close'),
