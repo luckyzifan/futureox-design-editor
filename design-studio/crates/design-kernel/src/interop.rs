@@ -2119,12 +2119,14 @@ impl<'a> Importer<'a> {
                 5 => crate::layout::Align::SpaceEvenly,
                 _ => crate::layout::Align::Start,
             };
-            let align = |code: i64| match code {
+            let wrap = bool_at(group_layout, "wrappingEnabled");
+            let align_code = f64_at(group_layout, "alignItems");
+            let align = match align_code as i64 {
                 1 => crate::layout::Align::Center,
                 2 => crate::layout::Align::End,
+                3 if align_code == 3. && !wrap => crate::layout::Align::Stretch,
                 _ => crate::layout::Align::Start,
             };
-            let wrap = bool_at(group_layout, "wrappingEnabled");
             let stacking_order = match group_layout.get("stackingOrder").and_then(Value::as_u64) {
                 Some(0) => Some(crate::layout::StackingOrder::FirstOnTop),
                 Some(1) => Some(crate::layout::StackingOrder::LastOnTop),
@@ -2157,7 +2159,7 @@ impl<'a> Importer<'a> {
                 borders_affect_layout: bool_at(group_layout, "bordersAffectLayout"),
                 stacking_order,
                 justify: axis(justify(f64_at(group_layout, "justifyContent") as i64), "justify"),
-                align: axis(align(f64_at(group_layout, "alignItems") as i64), "align"),
+                align: axis(align, "align"),
                 ..crate::layout::Layout::default()
             });
         } else if let Some(group_layout) = layer.get("groupLayout")
@@ -6301,17 +6303,17 @@ fn flex_justify(align: crate::layout::Align, lossy: &mut Vec<String>) -> i64 {
     }
 }
 
-/// FlexAlign: START=0 CENTER=1 END=2 NONE=5. Flex has no stretch align —
-/// the counter axis stretches through per-child alignSelf instead.
-fn flex_align(align: crate::layout::Align, lossy: &mut Vec<String>) -> i64 {
+/// Sketch 2026.3 uses 3 for cross-axis stretch and rejects it when wrapping
+/// is enabled. The native fallback continues to use None (5).
+fn flex_align(align: crate::layout::Align, wrap: bool, lossy: &mut Vec<String>) -> i64 {
     use crate::layout::Align;
     match align {
         Align::Start => 0,
         Align::Center | Align::UnsafeCenter => 1,
         Align::End | Align::UnsafeEnd => 2,
-        other => {
+        Align::Stretch if !wrap => 3,
+        _ => {
             note_lossy(lossy, "stack-align-not-supported");
-            let _ = other;
             5
         }
     }
@@ -8229,7 +8231,7 @@ fn export_layer_impl(
             )
         {
             let justify = flex_justify(l.justify, &mut lossy);
-            let align = flex_align(l.align, &mut lossy);
+            let align = flex_align(l.align, l.wrap, &mut lossy);
             let mut group = json!({
                 "_class": "MSImmutableFlexGroupLayout",
                 "flexDirection": if l.mode == crate::layout::Flow::Vertical { 1 } else { 0 },

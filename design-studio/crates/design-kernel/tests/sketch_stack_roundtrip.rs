@@ -313,3 +313,91 @@ fn native_single_axis_pin_leaves_the_other_axis_unpinned() {
     assert_eq!(child["__horizontalPins"], 4);
     assert_eq!(child["verticalPins"], 0);
 }
+
+fn aligned_stack(align: &str, justify: &str, wrap: bool) -> Document {
+    serde_json::from_value(json!({
+        "schemaVersion": 29, "id": "d", "name": "Stack alignment",
+        "pages": [{"id":"p","name":"Page","background":"#ffffff","children":["stack"]}],
+        "nodes": {
+            "stack": {"id":"stack","kind":"frame","width":200,"height":80, "children":["a","b"],
+                "layout":{"mode":"horizontal","gap":10,"lineGap":6,"padding":[0,0,0,0],
+                    "justify":justify,"align":align,"wrap":wrap}},
+            "a": {"id":"a","kind":"rectangle","width":40,"height":20},
+            "b": {"id":"b","kind":"rectangle","width":30,"height":50}
+        }
+    })).unwrap()
+}
+
+#[test]
+fn unwrapped_native_sketch_stretch_preserves_cross_axis_layout_after_reopen() {
+    let fonts = Fonts::new();
+    let mut doc = aligned_stack("stretch", "start", false);
+    layout::resolve(&mut doc, &fonts).unwrap();
+    assert_eq!(box_at(&doc, "a"), [0.,0.,40.,80.]);
+    assert_eq!(box_at(&doc, "b"), [50.,0.,30.,80.]);
+    let archive = export_sketch(&doc).unwrap();
+    assert_eq!(first_sketch_layer(&archive)["groupLayout"]["alignItems"], 3);
+    let report = import_sketch_report(&archive).unwrap();
+    assert!(!report.warnings.iter().any(|warning| warning.contains("stack-align-not-supported")));
+    let mut doc = report.document;
+    doc.nodes.get_mut("a").unwrap().height = 20.;
+    doc.nodes.get_mut("b").unwrap().height = 50.;
+    layout::resolve(&mut doc, &fonts).unwrap();
+    assert_eq!(box_at(&doc, "a"), [0.,0.,40.,80.]);
+    assert_eq!(box_at(&doc, "b"), [50.,0.,30.,80.]);
+}
+
+#[test]
+fn wrapped_stretch_retains_the_native_fallback_warning_and_wrap_settings() {
+    let archive = export_sketch(&aligned_stack("stretch", "start", true)).unwrap();
+    let layer = first_sketch_layer(&archive);
+    assert_eq!(layer["groupLayout"]["alignItems"], 5);
+    assert_eq!(layer["groupLayout"]["wrappingEnabled"], true);
+    assert_eq!(layer["groupLayout"]["crossAxisGutterGap"], 6.);
+    let report = import_sketch_report(&archive).unwrap();
+    assert!(report.warnings.iter().any(|warning| warning.contains("stack-align-not-supported")));
+    assert!(!report.warnings.iter().any(|warning| warning.contains(WRAP_NOTE) || warning.contains(LINE_GAP_NOTE)));
+    let layout = report.document.nodes["stack"].layout.as_ref().unwrap();
+    assert_eq!(layout.align, layout::Align::Start);
+    assert!(layout.wrap);
+    assert_eq!(layout.line_gap, 6.);
+
+    let unsupported = with_first_sketch_layer(&archive, |layer| {
+        layer["groupLayout"]["alignItems"] = json!(3);
+    });
+    let report = import_sketch_report(&unsupported).unwrap();
+    let layout = report.document.nodes["stack"].layout.as_ref().unwrap();
+    assert_eq!(layout.align, layout::Align::Start);
+    assert!(layout.wrap);
+}
+
+#[test]
+fn sketch_start_center_end_and_distribution_keep_their_geometry() {
+    let fonts = Fonts::new();
+    for align in ["start", "center", "end"] {
+        for justify in ["start", "center", "end", "space-between", "space-around", "space-evenly"] {
+            let mut before = aligned_stack(align, justify, false);
+            layout::resolve(&mut before, &fonts).unwrap();
+            let archive = export_sketch(&before).unwrap();
+            let mut after = import_sketch_report(&archive).unwrap().document;
+            layout::resolve(&mut after, &fonts).unwrap();
+            for child in ["a", "b"] {
+                assert_eq!(box_at(&before, child), box_at(&after, child), "{align}/{justify}/{child}");
+            }
+        }
+    }
+}
+
+#[test]
+fn native_unwrapped_archive_stretch_code_executes_without_an_export_receipt() {
+    let fonts = Fonts::new();
+    let archive = export_sketch(&aligned_stack("start", "start", false)).unwrap();
+    let native = with_first_sketch_layer(&archive, |layer| {
+        layer["groupLayout"]["alignItems"] = json!(3);
+        layer["userInfo"]["com.futureox.design-kernel"].as_object_mut().unwrap().remove("stackAlignment");
+    });
+    let mut reopened = import_sketch_report(&native).unwrap().document;
+    layout::resolve(&mut reopened, &fonts).unwrap();
+    assert_eq!(box_at(&reopened, "a"), [0.,0.,40.,80.]);
+    assert_eq!(box_at(&reopened, "b"), [50.,0.,30.,80.]);
+}
