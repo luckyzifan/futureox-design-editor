@@ -19,13 +19,33 @@ test('dropping into an affine frame preserves world geometry and is one undo wit
  worldMatrix(e.state.doc,n.id).forEach((v,i)=>expect(v).toBeCloseTo(world[i],11))
  e.undo();expect(e.state.doc).toEqual(before);expect(e.state.doc.nodes[a.id].children).toEqual([n.id])
 })
-test('a locked ancestor, an instance, a descendant and a clipped-out frame cannot receive the drop',()=>{
- const {e,a,b,n}=fixture();e.update([b.id],{locked:true});expect(canvasDropFrame(e.state.doc,e.state.page,[n.id],{x:380,y:40})).toBeUndefined()
- expect(canvasDropFrame(e.state.doc,e.state.page,[a.id],{x:40,y:40})).toBeUndefined()
- const hidden=node('frame',300,0,80,80);e.change('Clipped frame',d=>{d.nodes[hidden.id]=hidden;d.nodes[a.id].children.push(hidden.id)})
- expect(canvasDropFrame(e.state.doc,e.state.page,[n.id],{x:310,y:30})).toBeUndefined()
- e.update([b.id],{locked:false});e.select([b.id]);e.createComponent();e.duplicate();const instance=e.state.selection[0]
- e.update([instance],{transform:[1,0,0,1,700,0]});expect(canvasDropFrame(e.state.doc,e.state.page,[n.id],{x:730,y:40})).toBeUndefined()
+test.each([false, true])('the oversized policy preserves target eligibility (allowOversize=%s)', allowOversize => {
+ const {e,a,b,n}=fixture()
+ const drop=(id:string,x:number,y:number)=>canvasDropFrame(e.state.doc,e.state.page,[id],{x,y},false,undefined,{allowOversize})
+ e.update([b.id],{locked:true})
+ expect(drop(n.id,380,40)).toBeUndefined()
+ expect(drop(a.id,40,40)).toBeUndefined()
+ const hidden=node('frame',300,0,80,80)
+ e.change('Clipped frame',d=>{d.nodes[hidden.id]=hidden;d.nodes[a.id].children.push(hidden.id)})
+ expect(drop(n.id,310,30)).toBeUndefined()
+ e.update([b.id],{locked:false});e.select([b.id]);e.createComponent();e.duplicate()
+ const instance=e.state.selection[0]
+ e.update([instance],{transform:[1,0,0,1,700,0]})
+ expect(drop(n.id,730,40)).toBeUndefined()
+})
+test('an oversized terminal placement also works without a published move preview',()=>{
+ const {e,b,n}=fixture()
+ e.update([n.id],{width:280,height:240})
+ const before=e.state.doc
+ e.begin('Drop into frame')
+ e.preview({[n.id]:{transform:[1,0,0,1,370,40]}})
+ const world=worldMatrix(e.state.doc,n.id)
+ e.finishCanvasMove({x:460,y:80},false,false,false,true)
+ e.commit()
+ expect(allParents(e.state.doc).get(n.id)).toBe(b.id)
+ expect(worldMatrix(e.state.doc,n.id)).toEqual(world)
+ expect(e.state.doc.nodes[b.id].clip).toBe(true)
+ e.undo();expect(e.state.doc).toEqual(before)
 })
 test.each([false, true])('dragging out of auto layout restores sizing and world position with published parents %s', reusePublishedParents => {
  const {e,a,n}=fixture();e.update([a.id],{layout:{...defaultLayout(),mode:'horizontal'}});const before=e.state.doc
@@ -65,7 +85,7 @@ test('Figma drop pruning respects live clips and keeps the painter order of reac
   })
   const page = e.state.page, index = createCanvasDropIndex(e.state.doc, page)
   const drop = (x: number, y: number, prune: boolean) =>
-    canvasDropFrame(e.state.doc, page, [n.id], { x, y }, false, index, prune)
+    canvasDropFrame(e.state.doc, page, [n.id], { x, y }, false, index, { pruneClippedRoots: prune })
   expect(drop(255, 45, true)).toBe(drop(255, 45, false))
   expect(drop(255, 45, true)).toBeUndefined()
   expect(drop(380, 45, true)).toBe(b.id)
