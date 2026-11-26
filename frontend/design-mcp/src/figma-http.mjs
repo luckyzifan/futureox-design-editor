@@ -11,6 +11,7 @@ import { parseOptions } from './cli.mjs'
 import { isRequestId } from './framing.mjs'
 
 const MAX_BODY = 1024 * 1024
+const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 const MAX_SESSIONS = 8
 const MAX_PENDING_REQUESTS = 32
 const SESSION_IDLE_MS = 30 * 60 * 1000
@@ -219,7 +220,7 @@ export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backen
     request.on('end', async () => {
       if (failed || response.writableEnded) return
       let message
-      try { message = JSON.parse(Buffer.concat(chunks).toString('utf8')) }
+      try { message = JSON.parse(UTF8_DECODER.decode(Buffer.concat(chunks))) }
       catch {
         response.writeHead(400, { 'content-type': 'application/json' })
         response.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Invalid JSON' } }))

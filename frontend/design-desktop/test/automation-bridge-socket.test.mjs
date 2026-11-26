@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { LocalAutomationBridge, registerAutomationBridge, MAX_AUTOMATION_FRAME_BYTES } from '../src/automation-bridge.mjs'
 import { assertSender, APP_URL } from '../src/security.mjs'
+import { startLoopbackFigmaMcp } from '../../design-mcp/src/figma-http.mjs'
 
 const methods = [
   { name: 'document.get', description: 'Read', inputSchema: {}, mutates: false },
@@ -176,4 +177,73 @@ test('IPC only binds the trusted main frame and menu enable is the only granting
   assert.equal(handlers.has('design-desktop:automation-enable'), true)
   assert.equal(handlers.has('design-desktop:automation-status'), true)
   assert.equal(api.menu.label, 'Automation')
+})
+
+test('loopback HTTP rejects malformed UTF-8 before dispatching through a real desktop grant', async t => {
+  const identity = { documentId: 'local-pin-proof', session: 12, revision: 5 }
+  const methods = ['page.list', 'node.query'].map(name => ({
+    name, description: 'Read local design', inputSchema: { type: 'object' }, mutates: false,
+  }))
+  const forwarded = []
+  const bridge = new LocalAutomationBridge({ dispatch: async ({ kind, request }) => {
+    if (kind === 'capabilities') {
+      return { ...identity, capabilities: { version: 1, methods, limits: {}, unsupported: [] } }
+    }
+    assert.equal(request.method, 'page.list')
+    forwarded.push(request.method)
+    return { ok: true, ...identity, method: request.method, result: { pages: [{ id: 'page', name: '画板' }] } }
+  } })
+  t.after(() => bridge.close())
+  bridge.setEditor({ documentId: identity.documentId, name: 'Local Unicode fixture', session: identity.session, methods })
+  const { endpoint, sessionId, token } = await bridge.enable('read')
+  const http = await startLoopbackFigmaMcp({ endpoint, sessionId, token })
+  t.after(() => http.close())
+  if (process.platform !== 'win32') assert.equal((await stat(endpoint)).isSocket(), true)
+
+  const headers = { accept: 'application/json, text/event-stream', 'content-type': 'application/json' }
+  const post = (body, extra = {}) => fetch(http.url, { method: 'POST', headers: { ...headers, ...extra }, body })
+  const rpc = (method, id, params) => JSON.stringify({ jsonrpc: '2.0', id, method, params })
+  const initialize = rpc('initialize', 1, {
+    protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'Local transport test', version: '1' },
+  })
+  const denied = await post(initialize)
+  assert.equal(denied.status, 401)
+  assert.equal(denied.headers.get('www-authenticate'), 'Bearer')
+  const authorization = `Bearer ${token}`
+  async function open() {
+    const response = await post(initialize, { authorization })
+    assert.equal(response.status, 200)
+    const session = response.headers.get('mcp-session-id')
+    assert.ok(session)
+    const active = {
+      authorization,
+      'mcp-session-id': session,
+      'mcp-protocol-version': (await response.json()).result.protocolVersion,
+    }
+    assert.equal((await post(rpc('notifications/initialized'), active)).status, 202)
+    return active
+  }
+
+  const first = await open()
+  const second = await open()
+  assert.notEqual(first['mcp-session-id'], second['mcp-session-id'])
+  const activeSession = first['mcp-session-id']
+  const metadata = rpc('tools/call', 2, {
+    name: 'get_metadata', arguments: { sessionId: activeSession, fileKey: 'fixture-key' },
+  })
+  const foreign = (await (await post(metadata, second)).json()).result
+  assert.equal(foreign.structuredContent.error.code, 'invalid_local_session')
+  assert.deepEqual(forwarded, [])
+
+  const [head, tail] = metadata.split('fixture-key')
+  const invalid = Buffer.concat([Buffer.from(head), Buffer.from([0xc3, 0x28]), Buffer.from(tail)])
+  const rejected = await post(invalid, first)
+  assert.equal(rejected.status, 400)
+  assert.equal((await rejected.json()).error.code, -32700)
+  assert.deepEqual(forwarded, [])
+
+  const recovered = (await (await post(metadata, first)).json()).result
+  assert.equal(recovered.isError, false)
+  assert.equal(recovered.structuredContent.result.pages[0].name, '画板')
+  assert.deepEqual(forwarded, ['page.list'])
 })
