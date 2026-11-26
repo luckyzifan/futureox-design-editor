@@ -12,6 +12,12 @@ pub(crate) enum ExportPadding {
 pub const MAX_SIDE: u32 = 16384;
 pub const MAX_PIXELS: u64 = 64_000_000;
 
+fn analytic_png_tile_shape(output_width: u32) -> (u32, u32) {
+    // Share overlapping filter input across a wider tile while keeping
+    // the full-width PNG row band within eight MiB.
+    (1024, 256.min(8 * 1024 * 1024 / (output_width * 4)))
+}
+
 /// Document-space raster region. The origin is never snapped to a device grid.
 /// The right/bottom extent rounds outwards to whole output pixels; this does not
 /// stretch the content. DPR, editor pan/zoom and page padding are not inputs.
@@ -203,9 +209,7 @@ impl Engine {
                     let coherent = options.raster_profile != RasterProfile::Analytic
                         && region_correlated_samples(doc, page_index, options.raster_profile, request.bounds, plan.view.zoom);
                     let (tile_width, rows) = if options.raster_profile == RasterProfile::Analytic {
-                        // Share overlapping filter input across a wider tile
-                        // while keeping the PNG row band within eight MiB.
-                        (1024, 256.min(8 * 1024 * 1024 / (options.width * 4)))
+                        analytic_png_tile_shape(options.width)
                     } else if options.raster_profile == RasterProfile::Figma
                         && options.width <= 1024 && options.height <= 1024
                         && crate::renderer::clipped_opaque_frame(doc, &doc.pages[page_index].children)
@@ -561,7 +565,8 @@ pub(crate) fn visit_backdrops(
             }
             emit(path.control_bounds(matrix), support);
         }
-        for child in &n.children { visit(doc, child, matrix, projected_color_capture, emit)?; }
+        // Boolean operands contribute geometry to their parent, not separate paints.
+        for child in n.render_children() { visit(doc, child, matrix, projected_color_capture, emit)?; }
         Ok(())
     }
     for (i,id) in roots.iter().enumerate() {
@@ -942,6 +947,44 @@ mod backdrop_budget_tests {
     }
 
     #[test]
+    fn analytic_png_only_charges_the_painted_boolean_backdrop_at_two_x() {
+        let backdrop = json!({"kind":"background-blur","radius":18.4,
+            "sketchBackdrop":true,"color":"#000000"});
+        let mut nodes = serde_json::Map::from_iter([
+            ("ink".into(), json!({"id":"ink","kind":"rectangle","width":30,"height":64,
+                "fills":[{"kind":"solid","color":"#4488cc"}]})),
+            ("lens".into(), json!({"id":"lens","kind":"vector","width":64,"height":64,
+                "booleanOperation":"union","effects":[backdrop.clone()],"children":[]})),
+        ]);
+        let operands = (0..6).map(|index| {
+            let id = format!("operand{index}");
+            nodes.insert(id.clone(), json!({"id":id,"kind":"rectangle","width":48,"height":48,
+                "transform":[1,0,0,1,index,8],"effects":[backdrop.clone()]}));
+            id
+        }).collect::<Vec<_>>();
+        nodes.get_mut("lens").unwrap()["children"] = json!(operands);
+        let mut doc = json!({"schemaVersion":20,"id":"d","name":"Boolean lens",
+            "pages":[{"id":"p","name":"page","children":["ink","lens"],"background":"#ffffff"}],
+            "nodes":nodes});
+        let request = RegionRequest { page_id: "p".into(),
+            bounds: ExportBounds { x: 0., y: 0., width: 64., height: 64. }, scale: 2.,
+            raster_profile: Some(RasterProfile::Analytic), node_ids: None, color_output: None };
+        let mut engine = Engine::new();
+        let render = |engine: &mut Engine, doc: &serde_json::Value| {
+            engine.load_document(&doc.to_string()).unwrap();
+            engine.render_region_png(&request).unwrap()
+        };
+        let actual = render(&mut engine, &doc);
+        for id in operands {
+            doc["nodes"][id]["effects"] = json!([]);
+        }
+        let reference = render(&mut engine, &doc);
+        assert_eq!(actual, reference);
+        doc["nodes"]["lens"]["effects"] = json!([]);
+        assert_ne!(actual, render(&mut engine, &doc), "the boolean result must still sample its backdrop");
+    }
+
+    #[test]
     fn analytic_png_still_rejects_a_chain_that_reads_past_the_budget() {
         let mut nodes = serde_json::Map::new();
         let mut roots = Vec::new();
@@ -1226,7 +1269,12 @@ pub(crate) fn render_png(engine: &mut Engine, options: &RenderOptions) -> Result
         let bytes = engine.render_exact(options)?;
         return encode_rgba(options.width, options.height, &bytes);
     }
-    render_tiled(engine, options, 512, 128)
+    let (tile_width, rows) = if options.raster_profile == RasterProfile::Analytic {
+        analytic_png_tile_shape(options.width)
+    } else {
+        (512, 128)
+    };
+    render_tiled(engine, options, tile_width, rows)
 }
 fn render_tiled(
     engine: &mut Engine,
