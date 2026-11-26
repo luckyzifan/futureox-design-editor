@@ -85,3 +85,41 @@ fn radius4_outer_shadow_integrates_one_output_cell() {
     assert_eq!(at(64, 81), [196, 196, 196, 255], "lower penumbra center");
     assert_eq!(at(64, 85), [243, 243, 243, 255], "lower tail");
 }
+
+#[test]
+fn offset_outer_shadow_viewport_matches_the_same_full_frame_pixels() {
+    let case = shadow_case();
+    let document = case["document"].to_string();
+    let mut options = case["options"].clone();
+    options["rasterProfile"] = json!("figma");
+    let options: RenderOptions = serde_json::from_value(options).unwrap();
+    let mut full_engine = Engine::new();
+    full_engine.load_document(&document).unwrap();
+    let full = full_engine.render(&options).unwrap();
+    assert_eq!(
+        sha256(&full),
+        "6b49319c86f3c0fa094866f490dd5c76abd1212627f9509ffc8250d2ff445d3e",
+        "full output must retain the frozen pre-fix bytes"
+    );
+
+    let (x, y, width, height) = (19, 31, 90, 61);
+    let mut cropped = options.clone();
+    cropped.width = width;
+    cropped.height = height;
+    cropped.view.x -= f64::from(x);
+    cropped.view.y -= f64::from(y);
+    let mut crop_engine = Engine::new();
+    crop_engine.load_document(&document).unwrap();
+    let actual = crop_engine.render(&cropped).unwrap();
+    let expected = (y..y + height)
+        .flat_map(|row| {
+            let start = ((row * options.width + x) * 4) as usize;
+            full[start..start + (width * 4) as usize].iter().copied()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(actual.len(), expected.len());
+    assert_eq!(gap(&actual, &expected), (0, 0));
+    let ledger = crop_engine.compositing_ledger();
+    assert_eq!(ledger.budget_rejections, 0);
+    assert!(ledger.scene_peak_bytes <= full_engine.compositing_ledger().scene_peak_bytes);
+}

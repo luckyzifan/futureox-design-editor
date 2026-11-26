@@ -4548,6 +4548,12 @@ impl Painter<'_> {
             && view.right() <= interior.right()
             && view.bottom() <= interior.bottom()
     }
+    fn uses_figma_shadow_output_grid(&self, radius: f64, spread: f64, inner: bool) -> bool {
+        // The frozen SDR reference establishes only a four-output-pixel
+        // outer shadow, without spread, on the 2× Figma export grid.
+        self.compatible && !inner && radius == 8. && spread == 0.
+            && self.profile == crate::fidelity::RasterProfile::Figma
+    }
     fn shadow_mask(
         &self,
         basis: &crate::blend::Surface,
@@ -4555,11 +4561,7 @@ impl Painter<'_> {
         spread: f64,
         inner: bool,
     ) -> Result<crate::blend::Surface, String> {
-        // The frozen SDR reference establishes only a four-output-pixel
-        // outer shadow, without spread, on the 2× Figma export grid.
-        if self.compatible && !inner && radius == 8. && spread == 0.
-            && self.profile == crate::fidelity::RasterProfile::Figma
-        {
+        if self.uses_figma_shadow_output_grid(radius, spread, inner) {
             return effects::shadow_alpha_output_grid(basis, (radius / 2.) as i32);
         }
         effects::shadow_alpha(basis, self.blur_filter(radius), spread, inner)
@@ -5341,7 +5343,26 @@ impl Painter<'_> {
         } else {
             0
         };
+        let full = prepared.bounds.intersect(self.extent);
         let mut needed = content.union(self.viewport.expand(read));
+        if self.png_frame.is_none()
+            && let [effect] = shadows.as_slice()
+            && self.uses_figma_shadow_output_grid(
+                effect.blur_radius() * scale, effect.spread * scale, effect.kind == "inner-shadow",
+            )
+        {
+            let offset = prepared.matrix.point(Point::new(effect.x, effect.y))
+                - prepared.matrix.point(Point::default());
+            if offset.x != 0. || offset.y != 0. {
+                // The color pass reads this filtered mask before applying the
+                // offset. Retain its bilinear neighbors and complete 2× pairs.
+                let view = self.viewport;
+                let start = Point::new(f64::from(view.x), f64::from(view.y)) - offset;
+                let end = Point::new(f64::from(view.right()), f64::from(view.bottom())) - offset;
+                let mask_read = Rect::from_points([start, end].into_iter()).expand(2);
+                needed = needed.union(mask_read.intersect(full));
+            }
+        }
         if let Some(mut frame) = self.png_frame {
             // Keep the read margin of a single analytic outer shadow past
             // the output edge, where an offset tap can still reach it.
@@ -5351,7 +5372,6 @@ impl Painter<'_> {
             needed = needed.intersect(frame);
         }
         let needed = needed.intersect(self.extent);
-        let full = prepared.bounds.intersect(self.extent);
         if needed.empty() || needed.pixels() >= full.pixels() {
             None
         } else {
