@@ -180,7 +180,7 @@ function slices(node: DesignNode, start: number, end: number) {
     fontSize: node.fontSize,
     weight: style?.weight ?? 400,
     letter: style?.letterSpacing ?? 0,
-    line: style?.lineHeight ?? 1.35,
+    line: style?.lineHeightPixels !== undefined ? style.lineHeightPixels / node.fontSize : style?.lineHeight ?? 1.35,
   }
   const pieces: { start: number; end: number; fontSize: number; weight: number; letter: number; line: number }[] = []
   let cursor = start
@@ -194,7 +194,8 @@ function slices(node: DesignNode, start: number, end: number) {
       fontSize: run.fontSize ?? base.fontSize,
       weight: run.weight ?? base.weight,
       letter: run.letterSpacing ?? base.letter,
-      line: run.lineHeight ?? base.line,
+      line: run.lineHeight ?? (style?.lineHeightPixels !== undefined
+        ? style.lineHeightPixels / (run.fontSize ?? base.fontSize) : base.line),
     })
     cursor = to
   }
@@ -296,8 +297,23 @@ function adjustTracking(node: DesignNode, delta: 1 | -1, range: 'all' | readonly
 function adjustLine(node: DesignNode, delta: 1 | -1, range: 'all' | readonly [number, number]) {
   if (range === 'all' || coversWholeText(node, range)) {
     let changed = false
-    const next = stepLine(node.textStyle?.lineHeight ?? 1.35, node.fontSize, delta)
-    if (next !== undefined) { applyWholeTextStyle(node, { lineHeight: next }); changed = true }
+    const style = node.textStyle
+    const pixels = style?.lineHeightPixels
+    if (pixels === undefined) {
+      const next = stepLine(style?.lineHeight ?? 1.35, node.fontSize, delta)
+      if (next !== undefined) {
+        applyWholeTextStyle(node, { lineHeight: next,
+          ...(style?.lineHeightAuto ? { lineBoxBaseline: 'figma-pixel-leading' as const } : {}) })
+        changed = true
+      }
+    } else {
+      const next = Math.max(.1, Math.min(40960, pixels + delta))
+      if (next !== pixels) {
+        applyWholeTextStyle(node, { lineHeightPixels: next,
+          lineHeight: Math.max(.1, Math.min(10, next / node.fontSize)) })
+        changed = true
+      }
+    }
     for (const run of node.textRuns ?? []) if (run.lineHeight !== undefined) {
       const runNext = stepLine(run.lineHeight, run.fontSize ?? node.fontSize, delta)
       if (runNext !== undefined) { run.lineHeight = runNext; changed = true }

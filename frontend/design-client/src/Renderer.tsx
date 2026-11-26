@@ -223,7 +223,7 @@ const Surface = React.memo(function Surface({ n, fonts, textMode }: { n: DesignN
         dominantBaseline="text-before-edge"
       >
         {n.text.split('\n').map((line, i) => (
-          <tspan key={i} x={0} y={i * n.fontSize * (n.textStyle?.lineHeight || 1.35)}>
+          <tspan key={i} x={0} y={i * (n.textStyle?.lineHeightPixels ?? n.fontSize * (n.textStyle?.lineHeight || 1.35))}>
             {line || ' '}
           </tspan>
         ))}

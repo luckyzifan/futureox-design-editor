@@ -62,6 +62,8 @@ export function figTextCase(value: unknown): TextRun['textCase'] {
     case 'UPPER': return 'upper'
     case 'LOWER': return 'lower'
     case 'TITLE': return 'title'
+    case 'SMALL_CAPS': return 'smallCaps'
+    case 'SMALL_CAPS_FORCED': return 'smallCapsForced'
     case 'ORIGINAL': return 'original'
   }
 }
@@ -164,7 +166,7 @@ function axisTag(variation: any): string | undefined {
 }
 
 /** Node-level OpenType toggles, variation axes, vertical alignment and decoration.
- * `wght` stays on the weight field. TITLE/SMALL_CAPS remain outside the text model. */
+ * `wght` stays on the weight field. */
 export function importFigTextExtras(node: DesignNode, record: any, warnings: ImportWarningSink) {
   const style = node.textStyle
   if (!style) return

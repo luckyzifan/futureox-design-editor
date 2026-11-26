@@ -400,6 +400,7 @@ function applyText(fields: Record<string, unknown>, override: any, target: { tex
     const multiplier = lineHeightMultiplier(override.lineHeight, size)
     if(multiplier !== undefined && multiplier >= 0.1 && multiplier <= 10) {
       style.lineHeight = multiplier
+      style.lineHeightPixels = override.lineHeight?.units === 'PIXELS' && override.lineHeight.value >= .1 ? override.lineHeight.value : undefined
       style.lineHeightAuto = false
       style.lineBoxBaseline = 'figma-pixel-leading'
       changed = true

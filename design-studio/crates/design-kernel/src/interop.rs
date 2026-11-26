@@ -8225,8 +8225,8 @@ fn export_layer_impl(
                         // Only authored line heights become fixed Sketch
                         // line heights; the kernel default stays implicit so
                         // Sketch's own font metrics keep rendering.
-                        if s.line_height > 0. && (s.line_height - 1.35).abs() > 1e-9 {
-                            let px = s.line_height * size;
+                        if s.has_fixed_line_height() {
+                            let px = s.line_height_at(size);
                             para.insert("minimumLineHeight".into(), json!(px));
                             para.insert("maximumLineHeight".into(), json!(px));
                         }
@@ -8403,8 +8403,7 @@ fn export_layer_impl(
                         if style.is_some_and(|s| s.line_box_baseline == "sketch-font-leading") {
                             1
                         } else if style.is_some_and(|s| {
-                            s.line_box_baseline == "sketch-fixed-advance"
-                                || (s.line_height > 0. && (s.line_height - 1.35).abs() > 1e-9)
+                            s.line_box_baseline == "sketch-fixed-advance" || s.has_fixed_line_height()
                         }) {
                             3
                         } else {
@@ -9634,8 +9633,8 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                                 "kerning": s.letter_spacing,
                                 "paragraphStyle": {"_class": "paragraphStyle",
                                     "alignment": paragraph_alignment(&s.align),
-                                    "minimumLineHeight": s.line_height * font_size,
-                                    "maximumLineHeight": s.line_height * font_size,
+                                    "minimumLineHeight": if s.line_height_auto { 0. } else { s.line_height_at(font_size) },
+                                    "maximumLineHeight": if s.line_height_auto { 0. } else { s.line_height_at(font_size) },
                                     "paragraphSpacing": s.paragraph_spacing,
                                     "firstLineHeadIndent": s.paragraph_indent,
                                     "allowsDefaultTighteningForTruncation": 0}

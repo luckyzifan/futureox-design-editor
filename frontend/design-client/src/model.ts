@@ -449,7 +449,8 @@ export type DesignNode = {
   instance?: ComponentInstance
   instanceOrigin?: { owner: string; key: string; source: string }
 }
-export type TextCase = 'original' | 'upper' | 'lower' | 'title'
+export const TEXT_CASES = ['original', 'upper', 'lower', 'title', 'smallCaps', 'smallCapsForced'] as const
+export type TextCase = typeof TEXT_CASES[number]
 export type TextStyle = {
   verticalAlign?: 'top' | 'center' | 'bottom'
   textCase?: TextCase
@@ -465,6 +466,8 @@ export type TextStyle = {
   fallbacks: string[]
   weight: number
   lineHeight: number
+  /** Absolute advance for an explicitly pixel-sized line box. */
+  lineHeightPixels?: number
   /** Imported line boxes retain the baseline and advance policy of the source. */
   lineBoxBaseline?: '' | 'nearest-point' | 'sketch-font-leading' | 'sketch-fixed-advance' | 'figma-pixel-leading' | 'figma-font-metrics'
   /** Text with an automatic line box uses the font's own line metrics. */
@@ -1050,13 +1053,14 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
   function validateText(n: DesignNode) {
     const style = n?.textStyle === undefined ? defaultStyle : { ...defaultStyle, ...n.textStyle }
     const cases = [style.textCase, ...(n.textRuns || []).map(r => r.textCase)]
-    if (cases.some(c => c !== undefined && !['original','upper','lower','title'].includes(c))) throw Error('文字大小写属性无效')
+    if (cases.some(c => c !== undefined && !TEXT_CASES.includes(c))) throw Error('文字大小写属性无效')
     if (d.schemaVersion < 15 && (cases.some(c => c !== undefined && c !== 'original') || n.textRuns?.some(r=>r.textCase !== undefined))) throw Error('文字显示大小写需要设计文件版本 15')
     if (
       n?.textStyle !== undefined &&
       (!isObject(n.textStyle) ||
         !finite(style.weight, 1, 1000) ||
         !finite(style.lineHeight, 0.1, 10) ||
+        (style.lineHeightPixels !== undefined && !finite(style.lineHeightPixels, 0.1, 40960)) ||
         !finite(style.letterSpacing, -1000, 1000) ||
         typeof style.wrap !== 'boolean' ||
         !['start', 'center', 'end', 'justify'].includes(style.align) ||

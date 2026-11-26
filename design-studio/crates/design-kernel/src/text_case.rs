@@ -64,7 +64,6 @@ pub(crate) fn display_text(text: &str, case: TextCase, runs: &[TextRun]) -> Disp
             let mut r = r.clone();
             r.start = positions[r.start];
             r.end = positions[r.end];
-            r.text_case = None;
             r
         })
         .collect();
@@ -126,6 +125,12 @@ mod tests {
         let sc = display_text("Small Caps", TextCase::SmallCaps, &[]);
         assert_eq!(sc.text, "Small Caps");
         assert_eq!(sc.starts, (0..11).collect::<Vec<_>>());
+        let mixed = display_text("aßZ", TextCase::Upper, &[TextRun {
+            start: 2, end: 3, text_case: Some(TextCase::SmallCapsForced), ..Default::default()
+        }]);
+        assert_eq!(mixed.text, "ASSZ");
+        assert_eq!(mixed.runs[0].start, 3);
+        assert_eq!(mixed.runs[0].text_case, Some(TextCase::SmallCapsForced));
         assert_eq!(
             display_text("Aa", TextCase::SmallCapsForced, &[]).text,
             "Aa"
