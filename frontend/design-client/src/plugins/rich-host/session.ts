@@ -932,6 +932,20 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       apply(matrix, { x: 0, y: node.height }),
     ])
   }
+  function fixedChildCount(node: DesignNode) {
+    if (!node.prototypeOverflow || node.prototypeOverflow === 'none') return 0
+    const source = editor.authoredDocument.designSystem?.sketchContainers?.nodeMetadata as
+      Record<string, { bindings?: Record<string, string> }> | undefined
+    if (!source) return 0
+    // Children are in back-to-front painter order, including reversed auto-layout stacks.
+    let count = 0
+    for (let index = node.children.length - 1; index >= 0; index--) {
+      const child = source[node.children[index]]
+      if (child?.bindings?.figScrollBehavior !== 'FIXED_WHEN_CHILD_OF_SCROLLING_FRAME') break
+      count++
+    }
+    return count
+  }
   function nodeView(id: string) {
     let result: { node: DesignNode; parentId?: string; pageId: string }
     try { result = execute('node.get', { id }, false) as typeof result }
@@ -939,7 +953,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       if (error instanceof PluginApiError && error.code === 'not_found') return null
       throw error
     }
-    const node = result.node
+    const node = result.node, type = figmaType(node)
     const same = node.radii.every(radius => radius === node.radii[0])
     const layout = node.layout
     const sizing = node.sizing
@@ -947,7 +961,8 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     const family = fontId === 'default' ? 'Noto Sans SC' : families()[fontId]?.family || 'Noto Sans SC'
     const align = (value: string | undefined, fallback: string) => ALIGN_TO_FIGMA[value || ''] || fallback
     return {
-      id: node.id, type: figmaType(node), name: node.name, x: node.transform[4], y: node.transform[5],
+      id: node.id, type, name: node.name, x: node.transform[4], y: node.transform[5],
+      ...(type === 'FRAME' ? { numberOfFixedChildren: fixedChildCount(node) } : {}),
       width: node.width, height: node.height, rotation: rotationOf(node.transform),
       relativeTransform: toTransform(node.transform),
       absoluteTransform: toTransform(worldMatrix(editor.authoredDocument, id)),
@@ -1133,21 +1148,18 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return { id, name: found.name, defaultModeId: found.defaultMode, modes: found.modes.map(name => ({ modeId: name, name })), variableIds: variables.map(item => item.id) }
   }
   function variableView(id: string, includeValues: boolean) {
-    try {
-      const record = execute('variable.get', { variableId: id }, false) as DesignSystem['variables'][string] & { id: string }
-      const resolvedType = { color: 'COLOR', number: 'FLOAT', boolean: 'BOOLEAN', string: 'STRING' }[record.kind]
-      const info = { id: record.id, name: record.name, collectionId: record.collection, resolvedType }
-      if (!includeValues) return info
-      const valuesByMode = Object.fromEntries(Object.entries(record.values).map(([mode, value]) => {
-        if (typeof value === 'object') return [mode, { type: 'VARIABLE_ALIAS', id: value.alias }]
-        if (record.kind === 'color' && typeof value === 'string') return [mode, hexToFigmaColor(value)]
-        return [mode, value]
-      }))
-      return { ...info, valuesByMode }
-    } catch (error) {
-      if (error instanceof PluginApiError && error.message.includes('Unknown variable')) return null
-      throw error
-    }
+    const variables = editor.authoredDocument.designSystem?.variables
+    if (!variables || !Object.hasOwn(variables, id)) return null
+    const record = execute('variable.get', { variableId: id }, false) as DesignSystem['variables'][string] & { id: string }
+    const resolvedType = { color: 'COLOR', number: 'FLOAT', boolean: 'BOOLEAN', string: 'STRING' }[record.kind]
+    const info = { id: record.id, name: record.name, collectionId: record.collection, resolvedType }
+    if (!includeValues) return info
+    const valuesByMode = Object.fromEntries(Object.entries(record.values).map(([mode, value]) => {
+      if (typeof value === 'object') return [mode, { type: 'VARIABLE_ALIAS', id: value.alias }]
+      if (record.kind === 'color' && typeof value === 'string') return [mode, hexToFigmaColor(value)]
+      return [mode, value]
+    }))
+    return { ...info, valuesByMode }
   }
   function documentView() {
     const doc = execute('document.get', {}, false) as { id: string; name: string; pages: { id: string; name: string; children: string[] }[] }
@@ -1717,8 +1729,10 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         return listed.filter(item => !wanted || item.kind === wanted).map(item => ({ id: item.id }))
       }
       if (op === 'variableRead') {
+        const id = body.id
+        if (typeof id !== 'string' || id.length > 128) return null
         flush()
-        return variableView(shortText(body.id, 'id', 128), body.includeValues === true)
+        return variableView(id, body.includeValues === true)
       }
       if (op === 'variableCreate') {
         const kind = variableKind(body.resolvedType)
