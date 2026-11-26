@@ -1123,3 +1123,74 @@ fn shared_prepare_window_does_not_repeat_distant_roots_on_every_tile() {
         desc.nodes
     );
 }
+
+#[test]
+fn analytic_source_projection_retains_only_the_original_sketch_gradient() {
+    let mut source = document();
+    source.color_management = None;
+    let node = serde_json::from_value(json!({
+        "id": "a", "kind": "vector", "width": 100, "height": 100, "transform": [1,0,0,1,500,500],
+        "network": {
+            "fillRule": "nonzero",
+            "vertices": [
+                {"id":"v0","x":0,"y":0}, {"id":"v1","x":100,"y":0},
+                {"id":"v2","x":100,"y":100}, {"id":"v3","x":0,"y":100}
+            ],
+            "edges": [
+                {"id":"e0","from":"v0","to":"v1"}, {"id":"e1","from":"v1","to":"v2"},
+                {"id":"e2","from":"v2","to":"v3"}, {"id":"e3","from":"v3","to":"v0"}
+            ]
+        },
+        "fills": [{
+            "kind": "linear", "color": "#000000", "transform": [-1,0,0,-1,1,1],
+            "stops": [
+                {"offset":0,"color":"color(srgb 0.8 0.2 0.7 / 0.75)"},
+                {"offset":1,"color":"color(srgb 0.15 0.95 0.1 / 0.4)"}
+            ]
+        }]
+    })).unwrap();
+    source.nodes.insert("a".into(), node);
+    let paint = &source.nodes["a"].fills[0];
+    let binding = json!({"0":{"paint":paint}}).to_string();
+    source.design_system = serde_json::from_value(json!({
+        "sketchContainers": {
+            "sketchDocumentColorSpace":1,
+            "unrelated":"discarded",
+            "nodeMetadata": {"a":{"bindings":{"sketchSourceGradients":binding,"other":"discarded"}}}
+        }
+    })).unwrap();
+    let mut snapshot = source.clone();
+    crate::sketch_gradient::retain_render_metadata(&mut snapshot).unwrap();
+    let metadata = &snapshot.design_system.as_ref().unwrap().sketch_containers;
+    assert_eq!(metadata.len(), 2);
+    assert_eq!(metadata["nodeMetadata"]["a"]["bindings"].as_object().unwrap().len(), 1);
+
+    let desc = descriptor(&snapshot);
+    let mut actual = owner(snapshot.clone(), "sketch-gradient-demand");
+    let mut expected = owner(source, "sketch-gradient-complete");
+    let mut runtime = Runtime::default();
+    let mut options = request(-480., -480., 1.);
+    options["rasterProfile"] = json!("analytic");
+    let projected = compare(&mut runtime, &mut actual, &mut expected, &desc, &options);
+    assert_eq!(runtime.stats["mode"], "demand");
+    let scene = wire::scene(&projected);
+    assert_eq!(scene["nodes"]["a"]["fills"][0]["sketchGradient"], true);
+    assert_eq!(scene["nodes"]["a"]["blend"], "sketch-gradient-over");
+
+    // The preserved receipt alone must not activate the operation on an
+    // edited color or opacity, or for an ordinary unprovenanced gradient.
+    for change in ["opacity", "color", "provenance"] {
+        let mut doc = snapshot.clone();
+        match change {
+            "opacity" => doc.nodes.get_mut("a").unwrap().opacity = 0.75,
+            "color" => doc.nodes.get_mut("a").unwrap().fills[0].stops[0].color = "#ffffff".into(),
+            _ => doc.design_system = None,
+        }
+        let mut engine = owner(doc, "sketch-gradient-negative");
+        let bytes = engine.compile_gpu_packet_request(&options.to_string()).unwrap();
+        let plain = wire::scene(&bytes);
+        assert!(plain["nodes"]["a"]["fills"][0].get("sketchGradient").is_none());
+        assert_eq!(plain["nodes"]["a"]["blend"], "normal");
+        assert!(plain["nodes"]["a"]["fills"][0].get("fixedGradient").is_some());
+    }
+}

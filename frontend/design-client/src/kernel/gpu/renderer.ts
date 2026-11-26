@@ -1,3 +1,4 @@
+import sketchGradientRanks from '../../../../../design-studio/crates/design-kernel/shaders/sketch-gradient-noise.json'
 import { wide_image_gaussian_pixels } from '../../generated/design-kernel/design_kernel'
 import {compactSourceAxes,hostedDenseByteFrame,readSourceGrid,readDenseSourceGrid,readDenseSourceGridBytes} from './source-bitmap-grid'
 import {sourceBitmap} from '../../source-bitmap'
@@ -236,6 +237,13 @@ export const isSamplingFieldOverGuardError = (error: unknown) => {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
   return message.includes('exceeds 64 MiB')
 }
+// The Rust/native compositor packs the same immutable ranks into these
+// free two-stop uniform slots. Three byte ranks fit in a binary32 integer.
+const sketchGradientRanksPacked = Float32Array.from({ length: 86 }, (_, word) => {
+  const i = word * 3
+  return sketchGradientRanks[i] + (sketchGradientRanks[i + 1] ?? 0) * 256 + (sketchGradientRanks[i + 2] ?? 0) * 65536
+})
+
 export class GpuRenderer {
   private canvasBlurEnabled = import.meta.env.VITE_DESIGN_CANVAS_BLUR_FLOAT !== '0'
   private encodeYield = new EncodeYield()
@@ -3579,6 +3587,10 @@ export class GpuRenderer {
       p.fixedGradient.words.forEach((word, i) => u.set(word, 196 + i * 4))
       u[252] = p.fixedGradient.bits
       u[253] = u[254] = 0
+    }
+    if (p.sketchGradient) {
+      u.set(sketchGradientRanksPacked, 60)
+      u[199] = -1
     }
   }
   private direct(n: GpuNode | undefined) {

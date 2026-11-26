@@ -322,7 +322,14 @@ fn setLum(input:vec3<f32>,l:f32)->vec3<f32>{var c=input+vec3<f32>(l-lum(input));
 fn setSat(c:vec3<f32>,s:f32)->vec3<f32>{let lo=min(min(c.r,c.g),c.b);let hi=max(max(c.r,c.g),c.b);if(hi>lo){return (c-lo)*s/(hi-lo);}return vec3<f32>(0);}
 fn channel(b:f32,s:f32,mode:i32)->f32{switch mode{
 case 1:{return b*s;}case 2:{return b+s-b*s;}case 3:{if(b<=0.5){return 2.*b*s;}return 1.-2.*(1.-b)*(1.-s);}case 4:{return min(b,s);}case 5:{return max(b,s);}case 6:{if(b<=0.){return 0.;}if(s>=1.){return 1.;}return min(1.,b/(1.-s));}case 7:{if(b>=1.){return 1.;}if(s<=0.){return 0.;}return 1.-min(1.,(1.-b)/s);}case 8:{if(s<=0.5){return 2.*b*s;}return 1.-2.*(1.-b)*(1.-s);}case 9:{var d=sqrt(b);if(b<=0.25){d=((16.*b-12.)*b+4.)*b;}if(s<=0.5){return b-(1.-2.*s)*b*(1.-b);}return b+(2.*s-1.)*(d-b);}case 10:{return abs(b-s);}case 11:{return b+s-2.*b*s;}case 16:{return max(0.,b+s-1.);}case 17:{return min(1.,b+s);}default:{return s;}}}
-fn over(b:vec4<f32>,s:vec4<f32>,mode:i32)->vec4<f32>{if(mode==18){return min(vec4<f32>(1.),addRN4(b,s));}if(s.a<=0.){return b;}if(b.a<=0.){return s;}if(mode==0){if(u(60).x>0.5){return addRN4(s,mulRN4(b,vec4<f32>(addRN(1.,-s.a))));}return s+b*(1.-s.a);}if(u(60).x>0.5){return blendRN(b,s,mode);}let cb=b.rgb/b.a;let cs=s.rgb/s.a;var m=vec3<f32>(channel(cb.r,cs.r,mode),channel(cb.g,cs.g,mode),channel(cb.b,cs.b,mode));if(mode==12){m=setLum(setSat(cs,sat(cb)),lum(cb));}if(mode==13){m=setLum(setSat(cb,sat(cs)),lum(cb));}if(mode==14){m=setLum(cs,lum(cb));}if(mode==15){m=setLum(cb,lum(cs));}return vec4<f32>(s.rgb*(1.-b.a)+s.a*b.a*m+b.rgb*(1.-s.a),s.a+b.a*(1.-s.a));}
+// RGBA8 attachment math for the admitted legacy Sketch gradient pass only.
+fn sketchGradientOver(b:vec4<f32>,s:vec4<f32>)->vec4<f32>{
+ if(s.a<=0.){return b;}
+ let dst=vec4<u32>(round(clamp(b,vec4<f32>(0.),vec4<f32>(1.))*255.));
+ let src=vec4<u32>(round(clamp(s,vec4<f32>(0.),vec4<f32>(1.))*255.));
+ return vec4<f32>(src+(dst*(255u-src.a)+vec4<u32>(127u))/255u)/255.;
+}
+fn over(b:vec4<f32>,s:vec4<f32>,mode:i32)->vec4<f32>{if(mode==19){return sketchGradientOver(b,s);}if(mode==18){return min(vec4<f32>(1.),addRN4(b,s));}if(s.a<=0.){return b;}if(b.a<=0.){return s;}if(mode==0){if(u(60).x>0.5){return addRN4(s,mulRN4(b,vec4<f32>(addRN(1.,-s.a))));}return s+b*(1.-s.a);}if(u(60).x>0.5){return blendRN(b,s,mode);}let cb=b.rgb/b.a;let cs=s.rgb/s.a;var m=vec3<f32>(channel(cb.r,cs.r,mode),channel(cb.g,cs.g,mode),channel(cb.b,cs.b,mode));if(mode==12){m=setLum(setSat(cs,sat(cb)),lum(cb));}if(mode==13){m=setLum(setSat(cb,sat(cs)),lum(cb));}if(mode==14){m=setLum(cs,lum(cb));}if(mode==15){m=setLum(cb,lum(cs));}return vec4<f32>(s.rgb*(1.-b.a)+s.a*b.a*m+b.rgb*(1.-s.a),s.a+b.a*(1.-s.a));}
 fn noise(p:vec2<i32>,seed:u32)->f32{var h=(bitcast<u32>(p.x)*0x9e3779b1u)^(bitcast<u32>(p.y)*0x85ebca77u)^seed;h=h^(h>>16u);h=h*0x7feb352du;h=h^(h>>15u);h=h*0x846ca68bu;h=h^(h>>16u);return divideRN(f32(h&0x00ffffffu),16777215.);}
 fn local(p:vec2<f32>)->vec2<f32>{return vec2<f32>(u(5).x*p.x+u(5).z*p.y+u(6).x,u(5).y*p.x+u(5).w*p.y+u(6).y);}
 fn encodePoint(p:vec2<f32>)->vec4<f32>{if(p.x<0.){return vec4<f32>(1);}let q=vec2<u32>(round(p));return vec4<f32>(f32(q.x&255u),f32(q.x>>8u),f32(q.y&255u),f32(q.y>>8u))/255.;}
@@ -1346,10 +1353,25 @@ fn sketchLayerGaussian(p:vec2<f32>)->vec4<f32>{
  if(axis==1){value.a=max(value.a,max(value.r,max(value.g,value.b)));}
  return vec4<f32>(value)/255.;
 }
+fn sketchGradientPaint(q:vec2<f32>)->vec4<f32>{
+ let phase=vec2<i32>(floor(q))&vec2<i32>(15);
+ let index=u32(phase.y*16+phase.x);
+ let packed=u32(u(15u+index/12u)[(index/3u)%4u]);
+ let threshold=f32((packed>>(8u*(index%3u)))&255u)/256.;
+ let t=clamp(addRN(1.,-divideRN(q.x,u(6).z)),0.,1.);
+ let a=vec4<f32>(gradientStop(0u).yzw,gradientStopAlpha(0u));
+ let b=vec4<f32>(gradientStop(1u).yzw,gradientStopAlpha(1u));
+ let rgba=addRN4(a,mulRN4(addRN4(b,-a),vec4<f32>(t)));
+ let premult=vec4<f32>(mulRN4(rgba,vec4<f32>(rgba.a)).rgb,rgba.a);
+ return floor(addRN4(mulRN4(premult,vec4<f32>(255.)),vec4<f32>(threshold)))/255.;
+}
+fn clippedBlend(mode:f32,opacity:f32)->i32{
+ return i32(select(mode,0.,mode==19.&&opacity!=1.));
+}
 fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COMPOSITOR_MODE>=0);if(mode==98){return sketchLayerGaussian(p);}if(BYTE_SURFACE&&mode==43){return textureReplayEffect(p);}if(BYTE_SURFACE&&mode==44){return textureReplayCopyback(p);}if(BYTE_SURFACE&&mode==45){return textureReplaySource(p);}if(BYTE_SURFACE&&mode==42){return measuredGradientOver(p);}if(BYTE_SURFACE&&mode==40){return captureDownscale(p);}if(BYTE_SURFACE&&mode==41){return captureTriangle(p);}if(BYTE_SURFACE&&mode==36){return figmaFourPass(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)),softwareRasterByte());}if(BYTE_SURFACE&&mode==35){return solidPaintOver(p);}if(mode==34){return analyticGlass(p);}if(mode==33){return bytePreview(p);}if(mode==46){return gradientBlurComposite(p);}if(mode==65){return progressiveTent(p);}if(mode==64){return sketchBlurBox(p);}if(mode==61){return motionBlurPixel(p);}if(mode==62){return zoomBlurPixel(p);}if(mode==63){return vec4<f32>(min(1.,smp(sourceA,p,u(1)).a*u(10).y));}if(mode==8&&u(10).z>0.5){return materialTexture(p);}if(mode==11&&u(10).w>0.5){return materialGlass(p);}let a=smp(sourceA,p,u(1));
  // Managed surfaces preserve extended-range linear light in RGBA32F.
  if(u(60).x>0.5){
-  if(mode==3||mode==15){var opacity=u(4).z;if(u(4).w>0.5){opacity=mulRN(opacity,at(sourceC,p,u(3)).a);}let src=mulRN4(a,vec4<f32>(opacity));if(mode==15){return src;}return over(smp(sourceB,p,u(2)),src,i32(u(4).y));}
+  if(mode==3||mode==15){var opacity=u(4).z;if(u(4).w>0.5){opacity=mulRN(opacity,at(sourceC,p,u(3)).a);}let src=mulRN4(a,vec4<f32>(opacity));if(mode==15){return src;}return over(smp(sourceB,p,u(2)),src,clippedBlend(u(4).y,opacity));}
   if(mode==8){return legacyTexture(p,true);}
   if(mode==11){return linearGlass(p);}
   if(mode==23){return meanFourRN(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)));}
@@ -1396,10 +1418,13 @@ fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COM
  if(mode==0||mode==14){return a;}
  if(mode==1){let b=at(sourceB,p,u(2)).a;return vec4<f32>(at(sourceA,p,u(1)).a*select(b,1.-b,u(9).x>0.5));}
  if(mode==2||mode==16){let q=local(p+u(46).xy);let kind=i32(u(7).x);let opacity=u(8).x;var paint=vec4<f32>(u(7).yzw*opacity*u(60).y,opacity*u(60).y);if(kind==0&&u(46).z>0.5){paint=u(48);}
-  if((kind==1||kind==2||kind==4||kind==5)&&u(60).x<0.5){let t=gradientT(p,q,kind);let count=u32(u(8).w);if(count>0u){let bytePaint=u(46).w>0.5;let firstAlpha=gradientStopAlpha(0u);var rgba=vec4<f32>(gradientStop(0u).yzw*firstAlpha,firstAlpha);if(bytePaint){rgba=round(rgba*255.);}for(var i=1u;i<64u;i=i+1u){if(i>=count){break;}let l=gradientStop(i-1u);let r=gradientStop(i);if(t>l.x){let la=gradientStopAlpha(i-1u);let ra=gradientStopAlpha(i);var left=vec4<f32>(l.yzw*la,la);var right=vec4<f32>(r.yzw*ra,ra);if(bytePaint){left=round(left*255.);right=round(right*255.);}let k=clamp((t-l.x)/max(r.x-l.x,1e-8),0.,1.);if(bytePaint){rgba=vec4<f32>(colourMix(left.r,right.r,k),colourMix(left.g,right.g,k),colourMix(left.b,right.b,k),colourMix(left.a,right.a,k));}else{rgba=left+(right-left)*k;}}}paint=rgba*opacity;if(bytePaint){paint=round(rgba*opacity)/255.;}}}
+  // The nonnegative fixed-gradient words also use this slot.
+  let sketch=kind==1&&u(49).w==-1.;
+  if(sketch){paint=sketchGradientPaint(q);}
+  if(!sketch&&(kind==1||kind==2||kind==4||kind==5)&&u(60).x<0.5){let t=gradientT(p,q,kind);let count=u32(u(8).w);if(count>0u){let bytePaint=u(46).w>0.5;let firstAlpha=gradientStopAlpha(0u);var rgba=vec4<f32>(gradientStop(0u).yzw*firstAlpha,firstAlpha);if(bytePaint){rgba=round(rgba*255.);}for(var i=1u;i<64u;i=i+1u){if(i>=count){break;}let l=gradientStop(i-1u);let r=gradientStop(i);if(t>l.x){let la=gradientStopAlpha(i-1u);let ra=gradientStopAlpha(i);var left=vec4<f32>(l.yzw*la,la);var right=vec4<f32>(r.yzw*ra,ra);if(bytePaint){left=round(left*255.);right=round(right*255.);}let k=clamp((t-l.x)/max(r.x-l.x,1e-8),0.,1.);if(bytePaint){rgba=vec4<f32>(colourMix(left.r,right.r,k),colourMix(left.g,right.g,k),colourMix(left.b,right.b,k),colourMix(left.a,right.a,k));}else{rgba=left+(right-left)*k;}}}paint=rgba*opacity;if(bytePaint){paint=round(rgba*opacity)/255.;}}}
   if(u(60).x>0.5){
    if(kind==0){paint=mulRN4(mulRN4(vec4<f32>(u(7).yzw,1.),vec4<f32>(u(60).y)),vec4<f32>(opacity));}
-   if(kind==1||kind==2||kind==4||kind==5){paint=mulRN4(linearGradient(p),vec4<f32>(opacity));}
+   if(!sketch&&(kind==1||kind==2||kind==4||kind==5)){paint=mulRN4(linearGradient(p),vec4<f32>(opacity));}
   }
   if(kind==3&&u(46).w>0.5){let grid=byteImageAddress(p);if(grid.z>0.5){paint=round(smpBytesIndex(sourceB,grid.xy,u(2))*opacity)/255.;}else{paint=vec4<f32>(0);}}else if(kind==3&&u(60).x>0.5&&u(51).w>0.5){paint=mulRN4(hostedStraightByteImage(p),vec4<f32>(opacity));}else if(kind==3&&u(60).x>0.5){paint=mulRN4(linearImage(p),vec4<f32>(opacity));}else if(kind==3){let size=u(2).zw;var coord=paintUV(q)*size-0.5;if(u(62).z<0.5){coord=(q*size-u(6).zw*0.5)/u(6).zw;if(u(8).z<1.5){let ratio=select(min(u(6).z/size.x,u(6).w/size.y),max(u(6).z/size.x,u(6).w/size.y),u(8).z<0.5);coord=(q-(u(6).zw-(size-1.)*ratio)*0.5)/ratio;}}if(u(8).z>0.5&&u(8).z<1.5&&(any(coord<vec2<f32>(-0.5))||any(coord>=size-0.5))){paint=vec4<f32>(0);}else{if(u(46).w>0.5){paint=round(smpBytesIndex(sourceB,clamp(coord,vec2<f32>(0),size-1.),u(2))*opacity)/255.;}else{paint=smpIndex(sourceB,clamp(coord,vec2<f32>(0),size-1.),u(2))*opacity;}}}
   if(kind==3){let half=halfScaleStretch(p);if(half.a>=0.){if(u(60).x>0.5){paint=mulRN4(half,vec4<f32>(opacity));}else{paint=half*opacity;}}}
@@ -1408,7 +1433,7 @@ fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COM
  }
  if(mode==15){var src=a*u(4).z;if(u(4).w>0.5){src=src*at(sourceC,p,u(3)).a;}return src;}
  if(mode==3&&u(60).x<0.5&&u(4).z<1.&&(u(4).y==1.||u(4).y==2.)){let dst=vec4<u32>(round(smp(sourceB,p,u(2))*255.));let src=vec4<u32>(round(a*255.));var opacity=u(4).z;if(u(4).w>0.5){opacity=opacity*at(sourceC,p,u(3)).a;}let weight=u32(round(clamp(opacity,0.,1.)*65535.));let denominator=16711425u;var sum=dst*(denominator-src.a*weight)+src*(255u*weight);if(u(4).y==1.){sum=vec4<u32>(src.rgb*weight*(vec3<u32>(255u-dst.a)+dst.rgb)+dst.rgb*(denominator-src.a*weight),sum.a);}else{sum=vec4<u32>(src.rgb*weight*(vec3<u32>(255)-dst.rgb)+dst.rgb*denominator,sum.a);}let q=sum/vec4<u32>(denominator);let rem=sum-q*denominator;return vec4<f32>(q+select(vec4<u32>(0),vec4<u32>(1),rem*2u>vec4<u32>(denominator)))/255.;}
- if(mode==3){var src=a*u(4).z;if(u(4).w>0.5){src=src*at(sourceC,p,u(3)).a;}return over(smp(sourceB,p,u(2)),src,i32(u(4).y));}
+ if(mode==3){var opacity=u(4).z;var src=a*opacity;if(u(4).w>0.5){let coverage=at(sourceC,p,u(3)).a;src=src*coverage;opacity=opacity*coverage;}return over(smp(sourceB,p,u(2)),src,clippedBlend(u(4).y,opacity));}
  if(mode==4||mode==5){let radius=i32(u(9).x);let axis=select(vec2<f32>(0,1),vec2<f32>(1,0),u(9).y<0.5);var total=vec4<f32>(0);var alpha=select(1.,0.,u(9).z>0.5);for(var i=-radius;i<=radius;i=i+1){var v:vec4<f32>;if(mode==5&&u(9).w>0.5){v=at(sourceA,p+axis*f32(i),u(1));}else{v=smp(sourceA,p+axis*f32(i),u(1));}if(mode==4){total=total+v;}else{alpha=select(min(alpha,v.a),max(alpha,v.a),u(9).z>0.5);}}if(mode==4){return total/f32(2*radius+1);}return vec4<f32>(0,0,0,alpha);}
  if(mode==6){if(u(9).x>0.5){let b=smpBytes(sourceB,p-u(9).yz,u(2)).a;let outside=select(b,b*select(0.,(255.-min(255.,round(a.a*255.)*u(10).y))/max(255.-round(a.a*255.),1.),round(a.a*255.)<255.),u(10).y>0.5);let coverage=select(outside,round(a.a*255.)*(1.-b/255.),u(9).w>0.5);let alpha=u32(round(clamp(u(8).x*coverage,0.,255.)*65536.));let colors=vec4<u32>(round(vec4<f32>(u(7).yzw,1.)*255.));let numerator=colors*alpha;let denominator=16711680u;let q=numerator/vec4<u32>(denominator);let r=numerator-q*denominator;let up=(r*2u>vec4<u32>(denominator))|((r*2u==vec4<u32>(denominator))&((q&vec4<u32>(1))!=vec4<u32>(0)));return vec4<f32>(q+select(vec4<u32>(0),vec4<u32>(1),up))/255.;}let b=smp(sourceB,p-u(9).yz,u(2)).a;let outside=select(b,b*select(0.,(1.-min(1.,a.a*u(10).y))/max(1.-a.a,1e-6),a.a<1.),u(10).y>0.5);let coverage=select(outside,a.a*(1.-b),u(9).w>0.5);let alpha=u(8).x*coverage;let result=vec4<f32>(u(7).yzw*alpha,alpha);if(u(9).x>0.5){return round(result*255.)/255.;}return result;}
  if(mode==60){return colorControlsPixel(a);}

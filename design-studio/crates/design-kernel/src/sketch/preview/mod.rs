@@ -307,6 +307,7 @@ fn style(layer: &Layer, scene: &mut GpuScene) -> Result<(Vec<GpuPaint>, f64)> {
             fixed_gradient: None,
             sketch_bitmap_sampling: false,
             sketch_cover_fill_footprint: false,
+            sketch_gradient: false,
         });
     }
     Ok((out, opacity))
