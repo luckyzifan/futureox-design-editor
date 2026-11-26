@@ -344,6 +344,14 @@ fn split_frame(
 fn needs_partitioned_crops(scene: &GpuScene, profile: RasterProfile) -> bool {
     profile == RasterProfile::Analytic
         && scene.color_management.is_none()
+        && scene.float_compositing
+        && !scene.software_raster
+        && !scene.integrated_blur
+        && !scene.coherent_samples
+        && !scene.backdrop_samples
+        && scene.version == 7
+        && scene.presentation.is_none()
+        && scene.resolve.is_none()
         && scene.nodes.len() <= MAX_SCENE_NODES
         && scene.curves.len() > MAX_SCENE_CURVE_WORDS
 }
@@ -355,6 +363,9 @@ struct BackdropRead {
 }
 
 fn partition_backdrop_reads(scene: &GpuScene) -> Result<Vec<BackdropRead>, String> {
+    if scene.dense_paint.is_some() {
+        return Err(SCENE_WORK_BUDGET_ERROR.into());
+    }
     let mut pending: Vec<_> = scene.roots.iter().rev().collect();
     let mut visited = HashSet::new();
     let mut reads = Vec::new();
@@ -366,7 +377,34 @@ fn partition_backdrop_reads(scene: &GpuScene) -> Result<Vec<BackdropRead>, Strin
             return Err(SCENE_WORK_BUDGET_ERROR.into());
         }
         pending.extend(node.children.iter().rev());
-        let Some(effect) = selected_backdrop(&node.effects) else {
+        let backdrop = selected_backdrop(&node.effects);
+        if node.sketch_layer_gaussian.is_some()
+            || node.gaussian_region.is_some()
+            || node.wide_image_gaussian.is_some()
+            || node.source_filter_field.is_some()
+            || node.capture_replay.is_some()
+            || node.texture_replay.is_some()
+        {
+            return Err(SCENE_WORK_BUDGET_ERROR.into());
+        }
+        for effect in node.effects.iter().filter(|effect| effect.visible) {
+            if backdrop.is_some_and(|selected| std::ptr::eq(selected, effect)) {
+                continue;
+            }
+            // The ordinary crop compiler already keeps the input of these
+            // finite leaf effects. Group effects and motion/zoom operators
+            // can sample beyond that foreground guard.
+            if !matches!(effect.kind.as_str(), "gaussian-blur" | "shadow")
+                || !node.children.is_empty()
+                || node.passthrough
+                || effect.gradient_blur.is_some()
+                || effect.color_controls.is_some()
+                || effect.spread != 0.
+            {
+                return Err(SCENE_WORK_BUDGET_ERROR.into());
+            }
+        }
+        let Some(effect) = backdrop else {
             continue;
         };
         // The scalar compositor captures a direct Sketch backdrop before
@@ -470,6 +508,33 @@ impl TileCache {
         engine: &mut Engine,
         options: &RenderOptions,
     ) -> Result<RenderedFrame, String> {
+        self.render_with_scene(gpu, engine, options, None)
+    }
+
+    /// Partition only an oversized analytic SDR scene. Serve callers already
+    /// compiled this scene and keep their ordinary render path when it fits.
+    pub fn render_oversized_scene(
+        &mut self,
+        gpu: &mut NativeGpu,
+        engine: &mut Engine,
+        options: &RenderOptions,
+        scene: &GpuScene,
+    ) -> Result<Option<RenderedFrame>, String> {
+        if !needs_partitioned_crops(scene, options.raster_profile) {
+            self.clear();
+            self.stats = TileCacheStats::default();
+            return Ok(None);
+        }
+        self.render_with_scene(gpu, engine, options, Some(scene)).map(Some)
+    }
+
+    fn render_with_scene(
+        &mut self,
+        gpu: &mut NativeGpu,
+        engine: &mut Engine,
+        options: &RenderOptions,
+        prepared: Option<&GpuScene>,
+    ) -> Result<RenderedFrame, String> {
         let started = Instant::now();
         self.stats = TileCacheStats::default();
         if options.pixel_preview.is_some() {
@@ -482,18 +547,24 @@ impl TileCache {
         self.stats.tiles_total = tiles.len();
 
         let compile_started = Instant::now();
-        let scene = engine.compile_gpu(options)?;
+        let compiled;
+        let scene = if let Some(scene) = prepared {
+            scene
+        } else {
+            compiled = engine.compile_gpu(options)?;
+            &compiled
+        };
         if scene.presentation.is_some() || scene.resolve.is_some() {
             return Err(
                 "Scene presents a resampled crop; tile cache needs a direct viewport".into(),
             );
         }
-        let partitioned = needs_partitioned_crops(&scene, options.raster_profile);
-        let mut global = global_key(&scene)?;
+        let partitioned = needs_partitioned_crops(scene, options.raster_profile);
+        let mut global = global_key(scene)?;
         let node_keys: BTreeMap<&str, Key> = scene
             .nodes
             .iter()
-            .map(|(id, node)| node_key(&scene, node).map(|key| (id.as_str(), key)))
+            .map(|(id, node)| node_key(scene, node).map(|key| (id.as_str(), key)))
             .collect::<Result<_, _>>()?;
         self.stats.compile_ms += compile_started.elapsed().as_secs_f64() * 1000.;
 
@@ -515,7 +586,7 @@ impl TileCache {
             self.entries.clear();
             self.global_key = Some((global, partitioned));
         }
-        let influence = influence_rects(&scene);
+        let influence = influence_rects(scene);
         let keyed: Vec<(Tile, Key)> = tiles
             .iter()
             .map(|tile| (*tile, tile_key(&global, &influence, &node_keys, *tile)))
@@ -549,7 +620,7 @@ impl TileCache {
             // they ARE the ordinary path.
             self.stats.full_frames += 1;
             self.stats.tiles_rendered = tiles.len();
-            let raw = self.compose_and_read(gpu, &scene, frame_rect, &mut totals)?;
+            let raw = self.compose_and_read(gpu, scene, frame_rect, &mut totals)?;
             present_bytes(
                 raw,
                 scene.float_compositing,
@@ -562,7 +633,7 @@ impl TileCache {
             // stitch them with the cached presented bytes.
             self.stats.tiles_rendered = dirty.len();
             let reads = if partitioned && !dirty.is_empty() {
-                partition_backdrop_reads(&scene)?
+                partition_backdrop_reads(scene)?
             } else {
                 Vec::new()
             };
@@ -763,11 +834,18 @@ mod tests {
     #[test]
     fn cold_partition_requires_an_oversized_analytic_sdr_curve_buffer() {
         let mut scene = scene();
+        scene.float_compositing = true;
+        scene.integrated_blur = false;
+        scene.coherent_samples = false;
+        scene.backdrop_samples = false;
         scene.curves.resize(MAX_SCENE_CURVE_WORDS, 0.);
         assert!(!needs_partitioned_crops(&scene, RasterProfile::Analytic));
         scene.curves.extend([0.; 4]);
         assert!(needs_partitioned_crops(&scene, RasterProfile::Analytic));
         assert!(!needs_partitioned_crops(&scene, RasterProfile::FigmaSubpixel));
+        scene.float_compositing = false;
+        assert!(!needs_partitioned_crops(&scene, RasterProfile::Analytic));
+        scene.float_compositing = true;
         scene.color_management = Some(Default::default());
         assert!(!needs_partitioned_crops(&scene, RasterProfile::Analytic));
     }
