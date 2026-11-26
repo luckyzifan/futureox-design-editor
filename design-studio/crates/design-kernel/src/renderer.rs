@@ -837,8 +837,10 @@ impl Engine {
         for node in nodes.values() {
             crate::render_cancellation::checkpoint()?;
             let mut bindings = serde_json::Map::new();
-            if crate::interop::sketch_binding(source, node, "sketchSourceBitmap") == Some("true") {
-                bindings.insert("sketchSourceBitmap".into(), serde_json::json!("true"));
+            for key in ["sketchSourceBitmap", "sketchSourceCoverImageFill"] {
+                if crate::interop::sketch_binding(source, node, key) == Some("true") {
+                    bindings.insert(key.into(), serde_json::json!("true"));
+                }
             }
             if node.backdrop_effect().is_some() && crate::interop::sketch_binding(source, node, "sketchSourceBlur").is_some() {
                 // The painter checks presence only. The raw archive payload
@@ -4757,7 +4759,10 @@ impl Painter<'_> {
             Sampler::with_sketch_bitmap(p, n, m, basis, self.images, true, motion_axis)?
         } else {
             Sampler::new(p, n, m, basis, self.images)?
-        };
+        }.with_sketch_cover_fill_footprint(
+            self.profile == crate::fidelity::RasterProfile::Analytic
+                && crate::paint::sketch_cover_fill_footprint(self.doc, n, p),
+        );
         sampler.prepare_sampled(p, r, !self.compatible)?;
         let solid = sampler.solid();
         let direct_constant = if self.compatible && self.sample.is_some() && p.blend == "normal" {

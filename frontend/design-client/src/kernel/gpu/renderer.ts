@@ -3545,8 +3545,10 @@ export class GpuRenderer {
       this.sampleIndex !== undefined
     )
     // For image paints this flag excludes adjustments and repeating tiles
-    // from the single-placement half-scale footprint.
+    // from the single-placement footprint. A negative flag admits the
+    // smaller measured footprint of an imported Sketch cover fill.
     u[186] = Number(solidByte || kind === 3 && (!!p.adjust || (!!p.tile && p.tile.mode !== 'none')))
+    if (kind === 3 && p.sketchCoverFillFootprint && u[186] === 0) u[186] = -1
     u[187] =
       !this.driver.managed && this.scene.coherentSamples && this.sampleIndex !== undefined ? 1 : 0
     if (solidByte) u.set(solidRgba8(this.color(p.color), p.opacity), 192)

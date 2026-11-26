@@ -1219,7 +1219,8 @@ fn halfScaleStretch(p:vec2<f32>)->vec4<f32>{
  let e10=halfScaleTexel(local(origin+vec2<f32>(1.,0.)));
  let e01=halfScaleTexel(local(origin+vec2<f32>(0.,1.)));
  let span=abs(vec2<f32>(e10.x-e00.x,e01.y-e00.y));
- if(any(span<vec2<f32>(1.5))||any(span>=vec2<f32>(2.5))){return vec4<f32>(-1.);}
+ let minimum=select(1.5,1.3,u(46).z<0.);
+ if(any(span<vec2<f32>(minimum))||any(span>=vec2<f32>(2.5))){return vec4<f32>(-1.);}
  if(abs(e01.x-e00.x)>1e-4||abs(e10.y-e00.y)>1e-4){return vec4<f32>(-1.);}
  let xLo=min(e00.x,e10.x);let xHi=max(e00.x,e10.x);let yLo=min(e00.y,e01.y);let yHi=max(e00.y,e01.y);
  var sum=vec4<f32>(0.);var weight=0.;

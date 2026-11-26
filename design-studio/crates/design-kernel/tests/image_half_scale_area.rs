@@ -635,6 +635,57 @@ fn placed_buffers(
     (area, linear, centre)
 }
 
+#[test]
+fn native_sketch_cover_fill_averages_moderately_reduced_pixels() {
+    use futureox_design_kernel::interop;
+
+    let src = procedural(32, 24);
+    let uri = png(32, 24, &src);
+    let mut authored: serde_json::Value =
+        serde_json::from_str(&document(&uri, 24., 18., "cover")).unwrap();
+    authored["nodes"]["n"]["kind"] = json!("vector");
+    authored["nodes"]["n"]["network"] = json!({
+        "fillRule": "nonzero",
+        "vertices": [
+            {"id":"a","x":0,"y":0}, {"id":"b","x":24,"y":0},
+            {"id":"c","x":24,"y":18}, {"id":"d","x":0,"y":18}
+        ],
+        "edges": [
+            {"id":"ab","from":"a","to":"b"}, {"id":"bc","from":"b","to":"c"},
+            {"id":"cd","from":"c","to":"d"}, {"id":"da","from":"d","to":"a"}
+        ]
+    });
+    let (_, _, centre) = placed_buffers(&src, 32, 24, 24., 18., 1., 24, 18, "cover");
+    let before = render(&authored.to_string(), 24, 18, 1., RasterProfile::Analytic);
+    assert!(over_threshold(&before, &centre).1 <= 1);
+
+    let typed = serde_json::from_value(authored).unwrap();
+    let archive = interop::export_sketch(&typed).unwrap();
+    let imported = interop::import_sketch_report(&archive).unwrap().document;
+    let json = serde_json::to_string(&imported).unwrap();
+    let (area, _, _) = placed_buffers(&src, 32, 24, 24., 18., 1., 24, 18, "cover");
+    let after = render(&json, 24, 18, 1., RasterProfile::Analytic);
+    assert!(over_threshold(&after, &area).1 <= 1);
+    assert!(over_threshold(&before, &area).2 > 0);
+
+    let mut engine = Engine::new();
+    engine.load_document(&json).unwrap();
+    let options = engine.parse_options(json!({
+        "pageId":"p", "width":24, "height":18,
+        "view":{"x":0,"y":0,"zoom":1}, "rasterProfile":"analytic"
+    })).unwrap();
+    let scene = engine.compile_gpu(&options).unwrap();
+    assert!(scene.nodes["n"].fills[0].sketch_cover_fill_footprint);
+
+    let one_to_one = render(&json, 32, 24, 4. / 3., RasterProfile::Analytic);
+    assert!(over_threshold(&one_to_one, &src).1 <= 1);
+
+    let almost_native_zoom = 16. / 15.;
+    let (_, _, centre) = placed_buffers(&src, 32, 24, 24., 18., almost_native_zoom, 24, 18, "cover");
+    let modest = render(&json, 24, 18, almost_native_zoom, RasterProfile::Analytic);
+    assert!(over_threshold(&modest, &centre).1 <= 1);
+}
+
 fn assert_placed(case: &Case, src: &[u8], max_area: u8) {
     let actual = run_case(case, src);
     let (area, linear, centre) = placed_buffers(

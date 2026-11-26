@@ -164,6 +164,7 @@ export type GpuPaint = Paint & {
   gradientPlane?: [number, number, number]
   fixedGradient?: { bits: number; words: number[][] }
   sketchBitmapSampling?: boolean
+  sketchCoverFillFootprint?: boolean
 }
 export type GpuScene = {
   /** Worker-owned exact regional display request. */
