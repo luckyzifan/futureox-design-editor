@@ -7,7 +7,7 @@
 //! WebGPU stay on the same coverage formula. Layout positions are unchanged.
 use crate::math::{Point, Transform};
 use crate::path::Contour;
-use crate::scene::Node;
+use crate::scene::{Document, Node};
 use std::sync::Arc;
 
 const MAX_MASK_PIXELS: usize = 2_000_000;
@@ -60,6 +60,30 @@ fn sketch_line_box(node: &Node) -> bool {
             || (style.line_height_auto && (style.line_height - 1.35).abs() <= 1e-9))
 }
 
+/// A full-range native text color becomes one derived vector span. Keep that
+/// span's existing paint and let its analytic geometry use the source glyphs.
+pub(crate) fn derived_span_source<'a>(doc: &Document, source: &'a Node) -> Option<&'a Node> {
+    let [span_id] = source.children.as_slice() else { return None };
+    let [run] = &source.text_runs[..] else { return None };
+    let color = run.color.as_ref()?;
+    let span = doc.nodes.get(span_id)?;
+    let [fill] = span.fills.as_slice() else { return None };
+    let style = source.text_style.as_ref()?;
+    (source.derived_text_paint && source.kind == "group" && !source.clip && !source.mask
+        && source.effects.is_empty() && source.opacity == 1. && source.blend == "normal"
+        && source.text_path.is_none() && style.writing_mode == "horizontal"
+        && style.line_box_baseline == "nearest-point" && doc.color_management.is_none()
+        && crate::interop::sketch_binding(doc, source, "sketchLineSpacingBehaviour").is_some()
+        && run.start == 0 && run.end == source.text.encode_utf16().count()
+        && !run.underline && !run.strikethrough
+        && span.kind == "vector" && span.derived_path.is_some() && span.children.is_empty()
+        && span.transform == Transform::default() && span.strokes.is_empty() && span.effects.is_empty()
+        && fill.visible && fill.kind == "solid" && fill.opacity == 1. && fill.blend == "normal"
+        && fill.color == *color
+        && crate::color::pixel(None, color, 1.).is_ok_and(|pixel| pixel.0[3] == 1.))
+        .then_some(source)
+}
+
 fn coverage_rects(
     mask: &[u8],
     origin_x: i32,
@@ -104,13 +128,18 @@ pub(crate) fn sketch_device_mask(
     fonts: &crate::font::Fonts,
     matrix: Transform,
 ) -> Option<Vec<Contour>> {
-    if !sketch_line_box(node) {
+    if !sketch_line_box(node) || node.text_runs.iter().any(|run| run.color.is_some()) {
         return None;
     }
+    device_mask_from_layout(node, fonts, matrix)
+}
+
+pub(crate) fn device_mask_from_layout(
+    node: &Node,
+    fonts: &crate::font::Fonts,
+    matrix: Transform,
+) -> Option<Vec<Contour>> {
     let scale = axis_scale(matrix)?;
-    if node.text_runs.iter().any(|run| run.color.is_some()) {
-        return None;
-    }
     let layout = fonts.node_measure(node, Some(node.width)).ok()?;
     if layout.glyphs.is_empty()
         || layout
@@ -138,9 +167,19 @@ pub(crate) fn sketch_device_mask(
         if !device.finite() {
             return None;
         }
-        let x0 = device.x.floor();
+        // Recover a quarter boundary displaced by arithmetic on exact font
+        // units before truncating to FreeType's device subpixel phase.
+        let boundary = (device.x * 4.).round() * 0.25;
+        let x = if boundary.is_finite() && device.x < boundary
+            && device.x.next_up().next_up() >= boundary
+        {
+            boundary
+        } else {
+            device.x
+        };
+        let x0 = x.floor();
         let y0 = device.y.floor();
-        let frac = ((device.x - x0) * 4.0).floor();
+        let frac = ((x - x0) * 4.0).floor();
         if !(0.0..4.0).contains(&frac) {
             return None;
         }
