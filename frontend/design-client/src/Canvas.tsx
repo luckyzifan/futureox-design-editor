@@ -4704,10 +4704,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               ))}
             </g>
           )}
-          {spatialPivot && <SpatialCanvasControls pivot={spatialPivot} zoom={zoom} locale={locale} onStart={startSpatialGesture} />}
           {!selectionChromeOn && <MeasurementGuides measurements={measurements} labels={measurementLabels} zoom={zoom}
             hidden={!!gpuOverlay} crisp={overlay.commands.crispMeasurements} />}
         </g>
+        {spatialPivot && <SpatialCanvasControls pivot={spatialPivot} screen={worldToScreen(displayView, spatialPivot)}
+          zoom={zoom} locale={locale} onStart={startSpatialGesture} />}
         <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`}
           visibility={exactOverlayMatches || !!ownedDrag ? 'visible' : 'hidden'}>
           {!hidePanChrome && vectorNode?.network && (

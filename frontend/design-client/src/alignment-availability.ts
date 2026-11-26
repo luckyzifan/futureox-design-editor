@@ -3,6 +3,7 @@ import { SelectionCommandError, selectionCommandAdmission } from './commands/sel
 import { commitPendingEdits } from './pending-edits'
 import { arrangePatches } from './align-engine'
 import { interactivePath } from './selection-hierarchy'
+import { sketchDistributionPrompt } from './sketch-distribution'
 
 export const alignmentCommands = {
   'align-left': { axis: 'x', mode: 'start', label: ['左对齐', 'Align Left'] },
@@ -33,7 +34,7 @@ export function alignSelection(editor: Editor, axis: 'x' | 'y', mode: 'start' | 
   editor.setLiveArrangement(null)
   if (!commitPendingEdits(editor)) return
   if (!toTopLevelFrame && !alignmentAvailability(editor)[mode === 'distribute' ? 'distribute' : 'align']) return
-  editor.align(axis, mode, toTopLevelFrame)
+  editor.align(axis, mode, toTopLevelFrame, mode === 'distribute' ? sketchDistributionPrompt(editor) : undefined)
 }
 
 export function canTidySelection(editor: Editor) {

@@ -1,4 +1,4 @@
-import type { Bounds, DesignDocument, DesignNode, Matrix } from '../model'
+import type { Bounds, DesignDocument, DesignNode, Matrix, Point } from '../model'
 import { identity } from '../model'
 import { allParents, boxPoints, bounds, type ParentMap } from '../geometry'
 import { kernelBounds } from '../kernel/picking'
@@ -158,10 +158,10 @@ function geometry(doc: DesignDocument, index: SelectionIndex, state: SelectionGe
   }
   return { measure, matrix }
 }
-export interface SelectionArrangement { ids: string[]; patches: TransformPatch[] }
+export interface SelectionArrangement { ids: string[]; patches: TransformPatch[]; pixelPatches?: TransformPatch[] }
 export type AlignmentTarget = { kind: 'layer' | 'frame'; id: string }
 export function prepareSelectionArrangement(doc: DesignDocument, selected: readonly string[], axis: 'x' | 'y', mode: ArrangementMode,
-  state: SelectionGeometryState, target?: AlignmentTarget): SelectionArrangement {
+  state: SelectionGeometryState, target?: AlignmentTarget, fitPixels = false): SelectionArrangement {
   const index = indexSelection(doc, selected); assertPositionable(doc, index)
   if (mode === 'distribute' && index.ids.length < 2) reject('invalid_params', 'Distribution requires at least two nodes')
   if (mode === 'distribute' && index.ids.length === 2) return { ids: index.ids, patches: [] }
@@ -184,16 +184,18 @@ export function prepareSelectionArrangement(doc: DesignDocument, selected: reado
     !single && target?.kind === 'layer' && index.ids.includes(target.id) ? reader.measure(target.id) : undefined
   const parentBounds = single ? reference ?? (parentNode.kind === 'group' ? reader.measure(parent) :
     { x: 0, y: 0, width: parentNode.width, height: parentNode.height }) : undefined
-  const plan = planArrangement(CORE_SELECTION_PROFILE, rects, axis, mode, parentBounds, reference)!
-  return { ids: index.ids, patches: index.ids.map((id, i) => {
-    const delta = plan.offsets[i]
+  const plan = planArrangement(CORE_SELECTION_PROFILE, rects, axis, mode, parentBounds, reference, fitPixels)!
+  const transforms = (offsets: readonly Point[]) => index.ids.map((id, i) => {
+    const delta = offsets[i]
     if (delta.x === 0 && delta.y === 0) return { id, transform: doc.nodes[id].transform }
     if (single && !frameWorld) return { id, transform: multiply(translate(delta.x, delta.y), doc.nodes[id].transform) }
     const { x, y } = frameWorld ? {
       x: frameWorld[0] * delta.x + frameWorld[2] * delta.y, y: frameWorld[1] * delta.x + frameWorld[3] * delta.y,
     } : delta
     return { id, transform: multiply(inverse(reader.matrix(index.parents.get(id)!)), multiply(translate(x, y), reader.matrix(id))) }
-  }).filter((patch) => patch.transform.some((value, i) => value !== doc.nodes[patch.id].transform[i])) }
+  }).filter(patch => patch.transform.some((value, i) => value !== doc.nodes[patch.id].transform[i]))
+  return { ids: index.ids, patches: transforms(plan.offsets),
+    ...(plan.pixelOffsets ? { pixelPatches: transforms(plan.pixelOffsets) } : {}) }
 }
 export interface SelectionWrap {
   ids: string[]; parent: string; index: number; transform: Matrix; width: number; height: number; transforms: TransformPatch[]

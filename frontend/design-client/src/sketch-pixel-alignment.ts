@@ -4,14 +4,7 @@ import { inverse, multiply, worldMatrix } from './geometry'
 import type { DesignDocument, DesignNode, Matrix } from './model'
 import { interactivePath } from './selection-hierarchy'
 import { resizedNode } from './selection-properties'
-
-/** A transform can put an already integral edge a few ulps away from its
- * pixel. Canonicalize that drift before taking an outward floor or ceiling. */
-function stableEdge(value: number) {
-  const whole = Math.round(value)
-  const tolerance = Math.max(1e-9, 8 * Number.EPSILON * Math.abs(value))
-  return Math.abs(value - whole) <= tolerance ? whole : value
-}
+import { nearestPixel, stablePixelEdge as stableEdge } from './commands/affine'
 
 function applyPixelTransform(editor: Editor, label: string,
   transformLayer: (doc: DesignDocument, id: string, matrix: Matrix) => Matrix | undefined) {
@@ -56,10 +49,6 @@ export function fitSelectionToPixelBounds(editor: Editor) {
     const sy = box.height > 0 && bottom > top ? (b - y) / box.height : 1
     return multiply([sx, 0, 0, sy, x - box.x * sx, y - box.y * sy], matrix)
   })
-}
-
-function nearestPixel(value: number) {
-  return Math.sign(value) * Math.round(Math.abs(value))
 }
 
 export function roundSelectionToPixels(editor: Editor) {
