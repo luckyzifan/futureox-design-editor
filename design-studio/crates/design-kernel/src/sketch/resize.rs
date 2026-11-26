@@ -112,7 +112,7 @@ impl Layer {
     }
 }
 
-fn axis(start: f64, size: f64, old: f64, new: f64, bits: u8) -> Result<(f64, f64)> {
+pub(crate) fn axis(start: f64, size: f64, old: f64, new: f64, bits: u8) -> Result<(f64, f64)> {
     if [start, size, old, new]
         .iter()
         .any(|v| !v.is_finite() || v.abs() > 1e9)
