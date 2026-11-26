@@ -6,7 +6,7 @@ import type {Editor} from './engine'
 import type {DesignDocument,Point} from './model'
 import type {CanvasCamera,CanvasSize} from './canvas-camera'
 import {screenToWorld} from './canvas-camera'
-import {smartSelection,smartSpacing,smartReorder,type SmartSelection} from './smart-selection'
+import {smartSelection,smartSelectionForLayer,smartSpacing,smartReorder,type SmartSelection} from './smart-selection'
 
 const gapHandleSize = 12
 
@@ -23,8 +23,11 @@ export function CanvasSmartSelection({editor,view,size,entries,visible}:{editor:
     return()=>{window.removeEventListener('keydown',key,true);window.removeEventListener('blur',cancel)}
   },[editor])
   const {doc,selection} = editor.state
-  const selectionModel = useMemo(() => selection.length < 2 ? null :
-    smartSelection(doc,page,editor.topSelection(),entries), [editor,doc,page,selection,entries])
+  const selectionModel = useMemo(() => {
+    if (selection.length > 1) return smartSelection(doc, page, editor.topSelection(), entries)
+    return uiMode === 'sketch' && selection.length === 1
+      ? smartSelectionForLayer(doc, page, selection[0], entries) : null
+  }, [editor, doc, page, selection, entries, uiMode])
   const model = selectionModel || active.current?.model
   if(!model||editor.state.tool!=='select')return null
   if (uiMode === 'sketch' && !active.current) {

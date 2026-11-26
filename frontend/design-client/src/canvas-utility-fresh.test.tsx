@@ -54,6 +54,37 @@ test('Sketch spacing controls hide when a selection fits inside a handle and ret
   expect(editor.state.selection).toEqual(shapes.map(shape => shape.id))
 })
 
+test('a selected Sketch layer exposes and edits the rest of its evenly spaced row', async () => {
+  const { CanvasSmartSelection } = await import('./CanvasSmartSelection')
+  interfacePreference.set({ uiMode: 'sketch' })
+  const shapes = [
+    node('rectangle', 10, 12, 30, 40),
+    node('rectangle', 50, 18, 50, 30),
+    node('rectangle', 110, 4, 20, 60),
+  ]
+  editor.change('row fixture', doc => {
+    for (const shape of shapes) {
+      doc.nodes[shape.id] = shape
+      doc.pages[0].children.push(shape.id)
+    }
+  })
+  editor.select([shapes[0].id])
+  const before = editor.state.doc
+  await act(async () => root.render(<CanvasSmartSelection editor={editor} view={view} size={size} visible />))
+  const overlay = host.querySelector('.canvas-smart-selection')!
+  const handle = host.querySelector('[data-testid="smart-gap-x"]')
+  expect(handle).not.toBeNull()
+  await act(async () => {
+    fire(handle!, 'pointerdown', 45, 30)
+    fire(overlay, 'pointermove', 50, 30)
+    fire(overlay, 'pointerup', 50, 30)
+  })
+  expect(shapes.map(shape => editor.state.doc.nodes[shape.id].transform[4])).toEqual([10, 55, 120])
+  expect(editor.state.selection).toEqual([shapes[0].id])
+  editor.undo()
+  expect(editor.state.doc).toBe(before)
+})
+
 test('ruler context menu removes the editable guides of one axis in one undo',async()=>{
  interfacePreference.set({uiMode:'sketch'})
  editor.set({rulers:true})

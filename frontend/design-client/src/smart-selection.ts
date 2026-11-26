@@ -31,6 +31,54 @@ export function smartSelection(doc:DesignDocument,page:string,ids:string[],publi
   if(gapX===null||gapY===null||x.length*y.length!==ids.length||x.some(c=>y.some(r=>c.ids.filter(id=>r.ids.includes(id)).length!==1)))return null
   return {ids:[...ids],boxes,x,y,gapX,gapY}
 }
+/**
+ * Infer a same-parent row or column around a single selected Sketch layer.
+ * Two siblings alone cannot distinguish an evenly spaced run from any pair.
+ */
+export function smartSelectionForLayer(doc: DesignDocument, page: string, id: string,
+  publishedEntries?: readonly SceneEntry[]): SmartSelection | null {
+  const entries = publishedEntries ?? scene(doc, page)
+  const current = entries.find(entry => entry.id === id)
+  if (!current || current.locked || doc.nodes[id]?.instanceOrigin) return null
+  const layout = doc.nodes[current.parent]?.layout
+  if (layout && layout.mode !== 'none') return null
+  const siblings = entries.filter(entry => entry.parent === current.parent)
+  if (siblings.length < 3 || siblings.length > 256) return null
+
+  const models = new Map<string, SmartSelection>()
+  for (const axis of ['x', 'y'] as const) {
+    const cross = axis === 'x' ? 'y' : 'x'
+    const length = axis === 'x' ? 'width' : 'height'
+    const crossLength = axis === 'x' ? 'height' : 'width'
+    const box = current.bounds
+    const ordered = siblings.filter(({ bounds }) =>
+      Math.min(bounds[cross] + bounds[crossLength], box[cross] + box[crossLength]) -
+      Math.max(bounds[cross], box[cross]) > 0.01)
+      .sort((a, b) => a.bounds[axis] - b.bounds[axis])
+    const selected = ordered.findIndex(entry => entry.id === id)
+    if (selected < 0) continue
+    const gapAt = (index: number) =>
+      ordered[index + 1].bounds[axis] - ordered[index].bounds[axis] - ordered[index].bounds[length]
+    for (const seed of [selected - 1, selected]) {
+      if (seed < 0 || seed + 1 >= ordered.length) continue
+      const spacing = gapAt(seed)
+      if (spacing < -0.01) continue
+      let first = seed
+      let last = seed + 1
+      const matches = (index: number) => Math.abs(gapAt(index) - spacing) <= 0.02
+      while (first > 0 && matches(first - 1)) first--
+      while (last + 1 < ordered.length && matches(last)) last++
+      if (last - first < 2) continue
+      const ids = ordered.slice(first, last + 1).map(entry => entry.id)
+      const model = smartSelection(doc, page, ids, entries)
+      if (model && model[cross].length === 1 && model[axis].length === ids.length)
+        models.set(ids.join('\n'), model)
+    }
+  }
+  const [best, other] = [...models.values()].sort((a, b) => b.ids.length - a.ids.length)
+  return best && best.ids.length !== other?.ids.length ? best : null
+}
+
 function patchesFor(doc:DesignDocument,positions:Record<string,Point>):Record<string,{transform:Matrix}>{
   const parents=allParents(doc),out:Record<string,{transform:Matrix}>={}
   for(const [id,p] of Object.entries(positions)){

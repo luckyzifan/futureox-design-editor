@@ -1,6 +1,6 @@
 import {expect,test} from 'vitest'
 import {blank,node,defaultLayout} from './model'
-import {smartSelection,smartSpacing,smartReorder} from './smart-selection'
+import {smartSelection,smartSelectionForLayer,smartSpacing,smartReorder} from './smart-selection'
 import {Editor} from './engine'
 import {scene} from './geometry'
 test('unequal-size row spacing and reorder preserve geometry, hierarchy and one undo',()=>{
@@ -29,4 +29,22 @@ test('nested rotated parent spacing maps world displacement into local matrices'
  const m=smartSelection(d,d.pages[0].id,p.children)!;expect(m.gapY).toBe(20)
  const patches=smartSpacing(d,m,'y',40);for(const [id,patch] of Object.entries(patches))Object.assign(d.nodes[id],patch)
  const entries=scene(d,d.pages[0].id);expect(entries.find(e=>e.id===b.id)!.bounds.y).toBe(90);expect(d.nodes[b.id].width).toBe(20)
+})
+
+
+test('a single Sketch selection stops at locked siblings and explicit stack layout', () => {
+  const doc = blank(), frame = node('frame', 0, 0, 300, 200)
+  const row = [10, 50, 90].map(x => node('rectangle', x, 20, 30, 40))
+  const differentRow = node('rectangle', 50, 100, 30, 40)
+  frame.children = [...row, differentRow].map(shape => shape.id)
+  for (const shape of [frame, ...row, differentRow]) doc.nodes[shape.id] = shape
+  const page = doc.pages[0]
+  page.children = [frame.id]
+  const selected = row[1]
+  expect(smartSelectionForLayer(doc, page.id, selected.id)?.ids).toEqual(row.map(shape => shape.id))
+  row[0].locked = true
+  expect(smartSelectionForLayer(doc, page.id, selected.id)).toBeNull()
+  row[0].locked = false
+  frame.layout = { ...defaultLayout(), mode: 'horizontal' }
+  expect(smartSelectionForLayer(doc, page.id, selected.id)).toBeNull()
 })
