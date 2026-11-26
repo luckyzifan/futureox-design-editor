@@ -347,15 +347,28 @@ fn compact_font_name(value: &str) -> String {
         .collect()
 }
 
+fn checked_face_name(value: &str) -> Option<&str> {
+    let text = value.trim();
+    (!text.is_empty() && !text.chars().any(char::is_control) && text.chars().count() <= 200)
+        .then_some(text)
+}
+
+fn ascii_mac_roman_name(name: ttf_parser::name::Name<'_>) -> Option<&str> {
+    if name.platform_id != ttf_parser::PlatformId::Macintosh
+        || name.encoding_id != 0
+        || !name.name.is_ascii()
+    {
+        return None;
+    }
+    checked_face_name(std::str::from_utf8(name.name).ok()?)
+}
+
 fn face_name_value(face: &ttf_parser::Face<'_>, ids: &[u16]) -> Option<String> {
     for id in ids {
         let mut fallback = None;
         for name in face.names().into_iter().filter(|name| name.name_id == *id) {
             let Some(text) = name.to_string() else { continue };
-            let text = text.trim();
-            if text.is_empty() || text.chars().any(char::is_control) || text.chars().count() > 200 {
-                continue;
-            }
+            let Some(text) = checked_face_name(&text) else { continue };
             if name.language_id == 0x0409 {
                 return Some(text.into());
             }
@@ -365,6 +378,19 @@ fn face_name_value(face: &ttf_parser::Face<'_>, ids: &[u16]) -> Option<String> {
         }
         if fallback.is_some() {
             return fallback;
+        }
+    }
+    // Some installed faces keep family and PostScript names only in Mac
+    // Roman. Its ASCII range is shared with UTF-8. Preserve Unicode choices
+    // above and decline legacy bytes we cannot decode exactly.
+    for id in ids {
+        if let Some(text) = face
+            .names()
+            .into_iter()
+            .filter(|name| name.name_id == *id)
+            .find_map(ascii_mac_roman_name)
+        {
+            return Some(text.into());
         }
     }
     None
@@ -3818,9 +3844,6 @@ mod tests {
         })
         .to_string();
         engine.load_document(&json).unwrap();
-        eprintln!("sources={:?} enabled={} locals={:?}", engine.fonts.source_names, engine.fonts.local_source_fonts, engine.fonts.local.names.keys().collect::<Vec<_>>());
-        let names = std::collections::BTreeSet::from(["Helvetica".to_string()]); eprintln!("cands={:?}", local_sources::system().candidates(&names));
-        let n = engine.fonts.resolve_sketch_source_fonts(); eprintln!("resolved {n} local={:?}", engine.fonts.local.names.keys().collect::<Vec<_>>());
         let id = engine
             .fonts
             .local_face_id("Helvetica")
@@ -3831,6 +3854,23 @@ mod tests {
         assert!(layout.glyphs.iter().any(|glyph| glyph.font_id == id));
         assert_eq!(node.text_style.as_ref().unwrap().font_id, "default");
         assert_eq!(engine.fonts.named.len(), 0);
+    }
+    #[test]
+    fn mac_roman_name_fallback_requires_checked_ascii() {
+        use ttf_parser::{PlatformId, name::Name};
+        let record = Name {
+            platform_id: PlatformId::Macintosh,
+            encoding_id: 0,
+            language_id: 0,
+            name_id: ttf_parser::name_id::POST_SCRIPT_NAME,
+            name: b"Helvetica",
+        };
+        assert_eq!(ascii_mac_roman_name(record), Some("Helvetica"));
+        assert_eq!(ascii_mac_roman_name(Name { encoding_id: 1, ..record }), None);
+        assert_eq!(ascii_mac_roman_name(Name { platform_id: PlatformId::Windows, ..record }), None);
+        for value in [b"".as_slice(), b"  ", b"bad\0name", b"non\x80ascii", &[b'x'; 201]] {
+            assert_eq!(ascii_mac_roman_name(Name { name: value, ..record }), None);
+        }
     }
     fn line_glyphs<'a>(layout: &'a TextLayout, line: &TextLine) -> Vec<&'a Glyph> {
         layout
