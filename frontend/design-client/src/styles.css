@@ -2799,8 +2799,14 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] .document-title input { max-width: 130px; min-width: 70px; }
 .editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] .workspace-tabs {
   flex: 1 1 auto; min-width: 60px; height: 100%; background: transparent; border: 0; align-items: stretch;
-  scrollbar-width: none; -webkit-app-region: no-drag;
+  overflow: hidden; -webkit-app-region: no-drag;
 }
+.editor-header[data-inline-tabs] .workspace-tabs > [role="tablist"] {
+  min-width: 0; overflow-x: auto; scrollbar-width: none;
+}
+.editor-header[data-inline-tabs] .workspace-tab { min-width: 72px; }
+.editor-header[data-inline-tabs] .workspace-tab > [role="tab"] { min-width: 0; }
+.editor-header[data-inline-tabs] :is(.workspace-tab-close, .workspace-tab-new) { flex: none; }
 .editor-shell[data-ui-mode="figma"] .figma-properties-actions {
   display: flex; justify-content: flex-end; align-items: center; flex: none; height: 34px; padding: 0 9px;
 }
