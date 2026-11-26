@@ -18,6 +18,7 @@ import { figmaRotationDegrees, nodeDegreesForFigmaAngle } from './rotation-field
 import { MixedNumberField } from './MixedNumberField'
 import { TextSizingControls } from './TextSizingControls'
 import { useInterfacePreferences } from './interface-preference'
+import { canAutoPinChild } from './layout-constraints'
 
 export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nodes: DesignNode[] }) {
   const { locale, tr } = usePropertyText()
@@ -39,7 +40,12 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
     if (field === 'x' || field === 'y') setNodePosition(node, field, value, editor.state.doc, resolved)
     else if (field === 'rotation') rotateNode(node, nodeDegreesForFigmaAngle(value), selectionLocalBounds(editor.state.doc, node.id))
     else if (field === 'opacity') node.opacity = value / 100
-    else resizeNodeDimension(node, field, value, editor.state.doc, resolved)
+    else {
+      const doc = editor.state.doc
+      const parent = sketch ? doc.nodes[editor.parentMap(doc).get(node.id) ?? ''] : undefined
+      const pins = parent && canAutoPinChild(parent, node) ? node.constraints : undefined
+      resizeNodeDimension(node, field, value, doc, resolved, pins)
+    }
   })
   const smartIds = editor.topSelection()
   const smart = smartIds.length >= 2 && smartIds.length <= 256

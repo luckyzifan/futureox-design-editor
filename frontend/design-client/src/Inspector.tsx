@@ -721,7 +721,10 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
         return { value: propertyExpression(suffix.expression, original, 'length'),
           commit: v => updateBounds(node => resizeNodeDimension(node, field, v, editor.state.doc, undefined, suffix.anchor)) }
       } : undefined}
-      onChange={v => updateBounds(node => resizeNodeDimension(node, field, v, editor.state.doc))} />
+      onChange={v => updateBounds(node => {
+        const pins = uiMode === 'sketch' && constraintParent && canAutoPinChild(constraintParent, node) ? node.constraints : undefined
+        resizeNodeDimension(node, field, v, editor.state.doc, undefined, pins)
+      })} />
   }
   const proportion = <label className="geometry-proportion" title={tr("锁定宽高比")}>
     <input type="checkbox" aria-label={tr("锁定宽高比")} checked={!!n.constrainProportions}
