@@ -670,6 +670,7 @@ export function inventoryFromPackageBytes({
   javascript,
   declaredElectronVersion = null,
   nativeTargets = null,
+  supplementalLicenses = [],
 }) {
   let host = hostIdentity(layout.packageDir)
   const iconPath = path.join(root, 'frontend/design-desktop/assets/branding/futureox-desgin.icns')
@@ -797,6 +798,7 @@ export function inventoryFromPackageBytes({
   const bundles = content.filter(file => file.kind === 'javascript' && (file.role === 'bundle' || file.role === 'stylesheet' || file.role === 'sourcemap' || file.role === 'mcp' || file.role === 'document'))
   const licenseInventory = JSON.parse(readFileSync(path.join(root, 'frontend/design-client/public/licenses/inventory.json'), 'utf8'))
   const productionIds = new Set(javascript.distributed.map(item => item.package))
+  const supplementalByPackage = new Map(supplementalLicenses.map(item => [item.package, item]))
   const javascriptPackages = javascript.distributed.map(item => {
     const recorded = licenseInventory.packages.find(entry => entry.package === item.package)
     const named = recorded
@@ -804,7 +806,14 @@ export function inventoryFromPackageBytes({
       : []
     const notice = named.find(file => file.sha256 === recorded?.sha256) ?? named[0] ?? null
     const matches = Boolean(notice && recorded && notice.sha256 === recorded.sha256)
-    const wasm = recorded?.wasm
+    const supplement = supplementalByPackage.get(item.package)
+    // A historical inventory may predate artifact hashes. Its version,
+    // license and verified in-package notice still own the attribution.
+    const supplemented = matches && recorded.wasm === undefined && supplement?.wasm &&
+      supplement.version === recorded.version && supplement.license === recorded.license &&
+      supplement.file === recorded.file && supplement.sha256 === recorded.sha256 &&
+      supplement.source === recorded.source
+    const wasm = supplemented ? { ...supplement.wasm, fromAuditorInventory: true } : recorded?.wasm
     const verifiedWasm = typeof item.integrity === 'string' && recorded?.version === item.version &&
       wasm?.integrity === item.integrity && /^[a-f0-9]{64}$/.test(wasm.sha256) ? wasm : undefined
     return {

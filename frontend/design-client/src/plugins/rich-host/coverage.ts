@@ -122,7 +122,7 @@ export const PLUGIN_API_COVERAGE: readonly PluginApiEntry[] = [
   { api: 'SceneNode.textStyleId', status: 'partial', notes: 'Local text style id on text nodes, or null.' },
   { api: 'SceneNode.effectStyleId', status: 'partial', notes: 'Local effect style id, or null.' },
   { api: 'PolygonNode.pointCount', status: 'supported', notes: '3 to 128.' },
-  { api: 'StarNode.innerRadius', status: 'supported', notes: '0.01 to 1.' },
+  { api: 'StarNode.innerRadius', status: 'supported', notes: '0 to 1.' },
   { api: 'SceneNode.parent', status: 'supported', notes: 'Parent node or page.' },
   { api: 'SceneNode.children', status: 'supported', notes: 'Direct children in paint order.' },
   { api: 'SceneNode.appendChild', status: 'supported', notes: 'Preserves world position.' },

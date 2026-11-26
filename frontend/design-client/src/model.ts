@@ -15,6 +15,7 @@ export type Point = { x: number; y: number }
 export type Matrix = [number, number, number, number, number, number]
 export type Bounds = { x: number; y: number; width: number; height: number }
 export type RulerGuide = {id:string;axis:'x'|'y';position:number}
+export const MAX_SHAPE_POINTS = 128
 export type Kind =
   | 'slice'
   | 'frame'
@@ -636,7 +637,8 @@ export function node(kind: Kind, x = 0, y = 0, width = 160, height = 120): Desig
     fills:
       kind === 'slice' || kind === 'line' || kind === 'vector' || kind === 'group'
         ? []
-        : [paint(kind === 'frame' ? '#ffffff' : kind === 'section' ? '#e7e8ef' : '#818cf8')],
+        : [paint(kind === 'frame' ? '#ffffff' : kind === 'section' ? '#e7e8ef' :
+            kind === 'polygon' || kind === 'star' ? '#d9d9d9' : '#818cf8')],
     strokes: kind === 'line' || kind === 'vector' ? [stroke()] : [],
     effects: [],
     radii: [0, 0, 0, 0],
@@ -644,7 +646,7 @@ export function node(kind: Kind, x = 0, y = 0, width = 160, height = 120): Desig
     clip: kind === 'frame',
     mask: false,
     points: kind === 'star' ? 5 : 3,
-    innerRadius: 0.45,
+    innerRadius: kind === 'star' ? (3 - Math.sqrt(5)) / 2 : 0.45,
     text: '双击编辑文字',
     fontSize: 28,
   }
@@ -1290,8 +1292,8 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
       !finite(n.smoothing, 0, 1) ||
       !finite(n.opacity, 0, 1) ||
       (n.blend !== 'pass-through' && !blendModes.includes(n.blend ?? 'normal')) ||
-      !finite(n.points, n.kind === 'polygon' || n.kind === 'star' ? 3 : 0, 128) ||
-      !finite(n.innerRadius, n.kind === 'star' ? 0.01 : 0, 1) ||
+      !finite(n.points, n.kind === 'polygon' || n.kind === 'star' ? 3 : 0, MAX_SHAPE_POINTS) ||
+      !finite(n.innerRadius, 0, 1) ||
       typeof n.name !== 'string' ||
       !wellFormed(n.name) ||
       typeof n.text !== 'string' ||

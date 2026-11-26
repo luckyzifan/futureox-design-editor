@@ -632,7 +632,7 @@ export function createPluginSession(snapshot: PluginSnapshot, plugin: { id: stri
         touchNode(id)
       },
       get innerRadius() { const sceneNode = live(id); if (sceneNode.kind !== 'star') fail('innerRadius', 'invalid'); return sceneNode.innerRadius },
-      set innerRadius(value: number) { const sceneNode = live(id); if (sceneNode.kind !== 'star') fail('innerRadius', 'invalid'); sceneNode.innerRadius = finite(value, 0.01, 1, 'innerRadius'); touchNode(id) },
+      set innerRadius(value: number) { const sceneNode = live(id); if (sceneNode.kind !== 'star') fail('innerRadius', 'invalid'); sceneNode.innerRadius = finite(value, 0, 1, 'innerRadius'); touchNode(id) },
       appendChild(child: PluginHandle) { reparent(child?.id, id) },
       insertChild(index: number, child: PluginHandle) { reparent(child?.id, id, finite(index, 0, 1e6, 'insertChild')) },
       findAll(callback?: (node: PluginHandle) => boolean) { return walk(live(id).children, callback) },
