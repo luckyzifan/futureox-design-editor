@@ -63,20 +63,23 @@ async function openEditor() {
   for (let i = 0; i < 20; i++) await Promise.resolve()
 }
 
-test('Figma zoom follows the inspector and Sketch insert opens the top tool menu', async () => {
+test('Figma hand and zoom stay with the canvas toolbelt and Sketch uses the header', async () => {
   await openEditor()
   expect(document.querySelector('.editor-shell')?.getAttribute('data-ui-mode')).toBe('figma')
   expect(readout()?.textContent).toMatch(/%$/)
-  expect(group()?.closest('.properties-tabs')).not.toBeNull()
+  expect(group()?.closest('.canvas-workspace .floating-toolbar')).not.toBeNull()
   expect(readout()?.closest('[data-testid="figma-view-tools"]')).toBe(group())
-  expect(document.querySelector('.canvas-workspace .floating-toolbar')).not.toBeNull()
+  const hand = group()?.querySelector('button')!
+  await act(async () => hand.click())
+  expect(editor?.state.tool).toBe('hand')
+  expect(hand.getAttribute('aria-pressed')).toBe('true')
 
   const toggle = document.querySelector<HTMLButtonElement>('.canvas-panel-toggle.right')!
   await act(async () => toggle.click())
   expect(toggle.getAttribute('aria-expanded')).toBe('false')
-  expect(readout()?.closest('.editor-header')).not.toBeNull()
+  expect(readout()?.closest('.floating-toolbar')).not.toBeNull()
   await act(async () => toggle.click())
-  expect(readout()?.closest('.properties-tabs')).not.toBeNull()
+  expect(readout()?.closest('.floating-toolbar')).not.toBeNull()
 
   await act(async () => button('Sketch').click())
   expect(document.querySelector('.editor-shell')?.getAttribute('data-ui-mode')).toBe('sketch')
@@ -101,7 +104,7 @@ test('Figma zoom follows the inspector and Sketch insert opens the top tool menu
   expect(editor?.state.tool).toBe('rectangle')
 
   await act(async () => button('Figma').click())
-  expect(readout()?.closest('.properties-tabs')).not.toBeNull()
+  expect(readout()?.closest('.floating-toolbar')).not.toBeNull()
   expect(document.querySelector('.sketch-window-tools')).toBeNull()
   expect(document.querySelector('button[aria-label="预览"]')).toBeNull()
   expect(document.querySelector('.prototype-preview-button')).not.toBeNull()

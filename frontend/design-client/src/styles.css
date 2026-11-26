@@ -2212,7 +2212,8 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
   background: var(--workspace-panel); border: 1px solid var(--workspace-border); border-radius: 6px; box-shadow: 0 4px 12px #0002; }
 .alignment-more > div > button { width: 26px; }
 .sketch-inspector-alignment { flex: none; padding: 6px 10px 0; }
-.sketch-inspector-alignment .compact-alignment { margin: 0; grid-template-columns: repeat(8, minmax(0, 1fr)); }
+.sketch-inspector-alignment .compact-alignment { margin: 0; grid-template-columns: repeat(9, minmax(0, 1fr)); }
+.sketch-inspector-alignment .compact-alignment > button { padding: 0; }
 .geometry-position, .geometry-rotation, .geometry-dimensions { display: grid; gap: 6px; align-items: center; margin: 4px 0 8px; }
 .geometry-position { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .geometry-rotation { grid-template-columns: minmax(0, 1fr) auto; }
@@ -2798,8 +2799,14 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] .document-title input { max-width: 130px; min-width: 70px; }
 .editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] .workspace-tabs {
   flex: 1 1 auto; min-width: 60px; height: 100%; background: transparent; border: 0; align-items: stretch;
-  scrollbar-width: none; -webkit-app-region: no-drag;
+  overflow: hidden; -webkit-app-region: no-drag;
 }
+.editor-header[data-inline-tabs] .workspace-tabs > [role="tablist"] {
+  min-width: 0; overflow-x: auto; scrollbar-width: none;
+}
+.editor-header[data-inline-tabs] .workspace-tab { min-width: 72px; }
+.editor-header[data-inline-tabs] .workspace-tab > [role="tab"] { min-width: 0; }
+.editor-header[data-inline-tabs] :is(.workspace-tab-close, .workspace-tab-new) { flex: none; }
 .editor-shell[data-ui-mode="figma"] .figma-properties-actions {
   display: flex; justify-content: flex-end; align-items: center; flex: none; height: 34px; padding: 0 9px;
 }
@@ -2845,9 +2852,47 @@ html[data-reduced-motion=true] .animation-modal * {
   pointer-events: auto;
   bottom: max(78px, var(--floating-toolbar-status-clearance, 78px));
 }
-/* The group is taken out of the pill's flow so the pill stays bottom-center.
-   8px keeps it against the pill without sharing the pill's border box. The
-   menu opens upward so a short window cannot clip it on the bottom edge. */
+/* Keep the auxiliary navigation out of the toolbelt's measured width. */
+.editor-shell[data-ui-mode="figma"] .figma-view-tools {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 8px;
+  background: var(--workspace-panel);
+  box-shadow: var(--workspace-shadow);
+}
+.editor-shell[data-ui-mode="figma"] .figma-view-tools > button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+.editor-shell[data-ui-mode="figma"] .figma-view-tools > button[aria-pressed="true"] {
+  background: var(--workspace-selected);
+  color: var(--workspace-selected-ink);
+}
+.figma-view-zoom .canvas-controls {
+  position: static;
+  display: flex;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.editor-shell .figma-view-zoom .view-menu-body {
+  top: auto;
+  bottom: calc(100% + 8px);
+  max-height: min(520px, calc(100dvh - 172px));
+}
+.editor-shell[data-ui-mode="figma"] .floating-toolbar:has(.draw-pencil-tools) .figma-view-tools {
+  bottom: calc(100% + 54px);
+}
 .editor-shell[data-ui-mode="figma"] .floating-toolbar .creation-tool-hint {
   bottom: calc(100% + 56px);
 }
@@ -3061,16 +3106,11 @@ html[data-reduced-motion=true] .animation-modal * {
 @media (max-width: 1280px) {
   .file-menu .compact-library-entry { display: flex; }
   .editor-shell[data-ui-mode="sketch"] .editor-header .document-title .document-location { display: none; }
-  .editor-shell[data-ui-mode="sketch"] .editor-header .save-status { max-width: 72px; }
-}
-@media (max-width: 1180px) {
-  .editor-shell[data-ui-mode="sketch"] .floating-toolbar { gap: 3px; }
-  .editor-shell[data-ui-mode="sketch"] .floating-toolbar .tool-group { gap: 0; }
-}
-@media (max-width: 1000px) {
   .editor-shell[data-ui-mode="sketch"] > .editor-header { gap: 4px; }
   .editor-shell[data-ui-mode="sketch"] .editor-header .header-right { gap: 2px; }
-  .editor-shell[data-ui-mode="sketch"] .editor-header .save-status { display: none; }
+  .editor-shell[data-ui-mode="sketch"] .editor-header .save-status { max-width: 72px; }
+  .editor-shell[data-ui-mode="sketch"] .floating-toolbar { gap: 3px; }
+  .editor-shell[data-ui-mode="sketch"] .floating-toolbar .tool-group { gap: 0; }
   .editor-shell[data-ui-mode="sketch"] .header-right .locale-switch select { max-width: 60px; }
   .editor-shell[data-ui-mode="sketch"] .header-right .ui-mode-switch button { padding-inline: 5px; }
   .editor-shell[data-ui-mode="sketch"] .header-right .local-window-control > button { padding-inline: 4px; }
@@ -3087,6 +3127,9 @@ html[data-reduced-motion=true] .animation-modal * {
   }
   .editor-shell[data-ui-mode="sketch"] .header-right .design-agent-toggle span,
   .editor-shell[data-ui-mode="sketch"] .header-right .app-settings-button span { display: none; }
+}
+@media (max-width: 1000px) {
+  .editor-shell[data-ui-mode="sketch"] .editor-header .save-status { display: none; }
 }
 .editor-shell[data-ui-mode="sketch"] .sketch-window-zoom { display: flex; align-items: center; flex: none; height: 30px; }
 .editor-shell[data-ui-mode="sketch"] .sketch-window-zoom .view-menu:not([open]) > .view-menu-body { display: none; }
@@ -3118,7 +3161,7 @@ html[data-reduced-motion=true] .animation-modal * {
   position: relative;
   top: auto; right: auto; bottom: auto; left: auto; transform: none;
   order: 0;
-  flex: none;
+  flex: 0 1 auto;
   align-self: center;
   width: auto;
   min-width: 0;
@@ -3132,7 +3175,8 @@ html[data-reduced-motion=true] .animation-modal * {
   align-content: center;
   justify-content: flex-start;
   row-gap: 0;
-  overflow: visible;
+  overflow: auto hidden;
+  scrollbar-width: none;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -3164,7 +3208,7 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell[data-ui-mode="sketch"] .sketch-window-tools button.sketch-preview-tool {
   width: 48px; height: 52px; padding: 0; flex: none;
 }
-@media (max-width: 1180px) {
+@media (max-width: 1280px) {
   .editor-shell[data-ui-mode="sketch"] .sketch-window-tools .sketch-secondary-tool { display: none; }
 }
 @media (max-width: 980px) {
