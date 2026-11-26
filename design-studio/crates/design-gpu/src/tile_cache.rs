@@ -362,6 +362,17 @@ struct BackdropRead {
     reach: i32,
 }
 
+fn pointwise_shadow_source(node: &GpuNode) -> bool {
+    node.children.is_empty()
+        && !node.passthrough
+        && !node.mask
+        && node.mask_id.is_none()
+        && node.blend == "normal"
+        && node.effects.iter().all(|effect| !effect.visible)
+        && node.strokes.is_empty()
+        && node.fills.iter().all(|fill| !fill.visible || fill.kind == "solid")
+}
+
 fn partition_backdrop_reads(scene: &GpuScene) -> Result<Vec<BackdropRead>, String> {
     if scene.dense_paint.is_some() {
         return Err(SCENE_WORK_BUDGET_ERROR.into());
@@ -391,11 +402,18 @@ fn partition_backdrop_reads(scene: &GpuScene) -> Result<Vec<BackdropRead>, Strin
             if backdrop.is_some_and(|selected| std::ptr::eq(selected, effect)) {
                 continue;
             }
-            // The ordinary crop compiler already keeps the input of these
-            // finite leaf effects. Group effects and motion/zoom operators
-            // can sample beyond that foreground guard.
+            // Ordinary crops already guard these finite foreground filters.
+            // A shadow on outlined text also uses that guard: its immediate
+            // solid glyph children only contribute alpha at the same pixel.
+            let guarded_source = node.children.is_empty()
+                || (effect.kind == "shadow"
+                    && node.mask_id.is_none()
+                    && node.children.iter().all(|id| {
+                        scene.nodes.get(id).is_some_and(pointwise_shadow_source)
+                    }));
             if !matches!(effect.kind.as_str(), "gaussian-blur" | "shadow")
-                || !node.children.is_empty()
+                || !guarded_source
+                || backdrop.is_some()
                 || node.passthrough
                 || effect.gradient_blur.is_some()
                 || effect.color_controls.is_some()
@@ -864,6 +882,26 @@ mod tests {
         assert_eq!(
             required_partition_crop(output, frame, &reads),
             Rect::new(18, 6, 62, 28)
+        );
+    }
+
+    #[test]
+    fn partition_guard_allows_shadows_on_pointwise_children() {
+        let mut scene = scene();
+        scene.roots.retain(|id| id == "a");
+        let parent = scene.nodes.get_mut("a").unwrap();
+        parent.children.push("b".into());
+        parent.effects.push(
+            serde_json::from_value(json!({"kind": "shadow", "radius": 15})).unwrap(),
+        );
+        assert!(partition_backdrop_reads(&scene).is_ok());
+
+        scene.nodes.get_mut("b").unwrap().effects.push(
+            serde_json::from_value(json!({"kind": "gaussian-blur", "radius": 4})).unwrap(),
+        );
+        assert_eq!(
+            partition_backdrop_reads(&scene).err().as_deref(),
+            Some(SCENE_WORK_BUDGET_ERROR),
         );
     }
 
