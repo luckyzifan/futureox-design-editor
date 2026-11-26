@@ -68,7 +68,7 @@ export function SpatialCanvasControls({ pivot, zoom, locale, onStart }: {
 }) {
   const origin = locale === 'en' ? 'Move 3D origin' : '移动 3D 原点'
   const anchor = (dx: number, dy: number) => ({ 'data-anchor-x': pivot.x + dx / zoom, 'data-anchor-y': pivot.y + dy / zoom })
-  return <g data-testid="spatial-transform-handles" transform={`translate(${pivot.x} ${pivot.y}) scale(${1 / zoom})`}>
+  return <g data-testid="spatial-transform-handles" shapeRendering="crispEdges" transform={`translate(${pivot.x} ${pivot.y}) scale(${1 / zoom})`}>
     {axes.map(({ axis, handle, x, y, cursor }) => {
       const label = locale === 'en' ? `Rotate about ${axis}` : `绕 ${axis} 轴旋转`
       return <g key={axis}>
