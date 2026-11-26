@@ -1,7 +1,7 @@
 import type {Bounds,DesignDocument,Matrix,Point} from './model'
 import {allParents,scene,unionBounds,multiply,inverse,worldMatrix,translate,type SceneEntry} from './geometry'
 export type SmartTrack={ids:string[];bounds:Bounds}
-export type SmartSelection={ids:string[];boxes:Record<string,Bounds>;x:SmartTrack[];y:SmartTrack[];gapX:number;gapY:number}
+export type SmartSelection={ids:string[];boxes:Record<string,Bounds>;x:SmartTrack[];y:SmartTrack[];gapX:number;gapY:number;unevenAxis?:'x'|'y'}
 function tracks(ids:string[],boxes:Record<string,Bounds>,axis:'x'|'y'):SmartTrack[]{
   const length=axis==='x'?'width':'height',sorted=[...ids].sort((a,b)=>boxes[a][axis]-boxes[b][axis]),groups:SmartTrack[]=[]
   let end=-Infinity
@@ -11,14 +11,19 @@ function tracks(ids:string[],boxes:Record<string,Bounds>,axis:'x'|'y'):SmartTrac
   }
   return groups
 }
-function gap(tracks:SmartTrack[],axis:'x'|'y'):number|null{
-  if(tracks.length<2)return 0
-  const length=axis==='x'?'width':'height',values=tracks.slice(1).map((t,i)=>t.bounds[axis]-tracks[i].bounds[axis]-tracks[i].bounds[length])
-  return values.every(g=>g>=-0.01&&Math.abs(g-values[0])<=0.02)?values[0]:null
+function trackGaps(tracks: SmartTrack[], axis: 'x' | 'y'): number[] {
+  const length = axis === 'x' ? 'width' : 'height'
+  return tracks.slice(1).map((track, index) =>
+    track.bounds[axis] - tracks[index].bounds[axis] - tracks[index].bounds[length])
+}
+function gap(values: readonly number[]): number | null {
+  if (!values.length) return 0
+  return values.every(value => value >= -0.01 && Math.abs(value - values[0]) <= 0.02) ? values[0] : null
 }
 /** Geometric inference only. Never changes parentage or treats auto-layout
  * children as freely positioned objects. No retained inference in the file. */
-export function smartSelection(doc:DesignDocument,page:string,ids:string[],publishedEntries?:readonly SceneEntry[]):SmartSelection|null{
+export function smartSelection(doc:DesignDocument,page:string,ids:string[],publishedEntries?:readonly SceneEntry[],
+  allowUnevenLine = false):SmartSelection|null{
   if(ids.length<2||ids.length>256)return null
   const selected = new Set(ids)
   const entries = (publishedEntries ?? scene(doc,page)).filter(entry => selected.has(entry.id))
@@ -27,10 +32,68 @@ export function smartSelection(doc:DesignDocument,page:string,ids:string[],publi
     return entry.locked || entry.ancestors.some(id => selected.has(id)) || node.instanceOrigin ||
       (parent?.layout && parent.layout.mode !== 'none' && !node.sizing?.absolute)
   })) return null
-  const boxes=Object.fromEntries(entries.map(e=>[e.id,e.bounds])),x=tracks(ids,boxes,'x'),y=tracks(ids,boxes,'y'),gapX=gap(x,'x'),gapY=gap(y,'y')
-  if(gapX===null||gapY===null||x.length*y.length!==ids.length||x.some(c=>y.some(r=>c.ids.filter(id=>r.ids.includes(id)).length!==1)))return null
-  return {ids:[...ids],boxes,x,y,gapX,gapY}
+  const boxes=Object.fromEntries(entries.map(e=>[e.id,e.bounds])),x=tracks(ids,boxes,'x'),y=tracks(ids,boxes,'y')
+  if(x.length*y.length!==ids.length||x.some(c=>y.some(r=>c.ids.filter(id=>r.ids.includes(id)).length!==1)))return null
+  const gapsX = trackGaps(x, 'x'), gapsY = trackGaps(y, 'y')
+  const gapX = gap(gapsX), gapY = gap(gapsY)
+  if (gapX !== null && gapY !== null) return { ids: [...ids], boxes, x, y, gapX, gapY }
+  // An irregular row or column can be respaced directly from the Inspector.
+  // Grid inference and canvas reorder still require a uniform selection.
+  const unevenAxis = y.length === 1 && gapX === null ? 'x' : x.length === 1 && gapY === null ? 'y' : null
+  if (!allowUnevenLine || !unevenAxis) return null
+  const unevenGaps = unevenAxis === 'x' ? gapsX : gapsY
+  if (unevenGaps.some(value => value < -0.01)) return null
+  const average = unevenGaps.reduce((sum, value) => sum + value, 0) / unevenGaps.length
+  return { ids: [...ids], boxes, x, y, gapX: gapX ?? average, gapY: gapY ?? average, unevenAxis }
 }
+/**
+ * Infer a same-parent row or column around a single selected Sketch layer.
+ * Two siblings alone cannot distinguish an evenly spaced run from any pair.
+ */
+export function smartSelectionForLayer(doc: DesignDocument, page: string, id: string,
+  publishedEntries?: readonly SceneEntry[]): SmartSelection | null {
+  const entries = publishedEntries ?? scene(doc, page)
+  const current = entries.find(entry => entry.id === id)
+  if (!current || current.locked || doc.nodes[id]?.instanceOrigin) return null
+  const layout = doc.nodes[current.parent]?.layout
+  if (layout && layout.mode !== 'none') return null
+  const siblings = entries.filter(entry => entry.parent === current.parent)
+  if (siblings.length < 3 || siblings.length > 256) return null
+
+  const models = new Map<string, SmartSelection>()
+  for (const axis of ['x', 'y'] as const) {
+    const cross = axis === 'x' ? 'y' : 'x'
+    const length = axis === 'x' ? 'width' : 'height'
+    const crossLength = axis === 'x' ? 'height' : 'width'
+    const box = current.bounds
+    const ordered = siblings.filter(({ bounds }) =>
+      Math.min(bounds[cross] + bounds[crossLength], box[cross] + box[crossLength]) -
+      Math.max(bounds[cross], box[cross]) > 0.01)
+      .sort((a, b) => a.bounds[axis] - b.bounds[axis])
+    const selected = ordered.findIndex(entry => entry.id === id)
+    if (selected < 0) continue
+    const gapAt = (index: number) =>
+      ordered[index + 1].bounds[axis] - ordered[index].bounds[axis] - ordered[index].bounds[length]
+    for (const seed of [selected - 1, selected]) {
+      if (seed < 0 || seed + 1 >= ordered.length) continue
+      const spacing = gapAt(seed)
+      if (spacing < -0.01) continue
+      let first = seed
+      let last = seed + 1
+      const matches = (index: number) => Math.abs(gapAt(index) - spacing) <= 0.02
+      while (first > 0 && matches(first - 1)) first--
+      while (last + 1 < ordered.length && matches(last)) last++
+      if (last - first < 2) continue
+      const ids = ordered.slice(first, last + 1).map(entry => entry.id)
+      const model = smartSelection(doc, page, ids, entries)
+      if (model && model[cross].length === 1 && model[axis].length === ids.length)
+        models.set(ids.join('\n'), model)
+    }
+  }
+  const [best, other] = [...models.values()].sort((a, b) => b.ids.length - a.ids.length)
+  return best && best.ids.length !== other?.ids.length ? best : null
+}
+
 function patchesFor(doc:DesignDocument,positions:Record<string,Point>):Record<string,{transform:Matrix}>{
   const parents=allParents(doc),out:Record<string,{transform:Matrix}>={}
   for(const [id,p] of Object.entries(positions)){
@@ -41,8 +104,14 @@ function patchesFor(doc:DesignDocument,positions:Record<string,Point>):Record<st
 }
 export function smartSpacing(doc:DesignDocument,model:SmartSelection,axis:'x'|'y',value:number){
   if(!Number.isFinite(value)||Math.abs(value)>1e6)throw Error('间距数值无效')
-  const delta=value-(axis==='x'?model.gapX:model.gapY),positions:Record<string,Point>={}
-  model[axis].forEach((track,index)=>track.ids.forEach(id=>positions[id]=axis==='x'?{x:delta*index,y:0}:{x:0,y:delta*index}))
+  const positions: Record<string,Point> = {}
+  const length = axis === 'x' ? 'width' : 'height'
+  let cursor = model[axis][0].bounds[axis]
+  for (const { bounds, ids } of model[axis]) {
+    const delta = cursor - bounds[axis]
+    for (const id of ids) positions[id] = axis === 'x' ? { x: delta, y: 0 } : { x: 0, y: delta }
+    cursor += bounds[length] + value
+  }
   return patchesFor(doc,positions)
 }
 export function smartReorder(doc:DesignDocument,model:SmartSelection,marked:string[],target:string,swap=false){
