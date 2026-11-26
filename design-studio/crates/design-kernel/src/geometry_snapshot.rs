@@ -66,7 +66,7 @@ fn prepare_node_geometry_impl(
     local_strokes: &mut crate::resident_strokes::ResidentStrokes,
     prepared: &mut HashMap<String, Prepared>, segments: &mut usize, early: bool,
 ) -> Result<Rect, String> {
-    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,early,None,None)
+    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,early,None,None,None)
 }
 /// Leaves whose conservative device box lies inside `guard` already have the
 /// contours a tighter flatten would produce: chord replacement runs only
@@ -94,14 +94,14 @@ pub(crate) fn prepare_node_geometry_indexed(
     paths:&mut HashMap<String,crate::path::SharedPaths>,local_strokes:&mut crate::resident_strokes::ResidentStrokes,
     prepared:&mut HashMap<String,Prepared>,segments:&mut usize,support:Option<&crate::world_support::WorldSupport>,
 ) -> Result<Rect,String>{
-    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,true,support.map(|index|(index,parent)),None)
+    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,true,support.map(|index|(index,parent)),None,None)
 }
 pub(crate) fn prepare_cpu_frame_geometry(
     id: &str, camera: Transform, context: (&Document, &Fonts, Rect, bool),
     paths: &mut HashMap<String, crate::path::SharedPaths>, strokes: &mut crate::resident_strokes::ResidentStrokes,
     prepared: &mut HashMap<String, Prepared>, segments: &mut usize, reuse: &mut crate::cpu_frame_plan::FrameGeometry,
 ) -> Result<Rect, String> {
-    prepare_node_geometry_supported::<true>(id, camera, context, paths, strokes, prepared, segments, true, None, Some(reuse))
+    prepare_node_geometry_supported::<true>(id, camera, context, paths, strokes, prepared, segments, true, None, Some(reuse), None)
 }
 fn prepare_node_geometry_supported<const FRAME: bool>(
     id:&str,parent:Transform,context:(&Document,&Fonts,Rect,bool),
@@ -109,6 +109,7 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
     prepared:&mut HashMap<String,Prepared>,segments:&mut usize,early:bool,
     support:Option<(&crate::world_support::WorldSupport,Transform)>,
     mut reuse:Option<&mut crate::cpu_frame_plan::FrameGeometry>,
+    _span_source: Option<&Node>,
 ) -> Result<Rect,String>{
     crate::render_cancellation::checkpoint()?;
     if let Some(cached) = prepared.get(id) {
@@ -266,7 +267,11 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
     // Analytic Sketch text uses a FreeType mask. Figma profiles keep the
     // outlines; WASM has no FreeType and also keeps them.
     if !compatible {
-        if let Some(mask) = crate::font_splash::sketch_device_mask(n, fonts, matrix) {
+        #[cfg(not(target_arch = "wasm32"))]
+        let span_mask = _span_source.and_then(|source| crate::font_splash::device_mask_from_layout(source, fonts, matrix));
+        #[cfg(target_arch = "wasm32")]
+        let span_mask = None;
+        if let Some(mask) = span_mask.or_else(|| crate::font_splash::sketch_device_mask(n, fonts, matrix)) {
             fill = mask;
         }
     }
@@ -301,9 +306,17 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
     let fill_bounds = crate::bounds::path_bounds(fill_path, matrix);
     let own = bound;
     let mut child_bounds = Rect::default();
+    #[cfg(not(target_arch = "wasm32"))]
+    let span_source = if !compatible && n.derived_text_paint {
+        crate::font_splash::derived_span_source(doc, n)
+    } else {
+        None
+    };
+    #[cfg(target_arch = "wasm32")]
+    let span_source = None;
     for child in n.render_children() {
         child_bounds = child_bounds.union(prepare_node_geometry_supported::<FRAME>(
-            child, matrix, context, paths, local_strokes, prepared, segments, early,support,reuse.as_deref_mut(),
+            child, matrix, context, paths, local_strokes, prepared, segments, early,support,reuse.as_deref_mut(),span_source,
         )?);
     }
     if n.clip && !own.empty() {
