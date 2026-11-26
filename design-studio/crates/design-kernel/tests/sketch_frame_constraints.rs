@@ -417,3 +417,65 @@ fn real_sketch_bootstrap_symbol_keeps_its_archived_instance_dimensions() {
     assert_box(&resolved, &resolved.nodes[INSTANCE].children[0], [0., 0., 97., 38.]);
     assert_box(&resolved, CHILD, [0., 0., 190., 90.]);
 }
+
+#[test]
+fn an_unpinned_regular_group_follows_its_native_frame_before_its_child_pins() {
+    let source = json!({
+        "_class": "group", "do_objectID": "frame", "name": "Frame", "groupBehavior": 1,
+        "frame": {"x": 0, "y": 0, "width": 100, "height": 80},
+        "layers": [{
+            "_class": "group", "do_objectID": "group", "name": "Group", "groupBehavior": 0,
+            "groupLayout": {"_class": "MSImmutableFreeformGroupLayout"},
+            "frame": {"x": 10, "y": 10, "width": 70, "height": 50},
+            "horizontalPins": 0, "verticalPins": 0, "horizontalSizing": 0, "verticalSizing": 0,
+            "resizingConstraint": 63,
+            "layers": [{
+                "_class": "rectangle", "do_objectID": "child", "name": "Child",
+                "frame": {"x": 20, "y": 8, "width": 30, "height": 12},
+                "horizontalPins": 4, "verticalPins": 1, "horizontalSizing": 0, "verticalSizing": 0,
+                "resizingConstraint": 12
+            }]
+        }]
+    });
+    let meta = |app| json!({"app": app, "appVersion": "2026.3.1", "version": 188});
+    let decode = |producer, layer| import_sketch_report(&sketch_archive(meta(producer), layer)).unwrap().document;
+    let fonts = Fonts::new();
+    let original = Size { width: 100., height: 80. };
+    let expanded = Size { width: 200., height: 140. };
+    let mut doc = decode("com.bohemiancoding.sketch3", source.clone());
+    layout::resolve(&mut doc, &fonts).unwrap();
+    assert_box(&doc, "group", [10., 10., 70., 50.]);
+    assert_box(&doc, "child", [20., 8., 30., 12.]);
+    resize_parent(&mut doc, "frame", expanded, &fonts);
+    assert_box(&doc, "group", [20., 17.5, 140., 87.5]);
+    assert_box(&doc, "child", [90., 8., 30., 12.]);
+    assert_eq!(doc.nodes["group"].transform.point(doc.nodes["child"].transform.point(Default::default())),
+        futureox_design_kernel::math::Point::new(110., 25.5));
+    let child = export_sketch_layer_fields(&doc, "child").unwrap();
+    assert_eq!(child["horizontalPins"], 4);
+    assert_eq!(child["verticalPins"], 1);
+    assert_eq!(child["resizingConstraint"], 12);
+
+    let mut reopened = import_sketch_report(&export_sketch(&doc).unwrap()).unwrap().document;
+    layout::resolve(&mut reopened, &fonts).unwrap();
+    resize_parent(&mut reopened, "frame", original, &fonts);
+    assert_box(&reopened, "group", [10., 10., 70., 50.]);
+    assert_box(&reopened, "child", [20., 8., 30., 12.]);
+    resize_parent(&mut reopened, "frame", expanded, &fonts);
+    assert_box(&reopened, "group", [20., 17.5, 140., 87.5]);
+    assert_box(&reopened, "child", [90., 8., 30., 12.]);
+
+    let mut explicitly_pinned = source.clone();
+    explicitly_pinned["layers"][0]["horizontalPins"] = json!(1);
+    explicitly_pinned["layers"][0]["verticalPins"] = json!(1);
+    let mut controls = [
+        decode("com.futureox.design-kernel", source),
+        decode("com.bohemiancoding.sketch3", explicitly_pinned),
+    ];
+    for doc in &mut controls {
+        layout::resolve(doc, &fonts).unwrap();
+        resize_parent(doc, "frame", expanded, &fonts);
+        assert_box(doc, "group", [10., 10., 70., 50.]);
+        assert_box(doc, "child", [20., 8., 30., 12.]);
+    }
+}

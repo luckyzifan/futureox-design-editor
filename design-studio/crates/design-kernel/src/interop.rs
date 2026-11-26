@@ -1449,7 +1449,7 @@ pub type SourceBitmapRefs = BTreeMap<String,(std::sync::Arc<str>,[u32;2])>;
 #[derive(Clone, Copy)]
 struct SketchParentFrame {
     size: [f64; 2],
-    native_fixed_unpinned: bool,
+    native: bool,
 }
 
 struct Importer<'a> {
@@ -3224,21 +3224,33 @@ impl<'a> Importer<'a> {
                 if modeled.len()!=modern.len() {import_lossy.push("modern-layout-untranslated-fields-retained".into());}
                 if !modeled.is_empty() {node.bindings.insert("sketchModernLayoutModeled".into(),json!(modeled).to_string());}
             }
-            if parent_frame.is_some_and(|frame| frame.native_fixed_unpinned)
-                && node.kind != "group"
+            if parent_frame.is_some_and(|frame| frame.native)
                 && has_standard_sketch_resize_geometry(&node)
                 && layer.get("resizingConstraint").is_none_or(|value| value.as_u64() == Some(63))
             {
-                // Native Frame children explicitly declare the fixed/unpinned
-                // mode with zero-valued fields. Generated compatibility
-                // archives also write zeros on layers with no constraints.
+                // Native Frame children explicitly declare unpinned axes
+                // with zero-valued fields. Compatibility archives also write
+                // zeros on layers with no constraints.
                 let declares_zero = |field| {
                     sketch_layout_value(layer, field).and_then(Value::as_u64) == Some(0)
                         && !modern.keys().any(|key| key.trim_start_matches('_') == field)
                 };
                 let x = declares_zero("horizontalPins") && declares_zero("horizontalSizing");
                 let y = declares_zero("verticalPins") && declares_zero("verticalSizing");
-                if x || y {
+                if node.kind == "group" {
+                    if x && y && node.constraints.is_none() && class == "group"
+                        && layer.get("groupBehavior").and_then(Value::as_u64) == Some(0)
+                        && layer.pointer("/groupLayout/_class").and_then(Value::as_str) == Some("MSImmutableFreeformGroupLayout")
+                    {
+                        // A regular group follows the Frame proportionally.
+                        // Its children then apply their own pins in that group.
+                        node.constraints = Some(crate::layout::Constraints {
+                            horizontal: crate::layout::Anchor::Scale,
+                            vertical: crate::layout::Anchor::Scale,
+                            ..Default::default()
+                        });
+                    }
+                } else if x || y {
                     let constraints = node.constraints.get_or_insert_with(Default::default);
                     if x {
                         constraints.horizontal = crate::layout::Anchor::Scale;
@@ -3297,7 +3309,7 @@ impl<'a> Importer<'a> {
             && node.layout.as_ref().is_none_or(|layout| layout.mode == crate::layout::Flow::None))
             .then_some(SketchParentFrame {
                 size: [node.width, node.height],
-                native_fixed_unpinned: self.native_archive && class == "group"
+                native: self.native_archive && class == "group"
                     && layer.get("groupBehavior").and_then(Value::as_u64) == Some(1),
             });
         let mut children = Vec::new();
