@@ -6,7 +6,7 @@ use crate::{
     math::{Point, Transform},
     path::Contour,
     scene::{Document, Node},
-    spatial::{Camera, PivotPlane, Pose, Projection, outline_geometry, pivot_plane, sin_cos, supports_projected_outline},
+    spatial::{Camera, PivotPlane, Pose, Projection, corners, outline_geometry, pivot_plane, sin_cos, supports_projected_outline},
     spatial_curve::PAGE_TOLERANCE,
     spatial_material::{self, INTERSECTION_BUDGET, Material, MaterialPlane},
 };
@@ -181,6 +181,7 @@ struct Face<'a> {
     even_odd: bool,
     paints: Vec<Material>,
     pivot_plane: Option<PivotPlane>,
+    selection_corners: Option<[Point; 4]>,
 }
 
 fn bounded_boolean(
@@ -285,6 +286,7 @@ impl<'a> Collector<'a> {
         let node_basis = parent.concat(SpatialMatrix::embed(node.transform));
         let world = node_basis.concat(SpatialMatrix::pose(node, pose));
         let pivot = pose.and_then(|pose| projected_pivot(node, self.page_from_frame, node_basis, pose));
+        let selection_corners = pose.and_then(|_| projected_selection(node, self.page_from_frame, world));
         let placement = placement.concat(node.transform);
         if !node.children.is_empty() {
             let keep_depth = node
@@ -321,6 +323,7 @@ impl<'a> Collector<'a> {
                 let mut patch = Projection::new(node.transform, true);
                 patch.hide_fills = keep_depth;
                 patch.pivot_plane = pivot;
+                patch.selection_corners = selection_corners;
                 self.patches.insert(id.into(), patch);
             }
             for child in &node.children {
@@ -344,6 +347,7 @@ impl<'a> Collector<'a> {
             if node.spatial.is_some() {
                 let mut patch = Projection::new(node.transform, node.visible);
                 patch.pivot_plane = pivot;
+                patch.selection_corners = selection_corners;
                 self.patches.insert(id.into(), patch);
             }
             return Ok(());
@@ -390,6 +394,7 @@ impl<'a> Collector<'a> {
                 even_odd: shape.even_odd,
                 paints,
                 pivot_plane: pivot,
+                selection_corners,
             });
         } else {
             let mut patch = Projection::new(node.transform, false);
@@ -403,6 +408,15 @@ impl<'a> Collector<'a> {
 fn projected_pivot(node: &Node, page_from_frame: Transform, basis: SpatialMatrix, pose: Pose) -> Option<PivotPlane> {
     let at_depth = basis.concat(SpatialMatrix::offset(0., 0., pose.depth));
     pivot_plane(node, page_from_frame, |point| at_depth.point(point).map(|(p, w, _)| (p, w)))
+}
+
+fn projected_selection(node: &Node, page_from_frame: Transform, world: SpatialMatrix) -> Option<[Point; 4]> {
+    let mut result = corners(node);
+    for point in &mut result {
+        let (projected, _, _) = world.point(*point).ok()?;
+        *point = page_from_frame.point(projected);
+    }
+    Some(result)
 }
 
 pub(crate) fn project_scene(
@@ -440,6 +454,7 @@ pub(crate) fn project_scene(
     let mut frame_patch = Projection::new(frame.transform, frame.visible);
     frame_patch.hide_fills = true;
     frame_patch.pivot_plane = pose.and_then(|pose| projected_pivot(frame, page_from_frame, frame_basis, pose));
+    frame_patch.selection_corners = pose.and_then(|_| projected_selection(frame, page_from_frame, local));
     for child in &frame.children {
         collector.visit(child, local, Transform::default())?;
     }
@@ -504,6 +519,7 @@ pub(crate) fn project_scene(
         patch.vector_geometry = geometry;
         patch.hide_strokes = spatial_material::has_strokes(face.node);
         patch.pivot_plane = face.pivot_plane;
+        patch.selection_corners = face.selection_corners;
         collector.patches.insert(face.node.id.clone(), patch);
     }
     Ok(collector.patches)

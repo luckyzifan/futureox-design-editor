@@ -135,6 +135,9 @@ pub(crate) struct Projection {
     pub(crate) composed: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) pivot_plane: Option<PivotPlane>,
+    // Page-space corners of the layer's rotated plane, in contour order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) selection_corners: Option<[Point; 4]>,
     #[serde(skip)]
     pub(crate) appearances: Vec<Appearance>,
     #[serde(skip)]
@@ -144,7 +147,7 @@ pub(crate) struct Projection {
 impl Projection {
     pub(crate) fn new(transform: Transform, visible: bool) -> Self {
         Self { transform, visible, hide_fills: false, vector_geometry: None,
-            hide_strokes: false, composed: false, pivot_plane: None, appearances: Vec::new(), inset: None }
+            hide_strokes: false, composed: false, pivot_plane: None, selection_corners: None, appearances: Vec::new(), inset: None }
     }
 }
 
@@ -168,7 +171,7 @@ pub(crate) fn pivot_plane(
     Some(result)
 }
 
-fn corners(node: &Node) -> [Point; 4] {
+pub(crate) fn corners(node: &Node) -> [Point; 4] {
     [Point::new(0., 0.), Point::new(node.width, 0.), Point::new(node.width, node.height), Point::new(0., node.height)]
 }
 
@@ -202,13 +205,14 @@ fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transf
     fallback.pivot_plane = pivot_plane(node, page_parent, |p| project_depth(node.transform.point(p), pose.depth));
     let projective = camera.is_some() && (plane.zx != 0. || plane.zy != 0.);
     let [tl, tr, br, bl] = corners(node);
-    let [tl, tr, _br, bl] = [point(tl)?.0, point(tr)?.0, point(br)?.0, point(bl)?.0];
+    let [tl, tr, br, bl] = [point(tl)?.0, point(tr)?.0, point(br)?.0, point(bl)?.0];
     let area = (tr.x - tl.x) * (bl.y - tl.y) - (tr.y - tl.y) * (bl.x - tl.x);
     let [a, b, c, d, _, _] = node.transform.0;
     let normal = area / ((a * d - b * c) * node.width * node.height);
     if normal.abs() < 1e-12 || (!pose.backface_visible && normal < 0.) {
         return Ok(fallback);
     }
+    let selection_corners = Some([tl, tr, br, bl].map(|point| page_parent.point(point)));
     if !projective {
         let transform = if camera.is_none() {
             affine
@@ -218,6 +222,7 @@ fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transf
         };
         let mut patch = Projection::new(transform, true);
         patch.pivot_plane = fallback.pivot_plane;
+        patch.selection_corners = selection_corners;
         return Ok(patch);
     }
 
@@ -236,6 +241,7 @@ fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transf
     let tolerance = PAGE_TOLERANCE / page_parent.max_scale().max(1.);
     let mut patch=Projection::new(node.transform,true);
     patch.pivot_plane = fallback.pivot_plane;
+    patch.selection_corners = selection_corners;
     if spatial_material::has_strokes(node) {
         if color_managed || node.blend != "normal" {
             return Err("Projected strokes require normal SDR compositing".into());
@@ -506,6 +512,34 @@ mod tests {
             let expected_y = -12. + 100. + (80. + 18. - 100.) / distance;
             assert!((x / w - expected_x).abs() < 1e-10, "shared {shared}: {x} / {w}");
             assert!((y / w - expected_y).abs() < 1e-10, "shared {shared}: {y} / {w}");
+        }
+    }
+
+    #[test]
+    fn selection_corners_match_the_rendered_face_in_flat_and_shared_perspective() {
+        use crate::{math::Point, vector_geometry::Curve};
+
+        let mut input = fixture();
+        input["schemaVersion"] = json!(25);
+        input["nodes"]["parent"]["transform"] = json!([1., 0., 0., 1., 30., -12.]);
+        for shared in [false, true] {
+            input["nodes"]["parent"]["spatial"]["preserve3d"] = json!(shared);
+            let document: crate::scene::Document = serde_json::from_value(input.clone()).unwrap();
+            let patches = super::projections(&document).unwrap();
+            let patch = &patches["shape"];
+            let corners = patch.selection_corners.unwrap();
+            assert!((corners[1].y - corners[0].y).abs() > 1., "shared {shared}");
+            let transform = document.nodes["parent"].transform.concat(patch.transform);
+            let outline = &patch.vector_geometry.as_ref().unwrap().fill;
+            for corner in corners {
+                assert!(outline.iter().any(|curve| match curve {
+                    Curve::Move([x, y]) | Curve::Line([x, y]) => {
+                        (transform.point(Point::new(*x, *y)) - corner).length() < 1e-7
+                    }
+                    _ => false,
+                }), "shared {shared}: {corner:?}");
+            }
+            assert!(patches["parent"].selection_corners.is_none());
         }
     }
 

@@ -10,7 +10,7 @@ import { recoverInteractionPreview } from './kernel/interaction-preview-recovery
 import { selectionSizeLabel } from './selection-size-label'
 import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_MEMBER_STROKE_PX, SELECTION_UNION_STROKE_PX, SIZE_PILL_TEXT } from './selection-blue'
 import { SpatialCanvasControls, spatialPivotPoint, spatialPoseAfterDrag, type SpatialHandle } from './spatial-canvas-controls'
-import { kernelSpatialPivotPlane, type SpatialPivotPlane } from './kernel/picking'
+import { kernelSpatialPivotPlane, kernelSpatialSelectionCorners, type SpatialPivotPlane } from './kernel/picking'
 import { rotationChromeHeldToTexture, rotationDocumentChromeSuppressed, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
 import { selectionMemberCorners, sharedRotationFrame } from './selection-outline'
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
@@ -1419,6 +1419,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const spatialId = state.selection.length === 1 ? state.selection[0] : undefined
   const shownSpatialDocument = displayedSnapshot?.document
   const shownPose = spatialId && shownSpatialDocument?.nodes[spatialId]?.spatial?.pose
+  const spatialOutline = uiMode === 'figma' && spatialId && selected[0]?.id === spatialId && shownSpatialDocument && shownPose && shownPose.visible
+    ? kernelSpatialSelectionCorners(shownSpatialDocument, spatialId) : undefined
   const spatialPlane = uiMode === 'figma' && state.tool === 'select' && !selectionFeedback.readOnly &&
     canTransform && !editingBlur && !nativeSource && !openingSource && (!ownedDrag || ownedDrag.spatial) &&
     spatialId && shownSpatialDocument && shownPose && shownPose.visible && state.doc.nodes[spatialId]?.visible
@@ -1432,11 +1434,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }), [entries, state.doc, selection, uiMode])
   const overlay = useMemo(() => canvasOverlayCommands({
     document:state.doc,pageId:state.page,epoch:editor.sessionGeneration,tool:state.tool,pixelGrid:showPixelGrid,
-    canTransform:showTransformHandles,selected:showSelectionChrome ? selected : [],owners:selectionFeedback.ids,frameTitles,localSelection,selectionCorners,selectionBox,
+    canTransform:showTransformHandles,selected:showSelectionChrome ? selected : [],owners:selectionFeedback.ids,frameTitles,localSelection,
+    selectionCorners:spatialOutline ?? selectionCorners,selectionBox,
     orientedFrame:sharedOutline,measurementTarget:measurementTarget&&measurementBounds?{id:measurementTarget,bounds:measurementBounds}:null,
     directMeasurement, zoom, uiMode,
   }), [state.doc,state.page,state.tool,showPixelGrid,editor.sessionGeneration,frameTitles,showSelectionChrome,showTransformHandles,selected,
-    measurementTarget,measurementBounds,directMeasurement,selectionCorners,selectionBox,localSelection,selectionFeedback,zoom,uiMode,sharedOutline])
+    measurementTarget,measurementBounds,directMeasurement,spatialOutline,selectionCorners,selectionBox,localSelection,selectionFeedback,zoom,uiMode,sharedOutline])
   const frameTitleLabels = useMemo(() => new Map(overlay.commands.labels.filter(label =>
     label.kind === 'frame-title' || label.kind === 'section-title').map(label => [label.owners?.at(-1), label])), [overlay])
   const measurements = overlay.commands.measurements || []
@@ -4496,7 +4499,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 data-selection-role={selected.length > 1 ? 'union' : 'object'}
                 data-selection-held={heldRotationMembers ? 'texture' : undefined}
                 opacity={cropFrame ? 1 : documentChromeOpacity}
-                points={drawnCorners.map((p) => `${p.x},${p.y}`).join(' ')}
+                points={(spatialOutline ?? drawnCorners).map((p) => `${p.x},${p.y}`).join(' ')}
                 fill="none"
                 stroke={SELECTION_BLUE}
                 strokeWidth={SELECTION_UNION_STROKE_PX}
