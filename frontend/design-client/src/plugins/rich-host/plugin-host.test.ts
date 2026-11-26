@@ -698,6 +698,29 @@ describe('Figma plugin host', () => {
     run.close()
   })
 
+  it('keeps a stripped TypeScript entry separate from the QuickJS prelude', async () => {
+    const filename = new URL('../../../../design-desktop/src/plugin-source.mjs', import.meta.url)
+    const { compilePluginTypeScript } = await import(filename.href)
+    const script = await compilePluginTypeScript(`
+      import type { Label } from './types.js'
+      ;(() => {
+        const label: Label = 'From an isolated typed entry'
+        figma.createRectangle().name = label
+        figma.closePlugin('typed')
+      })()
+    `)
+    expect(script).not.toContain('./types.js')
+    const current = editor(), before = current.authoredDocument
+    const run = await openPlugin(current, bundle('IsolatedTypedEntry', script))
+    try {
+      expect(run.closeMessage).toBe('typed')
+      expect(named(current, 'From an isolated typed entry')?.kind).toBe('rectangle')
+      current.undo()
+      expect(current.authoredDocument).toEqual(before)
+      expect(current.canUndo).toBe(false)
+    } finally { run.close() }
+  })
+
   it('runs a source-only desktop archive through the same bounded parser and QuickJS', async () => {
     const filename = new URL('../../../../design-desktop/src/plugin-source.mjs', import.meta.url)
     const { compilePluginTypeScript } = await import(filename.href)
