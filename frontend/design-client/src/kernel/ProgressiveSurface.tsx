@@ -1599,7 +1599,11 @@ focus?: SurfaceProps['overview'],
       const prior = boardTileFill.current
       if (region && prior?.token === request.sequence) {
         if (prior.state === 'rejected') return false
-        if (prior.state === 'running' || prior.coversBoard) return true
+        if (prior.coversBoard) return true
+        if (prior.state === 'running') {
+          translationRequest.current = request
+          return true
+        }
         if (prior.target && needed && boundsContain(prior.target, needed)) return true
       }
       translationRequest.current = request
@@ -1624,18 +1628,14 @@ focus?: SurfaceProps['overview'],
           }
           const native=canvasRasterPlan(view,dpr,width,height,{rasterProfile,exactPhase:true})
           const limit=budgetTileLimit(displayBudget,false)
-          let target=region??shifted, coversBoard=!!region
+          // A retained move only samples the intersection with this viewport.
+          const target = needed ?? shifted
+          const coversBoard = !!region && boundsContain(target, region)
           let planned
           try { planned=planTilesAligned(target,native.scale,limit,native.phase) }
           catch (error) {
-            if (!region || !needed) {
-              if (region) rejectBoard()
-              else throw error
-              return
-            }
-            target=needed; coversBoard=false
-            try { planned=planTilesAligned(target,native.scale,limit,native.phase) }
-            catch { rejectBoard(); return }
+            if (region) { rejectBoard(); return }
+            throw error
           }
           const plan=planned.map(tile=>({...tile,key:tileComputationKey(tile,native.camera,false)}))
           const missing=plan.filter(tile=>{const resident=tileRef.current.get(tile.key)
@@ -1660,7 +1660,15 @@ focus?: SurfaceProps['overview'],
             : { token: request.sequence, state: 'resident', keys: plan.map(tile => tile.key), coversBoard, target }
           if (dropped) request.failed()
         }})
-      void translationRefinement.request()
+      const turn = translationRefinement.request()
+      if (region) void turn.then(completed => {
+        const fill = boardTileFill.current
+        if (!completed || !current() || fill?.token !== request.sequence || fill.state !== 'resident') return
+        // Only the most recent demand can schedule a follow-up for this gesture.
+        const pending = translationRequest.current
+        if (pending?.region && pending !== request && pending.sequence === request.sequence)
+          translationCoverage.current?.(pending)
+      })
       return true
     }
     const pendingTranslation=translationRequest.current
@@ -3136,7 +3144,7 @@ navigationInputOwner={props.navigationInputOwner}
           preserveZoomBasis={props.interaction?.figmaBoardPreview}
           zoomInputActive={navigationGesture.active}
           panBacking={reusableFrame&&displayed&&!displayed.preview?displayed:undefined}
-          onTranslatedCoverage={residentDisplay ? (source,offset,sequence,failed)=>translationCoverage.current?.({source,offset,sequence,failed})===true : undefined}
+          onTranslatedCoverage={residentDisplay ? (source,offset,sequence,failed,region)=>translationCoverage.current?.({source,offset,sequence,failed,region})===true : undefined}
           onComposited={residentDisplay ? undefined : frame => { observeBacking(frame); props.onPresentation?.(frame) }}
           terminalQuality={complete ? { qualitySequence: terminalQualityState.current.sequence,
             qualityRevision: contract.revision, pageToken: diagnosticPage.current.token } : undefined}
