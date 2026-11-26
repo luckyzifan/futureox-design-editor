@@ -490,6 +490,11 @@ fn bool_at(v: &Value, key: &str) -> bool {
     v.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
+fn sketch_layout_value<'a>(layer: &'a Value, field: &str) -> Option<&'a Value> {
+    [format!("__{field}"), format!("_{field}"), field.to_owned()]
+        .iter().find_map(|spelling| layer.get(spelling))
+}
+
 /// Fill id for a symbol master's artboard background. It is not a style fill:
 /// Sketch draws it from `backgroundColor`, and instances include it only when
 /// `includeBackgroundColorInInstance` is set.
@@ -1790,11 +1795,11 @@ impl<'a> Importer<'a> {
     }
 
     fn layer(&mut self, layer: &Value, inside_artboard: bool, stack_item: bool) -> String {
-        self.layer_in_library(layer, inside_artboard, stack_item, None)
+        self.layer_in_library(layer, inside_artboard, stack_item, None, None)
     }
 
     fn layer_in_library(&mut self, layer: &Value, inside_artboard: bool, stack_item: bool,
-        library_copy: Option<&str>) -> String {
+        library_copy: Option<&str>, frame_size: Option<[f64; 2]>) -> String {
         let class = match layer
             .get("_class")
             .and_then(Value::as_str)
@@ -3077,12 +3082,23 @@ impl<'a> Importer<'a> {
                     let axis = key.starts_with("vertical");
                     if key.ends_with("Sizing") {
                         use crate::layout::SizeMode;
-                        let ratio = if code == 3 && stack_item {
+                        let ratio = if code == 3 {
+                            let percentage = layer.get("percentageSize");
+                            let saved_ratio = |value| sketch_point(value).map(|size| size[usize::from(axis)]);
                             // Florence archives NSSize as "{width, height}".
-                            // An omitted size represents two zero ratios.
-                            layer.get("percentageSize").map_or(Some(0.), |value| {
-                                sketch_point(value).map(|size| size[usize::from(axis)])
-                            }).filter(|n| (0. ..=1.).contains(n))
+                            // In an ordinary native frame the saved bounds
+                            // provide the ratio. Our own writes can also carry
+                            // its explicitly authored value across a clamp.
+                            match (stack_item, frame_size) {
+                                (true, _) => percentage.map_or(Some(0.), saved_ratio),
+                                (false, Some(_)) if self.futureox_archive && percentage.is_some() =>
+                                    percentage.and_then(saved_ratio),
+                                (false, Some(parent)) => {
+                                    let size = if axis { node.height } else { node.width };
+                                    Some(size / parent[usize::from(axis)])
+                                }
+                                _ => None,
+                            }.filter(|n| (0. ..=1.).contains(n))
                         } else {
                             None
                         };
@@ -3105,14 +3121,26 @@ impl<'a> Importer<'a> {
                                 sizing.width_ratio = ratio;
                             }
                             modeled.push(spelling.clone());
+                            if mode == SizeMode::Relative && frame_size.is_some() && !self.futureox_archive {
+                                let pin = if axis { "verticalPins" } else { "horizontalPins" };
+                                if sketch_layout_value(layer, pin).and_then(Value::as_u64) == Some(0)
+                                    && !modern.keys().any(|key| key.trim_start_matches('_') == pin)
+                                {
+                                    let constraints = node.constraints.get_or_insert_with(Default::default);
+                                    if axis {
+                                        constraints.vertical = crate::layout::Anchor::Scale;
+                                    } else {
+                                        constraints.horizontal = crate::layout::Anchor::Scale;
+                                    }
+                                }
+                            }
                         }
                     } else if key.ends_with("Pins") {
                         let anchor=match code {1=>Some(crate::layout::Anchor::Start),4=>Some(crate::layout::Anchor::End),5=>Some(crate::layout::Anchor::Stretch),_=>None};
                         if let Some(anchor)=anchor {
                             let c = node.constraints.get_or_insert_with(|| {
                                 let default_pin = |field: &str| {
-                                    let raw = [format!("__{field}"), format!("_{field}"), field.to_owned()]
-                                        .iter().find_map(|spelling| layer.get(spelling));
+                                    let raw = sketch_layout_value(layer, field);
                                     if raw.and_then(Value::as_u64) == Some(0) {
                                         crate::layout::Anchor::Scale
                                     } else {
@@ -3177,10 +3205,13 @@ impl<'a> Importer<'a> {
 
         let child_stack = node.layout.as_ref().is_some_and(|layout| matches!(layout.mode,
             crate::layout::Flow::Horizontal | crate::layout::Flow::Vertical));
+        let child_frame = (node.kind == "frame" && !node.graphic
+            && node.layout.as_ref().is_none_or(|layout| layout.mode == crate::layout::Flow::None))
+            .then_some([node.width, node.height]);
         let mut children = Vec::new();
         if let Some(layers) = layer.get("layers").and_then(Value::as_array) {
             for child in layers {
-                children.push(self.layer_in_library(child, inside_artboard || class == "artboard", child_stack, library_copy));
+                children.push(self.layer_in_library(child, inside_artboard || class == "artboard", child_stack, library_copy, child_frame));
             }
         }
         let reverse_archive = node.layout.as_ref().and_then(|layout| layout.stacking_order)
@@ -3659,7 +3690,7 @@ fn foreign_symbol_import(
         let entry_id = entry.get("do_objectID").and_then(Value::as_str).unwrap_or_default();
         let symbol_id = master.get("symbolID").and_then(Value::as_str).unwrap_or_default();
         let copy = format!("sketch/foreign/{library_id}/{entry_id}/{symbol_id}");
-        let id = importer.layer_in_library(master, false, false, Some(&copy));
+        let id = importer.layer_in_library(master, false, false, Some(&copy), None);
         let mut source=entry.clone();
         if let Some(map) = source.get_mut("remoteToLocalIDMap").and_then(Value::as_object_mut) {
             let mut scoped_ids = BTreeMap::new();

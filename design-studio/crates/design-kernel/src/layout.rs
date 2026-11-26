@@ -917,15 +917,27 @@ fn anchor(position: f64, size: f64, old: f64, new: f64, mode: Anchor) -> (f64, f
 
 fn constrained_axis(
     position: f64, size: f64, old: f64, new: f64,
-    opcode: ConstraintOpcode, legacy_bits: Option<u8>,
+    opcode: ConstraintOpcode, legacy_bits: Option<u8>, relative: Option<f64>,
 ) -> (f64, f64) {
+    let Some(mode) = opcode.anchor_mode() else { return (position, size); };
+    if let Some(extent) = relative {
+        let start = match mode {
+            Anchor::Start => position,
+            Anchor::Center => position + (new - old + size - extent) / 2.,
+            Anchor::End => position + new - old + size - extent,
+            Anchor::Scale => constraint_projection::proportional_map(position + size / 2., old, new) - extent / 2.,
+            // Two explicit pins continue to define both margins.
+            Anchor::Stretch => return anchor(position, size, old, new, mode),
+        };
+        return (start, extent);
+    }
     if old != new
         && let Some(bits) = legacy_bits
         && let Ok(geometry) = crate::sketch::resize_legacy_axis(position, size, old, new, bits)
     {
         return geometry;
     }
-    opcode.anchor_mode().map_or((position, size), |mode| anchor(position, size, old, new, mode))
+    anchor(position, size, old, new, mode)
 }
 /// A pose changes no dimensions. Reuse is allowed only when the real anchor
 /// operations (including cancellation and minimum-size rules) keep every bit.
@@ -979,6 +991,7 @@ fn constrain(doc: &mut Document, parent: &str) {
     let (w, h) = (p.width, p.height);
     let graphic = p.graphic;
     let flow = p.layout.as_ref().is_some_and(|l| l.mode != Flow::None);
+    let relative_in_frame = p.kind == "frame" && !flow;
     let children = p.children.clone();
     for id in children {
         if graphic {
@@ -999,16 +1012,21 @@ fn constrain(doc: &mut Document, parent: &str) {
             crate::interop::sketch_legacy_resize_axes(doc, &doc.nodes[&id])
         };
         let n = doc.nodes.get_mut(&id).unwrap();
+        let [relative_width, relative_height] = if relative_in_frame {
+            [relative_size(n, 0, w, 0.).map(|(size, _)| size), relative_size(n, 1, h, 0.).map(|(size, _)| size)]
+        } else {
+            [None; 2]
+        };
         let flow_item = flow && !n.sizing_value().absolute;
         if let Some(mut c) = n.constraints.clone() {
             if !flow_item {
                 let horizontal = ConstraintOpcode::from_anchor(0, c.horizontal);
                 let vertical = ConstraintOpcode::from_anchor(1, c.vertical);
                 let (x, nw) = constrained_axis(
-                    n.transform.0[4], n.width, c.reference_width.unwrap_or(w), w, horizontal, legacy_x,
+                    n.transform.0[4], n.width, c.reference_width.unwrap_or(w), w, horizontal, legacy_x, relative_width,
                 );
                 let (y, nh) = constrained_axis(
-                    n.transform.0[5], n.height, c.reference_height.unwrap_or(h), h, vertical, legacy_y,
+                    n.transform.0[5], n.height, c.reference_height.unwrap_or(h), h, vertical, legacy_y, relative_height,
                 );
                 n.transform.0[4] = x;
                 n.transform.0[5] = y;
@@ -1017,6 +1035,8 @@ fn constrain(doc: &mut Document, parent: &str) {
             c.reference_width = Some(w);
             c.reference_height = Some(h);
             n.constraints = Some(c);
+        } else if relative_width.is_some() || relative_height.is_some() {
+            resize(n, relative_width.unwrap_or(n.width), relative_height.unwrap_or(n.height));
         }
     }
 }

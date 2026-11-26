@@ -127,3 +127,85 @@ fn real_wfp_checkbox_retains_its_fixed_size_when_the_master_grows() {
     assert_box(&doc, CHILD, [13., 13., 18., 18.]);
     assert_eq!(export_sketch_layer_fields(&doc, CHILD).unwrap()["resizingConstraint"], 45);
 }
+
+fn modern_frame(child: Value) -> Vec<u8> {
+    sketch_archive(
+        json!({"app": "com.bohemiancoding.sketch3", "appVersion": "2026.1.2", "version": 188}),
+        json!({
+            "_class": "group", "groupBehavior": 1, "do_objectID": "frame", "name": "Frame",
+            "frame": {"x": 0, "y": 0, "width": 100, "height": 80}, "layers": [child]
+        }),
+    )
+}
+
+#[test]
+fn modern_frame_relative_size_keeps_the_archived_pins_and_round_trips() {
+    let fonts = Fonts::new();
+    let old = Size { width: 100., height: 80. };
+    let new = Size { width: 200., height: 140. };
+    for (pins, expected) in [(1, [20., 30., 80., 17.5]), (0, [40., 52.5, 80., 17.5])] {
+        let archive = modern_frame(json!({
+            "_class": "rectangle", "do_objectID": "child", "name": "Child",
+            "frame": {"x": 20, "y": 30, "width": 40, "height": 10},
+            "resizingConstraint": 63,
+            "horizontalPins": pins, "verticalPins": pins,
+            "horizontalSizing": 3, "verticalSizing": 3,
+        }));
+        let mut doc = import_sketch_report(&archive).unwrap().document;
+        assert_eq!(doc.nodes["child"].sizing_value().width, layout::SizeMode::Relative);
+        assert_eq!(doc.nodes["child"].sizing_value().height, layout::SizeMode::Relative);
+        assert_eq!(doc.nodes["child"].sizing_value().width_ratio, Some(0.4));
+        assert_eq!(doc.nodes["child"].sizing_value().height_ratio, Some(0.125));
+        layout::resolve(&mut doc, &fonts).unwrap();
+        assert_box(&doc, "child", [20., 30., 40., 10.]);
+        resize_parent(&mut doc, "frame", new, &fonts);
+        assert_box(&doc, "child", expected);
+
+        let fields = export_sketch_layer_fields(&doc, "child").unwrap();
+        assert_eq!(fields["horizontalSizing"], 3);
+        assert_eq!(fields["verticalSizing"], 3);
+        assert_eq!(fields["horizontalPins"], pins);
+        assert_eq!(fields["verticalPins"], pins);
+        let mut reopened = import_sketch_report(&export_sketch(&doc).unwrap()).unwrap().document;
+        layout::resolve(&mut reopened, &fonts).unwrap();
+        resize_parent(&mut reopened, "frame", old, &fonts);
+        assert_box(&reopened, "child", [20., 30., 40., 10.]);
+    }
+}
+
+#[test]
+#[ignore = "requires the original Sketch 2026.1.2 test.sketch fixture"]
+fn actual_sketch_frame_infers_nonstack_ratios_from_the_saved_geometry() {
+    const FRAME: &str = "71AD6CBC-2C77-467C-9C3A-CBD8F9D8BAB5";
+    const CHILD: &str = "3C42BEBA-8C1C-4378-B313-C54F9ED55144";
+    let fixture = std::env::var_os("FUTUREOX_TEST_RELATIVE_SKETCH").expect("provide the original test.sketch");
+    let files = read_zip_public(&std::fs::read(fixture).unwrap()).unwrap();
+    let meta: Value = serde_json::from_slice(&files["meta.json"]).unwrap();
+    let mut frame = files.iter().filter(|(name, _)| name.starts_with("pages/")).find_map(|(_, bytes)| {
+        let page: Value = serde_json::from_slice(bytes).unwrap();
+        find_source_layer(&page, FRAME).cloned()
+    }).unwrap();
+    let mut child = find_source_layer(&frame, CHILD).unwrap().clone();
+    assert!(child["percentageSize"].is_null());
+    assert_eq!(child["horizontalSizing"], 3);
+    assert_eq!(child["verticalSizing"], 3);
+    // Retain the original two layers' layout fields and geometry. Omit the
+    // unrelated descendants and resources from this frame-sizing workset.
+    child["layers"] = json!([]);
+    frame["layers"] = json!([child]);
+    let fonts = Fonts::new();
+    let mut doc = import_sketch_report(&sketch_archive(meta, frame)).unwrap().document;
+    assert_eq!(doc.nodes[CHILD].sizing_value().width_ratio, Some(380. / 1920.));
+    assert_eq!(doc.nodes[CHILD].sizing_value().height_ratio, Some(750. / 12084.));
+    layout::resolve(&mut doc, &fonts).unwrap();
+    assert_box(&doc, CHILD, [1301., 7416., 380., 750.]);
+    let mut pinned = doc.clone();
+    let constraints = pinned.nodes.get_mut(CHILD).unwrap().constraints.get_or_insert_with(Default::default);
+    constraints.horizontal = layout::Anchor::Start;
+    constraints.vertical = layout::Anchor::Start;
+    layout::resolve(&mut pinned, &fonts).unwrap();
+    resize_parent(&mut pinned, FRAME, Size { width: 3840., height: 24168. }, &fonts);
+    assert_box(&pinned, CHILD, [1301., 7416., 760., 1500.]);
+    resize_parent(&mut doc, FRAME, Size { width: 3840., height: 24168. }, &fonts);
+    assert_box(&doc, CHILD, [2602., 14832., 760., 1500.]);
+}
