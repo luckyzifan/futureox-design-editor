@@ -19,3 +19,11 @@ export function gaussianPrefixDemand(node:{rect:{w:number;h:number};matrix:numbe
   return node.rect.w*node.rect.h>=4096&&node.effects.some(e=>
     e.visible&&e.kind==='gaussian-blur'&&Number.isFinite(e.radius*scale)&&e.radius*scale>=32)
 }
+
+/** Default-off display experiment: select the certified reduction factor from
+ * zoom so high-density Gaussian work stays radius-proportional instead of
+ * scaling with device resolution. The kernel still declines ineligible sources
+ * per node; with the flag off the static factor is returned unchanged. */
+export function adaptiveGaussianReduction(zoom:number,adaptive:boolean,staticFactor:number):number{
+  return adaptive?(zoom>=32?8:0):staticFactor
+}

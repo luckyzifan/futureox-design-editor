@@ -1,5 +1,5 @@
 import {afterEach,expect,test,vi} from 'vitest'
-import {gaussianPrefixDemand,gaussianPrefixWorthwhile} from './gaussian-selection'
+import {adaptiveGaussianReduction,gaussianPrefixDemand,gaussianPrefixWorthwhile} from './gaussian-selection'
 import {WebGpuDriver} from './webgpu'
 import {BoxPrefix,BOX_PREFIX_BYTES,boxPrefixBandLines} from './box-prefix'
 import {parameters} from './types'
@@ -18,6 +18,18 @@ test('automatic selection stays within ordinary Gaussian support and avoids tiny
 test('the original 4 MiB prefix scratch fits 62 rows of the wide 117 Gaussian input',()=>{
   expect(boxPrefixBandLines(4188)).toBe(62)
   expect(boxPrefixBandLines(4093)).toBe(64)
+})
+
+test('adaptive reduction is default-off and only engages factor 8 at high zoom',()=>{
+  for(const staticFactor of [0,2,4,8]){
+    expect(adaptiveGaussianReduction(64,false,staticFactor)).toBe(staticFactor)
+    expect(adaptiveGaussianReduction(1,false,staticFactor)).toBe(staticFactor)
+  }
+  expect(adaptiveGaussianReduction(32,true,0)).toBe(8)
+  expect(adaptiveGaussianReduction(64,true,0)).toBe(8)
+  expect(adaptiveGaussianReduction(31.9,true,0)).toBe(0)
+  expect(adaptiveGaussianReduction(8,true,0)).toBe(0)
+  expect(adaptiveGaussianReduction(64,true,2)).toBe(8)
 })
 
 test('pipeline preparation uses transformed Gaussian demand without treating tent or small effects as Gaussian',()=>{
