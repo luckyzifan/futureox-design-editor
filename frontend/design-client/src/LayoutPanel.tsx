@@ -31,6 +31,11 @@ const alignments = [
   ['end', '终点'],
   ['stretch', '拉伸'],
 ] as const
+
+function isUnstackedFrame(node: DesignNode | undefined): node is DesignNode {
+  return node?.kind === 'frame' && !node.graphic && (node.layout?.mode ?? 'none') === 'none'
+}
+
 export function LayoutPanel({
   editor,
   node: n,
@@ -55,7 +60,9 @@ export function LayoutPanel({
     layout = n.layout || defaultLayout(),
     active = !!n.layout && n.layout.mode !== 'none',
     sizing = { ...defaultSizing(), ...n.sizing }
-  const relativeItem = !sizing.absolute && (parent?.layout?.mode === 'horizontal' || parent?.layout?.mode === 'vertical')
+  const frameRelativeItem = uiMode === 'sketch' && isUnstackedFrame(parent)
+  const relativeItem = frameRelativeItem || (!sizing.absolute &&
+    (parent?.layout?.mode === 'horizontal' || parent?.layout?.mode === 'vertical'))
   const gapMin = layoutGapMinimum(layout.mode, 'gap', uiMode)
   const lineGapMin = layoutGapMinimum(layout.mode, 'lineGap', uiMode)
   const updateLayout = (patch: Partial<AutoLayout>) =>
@@ -74,6 +81,15 @@ export function LayoutPanel({
       },
       '修改响应式尺寸',
     )
+  const useFrameRelativeSize = (axis: 'width' | 'height') =>
+    editor.updateProperties(ids, (target, doc) => {
+      const frame = doc.nodes[parents.get(target.id) || '']
+      if (!isUnstackedFrame(frame)) return
+      const ratio = target[axis] / frame[axis]
+      if (!(ratio >= 0 && ratio <= 1)) return
+      const ratioKey = axis === 'width' ? 'widthRatio' : 'heightRatio'
+      target.sizing = { ...defaultSizing(), ...target.sizing, [axis]: 'relative', [ratioKey]: ratio }
+    }, '修改响应式尺寸')
   const updateStackOrder = (order: StackingOrder) => editor.updateProperties(ids, (target, doc) => {
     const current = target.layout
     if (!current || (current.mode !== 'horizontal' && current.mode !== 'vertical')) return
@@ -126,17 +142,21 @@ export function LayoutPanel({
         const ratioKey = axis === 'width' ? 'widthRatio' : 'heightRatio'
         const modeLabel = axis === 'width' ? '宽度模式' : '高度模式'
         const ratioLabel = axis === 'width' ? '相对宽度 %' : '相对高度 %'
+        const frameRatio = n[axis] / (parent?.[axis] ?? 0)
+        const relativeDisabled = !relativeItem || (frameRelativeItem && sizing[axis] !== 'relative'
+          && !(frameRatio >= 0 && frameRatio <= 1))
         return <Fragment key={axis}>
           <label className="labeled-select">{tr(modeLabel)}
             <select aria-label={tr(modeLabel)} value={sizing[axis]} onChange={e => {
               const mode = e.currentTarget.value as Sizing['width']
-              updateSize(mode === 'relative' ? { [axis]: mode, [ratioKey]: sizing[ratioKey] ?? 1 } : { [axis]: mode })
+              if (mode === 'relative' && frameRelativeItem) useFrameRelativeSize(axis)
+              else updateSize(mode === 'relative' ? { [axis]: mode, [ratioKey]: sizing[ratioKey] ?? 1 } : { [axis]: mode })
             }}>
               <option value="fixed">{tr("固定")}</option>
               <option value="hug" disabled={!active && n.kind !== 'text'}>{tr("内容自适应")}</option>
               <option value="fill" disabled={!flow || sizing.absolute}>{tr("填满容器")}</option>
               {(uiMode === 'sketch' && relativeItem || sizing[axis] === 'relative') &&
-                <option value="relative" disabled={!relativeItem}>{tr('相对尺寸 (%)')}</option>}
+                <option value="relative" disabled={relativeDisabled}>{tr('相对尺寸 (%)')}</option>}
             </select>
           </label>
           {relativeItem && sizing[axis] === 'relative' &&

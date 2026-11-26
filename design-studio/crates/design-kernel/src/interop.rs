@@ -432,8 +432,92 @@ fn constraint_anchor(bits: u64) -> crate::layout::Anchor {
     }
 }
 
+#[derive(serde::Deserialize)]
+struct LegacyConstraintReceipt {
+    mask: u64,
+    model: LegacyConstraintAnchors,
+}
+
+#[derive(serde::Deserialize)]
+struct LegacyConstraintAnchors {
+    horizontal: crate::layout::Anchor,
+    vertical: crate::layout::Anchor,
+}
+
+impl LegacyConstraintReceipt {
+    fn from_node(doc: &Document, node: &Node) -> Option<Self> {
+        serde_json::from_str(sketch_binding(doc, node, "sketchLegacyConstraints")?).ok()
+    }
+
+    fn retained_axes(&self, constraints: &crate::layout::Constraints) -> [Option<u64>; 2] {
+        [
+            (constraints.horizontal == self.model.horizontal).then_some(self.mask & 7),
+            (constraints.vertical == self.model.vertical).then_some((self.mask >> 3) & 7),
+        ]
+    }
+}
+
+const SKETCH_FIXED_UNPINNED_AXES: &str = "sketchFixedUnpinnedAxes";
+
+fn has_standard_sketch_resize_geometry(node: &Node) -> bool {
+    !node.constrain_proportions && node.transform.0[..4] == [1., 0., 0., 1.]
+}
+
+fn sketch_fixed_unpinned_axes(doc: &Document, node: &Node) -> [bool; 2] {
+    let Some(constraints) = node.constraints.as_ref().filter(|_| has_standard_sketch_resize_geometry(node)) else {
+        return [false; 2];
+    };
+    let Some([x, y]) = sketch_binding(doc, node, SKETCH_FIXED_UNPINNED_AXES)
+        .and_then(|raw| serde_json::from_str::<[bool; 2]>(raw).ok()) else {
+        return [false; 2];
+    };
+    let sizing = node.sizing_value();
+    [(x, constraints.horizontal, sizing.width), (y, constraints.vertical, sizing.height)]
+        .map(|(fixed_unpinned, anchor, size)| fixed_unpinned
+            && anchor == crate::layout::Anchor::Scale && size == crate::layout::SizeMode::Fixed)
+}
+
+/// Select a bounded Sketch resize rule only for an unchanged source axis.
+/// A modern field takes precedence even when its value has to stay opaque.
+pub(crate) fn sketch_resize_axes(doc: &Document, node: &Node) -> [Option<u8>; 2] {
+    let Some(constraints) = node.constraints.as_ref().filter(|_| has_standard_sketch_resize_geometry(node)) else {
+        return [None; 2];
+    };
+    let [fixed_x, fixed_y] = sketch_fixed_unpinned_axes(doc, node);
+    let [horizontal, vertical] = LegacyConstraintReceipt::from_node(doc, node)
+        .map_or([None; 2], |receipt| receipt.retained_axes(constraints));
+    if !fixed_x && !fixed_y && horizontal.is_none() && vertical.is_none() {
+        return [None; 2];
+    }
+    let modern = sketch_binding(doc, node, "sketchModernLayout")
+        .and_then(|raw| serde_json::from_str::<Map<String, Value>>(raw).ok());
+    [
+        (fixed_x, horizontal, "horizontalPins", "horizontalSizing"),
+        (fixed_y, vertical, "verticalPins", "verticalSizing"),
+    ].map(|(fixed_unpinned, bits, pins, sizing)| {
+        if fixed_unpinned {
+            // The legacy compatibility mask for a fixed proportional center.
+            return Some(5);
+        }
+        if modern.as_ref().is_some_and(|fields| {
+            fields.keys().any(|key| {
+                let key = key.trim_start_matches('_');
+                key == pins || key == sizing
+            })
+        }) {
+            return None;
+        }
+        bits.filter(|bits| matches!(bits, 3 | 5 | 6)).map(|bits| bits as u8)
+    })
+}
+
 fn bool_at(v: &Value, key: &str) -> bool {
     v.get(key).and_then(Value::as_bool).unwrap_or(false)
+}
+
+fn sketch_layout_value<'a>(layer: &'a Value, field: &str) -> Option<&'a Value> {
+    [format!("__{field}"), format!("_{field}"), field.to_owned()]
+        .iter().find_map(|spelling| layer.get(spelling))
 }
 
 /// Fill id for a symbol master's artboard background. It is not a style fill:
@@ -1345,6 +1429,13 @@ pub fn source_bitmap_upright(exif: &[u8]) -> std::result::Result<bool,String>{
     Ok(crate::image_color::exif_orientation(exif)? == image::metadata::Orientation::NoTransforms)
 }
 pub type SourceBitmapRefs = BTreeMap<String,(std::sync::Arc<str>,[u32;2])>;
+
+#[derive(Clone, Copy)]
+struct SketchParentFrame {
+    size: [f64; 2],
+    native_fixed_unpinned: bool,
+}
+
 struct Importer<'a> {
     source_bitmaps: &'a SourceBitmapRefs,
     image_sources: std::cell::RefCell<std::collections::HashMap<&'a str,std::sync::Arc<str>>>,
@@ -1353,6 +1444,7 @@ struct Importer<'a> {
     files: &'a BTreeMap<String, Vec<u8>>,
     shared_paint_sources: BTreeMap<&'a str, &'a Value>,
     futureox_archive: bool,
+    native_archive: bool,
     legacy_transparent_artboards: bool,
     nodes: BTreeMap<String, Node>,
     /// do_objectID → kernel id (prototype flow destinations address the
@@ -1736,11 +1828,11 @@ impl<'a> Importer<'a> {
     }
 
     fn layer(&mut self, layer: &Value, inside_artboard: bool, stack_item: bool) -> String {
-        self.layer_in_library(layer, inside_artboard, stack_item, None)
+        self.layer_in_library(layer, inside_artboard, stack_item, None, None)
     }
 
     fn layer_in_library(&mut self, layer: &Value, inside_artboard: bool, stack_item: bool,
-        library_copy: Option<&str>) -> String {
+        library_copy: Option<&str>, parent_frame: Option<SketchParentFrame>) -> String {
         let class = match layer
             .get("_class")
             .and_then(Value::as_str)
@@ -3023,12 +3115,23 @@ impl<'a> Importer<'a> {
                     let axis = key.starts_with("vertical");
                     if key.ends_with("Sizing") {
                         use crate::layout::SizeMode;
-                        let ratio = if code == 3 && stack_item {
+                        let ratio = if code == 3 {
+                            let percentage = layer.get("percentageSize");
+                            let saved_ratio = |value| sketch_point(value).map(|size| size[usize::from(axis)]);
                             // Florence archives NSSize as "{width, height}".
-                            // An omitted size represents two zero ratios.
-                            layer.get("percentageSize").map_or(Some(0.), |value| {
-                                sketch_point(value).map(|size| size[usize::from(axis)])
-                            }).filter(|n| (0. ..=1.).contains(n))
+                            // In an ordinary native frame the saved bounds
+                            // provide the ratio. Our own writes can also carry
+                            // its explicitly authored value across a clamp.
+                            match (stack_item, parent_frame) {
+                                (true, _) => percentage.map_or(Some(0.), saved_ratio),
+                                (false, Some(_)) if self.futureox_archive && percentage.is_some() =>
+                                    percentage.and_then(saved_ratio),
+                                (false, Some(parent)) => {
+                                    let size = if axis { node.height } else { node.width };
+                                    Some(size / parent.size[usize::from(axis)])
+                                }
+                                _ => None,
+                            }.filter(|n| (0. ..=1.).contains(n))
                         } else {
                             None
                         };
@@ -3051,14 +3154,26 @@ impl<'a> Importer<'a> {
                                 sizing.width_ratio = ratio;
                             }
                             modeled.push(spelling.clone());
+                            if mode == SizeMode::Relative && parent_frame.is_some() && !self.futureox_archive {
+                                let pin = if axis { "verticalPins" } else { "horizontalPins" };
+                                if sketch_layout_value(layer, pin).and_then(Value::as_u64) == Some(0)
+                                    && !modern.keys().any(|key| key.trim_start_matches('_') == pin)
+                                {
+                                    let constraints = node.constraints.get_or_insert_with(Default::default);
+                                    if axis {
+                                        constraints.vertical = crate::layout::Anchor::Scale;
+                                    } else {
+                                        constraints.horizontal = crate::layout::Anchor::Scale;
+                                    }
+                                }
+                            }
                         }
                     } else if key.ends_with("Pins") {
                         let anchor=match code {1=>Some(crate::layout::Anchor::Start),4=>Some(crate::layout::Anchor::End),5=>Some(crate::layout::Anchor::Stretch),_=>None};
                         if let Some(anchor)=anchor {
                             let c = node.constraints.get_or_insert_with(|| {
                                 let default_pin = |field: &str| {
-                                    let raw = [format!("__{field}"), format!("_{field}"), field.to_owned()]
-                                        .iter().find_map(|spelling| layer.get(spelling));
+                                    let raw = sketch_layout_value(layer, field);
                                     if raw.and_then(Value::as_u64) == Some(0) {
                                         crate::layout::Anchor::Scale
                                     } else {
@@ -3078,6 +3193,31 @@ impl<'a> Importer<'a> {
                 }
                 if modeled.len()!=modern.len() {import_lossy.push("modern-layout-untranslated-fields-retained".into());}
                 if !modeled.is_empty() {node.bindings.insert("sketchModernLayoutModeled".into(),json!(modeled).to_string());}
+            }
+            if parent_frame.is_some_and(|frame| frame.native_fixed_unpinned)
+                && node.kind != "group"
+                && has_standard_sketch_resize_geometry(&node)
+                && layer.get("resizingConstraint").is_none_or(|value| value.as_u64() == Some(63))
+            {
+                // Native Frame children explicitly declare the fixed/unpinned
+                // mode with zero-valued fields. Generated compatibility
+                // archives also write zeros on layers with no constraints.
+                let declares_zero = |field| {
+                    sketch_layout_value(layer, field).and_then(Value::as_u64) == Some(0)
+                        && !modern.keys().any(|key| key.trim_start_matches('_') == field)
+                };
+                let x = declares_zero("horizontalPins") && declares_zero("horizontalSizing");
+                let y = declares_zero("verticalPins") && declares_zero("verticalSizing");
+                if x || y {
+                    let constraints = node.constraints.get_or_insert_with(Default::default);
+                    if x {
+                        constraints.horizontal = crate::layout::Anchor::Scale;
+                    }
+                    if y {
+                        constraints.vertical = crate::layout::Anchor::Scale;
+                    }
+                    node.bindings.insert(SKETCH_FIXED_UNPINNED_AXES.into(), json!([x, y]).to_string());
+                }
             }
         }
         if let Some(formats) = layer
@@ -3123,10 +3263,17 @@ impl<'a> Importer<'a> {
 
         let child_stack = node.layout.as_ref().is_some_and(|layout| matches!(layout.mode,
             crate::layout::Flow::Horizontal | crate::layout::Flow::Vertical));
+        let child_frame = (node.kind == "frame" && !node.graphic
+            && node.layout.as_ref().is_none_or(|layout| layout.mode == crate::layout::Flow::None))
+            .then_some(SketchParentFrame {
+                size: [node.width, node.height],
+                native_fixed_unpinned: self.native_archive && class == "group"
+                    && layer.get("groupBehavior").and_then(Value::as_u64) == Some(1),
+            });
         let mut children = Vec::new();
         if let Some(layers) = layer.get("layers").and_then(Value::as_array) {
             for child in layers {
-                children.push(self.layer_in_library(child, inside_artboard || class == "artboard", child_stack, library_copy));
+                children.push(self.layer_in_library(child, inside_artboard || class == "artboard", child_stack, library_copy, child_frame));
             }
         }
         let reverse_archive = node.layout.as_ref().and_then(|layout| layout.stacking_order)
@@ -3605,7 +3752,7 @@ fn foreign_symbol_import(
         let entry_id = entry.get("do_objectID").and_then(Value::as_str).unwrap_or_default();
         let symbol_id = master.get("symbolID").and_then(Value::as_str).unwrap_or_default();
         let copy = format!("sketch/foreign/{library_id}/{entry_id}/{symbol_id}");
-        let id = importer.layer_in_library(master, false, false, Some(&copy));
+        let id = importer.layer_in_library(master, false, false, Some(&copy), None);
         let mut source=entry.clone();
         if let Some(map) = source.get_mut("remoteToLocalIDMap").and_then(Value::as_object_mut) {
             let mut scoped_ids = BTreeMap::new();
@@ -3795,6 +3942,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
         files: &files,
         shared_paint_sources,
         futureox_archive: meta.get("app").and_then(Value::as_str) == Some("com.futureox.design-kernel"),
+        native_archive: meta.get("app").and_then(Value::as_str) == Some("com.bohemiancoding.sketch3"),
         legacy_transparent_artboards: crate::sketch::uses_legacy_transparent_artboards(meta),
         nodes: BTreeMap::new(),
         uuids: BTreeMap::new(),
@@ -4581,6 +4729,7 @@ fn layer_style_parts(document: &Document, style: &Value) -> Result<(Value, Value
         files: &files,
         shared_paint_sources: BTreeMap::new(),
         futureox_archive: false,
+        native_archive: false,
         legacy_transparent_artboards: false,
         nodes: BTreeMap::new(),
         uuids: BTreeMap::new(),
@@ -7193,32 +7342,28 @@ fn export_layer_impl(
             crate::layout::Anchor::Stretch => 5,
             _ => 0,
         };
-        let legacy_constraints = n.bindings.get("sketchLegacyConstraints")
-            .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
         // P1-7: constraints → resizingConstraint bits (63 = Sketch's
         // measured default "free" value and must not re-import as a rule).
         if let Some(c) = &n.constraints {
-            let x = constraint_axis_bits(c.horizontal, &mut lossy);
-            let y = constraint_axis_bits(c.vertical, &mut lossy);
-            layer.insert("resizingConstraint".into(), json!(x | (y << 3)));
+            let [fixed_x, fixed_y] = sketch_fixed_unpinned_axes(doc, n);
+            let receipt = LegacyConstraintReceipt::from_node(doc, n);
+            let [legacy_x, legacy_y] = receipt.as_ref().map_or([None; 2], |source| source.retained_axes(c));
+            let x = if fixed_x { 5 } else { legacy_x.unwrap_or_else(|| constraint_axis_bits(c.horizontal, &mut lossy)) };
+            let y = if fixed_y { 5 } else { legacy_y.unwrap_or_else(|| constraint_axis_bits(c.vertical, &mut lossy)) };
+            let mask = receipt.as_ref().filter(|_| !fixed_x && !fixed_y && legacy_x.is_some() && legacy_y.is_some())
+                .map_or(x | (y << 3), |source| source.mask);
+            layer.insert("resizingConstraint".into(), json!(mask));
             layer.insert("hasExplicitConstraints".into(), json!(true));
-            let legacy_model = legacy_constraints.as_ref().and_then(|source| source.get("model"));
-            for (axis, field, anchor) in [
-                ("horizontal", "horizontalPins", c.horizontal),
-                ("vertical", "verticalPins", c.vertical),
+            for (field, anchor, legacy_axis) in [
+                ("horizontalPins", c.horizontal, legacy_x),
+                ("verticalPins", c.vertical, legacy_y),
             ] {
                 // An unchanged imported legacy anchor keeps its original
                 // representation even when layout updated its reference size.
-                if !has_modern_field(field)
-                    && legacy_model.and_then(|model| model.get(axis)) != Some(&json!(anchor))
-                {
+                if !has_modern_field(field) && legacy_axis.is_none() {
                     layer.insert(field.into(), json!(pin_code(anchor)));
                 }
             }
-        }
-        if let Some(source)=legacy_constraints
-            && source.get("model")==Some(&json!(n.constraints)) {
-            layer.insert("resizingConstraint".into(),source["mask"].clone());
         }
         let sizing_code = |mode| match mode {
             crate::layout::SizeMode::Fixed => 0,
