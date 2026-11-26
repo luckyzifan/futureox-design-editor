@@ -3053,7 +3053,22 @@ impl<'a> Importer<'a> {
                     } else if key.ends_with("Pins") {
                         let anchor=match code {1=>Some(crate::layout::Anchor::Start),4=>Some(crate::layout::Anchor::End),5=>Some(crate::layout::Anchor::Stretch),_=>None};
                         if let Some(anchor)=anchor {
-                            let c=node.constraints.get_or_insert_with(Default::default);
+                            let c = node.constraints.get_or_insert_with(|| {
+                                let default_pin = |field: &str| {
+                                    let raw = [format!("__{field}"), format!("_{field}"), field.to_owned()]
+                                        .iter().find_map(|spelling| layer.get(spelling));
+                                    if raw.and_then(Value::as_u64) == Some(0) {
+                                        crate::layout::Anchor::Scale
+                                    } else {
+                                        crate::layout::Anchor::default()
+                                    }
+                                };
+                                crate::layout::Constraints {
+                                    horizontal: default_pin("horizontalPins"),
+                                    vertical: default_pin("verticalPins"),
+                                    ..Default::default()
+                                }
+                            });
                             if axis {c.vertical=anchor} else {c.horizontal=anchor}
                             modeled.push(spelling.clone());
                         }
@@ -7165,6 +7180,19 @@ fn export_layer_impl(
                 json!(n.constrain_proportions),
             );
         }
+        let modern_layout = n.bindings.get("sketchModernLayout")
+            .and_then(|raw| serde_json::from_str::<Map<String, Value>>(raw).ok());
+        let has_modern_field = |field: &str| modern_layout.as_ref().is_some_and(|fields| {
+            fields.keys().any(|spelling| spelling.trim_start_matches('_') == field)
+        });
+        let pin_code = |anchor| match anchor {
+            crate::layout::Anchor::Start => 1,
+            crate::layout::Anchor::End => 4,
+            crate::layout::Anchor::Stretch => 5,
+            _ => 0,
+        };
+        let legacy_constraints = n.bindings.get("sketchLegacyConstraints")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
         // P1-7: constraints → resizingConstraint bits (63 = Sketch's
         // measured default "free" value and must not re-import as a rule).
         if let Some(c) = &n.constraints {
@@ -7172,8 +7200,21 @@ fn export_layer_impl(
             let y = constraint_axis_bits(c.vertical, &mut lossy);
             layer.insert("resizingConstraint".into(), json!(x | (y << 3)));
             layer.insert("hasExplicitConstraints".into(), json!(true));
+            let legacy_model = legacy_constraints.as_ref().and_then(|source| source.get("model"));
+            for (axis, field, anchor) in [
+                ("horizontal", "horizontalPins", c.horizontal),
+                ("vertical", "verticalPins", c.vertical),
+            ] {
+                // An unchanged imported legacy anchor keeps its original
+                // representation even when layout updated its reference size.
+                if !has_modern_field(field)
+                    && legacy_model.and_then(|model| model.get(axis)) != Some(&json!(anchor))
+                {
+                    layer.insert(field.into(), json!(pin_code(anchor)));
+                }
+            }
         }
-        if let Some(source)=n.bindings.get("sketchLegacyConstraints").and_then(|raw|serde_json::from_str::<Value>(raw).ok())
+        if let Some(source)=legacy_constraints
             && source.get("model")==Some(&json!(n.constraints)) {
             layer.insert("resizingConstraint".into(),source["mask"].clone());
         }
@@ -7183,11 +7224,6 @@ fn export_layer_impl(
             crate::layout::SizeMode::Fill => 2,
             crate::layout::SizeMode::Relative => 3,
         };
-        let modern_layout = n.bindings.get("sketchModernLayout")
-            .and_then(|raw| serde_json::from_str::<Map<String, Value>>(raw).ok());
-        let has_modern_field = |field: &str| modern_layout.as_ref().is_some_and(|fields| {
-            fields.keys().any(|spelling| spelling.trim_start_matches('_') == field)
-        });
         if let Some(sizing) = &n.sizing {
             if sizing.width_ratio.is_some() || !has_modern_field("horizontalSizing") {
                 layer.insert("horizontalSizing".into(), json!(sizing_code(sizing.width)));
@@ -7214,8 +7250,9 @@ fn export_layer_impl(
                         let z=n.sizing_value(); let mode=if vertical {z.height}else{z.width};
                         value=json!(sizing_code(mode));
                     } else if key.ends_with("Pins") {
-                        let c=n.constraints.clone().unwrap_or_default(); let a=if vertical {c.vertical}else{c.horizontal};
-                        value=json!(match a {crate::layout::Anchor::Start=>1,crate::layout::Anchor::End=>4,crate::layout::Anchor::Stretch=>5,_=>0});
+                        value = json!(n.constraints.as_ref().map_or(0, |constraints| {
+                            pin_code(if vertical { constraints.vertical } else { constraints.horizontal })
+                        }));
                     }
                 }
                 layer.insert(spelling.clone(), value);

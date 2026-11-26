@@ -201,3 +201,115 @@ fn imported_sketch_fixture_fill_resizes_and_exports_with_its_existing_code() {
     assert_eq!(reopened.nodes[&id].sizing_value().width, layout::SizeMode::Fill);
     assert_eq!(box_at(&reopened, &id), [66., 16., 218., 40.]);
 }
+
+fn frame_with_pins(pins: Option<[&str; 2]>) -> Document {
+    let constraints = pins.map(|[horizontal, vertical]| json!({"horizontal":horizontal,"vertical":vertical}));
+    serde_json::from_value(json!({
+        "schemaVersion": 29, "id": "d", "name": "Frame pins",
+        "pages": [{"id":"p","name":"Page","background":"#ffffff","children":["frame"]}],
+        "nodes": {
+            "frame": {"id":"frame","kind":"frame","width":300,"height":200,"children":["child"]},
+            "child": {"id":"child","kind":"rectangle","width":40,"height":50,
+                "transform":[1,0,0,1,20,30],"constraints":constraints}
+        }
+    })).unwrap()
+}
+
+#[test]
+fn authored_sketch_pins_write_modern_fields_and_resize_after_reopen() {
+    let fonts = Fonts::new();
+    for (pins, horizontal, vertical, legacy, resized) in [
+        (None, 0, 0, 63, None),
+        (Some(["start", "start"]), 1, 1, 9, Some([20.,30.,40.,50.])),
+        (Some(["end", "end"]), 4, 4, 36, Some([120.,130.,40.,50.])),
+        (Some(["stretch", "stretch"]), 5, 5, 18, Some([20.,30.,140.,150.])),
+        (Some(["end", "center"]), 4, 0, 60, None),
+    ] {
+        let mut doc = frame_with_pins(pins);
+        layout::resolve(&mut doc, &fonts).unwrap();
+        let archive = export_sketch(&doc).unwrap();
+        let child = first_sketch_layer(&archive)["layers"][0].clone();
+        assert_eq!(child["horizontalPins"], horizontal, "{pins:?}");
+        assert_eq!(child["verticalPins"], vertical, "{pins:?}");
+        assert_eq!(child["resizingConstraint"], legacy, "{pins:?}");
+        let report = import_sketch_report(&archive).unwrap();
+        if pins == Some(["end", "center"]) {
+            assert!(report.warnings.iter().any(|note| note.contains("constraint-center->scale")));
+        }
+        let mut doc = report.document;
+        if pins.is_none() {
+            assert!(doc.nodes["child"].constraints.is_none());
+        }
+        if let Some(resized) = resized {
+            layout::resolve(&mut doc, &fonts).unwrap();
+            let parent = doc.nodes.get_mut("frame").unwrap();
+            parent.width = 400.;
+            parent.height = 300.;
+            layout::resolve(&mut doc, &fonts).unwrap();
+            assert_eq!(box_at(&doc, "child"), resized, "{pins:?}");
+        }
+    }
+}
+
+#[test]
+fn reexport_preserves_legacy_pins_and_the_native_spelling_of_modeled_fields() {
+    let fonts = Fonts::new();
+    let empty = export_sketch(&frame_with_pins(None)).unwrap();
+    let legacy = with_first_sketch_layer(&empty, |layer| {
+        layer["layers"][0]["resizingConstraint"] = json!(9);
+    });
+    let mut doc = import_sketch_report(&legacy).unwrap().document;
+    // Resolving establishes reference sizes without editing the authored pins.
+    layout::resolve(&mut doc, &fonts).unwrap();
+    let child = first_sketch_layer(&export_sketch(&doc).unwrap())["layers"][0].clone();
+    assert_eq!(child["resizingConstraint"], 9);
+    assert_eq!(child["horizontalPins"], 0);
+    assert_eq!(child["verticalPins"], 0);
+
+    let modern = with_first_sketch_layer(&empty, |layer| {
+        layer["layers"][0]["__horizontalPins"] = json!(4);
+        layer["layers"][0]["__verticalPins"] = json!(6);
+    });
+    let mut doc = import_sketch_report(&modern).unwrap().document;
+    let constraints = doc.nodes.get_mut("child").unwrap().constraints.as_mut().unwrap();
+    assert_eq!(constraints.horizontal, layout::Anchor::End);
+    constraints.horizontal = layout::Anchor::Stretch;
+    let child = first_sketch_layer(&export_sketch(&doc).unwrap())["layers"][0].clone();
+    assert_eq!(child["__horizontalPins"], 5);
+    assert_eq!(child["__verticalPins"], 6);
+    assert_eq!(child["horizontalPins"], 0);
+    assert_eq!(child["verticalPins"], 0);
+}
+
+#[test]
+fn clearing_imported_modeled_pins_clears_the_native_aliases() {
+    let empty = export_sketch(&frame_with_pins(None)).unwrap();
+    let native = with_first_sketch_layer(&empty, |layer| {
+        layer["layers"][0]["__horizontalPins"] = json!(4);
+        layer["layers"][0]["__verticalPins"] = json!(1);
+    });
+    let mut doc = import_sketch_report(&native).unwrap().document;
+    doc.nodes.get_mut("child").unwrap().constraints = None;
+    let archive = export_sketch(&doc).unwrap();
+    let child = first_sketch_layer(&archive)["layers"][0].clone();
+    assert_eq!(child["__horizontalPins"], 0);
+    assert_eq!(child["__verticalPins"], 0);
+    assert_eq!(child["resizingConstraint"], 63);
+    let reopened = import_sketch_report(&archive).unwrap().document;
+    assert!(reopened.nodes["child"].constraints.is_none());
+}
+
+#[test]
+fn native_single_axis_pin_leaves_the_other_axis_unpinned() {
+    let empty = export_sketch(&frame_with_pins(None)).unwrap();
+    let native = with_first_sketch_layer(&empty, |layer| {
+        layer["layers"][0]["__horizontalPins"] = json!(4);
+    });
+    let doc = import_sketch_report(&native).unwrap().document;
+    let pins = doc.nodes["child"].constraints.as_ref().unwrap();
+    assert_eq!(pins.horizontal, layout::Anchor::End);
+    assert_eq!(pins.vertical, layout::Anchor::Scale);
+    let child = first_sketch_layer(&export_sketch(&doc).unwrap())["layers"][0].clone();
+    assert_eq!(child["__horizontalPins"], 4);
+    assert_eq!(child["verticalPins"], 0);
+}
