@@ -7183,26 +7183,28 @@ fn export_layer_impl(
             crate::layout::SizeMode::Fill => 2,
             crate::layout::SizeMode::Relative => 3,
         };
-        if let Some(sizing) = n.sizing.as_ref().filter(|s| s.has_relative_sizing()) {
-            if sizing.width_ratio.is_some() {
+        let modern_layout = n.bindings.get("sketchModernLayout")
+            .and_then(|raw| serde_json::from_str::<Map<String, Value>>(raw).ok());
+        let has_modern_field = |field: &str| modern_layout.as_ref().is_some_and(|fields| {
+            fields.keys().any(|spelling| spelling.trim_start_matches('_') == field)
+        });
+        if let Some(sizing) = &n.sizing {
+            if sizing.width_ratio.is_some() || !has_modern_field("horizontalSizing") {
                 layer.insert("horizontalSizing".into(), json!(sizing_code(sizing.width)));
             }
-            if sizing.height_ratio.is_some() {
+            if sizing.height_ratio.is_some() || !has_modern_field("verticalSizing") {
                 layer.insert("verticalSizing".into(), json!(sizing_code(sizing.height)));
             }
-            layer.insert("percentageSize".into(), json!(format!(
-                "{{{}, {}}}", sizing.width_ratio.unwrap_or(0.), sizing.height_ratio.unwrap_or(0.)
-            )));
+            if sizing.has_relative_sizing() {
+                layer.insert("percentageSize".into(), json!(format!(
+                    "{{{}, {}}}", sizing.width_ratio.unwrap_or(0.), sizing.height_ratio.unwrap_or(0.)
+                )));
+            }
         }
         // Sketch 2025 modern layout fields return verbatim under their
         // original archived spelling (plain/`_`/`__`), overriding the
         // default zeros written above.
-        if let Some(modern) = n
-            .bindings
-            .get("sketchModernLayout")
-            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
-            && let Some(fields) = modern.as_object()
-        {
+        if let Some(fields) = &modern_layout {
             let modeled: Vec<String> = n.bindings.get("sketchModernLayoutModeled").and_then(|v|serde_json::from_str(v).ok()).unwrap_or_default();
             for (spelling, value) in fields {
                 let mut value=value.clone();
