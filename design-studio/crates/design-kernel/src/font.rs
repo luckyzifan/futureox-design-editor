@@ -1911,6 +1911,9 @@ impl Fonts {
                 } else {
                     rustybuzz::Direction::LeftToRight
                 });
+                let split_figma_advance = figma_advances && buffer.script() == rustybuzz::script::LATIN
+                    && face.borrow_face().is_variable();
+                let figma_grid = |value: f64| (value * 1024. / em).round_ties_even();
                 let shaped = self.shape_run(&face, &text[start..end], features, buffer)?;
                 for (index, (glyph, p)) in shaped.infos.iter().zip(&shaped.positions).enumerate() {
                     let last_in_cluster = shaped
@@ -1921,7 +1924,17 @@ impl Fonts {
                     let cluster = utf16[base + byte];
                     let advance = f64::from(p.x_advance).abs();
                     let mut raw_advance = if figma_advances {
-                        (advance * 1024. / em).round_ties_even() * (size / 1024.)
+                        // Figma's Latin variable-font layout rounds the nominal
+                        // advance and the positioning adjustment individually.
+                        let grid_advance = if split_figma_advance
+                            && let Some(nominal) = face.borrow_face().glyph_hor_advance(ttf_parser::GlyphId(glyph.glyph_id as u16))
+                        {
+                            let nominal = f64::from(nominal);
+                            figma_grid(nominal) + figma_grid(advance - nominal)
+                        } else {
+                            figma_grid(advance)
+                        };
+                        grid_advance * (size / 1024.)
                     } else {
                         advance * scale
                     };
@@ -3172,6 +3185,23 @@ mod tests {
         let automatic = fonts.node_layout(&explicit, Some(explicit.width)).unwrap();
         assert_eq!(automatic.lines[0].height, 21.);
         assert!((automatic.glyphs[0].y - 14.7).abs() < 1e-9);
+    }
+
+    #[test]
+    fn figma_inter_keeps_the_positioning_adjustment_on_the_em_grid() {
+        let mut fonts = Fonts::new();
+        fonts.load(include_bytes!(
+            "../../../../frontend/design-client/public/fonts/inter/v3.19/Inter.ttf"
+        )).unwrap();
+        let mut text = node("Button", serde_json::json!({
+            "lineBoxBaseline": "figma-font-metrics",
+            "lineHeightAuto": true,
+        }), 200.);
+        text.font_size = 16.;
+        let layout = fonts.node_layout(&text, Some(text.width)).unwrap();
+        let xs = layout.glyphs.iter().map(|glyph| glyph.x).collect::<Vec<_>>();
+        assert_eq!(xs, [0., 10.40625, 19.703125, 25.515625, 31.234375, 40.78125]);
+        assert!((layout.glyphs[0].y - 15.318181818181818).abs() < 1e-9);
     }
 
     #[test]
