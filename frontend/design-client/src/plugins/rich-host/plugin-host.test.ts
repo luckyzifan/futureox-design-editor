@@ -5,6 +5,7 @@ import { crc32, inflateSync } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Editor } from '../../engine'
 import { blank, node, paint } from '../../model'
+import { importFig } from '../../import-fig'
 import { VectorEngine } from '../../generated/design-kernel/design_kernel'
 import { samplePlugin } from '../sample-plugin'
 import { samplePluginBundle, sampleUiPluginBundle } from './bundles'
@@ -34,6 +35,64 @@ function nodes(editor: Editor) { return Object.values(editor.state.doc.nodes) }
 function named(editor: Editor, name: string) { return nodes(editor).find(node => node.name === name) }
 
 describe('Figma plugin host', () => {
+  it('reads the topmost fixed child of a real imported scrolling frame', async () => {
+    const original = readFileSync(new URL(
+      '../../../../../testing/fixtures/fig-tools-public-20261106/fig2sketch/tests/data/prototyping.fig',
+      import.meta.url,
+    ))
+    const { document } = importFig(new Uint8Array(original))
+    const current = new Editor(document)
+    editors.push(current)
+    const frame = Object.values(current.state.doc.nodes).find(item => item.name === 'Frame 1')!
+    const title = current.state.doc.nodes[frame.children.at(-1)!]
+    expect(frame.prototypeOverflow).toBe('vertical')
+    expect(title.name).toBe('Title bar')
+    const before = current.authoredDocument, revision = current.state.version
+    const run = await openPlugin(current, bundle('Fixed scroll section', `
+      ;(async () => {
+        const frame = await figma.getNodeByIdAsync('${frame.id}')
+        const last = frame.children[frame.children.length - 1]
+        if (frame.numberOfFixedChildren !== 1 || last.name !== 'Title bar')
+          throw new Error('Expected one topmost fixed child, received ' + frame.numberOfFixedChildren)
+        if (last.numberOfFixedChildren !== undefined) throw new Error('Fixed child count belongs to its frame')
+        figma.closePlugin('Read fixed scroll section')
+      })()
+    `))
+    try {
+      expect(run.closeMessage).toBe('Read fixed scroll section')
+      expect(current.authoredDocument).toBe(before)
+      expect(current.state.version).toBe(revision)
+      expect(current.canUndo).toBe(false)
+    } finally { run.close() }
+
+    await expect(openPlugin(current, bundle('Fixed scroll section write', `
+      figma.getNodeById('${frame.id}').numberOfFixedChildren = 2
+    `))).rejects.toMatchObject({ code: 'unsupported_api' })
+    expect(current.authoredDocument).toBe(before)
+    expect(current.state.version).toBe(revision)
+
+    const expectZero = async () => {
+      const result = await openPlugin(current, bundle('Ordinary scroll children', `
+        if (figma.getNodeById('${frame.id}').numberOfFixedChildren !== 0)
+          throw new Error('Expected no active topmost fixed section')
+        figma.closePlugin()
+      `))
+      result.close()
+    }
+    current.change('Disable prototype overflow', doc => { doc.nodes[frame.id].prototypeOverflow = 'none' })
+    await expectZero()
+    current.undo()
+    expect(current.authoredDocument).toEqual(before)
+
+    current.change('Move fixed source child below scrolling children', doc => {
+      const children = doc.nodes[frame.id].children
+      children.unshift(children.pop()!)
+    })
+    await expectZero()
+    current.undo()
+    expect(current.authoredDocument).toEqual(before)
+  })
+
   it('ships a layout-kit PNG whose IDAT crc matches the bytes', () => {
     const source = readFileSync(new URL('../../../plugins/layout-kit/code.js', import.meta.url), 'utf8')
     const encoded = source.match(/base64Decode\('([^']+)'\)/)?.[1]
@@ -1191,6 +1250,24 @@ describe('Figma plugin host', () => {
     const [baseId] = Object.entries(current.state.doc.designSystem!.variables).find(([, variable]) => variable.name === 'Base')!
     expect(Object.values(current.state.doc.designSystem!.variables).find(variable => variable.name === 'Accent')?.values).toEqual({ 'Mode 1': { alias: baseId } })
     run.close()
+  })
+
+  it('resolves malformed asynchronous variable IDs as null', async () => {
+    const current = editor(), before = current.authoredDocument
+    const run = await openPlugin(current, bundle('Malformed variable lookup', `
+      ;(async () => {
+        for (const id of ['', '  ', 'bad' + String.fromCharCode(0), '__proto__', 'x'.repeat(129), 'missing']) {
+          const found = await figma.variables.getVariableByIdAsync(id)
+          if (found !== null) throw new Error('Expected null for an invalid or absent local id')
+        }
+        figma.closePlugin('Invalid IDs returned null')
+      })()
+    `))
+    try {
+      expect(run.closeMessage).toBe('Invalid IDs returned null')
+      expect(current.authoredDocument).toBe(before)
+      expect(current.canUndo).toBe(false)
+    } finally { run.close() }
   })
 
   it('rejects cyclic local variable aliases through the document validator', async () => {

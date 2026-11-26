@@ -173,6 +173,7 @@ These calls still throw or are absent: vector networks, remote variable librarie
 | `StarNode.innerRadius` | supported | 0.01 to 1. |
 | `SceneNode.parent` | supported | Parent node or page. |
 | `SceneNode.children` | supported | Direct children in paint order. |
+| `FrameNode.numberOfFixedChildren` | partial | Reads the topmost consecutive direct children with an explicit fixed-scroll marker retained by FIG import on a scrolling frame. Defaults to zero. Setting the property is unavailable. |
 | `SceneNode.appendChild` | supported | Preserves world position. |
 | `SceneNode.insertChild` | supported | Index is the final sibling index. |
 | `SceneNode.remove` | supported | Deletes the subtree. |
@@ -194,6 +195,7 @@ These calls still throw or are absent: vector networks, remote variable librarie
 | `figma.viewport.scrollAndZoomIntoView` | partial | Asks the editor to reveal the nodes. It does not change zoom. |
 | `figma.clientStorage` | supported | getAsync, setAsync, keysAsync, and deleteAsync. JSON values, undefined, and Uint8Array. 5 MB per plugin by the official size rule, with a host ceiling of 10000 keys. Stored in this client and not undone with the canvas. |
 | `figma.variables` | partial | Local collections and COLOR, FLOAT, STRING, and BOOLEAN variables, synchronous and asynchronous lookups, and typed local aliases. Mode ids are mode names. setBoundVariable supports width, height, opacity, characters, visible, fontSize, and itemSpacing. Remote libraries are unavailable. |
+| `figma.variables.getVariableByIdAsync` | partial | Looks up authored variables in the open document. Invalid or absent local IDs resolve to `null`. |
 | `figma.teamLibrary` | unsupported | Absent. There is no team library or cloud account. |
 | `figma.payments` | partial | Read-only status is NOT_SUPPORTED. Commerce is unavailable. |
 | `figma.parameters` | unsupported | Absent. Parameter UI is not collected. |
