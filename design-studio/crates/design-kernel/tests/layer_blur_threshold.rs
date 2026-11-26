@@ -156,7 +156,7 @@ fn issue_282_frozen_layer_blur_references_do_not_regress() {
         (
             "frontend/design-client/public/fidelity/blur-threshold-2026-10-08/cases.json",
             "BlurThreshold-0p125-4x",
-            234,
+            74,
             1,
         ),
         (

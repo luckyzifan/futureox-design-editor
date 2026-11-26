@@ -573,8 +573,22 @@ pub(crate) fn figma_portable_layer_blur(source: Surface) -> Result<Surface, Stri
         crate::render_cancellation::checkpoint()?;
         for x in (pair_start(rect.x)..rect.right() - 1).step_by(2) {
             let taps = [-1, 0, 1, 2].map(|dy| [-1, 0, 1, 2].map(|dx| source.at(x + dx, y + dy)));
-            // A uniform neighborhood stays at its exact byte in both passes.
+            // A uniform neighborhood stays at its exact byte in both tent passes.
             if taps.iter().flatten().all(|p| p.0 == taps[0][0].0) {
+                if taps[0][0].0 == [1.; 4] {
+                    // The measured saturated white footprint still has RGB dither
+                    // on the export device lattice. Apply it to the layer texels
+                    // so later paint can replace them normally. Alpha stays opaque.
+                    for (px, py) in [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)] {
+                        let phase = [px.rem_euclid(512) as u32, py.rem_euclid(512) as u32];
+                        let noise = crate::figma_gradient::dither_offset(phase)
+                            .map_err(|error| error.to_string())?;
+                        let gray = crate::figma_sampling::encode_unorm8((1. + noise).clamp(0., 1.));
+                        let index = rect.index(px, py).expect("complete export pair");
+                        let gray = f32::from(gray) / 255.;
+                        quantized.pixels[index] = Pixel::rgba(gray, gray, gray, 1.);
+                    }
+                }
                 continue;
             }
             let [above, top, bottom, below] = taps.map(|row| {
