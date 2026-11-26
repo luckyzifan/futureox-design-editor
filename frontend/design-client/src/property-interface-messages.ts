@@ -126,6 +126,8 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "没有可安全应用的规则布局。": "No regular layout can be applied safely.",
   "取消": "Cancel",
   "布局方向": "Layout direction",
+  "智能布局（旧版）": "Legacy Smart Layout",
+  "布局锚点": "Layout anchor",
   "Sketch 兼容导出时，网格以当前位置导出。": "Sketch compatibility export saves grid layers at their current positions.",
   "流向": "Flow",
   "尺寸": "Dimensions",
