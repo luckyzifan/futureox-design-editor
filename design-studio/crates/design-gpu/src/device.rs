@@ -4,7 +4,7 @@ use futureox_design_kernel::{
     memory::{GpuMemoryCategory, GpuMemoryLedger},
 };
 use serde::Serialize;
-use std::collections::HashMap;
+use std::{cell::OnceCell, collections::HashMap};
 use std::{
     num::NonZeroU64,
     sync::{Arc, Mutex},
@@ -23,6 +23,9 @@ const MAX_INSTANCES: usize = 20_000 * 20;
 // and Metal watchdogs must not receive a frame's thousands of layer passes as
 // one uninterrupted submission. Ordered queue submissions preserve sampling.
 const COMMANDS_PER_SUBMISSION: usize = 128;
+// Native mode values are internal command codes. Mode 98 is the largest
+// currently emitted by the compositor (Sketch layer Gaussian).
+const MAX_FLOAT_PAINT_MODE: usize = 98;
 
 #[derive(Serialize, Debug)]
 pub struct AdapterDescription {
@@ -51,7 +54,7 @@ pub struct NativeGpu {
     queue: wgpu::Queue,
     layout: wgpu::BindGroupLayout,
     solid_layout: wgpu::BindGroupLayout,
-    float_paint: wgpu::RenderPipeline,
+    float_paint: FloatPaintPipelines,
     byte_motion: wgpu::RenderPipeline,
     byte_zoom: wgpu::RenderPipeline,
     area: wgpu::RenderPipeline,
@@ -81,6 +84,99 @@ pub struct NativeGpu {
     image_generation: std::cell::Cell<u64>,
     image_domain: Option<ImageDomain>,
     ledger: GpuMemoryLedger,
+}
+
+enum FloatPaintPipelines {
+    Generic(wgpu::RenderPipeline),
+    Metal {
+        module: wgpu::ShaderModule,
+        layout: wgpu::PipelineLayout,
+        by_mode: Box<[OnceCell<wgpu::RenderPipeline>; MAX_FLOAT_PAINT_MODE + 1]>,
+    },
+}
+
+fn float_paint_mode(raw: f32) -> Result<usize, String> {
+    let mode = raw as usize;
+    if mode > MAX_FLOAT_PAINT_MODE || raw != mode as f32 {
+        return Err("Unsupported native float compositor mode".into());
+    }
+    Ok(mode)
+}
+
+struct VectorPipelineOptions {
+    solid: bool,
+    over: bool,
+    format: wgpu::TextureFormat,
+    area: bool,
+    exact_mode: Option<f64>,
+}
+
+const FLOAT_PAINT_OPTIONS: VectorPipelineOptions = VectorPipelineOptions {
+    solid: false,
+    over: false,
+    format: wgpu::TextureFormat::Rgba32Float,
+    area: false,
+    exact_mode: None,
+};
+
+fn create_vector_pipeline(
+    device: &wgpu::Device,
+    module: &wgpu::ShaderModule,
+    layout: &wgpu::PipelineLayout,
+    options: VectorPipelineOptions,
+) -> wgpu::RenderPipeline {
+    let VectorPipelineOptions {
+        solid,
+        over,
+        format,
+        area,
+        exact_mode,
+    } = options;
+    let constants = exact_mode.map(|mode| [("COMPOSITOR_MODE", mode)]);
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(if solid {
+            "Vector solid batch"
+        } else {
+            "Vector compositor"
+        }),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module,
+            entry_point: Some(if area {
+                "areaQuad"
+            } else if solid {
+                "solidQuad"
+            } else {
+                "quad"
+            }),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module,
+            entry_point: Some(if area {
+                "areaFragment"
+            } else if solid {
+                "solidFragment"
+            } else {
+                "fragment"
+            }),
+            compilation_options: wgpu::PipelineCompilationOptions {
+                constants: constants.as_ref().map_or(&[], |c| c.as_slice()),
+                ..Default::default()
+            },
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: over.then_some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: Default::default(),
+        depth_stencil: None,
+        multisample: Default::default(),
+        multiview_mask: None,
+        cache: None,
+    })
 }
 
 /// One device-resident decoded image: GPU handles, extent, float flag and the
@@ -215,7 +311,6 @@ impl NativeGpu {
             } else {
                 &byte_module
             };
-            let constants=exact_mode.map(|mode|[("COMPOSITOR_MODE",mode)]);
             let layouts = if solid {
                 vec![Some(&layout), Some(&solid_layout)]
             } else {
@@ -226,56 +321,46 @@ impl NativeGpu {
                 bind_group_layouts: &layouts,
                 ..Default::default()
             });
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(if solid {
-                    "Vector solid batch"
-                } else {
-                    "Vector compositor"
-                }),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module,
-                    entry_point: Some(if area {
-                        "areaQuad"
-                    } else if solid {
-                        "solidQuad"
-                    } else {
-                        "quad"
-                    }),
-                    compilation_options: Default::default(),
-                    buffers: &[],
+            create_vector_pipeline(
+                &device,
+                module,
+                &pipeline_layout,
+                VectorPipelineOptions {
+                    solid,
+                    over,
+                    format,
+                    area,
+                    exact_mode,
                 },
-                fragment: Some(wgpu::FragmentState {
-                    module,
-                    entry_point: Some(if area {
-                        "areaFragment"
-                    } else if solid {
-                        "solidFragment"
-                    } else {
-                        "fragment"
-                    }),
-                    compilation_options: wgpu::PipelineCompilationOptions {
-                        constants: constants.as_ref().map_or(&[],|c|c.as_slice()),
-                        ..Default::default()
-                    },
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format,
-                        blend: over.then_some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: Default::default(),
-                depth_stencil: None,
-                multisample: Default::default(),
-                multiview_mask: None,
-                cache: None,
-            })
+            )
         };
         let paint = pipeline(false, false, wgpu::TextureFormat::Rgba8Unorm, false, None);
         let over = pipeline(false, true, wgpu::TextureFormat::Rgba8Unorm, false, None);
         let solid = pipeline(true, false, wgpu::TextureFormat::Rgba8Unorm, false, None);
         let solid_over = pipeline(true, true, wgpu::TextureFormat::Rgba8Unorm, false, None);
-        let float_paint = pipeline(false, false, wgpu::TextureFormat::Rgba32Float, false, None);
+        let float_paint = if info.backend == wgpu::Backend::Metal {
+            // Metal emits a fragment variant synchronously. Keep the module
+            // and bindings ready, then compile only the passes this frame
+            // actually uses instead of the generic all-mode float fragment.
+            let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[Some(&layout)],
+                ..Default::default()
+            });
+            FloatPaintPipelines::Metal {
+                module: module.clone(),
+                layout: pipeline_layout,
+                by_mode: Box::new(std::array::from_fn(|_| OnceCell::new())),
+            }
+        } else {
+            FloatPaintPipelines::Generic(pipeline(
+                false,
+                false,
+                wgpu::TextureFormat::Rgba32Float,
+                false,
+                None,
+            ))
+        };
         let area = pipeline(false, false, wgpu::TextureFormat::Rgba32Float, true, None);
         // Motion alone needs the full single-round sampler on byte targets.
         let byte_motion = pipeline(false, false, wgpu::TextureFormat::Rgba8Unorm, false, Some(61.));
@@ -358,6 +443,36 @@ impl NativeGpu {
             ledger: GpuMemoryLedger::default(),
         })
     }
+    fn float_paint_pipeline(&self, raw_mode: f32) -> Result<&wgpu::RenderPipeline, String> {
+        match &self.float_paint {
+            FloatPaintPipelines::Generic(pipeline) => Ok(pipeline),
+            FloatPaintPipelines::Metal {
+                module,
+                layout,
+                by_mode,
+            } => {
+                let mode = float_paint_mode(raw_mode)?;
+                let slot = &by_mode[mode];
+                if let Some(pipeline) = slot.get() {
+                    return Ok(pipeline);
+                }
+                let pipeline = create_vector_pipeline(
+                    &self.device,
+                    module,
+                    layout,
+                    VectorPipelineOptions {
+                        exact_mode: Some(mode as f64),
+                        ..FLOAT_PAINT_OPTIONS
+                    },
+                );
+                // Native wgpu reports pipeline creation errors through the
+                // existing uncaptured-error callback. Only cache success.
+                self.check_errors()?;
+                Ok(slot.get_or_init(|| pipeline))
+            }
+        }
+    }
+
     /// Install a shared ledger (typically `Engine::gpu_memory_ledger()`).
     /// Transfer any existing resident image allocation to the new owner.
     /// The mutable borrow prevents a live Frame from straddling this swap.
@@ -1149,6 +1264,27 @@ impl<'a> Frame<'a> {
         {
             self.submit();
         }
+        let pipeline = if u[16] == 31. {
+            if self.floating {
+                &self.gpu.area
+            } else {
+                &self.gpu.byte_area
+            }
+        } else if self.floating {
+            self.gpu.float_paint_pipeline(u[16])?
+        } else if u[16] == 61. {
+            &self.gpu.byte_motion
+        } else if u[16] == 62. {
+            &self.gpu.byte_zoom
+        } else if instances.is_some() && over {
+            &self.gpu.solid_over
+        } else if instances.is_some() {
+            &self.gpu.solid
+        } else if over {
+            &self.gpu.over
+        } else {
+            &self.gpu.paint
+        };
         let offset = self.uniforms.len() as u64;
         self.uniforms.extend(floats(&u));
         let mut entries = vec![
@@ -1217,27 +1353,7 @@ impl<'a> Frame<'a> {
                 r.h,
             );
         }
-        pass.set_pipeline(if u[16] == 31. {
-            if self.floating {
-                &self.gpu.area
-            } else {
-                &self.gpu.byte_area
-            }
-        } else if self.floating {
-            &self.gpu.float_paint
-        } else if u[16] == 61. {
-            &self.gpu.byte_motion
-        } else if u[16] == 62. {
-            &self.gpu.byte_zoom
-        } else if instances.is_some() && over {
-            &self.gpu.solid_over
-        } else if instances.is_some() {
-            &self.gpu.solid
-        } else if over {
-            &self.gpu.over
-        } else {
-            &self.gpu.paint
-        });
+        pass.set_pipeline(pipeline);
         pass.set_bind_group(0, &bind, &[]);
         if let (Some(bind), Some((_, count))) = (&solid_bind, instances) {
             pass.set_bind_group(1, bind, &[]);
@@ -1553,4 +1669,20 @@ pub(crate) fn present_bytes(
             .collect()
     };
     Ok((rgba, None))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn float_paint_modes_are_bounded_exact_command_codes() {
+        for mode in 0..=MAX_FLOAT_PAINT_MODE {
+            assert_eq!(float_paint_mode(mode as f32), Ok(mode));
+        }
+        assert_eq!(float_paint_mode(-0.), Ok(0));
+        for raw in [-1., 2.5, 99., f32::INFINITY, f32::NEG_INFINITY, f32::NAN] {
+            assert!(float_paint_mode(raw).is_err());
+        }
+    }
 }
