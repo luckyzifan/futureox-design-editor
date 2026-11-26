@@ -33,6 +33,27 @@ test('eraser cannot remove locked targets',async()=>{const line=node('line');lin
 test('lasso selection and bend use real authored scene state, not handler returns',async()=>{const line=node('line',20,20,80,80);line.fills=[];editor.change('fixture',d=>{d.nodes[line.id]=line;d.pages[0].children.push(line.id)});await renderUtility('vector-lasso');await act(async()=>{utility.start(event(0,0),{x:0,y:0},1);for(const [x,y] of [[200,0],[200,200],[0,200],[0,0]])utility.move(event(x,y),{x,y});utility.end(event(0,0),{x:0,y:0})});expect(editor.state.selection).toContain(line.id);expect(outcomes(CanvasAction.lasso).at(-1)?.selectionChanged).toBe(1);target=line.id;await renderUtility('bend');const version=editor.state.version;await act(async()=>{utility.start(event(60,60),{x:60,y:60},1);utility.end(event(80,40),{x:80,y:40})});expect(editor.state.version).toBeGreaterThan(version);expect(outcomes(CanvasAction.bend).at(-1)?.actionOutcome).toBe(ActionOutcome.committed)})
 test('smart selection gap handle snaps, commits and undo restores transforms',async()=>{const {CanvasSmartSelection}=await import('./CanvasSmartSelection');const nodes=[node('rectangle',20,20,40,40),node('rectangle',100,20,40,40),node('rectangle',180,20,40,40)];editor.change('fixture',d=>{for(const n of nodes){d.nodes[n.id]=n;d.pages[0].children.push(n.id)}});editor.select(nodes.map(n=>n.id));const before=editor.state.doc;await act(async()=>root.render(<CanvasSmartSelection editor={editor} view={view} size={size} visible/>));const layer=host.querySelector('.canvas-smart-selection')!,handle=host.querySelector('[data-testid=smart-gap-x]')!;expect(handle).not.toBeNull();await act(async()=>{fire(handle,'pointerdown',80,40);fire(layer,'pointermove',95.4,40);fire(layer,'pointerup',95.4,40)});expect(editor.state.doc.nodes[nodes[1].id].transform[4]-editor.state.doc.nodes[nodes[0].id].transform[4]).toBe(95);expect(outcomes(CanvasAction.smartSelection).at(-1)?.actionOutcome).toBe(ActionOutcome.committed);editor.undo();expect(editor.state.doc).toBe(before)})
 
+test('Sketch spacing controls hide when a selection fits inside a handle and return on zoom', async () => {
+  const { CanvasSmartSelection } = await import('./CanvasSmartSelection')
+  interfacePreference.set({ uiMode: 'sketch' })
+  const shapes = [20, 60, 100].map(x => node('rectangle', x, 20, 20, 20))
+  editor.change('row fixture', doc => {
+    for (const shape of shapes) {
+      doc.nodes[shape.id] = shape
+      doc.pages[0].children.push(shape.id)
+    }
+  })
+  editor.select(shapes.map(shape => shape.id))
+  const render = (zoom: number) => act(async () =>
+    root.render(<CanvasSmartSelection editor={editor} view={{ ...view, zoom }} size={size} visible />))
+  const handles = () => host.querySelectorAll('[data-testid="smart-reorder"],[data-testid="smart-gap-x"]')
+  await render(0.02)
+  expect(handles()).toHaveLength(0)
+  await render(1)
+  expect(handles()).toHaveLength(5)
+  expect(editor.state.selection).toEqual(shapes.map(shape => shape.id))
+})
+
 test('ruler context menu removes the editable guides of one axis in one undo',async()=>{
  interfacePreference.set({uiMode:'sketch'})
  editor.set({rulers:true})
