@@ -1508,7 +1508,9 @@ export class Editor {
     if (!hit) return null
     const document = snapshot?.document || this.state.doc, page = snapshot?.pageId || this.state.page
     const parents = this.parentMap(document)
-    const candidate = deeperSelectionHit(document, this.state.selection, hit, interactivePath(document, page, hit, false, parents), parents)
+    const skipGroupLevels = interfacePreference.getSnapshot().uiMode === 'sketch'
+    const candidate = deeperSelectionHit(document, this.state.selection, hit,
+      interactivePath(document, page, hit, false, parents), parents, skipGroupLevels)
     const id = interactivePath(this.state.doc, this.state.page, candidate, false, this.parentMap()).length ? candidate : hit
     const changed = this.state.selection.length !== 1 || this.state.selection[0] !== id
     this.select([id])
