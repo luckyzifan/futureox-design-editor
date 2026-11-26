@@ -130,6 +130,26 @@ test('Figma keeps its existing default and Shift transitions', async () => {
   expect(pin('center').getAttribute('aria-pressed')).toBe('true')
 })
 
+test('Sketch fixed children can keep their width when switching to relative in a plain frame', async () => {
+  const model = await mount()
+  const width = document.querySelector<HTMLSelectElement>('select[aria-label="宽度模式"]')!
+  expect(width.querySelector<HTMLOptionElement>('option[value="relative"]')?.disabled).toBe(false)
+  await act(async () => {
+    width.value = 'relative'
+    width.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  const edited = model.editor.authoredDocument.nodes[model.childId]
+  expect(edited.sizing).toMatchObject({ width: 'relative', widthRatio: 40 / 300 })
+  expect(edited.width).toBe(40)
+  expect(edited.constraints).toBeUndefined()
+})
+
+test('Figma plain frames keep the existing ordinary sizing choices', async () => {
+  await mount({ uiMode: 'figma' })
+  const width = document.querySelector<HTMLSelectElement>('select[aria-label="宽度模式"]')!
+  expect(width.querySelector('option[value="relative"]')).toBeNull()
+})
+
 test.each([
   { label: 'W' as const, value: '80', pins: { horizontal: 'end', vertical: 'center' } as const, change: { x: -20, width: 80 } },
   { label: 'H' as const, value: '100', pins: { horizontal: 'center', vertical: 'end' } as const, change: { y: -20, height: 100 } },
