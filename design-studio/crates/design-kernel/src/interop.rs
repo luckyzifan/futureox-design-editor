@@ -2103,10 +2103,10 @@ impl<'a> Importer<'a> {
         }
 
         // P1-8: FlexGroupLayout stacks (the Sketch 2025 auto-layout).
-        if let Some(group_layout) = layer.get("groupLayout")
-            && group_layout.get("_class").and_then(Value::as_str)
-                == Some("MSImmutableFlexGroupLayout")
-        {
+        let flex_group_layout = layer.get("groupLayout").filter(|group_layout| {
+            group_layout.get("_class").and_then(Value::as_str) == Some("MSImmutableFlexGroupLayout")
+        });
+        if let Some(group_layout) = flex_group_layout {
             let mode = match f64_at(group_layout, "flexDirection") as i64 {
                 1 => crate::layout::Flow::Vertical,
                 _ => crate::layout::Flow::Horizontal,
@@ -2201,10 +2201,22 @@ impl<'a> Importer<'a> {
             .and_then(Value::as_array)
             .filter(|a| !a.is_empty())
         {
-            node.bindings.insert(
-                "sketchExportLossy".into(),
-                serde_json::to_string(lossy).unwrap_or_default(),
-            );
+            // Older exports logged these notes even when the native layout
+            // carried the requested values. Retain warnings about absent fields.
+            let retained: Vec<_> = lossy.iter().filter(|note| match note.as_str() {
+                Some("stack-wrap-omitted") => !flex_group_layout
+                    .is_some_and(|layout| bool_at(layout, "wrappingEnabled")),
+                Some("stack-line-gap-omitted") => !flex_group_layout
+                    .and_then(|layout| layout.get("crossAxisGutterGap"))
+                    .is_some_and(Value::is_number),
+                _ => true,
+            }).collect();
+            if !retained.is_empty() {
+                node.bindings.insert(
+                    "sketchExportLossy".into(),
+                    serde_json::to_string(&retained).unwrap_or_default(),
+                );
+            }
         }
         match class {
             "rectangle" => {
@@ -8213,12 +8225,6 @@ fn export_layer_impl(
                     1
                 }),
             );
-            if l.wrap {
-                note_lossy(&mut lossy, "stack-wrap-omitted");
-            }
-            if l.line_gap != 0. {
-                note_lossy(&mut lossy, "stack-line-gap-omitted");
-            }
         } else if n.layout.is_none()
             && let Some(mut payload) = n
                 .bindings
