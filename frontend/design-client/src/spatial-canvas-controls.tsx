@@ -60,22 +60,29 @@ const axes = [
   { axis: 'Z', handle: 'rotateZ', x: -26, y: -26, cursor: 'grab' },
 ] as const
 
-export function SpatialCanvasControls({ pivot, zoom, locale, onStart }: {
+export function SpatialCanvasControls({ pivot, screen, zoom, locale, onStart }: {
   pivot: Point
+  screen: Point
   zoom: number
   locale: InterfaceLocale
   onStart: (event: PointerEvent<SVGGElement>, handle: SpatialHandle) => void
 }) {
   const origin = locale === 'en' ? 'Move 3D origin' : '移动 3D 原点'
   const anchor = (dx: number, dy: number) => ({ 'data-anchor-x': pivot.x + dx / zoom, 'data-anchor-y': pivot.y + dy / zoom })
-  return <g data-testid="spatial-transform-handles" transform={`translate(${pivot.x} ${pivot.y}) scale(${1 / zoom})`}>
+  // The controls are CSS-sized. Match the device grid while keeping the
+  // authored pivot and drag calculations on the precise projected plane.
+  const ratio = globalThis.devicePixelRatio || 1
+  const x = Math.round(screen.x * ratio) / ratio
+  const y = Math.round(screen.y * ratio) / ratio
+  return <g data-testid="spatial-transform-handles" shapeRendering="crispEdges" transform={`translate(${x} ${y})`}>
     {axes.map(({ axis, handle, x, y, cursor }) => {
       const label = locale === 'en' ? `Rotate about ${axis}` : `绕 ${axis} 轴旋转`
       return <g key={axis}>
         <line x2={x} y2={y} stroke={SELECTION_BLUE} strokeWidth={1} pointerEvents="none" />
         <g data-testid={`spatial-rotate-${axis.toLowerCase()}`} {...anchor(x, y)} transform={`translate(${x} ${y})`}
           aria-label={label} style={{ cursor }} onPointerDown={event => onStart(event, handle)}>
-          <circle r={10} fill="white" stroke={SELECTION_BLUE} pointerEvents="all" />
+          <circle r={10.5} fill={SELECTION_BLUE} pointerEvents="all" />
+          <circle r={9.5} fill="white" pointerEvents="none" />
           <text textAnchor="middle" dy=".35em" fontSize={11} fill={SELECTION_BLUE} pointerEvents="none">{axis}</text>
           <title>{label}</title>
         </g>
