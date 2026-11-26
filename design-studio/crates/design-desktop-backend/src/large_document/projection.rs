@@ -10,13 +10,23 @@ use std::sync::OnceLock;
 /// symbol locator cache never survive a save, undo or source replacement.
 pub(super) struct SketchContext {
     document: Value,
+    save_metadata: Value,
     symbols: OnceLock<std::result::Result<super::symbol_index::Symbols,String>>,
     revision: u64,
     directory: PathBuf,
 }
 impl SketchContext {
     pub fn new(s: &Session) -> Result<Self> {
-        Ok(Self { document: json_part(s, "document.json")?, symbols: OnceLock::new(), revision:s.revision, directory:s.directory.clone() })
+        Ok(Self {
+            document: json_part(s, "document.json")?,
+            save_metadata: s.parts.iter()
+                .find(|part| part.name == "meta.json")
+                .map(|part| sketch_save_metadata(&s.directory.join(&part.file), part.base_bytes))
+                .unwrap_or_default(),
+            symbols: OnceLock::new(),
+            revision: s.revision,
+            directory: s.directory.clone(),
+        })
     }
     pub(super) fn symbol(&self, s: &Session, symbol: &str, cancel:&AtomicBool) -> Result<Option<(usize, usize)>> {
         check_cancel(cancel).map_err(issue)?;
@@ -122,6 +132,29 @@ pub(super) fn json_part(s: &Session, name: &str) -> Result<Value> {
         },
     )?)
     .map_err(issue)
+}
+
+pub(super) fn sketch_save_metadata(path: &Path, bytes: u64) -> Value {
+    // The archive header may also contain a large page/thumbnail map. Keep
+    // just the writer identity in each bounded source conversion request.
+    if bytes > MAX_FRAGMENT_BYTES {
+        return Value::Null;
+    }
+    let Ok(file) = File::open(path) else {
+        return Value::Null;
+    };
+    let metadata: Value = match serde_json::from_reader(
+        std::io::BufReader::new(file.take(bytes + 1)),
+    ) {
+        Ok(metadata) => metadata,
+        Err(_) => return Value::Null,
+    };
+    match metadata["app"].as_str() {
+        Some("com.bohemiancoding.sketch3" | "com.bohemiancoding.sketchtool") => json!({
+            "app": metadata["app"], "appVersion": metadata["appVersion"], "version": metadata["version"],
+        }),
+        _ => Value::Null,
+    }
 }
 #[derive(Default, Debug, PartialEq)]
 struct RootFacts {
@@ -325,7 +358,7 @@ fn sketch_roots_in(s:&Session,roots:Vec<Value>,facts:RootFacts,mut source_bytes:
             return Err(issue("Select a smaller component dependency working set"));
         }
     }
-    let (mut document,warnings)=import_source_roots(roots, masters, images, document, &s.directory.join("source"), false)?;
+    let (mut document,warnings)=import_source_roots(roots, masters, images, document, &context.save_metadata, &s.directory.join("source"), false)?;
     working_groups::apply(s,&mut document)?;
     Ok((document,warnings))
 }
@@ -336,7 +369,7 @@ pub(super) fn preview_dependencies(root: &Value) -> (HashSet<String>, HashSet<St
 }
 
 pub(super) fn import_source_roots(roots: Vec<Value>, masters: BTreeMap<String,Value>,
-    images: HashSet<String>, document: &Value, archive_path: &Path, thumbnail: bool) -> Result<(Document,Vec<String>)> {
+    images: HashSet<String>, document: &Value, save_metadata: &Value, archive_path: &Path, thumbnail: bool) -> Result<(Document,Vec<String>)> {
     let page_id = "00000000-0000-4000-8000-000000000001";
     let dependency_page_id = "00000000-0000-4000-8000-000000000002";
     // Sketch interop derives page IDs from member references. Keep those IDs
@@ -392,7 +425,7 @@ pub(super) fn import_source_roots(roots: Vec<Value>, masters: BTreeMap<String,Va
             entries.insert(resource, bytes);
         }
     }
-    let report = interop::import_sketch_source_bitmap_window(&entries,&json!({"version":136}),document,&pages,&page_references,&bitmaps).map_err(issue)?;
+    let report = interop::import_sketch_source_bitmap_window(&entries,save_metadata,document,&pages,&page_references,&bitmaps).map_err(issue)?;
     Ok((report.document, report.warnings))
 }
 fn json_projection(s: &Session, p: usize, n: usize) -> Result<(Document, Vec<String>)> {

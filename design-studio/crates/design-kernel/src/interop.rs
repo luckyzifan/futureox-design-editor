@@ -1353,6 +1353,7 @@ struct Importer<'a> {
     files: &'a BTreeMap<String, Vec<u8>>,
     shared_paint_sources: BTreeMap<&'a str, &'a Value>,
     futureox_archive: bool,
+    legacy_transparent_artboards: bool,
     nodes: BTreeMap<String, Node>,
     /// do_objectID → kernel id (prototype flow destinations address the
     /// archived UUID, not our restored original id).
@@ -2787,16 +2788,10 @@ impl<'a> Importer<'a> {
                 {
                     node.fills.insert(0, solid_paint(bg, 1., "normal", self.color_space));
                 } else if class == "artboard"
-                    && inside_artboard
-                    && layer.get("backgroundColor").is_some()
-                    && !layer
-                        .pointer("/userInfo/com.futureox.design-kernel")
-                        .is_some_and(Value::is_object)
+                    && crate::sketch::implicit_white_artboard_background(
+                        layer, inside_artboard, self.legacy_transparent_artboards,
+                    )
                 {
-                    // Native Sketch paints a nested artboard's default white
-                    // backdrop even when hasBackgroundColor is false. The
-                    // preview path already mirrors this; the editable import
-                    // must not lose it on the way to canvas/export.
                     node.fills.insert(
                         0,
                         solid_paint(
@@ -3771,6 +3766,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
         files: &files,
         shared_paint_sources,
         futureox_archive: meta.get("app").and_then(Value::as_str) == Some("com.futureox.design-kernel"),
+        legacy_transparent_artboards: crate::sketch::uses_legacy_transparent_artboards(meta),
         nodes: BTreeMap::new(),
         uuids: BTreeMap::new(),
         flows: Vec::new(),
@@ -4556,6 +4552,7 @@ fn layer_style_parts(document: &Document, style: &Value) -> Result<(Value, Value
         files: &files,
         shared_paint_sources: BTreeMap::new(),
         futureox_archive: false,
+        legacy_transparent_artboards: false,
         nodes: BTreeMap::new(),
         uuids: BTreeMap::new(),
         flows: Vec::new(),
@@ -12106,6 +12103,69 @@ mod tests {
         assert_eq!(inner.fills[0].kind, "solid");
         let color = &inner.fills[0].color;
         assert!(color.starts_with("#ffffff") || color.contains("1 1 1"), "{color}");
+    }
+
+    #[test]
+    fn sketches_saved_before_frames_keep_disabled_nested_backgrounds_transparent() {
+        let page = json!([{
+            "_class": "artboard", "do_objectID": "outer", "name": "Outer",
+            "frame": {"x": 0, "y": 0, "width": 100, "height": 100},
+            "layers": [{
+                "_class": "group", "do_objectID": "group", "name": "Group",
+                "frame": {"x": 10, "y": 10, "width": 80, "height": 80},
+                "layers": [{
+                    "_class": "artboard", "do_objectID": "inner", "name": "Disabled background",
+                    "frame": {"x": 0, "y": 0, "width": 20, "height": 20},
+                    "hasBackgroundColor": false,
+                    "includeBackgroundColorInExport": false,
+                    "backgroundColor": {"red": 1, "green": 1, "blue": 1, "alpha": 1},
+                    "layers": [{"_class": "rectangle", "do_objectID": "child", "name": "Clipped child",
+                        "frame": {"x": 0, "y": 0, "width": 24, "height": 20}}]
+                }, {
+                    "_class": "artboard", "do_objectID": "explicit", "name": "Authored background",
+                    "frame": {"x": 30, "y": 0, "width": 20, "height": 20},
+                    "hasBackgroundColor": true,
+                    "includeBackgroundColorInExport": false,
+                    "backgroundColor": {"red": 0, "green": 1, "blue": 0, "alpha": 1},
+                    "layers": []
+                }]
+            }]
+        }]);
+        let base = gap_test_files(page, json!({"_class": "document"}));
+        let base = crate::sketch::archive::read(&base).unwrap();
+        for (version, format, transparent) in [
+            (Some("93"), 144, true),
+            (Some("101.9"), 160, true),
+            (Some("2025.1"), 168, false),
+            (Some("101.9-beta"), 160, false),
+            (None, 144, false),
+        ] {
+            let mut files = base.clone();
+            files.insert("meta.json".into(), serde_json::to_vec(&json!({
+                "app": "com.bohemiancoding.sketch3", "version": format, "appVersion": version,
+            })).unwrap());
+            let bytes = write_zip(&files.clone().into_iter().collect::<Vec<_>>()).unwrap();
+            let imported = import_sketch_report(&bytes).unwrap().document;
+            let native = crate::sketch::Document::from_sketch(&bytes).unwrap();
+            let session = crate::sketch::Session::new(native, "artboard-background".into(), 1).unwrap();
+            let preview = crate::sketch::preview::display_snapshot(&session, "page-p").unwrap();
+            let check = |document: &Document| {
+                let board = &document.nodes["inner"];
+                assert!(board.clip && board.children == ["child"]);
+                assert_eq!(board.fills.is_empty(), transparent, "saved by {version:?}");
+                assert_eq!(document.nodes["explicit"].fills.len(), 1);
+            };
+            check(&imported);
+            check(&preview.document);
+            #[cfg(not(target_arch = "wasm32"))]
+            check(&import_sketch_source_window(&files).unwrap().document);
+            if transparent {
+                let exported = export_sketch(&imported).unwrap();
+                let roundtrip = import_sketch_report(&exported).unwrap().document;
+                check(&roundtrip);
+                assert_eq!(sketch_binding(&roundtrip, &roundtrip.nodes["inner"], "sketchOmitFrameFillInExport"), Some("true"));
+            }
+        }
     }
 
     #[test]

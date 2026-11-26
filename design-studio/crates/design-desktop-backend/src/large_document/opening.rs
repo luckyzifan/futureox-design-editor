@@ -359,6 +359,13 @@ fn ordered(c: &Catalog) -> Vec<usize> {
     }
     order
 }
+fn sketch_save_metadata(dir: &Path, parts: &[Part]) -> Value {
+    parts.iter()
+        .find(|part| part.name == "meta.json")
+        .map(|part| projection::sketch_save_metadata(&dir.join(&part.file), part.bytes))
+        .unwrap_or_default()
+}
+
 fn run(
     job: &Arc<Job>,
     dir: &Path,
@@ -374,6 +381,7 @@ fn run(
         .ok_or_else(|| issue("Source metadata unavailable"))?;
     let raw_metadata=fs::read(dir.join(&doc.file)).map_err(issue)?;
     let document: Value = serde_json::from_slice(&raw_metadata).map_err(issue)?;
+    let save_metadata = sketch_save_metadata(dir, parts);
     let independent_metadata=raw_metadata.len() as u64<=futureox_design_kernel::large_json::MAX_FRAGMENT_BYTES &&
         futureox_design_kernel::large_json::validate_fragment(&raw_metadata).is_ok();
     drop(raw_metadata);
@@ -444,8 +452,9 @@ fn run(
                 dependencies.insert(id, v);
             }
         }
-        let (doc, _) =
-            projection::import_source_roots(vec![root], dependencies, images, &document, &archive, true)?;
+        let (doc, _) = projection::import_source_roots(
+            vec![root], dependencies, images, &document, &save_metadata, &archive, true,
+        )?;
         let page = doc.pages[0].id.clone();
         let b = c.items[i].source;
         let guard = job.clone();
@@ -605,7 +614,10 @@ fn selected_snapshot(c:&Catalog, i:usize, parts:&[Part], dir:&Path, owner:&Owner
         c.items.iter().filter(|r|r.id==item.id).count()!=1 { return Ok(None) }
     let (symbols,images)=projection::preview_dependencies(&value);
     if !symbols.is_empty() || cancel.load(Ordering::Acquire) {return Ok(None)}
-    let (mut doc,mut warnings)=projection::import_source_roots(vec![value],BTreeMap::new(),images,metadata,&dir.join("source"),false)?;
+    let save_metadata = sketch_save_metadata(dir, parts);
+    let (mut doc, mut warnings) = projection::import_source_roots(
+        vec![value], BTreeMap::new(), images, metadata, &save_metadata, &dir.join("source"), false,
+    )?;
     if let Some(system)=&mut doc.design_system {system.sketch_containers.clear();}
     let layout=canvas_layout::Layout {revision:0,bounds:c.bounds,items:vec![item.clone()]};
     let (doc,stage_id)=canvas_snapshot::place_materials(doc,&owner.document_id,name,&layout)?;

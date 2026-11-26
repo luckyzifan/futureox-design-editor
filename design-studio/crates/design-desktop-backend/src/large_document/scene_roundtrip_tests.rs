@@ -34,13 +34,17 @@ struct Fixture {
 }
 impl Fixture {
     fn new(page: &str) -> (Self, Value) {
+        Self::with_metadata(page, br#"{"version":136,"unknownMeta": [ 1, 2 ]}"#)
+    }
+
+    fn with_metadata(page: &str, metadata: &[u8]) -> (Self, Value) {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!("futureox-source-roundtrip-{}-{}",
             std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
         fs::create_dir(&root).unwrap();
         let source = root.join("modeled.sketch");
         let members = BTreeMap::from([
-            ("meta.json".into(), br#"{"version":136,"unknownMeta": [ 1, 2 ]}"#.to_vec()),
+            ("meta.json".into(), metadata.to_vec()),
             ("document.json".into(), format!(r#"{{"colorSpace":1,"pages":[{{"_ref":"pages/{PAGE}"}}]}}"#).into_bytes()),
             (format!("pages/{PAGE}.json"), page.as_bytes().to_vec()),
             ("user.json".into(), br#"{ "opaque": -0.0 }"#.to_vec()),
@@ -205,6 +209,50 @@ fn source_working_group_retains_matrix_across_property_edits_and_validates_check
     let error=f.sessions.open(Open {opening_preview:false,path:f.source.clone(),document_id:"bad-group".into(),session_epoch:2},
         &AtomicBool::new(false)).unwrap_err();
     assert!(error.message.contains("Invalid working-copy group placement"));
+}
+
+#[test]
+fn native_sketch_snapshots_keep_the_archive_background_semantics() {
+    let page = json!({
+        "_class": "page", "do_objectID": PAGE, "name": "Source page",
+        "layers": [{
+            "_class": "artboard", "do_objectID": RECT, "name": "Outer",
+            "frame": {"x": 0, "y": 0, "width": 100, "height": 80},
+            "layers": [{
+                "_class": "group", "do_objectID": "10000000-0000-4000-8000-000000000003",
+                "name": "Group", "frame": {"x": 0, "y": 0, "width": 40, "height": 40},
+                "layers": [{
+                    "_class": "artboard", "do_objectID": OTHER, "name": "Nested",
+                    "frame": {"x": 4, "y": 4, "width": 24, "height": 24},
+                    "hasBackgroundColor": false, "includeBackgroundColorInExport": false,
+                    "backgroundColor": {"red": 1, "green": 1, "blue": 1, "alpha": 1},
+                    "layers": []
+                }]
+            }]
+        }]
+    }).to_string();
+    let cancel = AtomicBool::new(false);
+    for (version, transparent) in [("101.9", true), ("2025.1", false), ("101..9", false)] {
+        let metadata = serde_json::to_vec(&json!({
+            "app": "com.bohemiancoding.sketch3", "version": 144, "appVersion": version,
+        })).unwrap();
+        let (fixture, status) = Fixture::with_metadata(&page, &metadata);
+        let full = futureox_design_kernel::interop::import_sketch_report(&fs::read(&fixture.source).unwrap())
+            .unwrap().document;
+        let rendered = fixture.call(&status, "large.canvasSnapshot", json!({})).unwrap();
+        let slot = fixture.sessions.current.lock().unwrap();
+        let early = opening::selected_snapshot_for_test(slot.as_ref().unwrap(), RECT, &cancel)
+            .unwrap().unwrap();
+        assert_eq!(full.nodes[OTHER].fills.is_empty(), transparent);
+        for snapshot in [rendered, early] {
+            let path = PathBuf::from(snapshot["path"].as_str().unwrap());
+            let store = serde_json::from_value(snapshot["store"].clone()).unwrap();
+            let (loaded, _) = futureox_design_kernel::scene_store::Reader::open(&path, &store, &cancel)
+                .unwrap().into_document(&cancel).unwrap();
+            assert_eq!(loaded.nodes[OTHER].clip, full.nodes[OTHER].clip);
+            assert_eq!(loaded.nodes[OTHER].fills, full.nodes[OTHER].fills);
+        }
+    }
 }
 
 #[test]

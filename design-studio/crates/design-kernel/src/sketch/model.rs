@@ -243,6 +243,7 @@ pub struct Document {
     files: BTreeMap<String, Vec<u8>>,
     native_document: Value,
     pages: Vec<NativePage>,
+    legacy_transparent_artboards: bool,
 }
 impl Document {
     pub fn from_sketch(bytes: &[u8]) -> Result<Self> {
@@ -251,7 +252,8 @@ impl Document {
             let bytes = files.get(name).ok_or_else(|| Error::Missing(name.into()))?;
             serde_json::from_slice(bytes).map_err(|e| Error::Invalid(format!("{name}: {e}")))
         };
-        let _meta = parse("meta.json")?;
+        let legacy_transparent_artboards =
+            super::uses_legacy_transparent_artboards(&parse("meta.json")?);
         let native_document = parse("document.json")?;
         if native_document.get("_class").and_then(Value::as_str) != Some("document") {
             return Err(Error::Invalid("native document class".into()));
@@ -304,7 +306,11 @@ impl Document {
             files,
             native_document,
             pages,
+            legacy_transparent_artboards,
         })
+    }
+    pub(crate) fn uses_legacy_transparent_artboards(&self) -> bool {
+        self.legacy_transparent_artboards
     }
     pub fn pages(&self) -> &[NativePage] {
         &self.pages
