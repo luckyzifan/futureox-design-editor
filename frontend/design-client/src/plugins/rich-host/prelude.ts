@@ -12,7 +12,7 @@ function unsupported(api) {
 }
 function host(op, payload) {
   const reading = {
-    readNode: 1, readVectorNetwork: 1, readDocument: 1, children: 1, fonts: 1, log: 1, logClear: 1, notify: 1, postMessage: 1,
+    readNode: 1, readVectorNetwork: 1, isVectorNode: 1, readDocument: 1, children: 1, fonts: 1, log: 1, logClear: 1, notify: 1, postMessage: 1,
     timerSchedule: 1, timerCancel: 1, textSegments: 1,
     showUI: 1, uiResize: 1, uiShow: 1, uiHide: 1, uiClose: 1, loadFont: 1, meta: 1, listen: 1,
     viewportRead: 1, clientStorageGet: 1, clientStorageKeys: 1,
@@ -183,6 +183,10 @@ function wrap(id) {
       }
       if (prop === 'getStyledTextSegments' && read(nodeId).type === 'TEXT') return function (fields, start, end) {
         return host('textSegments', { id: nodeId, fields: fields, start: start, end: end })
+      }
+      if (prop === 'setVectorNetworkAsync') {
+        if (!host('isVectorNode', { id: nodeId })) return undefined
+        return async function (network) { host('writeVectorNetwork', { id: nodeId, network: network }) }
       }
       if (prop === 'setRelaunchData') return function () { unsupported('SceneNode.setRelaunchData') }
       const snap = read(nodeId)

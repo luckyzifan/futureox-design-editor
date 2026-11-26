@@ -5,6 +5,7 @@ import { crc32, inflateSync } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Editor } from '../../engine'
 import { blank, node, paint } from '../../model'
+import { VectorEngine } from '../../generated/design-kernel/design_kernel'
 import { samplePlugin } from '../sample-plugin'
 import { samplePluginBundle, sampleUiPluginBundle } from './bundles'
 import { pluginApiCoverage } from './coverage'
@@ -206,6 +207,179 @@ describe('Figma plugin host', () => {
       expect(current.state.doc).toBe(before)
       expect(current.state.version).toBe(revision)
     } finally { run.close() }
+  })
+
+  it('sets an authored cubic network asynchronously, refits the layer and undoes create plus write together', async () => {
+    const current = editor(), before = current.state.doc
+    const run = await openPlugin(current, bundle('Write vector', `
+      ;(async () => {
+        const v = figma.createVector()
+        v.name = 'Written vector'
+        v.x = 30
+        v.y = 40
+        v.fills = [{type:'SOLID',color:{r:0,g:1,b:0}}]
+        v.strokes = []
+        await v.setVectorNetworkAsync({
+          vertices: [{x:10,y:20},{x:30,y:20},{x:10,y:40}],
+          segments: [{start:0,end:1,tangentStart:{x:3,y:4},tangentEnd:{x:-2,y:4}},
+            {start:2,end:1},{start:2,end:0}],
+          regions: [{windingRule:'NONZERO',loops:[[0,1,2]]}],
+        })
+        const shape = v.vectorNetwork
+        if (v.x !== 40 || v.y !== 60 || v.width !== 20 || v.height !== 20) throw new Error('Bounds not fitted')
+        if (shape.vertices[0].x !== 0 || shape.vertices[0].y !== 0 ||
+          shape.segments[0].tangentStart.x !== 3 || shape.segments[0].tangentEnd.x !== -2 ||
+          shape.regions[0].loops[0].join() !== '0,1,2') throw new Error('Curve was altered')
+        figma.closePlugin('Vector written')
+      })()
+    `))
+    const renderer = new VectorEngine()
+    try {
+      expect(run.closeMessage).toBe('Vector written')
+      const shape = named(current, 'Written vector')!
+      expect(shape.transform.slice(4)).toEqual([40, 60])
+      expect(shape.network?.edges[0]).toMatchObject({ c1: { x: 3, y: 4 }, c2: { x: 18, y: 4 } })
+      expect(shape.network?.filledFaces).toHaveLength(1)
+      expect(current.state.version).toBe(1)
+      renderer.load_document(JSON.stringify(current.state.doc))
+      const pixels = renderer.render_rgba(JSON.stringify({
+        pageId: before.pages[0].id, width: 100, height: 100, view: { x: 0, y: 0, zoom: 1 }, grid: false, transparent: true,
+      }))
+      const pixel = (x: number, y: number) => Array.from(pixels.slice((y * 100 + x) * 4, (y * 100 + x) * 4 + 4))
+      expect(pixel(44, 68)).toEqual([0, 255, 0, 255])
+      expect(pixel(58, 77)).toEqual([0, 0, 0, 0])
+      current.undo()
+      expect(current.state.doc).toEqual(before)
+      expect(current.canUndo).toBe(false)
+    } finally { renderer.free(); run.close() }
+  })
+
+  it('fits cubic extrema in a rotated parent and replaces retained geometry in one edit', async () => {
+    const current = editor()
+    const parent = node('frame', 100, 140), vector = node('vector', 60, 40)
+    parent.transform = [0, -1, 1, 0, 100, 140]
+    vector.transform = [0, 1, -1, 0, 60, 40]
+    vector.vectorGeometry = { fillRule: 'nonzero', fill: [{ move: [0, 0] }, { line: [10, 10] }] }
+    current.change('Seed retained vector', doc => {
+      doc.schemaVersion = 16
+      parent.children.push(vector.id)
+      doc.nodes[parent.id] = parent
+      doc.nodes[vector.id] = vector
+      doc.pages[0].children.push(parent.id)
+    })
+    const before = current.state.doc, revision = current.state.version
+    const run = await openPlugin(current, bundle('Replace vector', `
+      ;(async () => {
+        const v = await figma.getNodeByIdAsync('${vector.id}')
+        v.name = 'Fitted curve'
+        await v.setVectorNetworkAsync({
+          vertices: [{x:-5,y:10},{x:15,y:10}],
+          segments: [{start:0,end:1,tangentStart:{x:0,y:-40},tangentEnd:{x:0,y:-40}}],
+        })
+        if (v.vectorNetwork.segments[0].tangentStart.y !== -40 || v.vectorNetwork.regions.length) throw new Error('Open curve changed')
+        figma.closePlugin('Retained path replaced')
+      })()
+    `))
+    try {
+      expect(run.closeMessage).toBe('Retained path replaced')
+      const result = current.state.doc.nodes[vector.id]
+      expect(result).toMatchObject({ name: 'Fitted curve', transform: [0, 1, -1, 0, 80, 35], width: 20, height: 30 })
+      expect(result.vectorGeometry).toBeUndefined()
+      expect(result.network?.vertices.map(({ x, y }) => [x, y])).toEqual([[0, 30], [20, 30]])
+      expect(result.network?.edges[0]).toMatchObject({ c1: { x: 0, y: -10 }, c2: { x: 20, y: -10 } })
+      expect(current.state.version).toBe(revision + 1)
+      current.undo()
+      expect(current.state.doc).toEqual(before)
+    } finally { run.close() }
+  })
+
+  it('rejects malformed, ambiguous and oversized network writes without changing the document', async () => {
+    const current = editor()
+    const vector = node('vector'), rect = node('rectangle')
+    vector.network = { vertices: [], edges: [], fillRule: 'nonzero' }
+    current.change('Seed editable vector', doc => {
+      doc.nodes[vector.id] = vector
+      doc.nodes[rect.id] = rect
+      doc.pages[0].children.push(vector.id, rect.id)
+    })
+    const before = current.state.doc, revision = current.state.version
+    const run = await openPlugin(current, bundle('Reject invalid vectors', `
+      ;(async () => {
+        const v = await figma.getNodeByIdAsync('${vector.id}')
+        const rect = await figma.getNodeByIdAsync('${rect.id}')
+        if (rect.setVectorNetworkAsync !== undefined) throw new Error('Setter exists on a rectangle')
+        const vertices = [{x:0,y:0},{x:20,y:0},{x:0,y:20},{x:30,y:30}]
+        const a = {start:0,end:1}, b = {start:1,end:2}, c = {start:2,end:0}
+        const region = {windingRule:'EVENODD',loops:[[0,1,2]]}
+        for (const [value, code] of [
+          [{vertices,segments:[{start:0,end:4}]}, 'invalid_value'],
+          [{vertices,segments:[{...a,tangentEnd:{x:1,y:Infinity}}]}, 'invalid_value'],
+          [{vertices,segments:[a,b,c],regions:[{...region,loops:[[0,1,1]]}]}, 'invalid_value'],
+          [{vertices,segments:[a,b,c],regions:[{...region,loops:[[0,1]]}]}, 'invalid_value'],
+          [{vertices,segments:[a,b,c]}, 'unsupported_api'],
+          [{vertices,segments:[a,b,c,{start:1,end:3}],regions:[region]}, 'unsupported_api'],
+          [{vertices,segments:[a,b,c],regions:[{...region,fills:[]}]}, 'unsupported_api'],
+          [{vertices,segments:[a,b,c],regions:[{...region,loops:[[0,1,2],[0,1,2]]}]}, 'unsupported_api'],
+          [{vertices:[{x:0,y:0,cornerRadius:2}],segments:[]}, 'unsupported_api'],
+          [{vertices:Array(2049).fill(vertices[0]),segments:[]}, 'plugin_limit'],
+        ]) {
+          try { await v.setVectorNetworkAsync(value); throw new Error('Accepted a rejected network') }
+          catch (error) { if (!String(error).includes(code + ':')) throw error }
+        }
+        figma.closePlugin('All writes rejected')
+      })()
+    `))
+    try {
+      expect(run.closeMessage).toBe('All writes rejected')
+      expect(current.state.doc).toBe(before)
+      expect(current.state.version).toBe(revision)
+    } finally { run.close() }
+  })
+
+  it('honors Dev inspection, read-only editor and locked-layer boundaries', async () => {
+    const current = editor()
+    const vector = node('vector', 20, 30, 50, 40)
+    vector.network = { vertices: [], edges: [], fillRule: 'nonzero' }
+    current.change('Seed protected vector', doc => {
+      doc.nodes[vector.id] = vector
+      doc.pages[0].children.push(vector.id)
+    })
+    const before = current.state.doc, revision = current.state.version
+    const main = (code: string) => `
+      ;(async () => {
+        const v = await figma.getNodeByIdAsync('${vector.id}')
+        try {
+          await v.setVectorNetworkAsync({vertices:[{x:0,y:0},{x:5,y:5}],segments:[{start:0,end:1}]})
+          throw new Error('Protected vector was edited')
+        } catch (error) { if (!String(error).includes('${code}:')) throw error }
+        figma.closePlugin('${code}')
+      })()
+    `
+    const inspector = {
+      manifest: parsePluginManifest({ name: 'Vector Inspector', id: 'vector-inspector.plugin', api: '1.0.0', main: 'code.js', editorType: ['dev'] }),
+      main: main('permission_denied'),
+      ui: null,
+    }
+    const dev = await openPlugin(current, inspector, { mode: 'inspect' })
+    try { expect(dev.closeMessage).toBe('permission_denied') }
+    finally { dev.close() }
+    current.setMutationRestriction('This document is read-only')
+    try {
+      const view = await openPlugin(current, bundle('Read-only vector', main('commit_failed')))
+      try { expect(view.closeMessage).toBe('commit_failed') }
+      finally { view.close() }
+    } finally { current.setMutationRestriction(undefined) }
+    expect(current.state.doc).toBe(before)
+    expect(current.state.version).toBe(revision)
+
+    current.change('Lock layer', doc => { doc.nodes[vector.id].locked = true })
+    const locked = current.state.doc, lockedRevision = current.state.version
+    const edit = await openPlugin(current, bundle('Locked vector', main('locked_node')))
+    try {
+      expect(edit.closeMessage).toBe('locked_node')
+      expect(current.state.doc).toBe(locked)
+      expect(current.state.version).toBe(lockedRevision)
+    } finally { edit.close() }
   })
 
   it('stops at closePlugin and still commits the earlier shape', async () => {

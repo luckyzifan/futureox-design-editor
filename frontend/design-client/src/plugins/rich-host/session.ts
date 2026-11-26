@@ -1,7 +1,7 @@
 import { createEditorDesignAutomation } from '../../automation'
 import { capturePluginRegion } from '../../automation/export'
 import type { DesignSystem } from '../../design-system'
-import { apply, bounds, worldMatrix } from '../../geometry'
+import { apply, bounds, multiply, translate, worldMatrix } from '../../geometry'
 import type { Editor } from '../../engine'
 import {
   defaultLayout, defaultSizing, defaultTextStyle, effect, paint, stroke,
@@ -19,7 +19,7 @@ import { PluginApiError, PluginClosed } from './errors'
 import { PLUGIN_LIMITS } from './limits'
 import { pluginEditorType, type PluginLaunchMode } from './manifest'
 import { styledTextSegments } from './text-segments'
-import { readVectorNetwork } from './vector-network'
+import { fitVectorNetwork, readVectorNetwork, type FittedVectorNetwork } from './vector-network'
 import type { PluginEditorEvent } from './ui-document'
 import {
   pluginDataEmpty, pluginDataGet, pluginDataKeys, pluginDataSet, readPluginData, sharedPluginDataGet, sharedPluginDataKeys, sharedPluginDataSet,
@@ -30,6 +30,7 @@ type Assignment = { key: string; value: unknown }
 type Command =
   | { type: 'create'; id: string; kind: Kind; assignments: Assignment[] }
   | { type: 'update'; id: string; assignments: Assignment[] }
+  | ({ type: 'vectorNetwork'; id: string } & FittedVectorNetwork)
   | { type: 'remove'; id: string }
   | { type: 'move'; id: string; parentId: string; index?: number }
   | { type: 'selection'; ids: string[] }
@@ -414,7 +415,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   function bucket(id: string): { assignments: Assignment[] } {
     for (let index = commands.length - 1; index >= 0; index--) {
       const command = commands[index]
-      if (command.type === 'move' || command.type === 'remove' || command.type === 'setPage' || command.type === 'createPage' || command.type === 'renamePage' || command.type === 'selection' || command.type === 'styleCreate' || command.type === 'styleUpdate' || command.type === 'styleApply' || command.type === 'styleDelete' || command.type === 'collectionCreate' || command.type === 'variableCreate' || command.type === 'variableSet' || command.type === 'variableBind') break
+      if (command.type !== 'create' && command.type !== 'update') break
       if ((command.type === 'create' || command.type === 'update') && command.id === id) return command
     }
     const update: Command = { type: 'update', id, assignments: [] }
@@ -594,6 +595,13 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     }
     if (commands.some(command => command.type === 'create' && command.id === id) || editor.state.doc.nodes[id]) return
     throw new PluginApiError('not_found', 'Node does not exist')
+  }
+  function isVectorNode(id: string) {
+    // A proxy method lookup must not commit pending edits or a new vector.
+    const creation = commands.find(command => command.type === 'create' && command.id === id)
+    if (creation?.type === 'create') return creation.kind === 'vector'
+    const target = editor.authoredDocument.nodes[id]
+    return !!target && figmaType(target) === 'VECTOR'
   }
   function defaults(kind: Kind): Working {
     const [width, height] = CREATE_SIZE[kind] ?? [100, 100]
@@ -845,6 +853,18 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         const patch = compileAssignments(working, command.assignments)
         synthetic.set(command.id, working)
         if (Object.keys(patch).length) ops.push({ method: 'node.update', params: { ids: [command.id], patch } })
+      } else if (command.type === 'vectorNetwork') {
+        const patch: Record<string, unknown> = { network: command.network, vectorGeometry: null }
+        if (command.box) {
+          const working = synthetic.get(command.id) ?? fromDocument(command.id)
+          const { x, y, width, height } = command.box
+          working.transform = multiply(working.transform, translate(x, y))
+          working.width = Math.max(1e-6, width)
+          working.height = Math.max(1e-6, height)
+          synthetic.set(command.id, working)
+          Object.assign(patch, { transform: working.transform, width: working.width, height: working.height })
+        }
+        ops.push({ method: 'node.update', params: { ids: [command.id], patch } })
       } else if (command.type === 'remove') ops.push({ method: 'node.delete', params: { ids: [command.id] } })
       else if (command.type === 'move') ops.push({ method: 'node.move', params: { ids: [command.id], parentId: command.parentId, ...(command.index === undefined ? {} : { index: command.index }), preserveWorld: true } })
       else if (command.type === 'selection') ops.push({ method: 'selection.set', params: { ids: command.ids } })
@@ -1385,6 +1405,27 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         flush()
         const result = execute('node.get', { id: shortText(body.id, 'id', 80) }, false) as { node: DesignNode }
         return readVectorNetwork(result.node)
+      }
+      if (op === 'isVectorNode') return isVectorNode(shortText(body.id, 'id', 80))
+      if (op === 'writeVectorNetwork') {
+        requireDesignWrite()
+        const id = shortText(body.id, 'id', 80)
+        assertDataTarget('node', id)
+        const target = editor.authoredDocument.nodes[id]
+        if (!isVectorNode(id) || target?.connector || target?.vectorBrush)
+          throw new PluginApiError('unsupported_api', 'Vector network writes require a directly editable vector')
+        const fitted = fitVectorNetwork(body.network)
+        if (hasMove(id)) flush()
+        ensureRoom()
+        const command: Command = { type: 'vectorNetwork', id, ...fitted }
+        commands.push(command)
+        try { flush() }
+        catch (error) {
+          const index = commands.indexOf(command)
+          if (index !== -1) commands.splice(index, 1)
+          throw error
+        }
+        return null
       }
       if (op === 'children') {
         flush()
