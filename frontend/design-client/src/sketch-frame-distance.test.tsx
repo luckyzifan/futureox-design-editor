@@ -81,7 +81,7 @@ test('Sketch inspector reads and writes 117 image.png artboard edges, and one un
     expect(field('W').closest('.geometry-position-section')).not.toBeNull()
     const pins = document.querySelector('[aria-label="父画板尺寸约束"]')
     expect(pins).not.toBeNull()
-    expect(pins?.querySelector('[aria-label="左侧"]')?.getAttribute('aria-pressed')).toBe('true')
+    expect(pins?.querySelector('[aria-label="左侧"]')?.getAttribute('aria-pressed')).toBe('false')
     expect(pins?.querySelector('[aria-label="右侧"]')?.getAttribute('aria-pressed')).toBe('false')
     expect(editor.state.doc).toBe(before)
 

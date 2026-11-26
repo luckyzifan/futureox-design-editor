@@ -8,6 +8,31 @@ export function nextConstraint(current: ConstraintAnchor, edge: 'start' | 'end' 
   return edge
 }
 
+function nextSketchPin(current: ConstraintAnchor | undefined, edge: 'start' | 'end', alternate: boolean): ConstraintAnchor {
+  const opposite = edge === 'start' ? 'end' : 'start'
+  if (current === 'stretch') return alternate ? 'center' : opposite
+  if (current === edge) return 'center'
+  if (current === opposite) return alternate ? edge : 'stretch'
+  return alternate ? 'stretch' : edge
+}
+
+function writeSketchPins(node: DesignNode, horizontal: ConstraintAnchor, vertical: ConstraintAnchor) {
+  if (horizontal === 'center' && vertical === 'center') delete node.constraints
+  else node.constraints = { ...node.constraints, horizontal, vertical }
+}
+
+export function editSketchPin(node: DesignNode, axis: 'horizontal' | 'vertical', edge: 'start' | 'end', alternate: boolean) {
+  const anchor = nextSketchPin(node.constraints?.[axis], edge, alternate)
+  // Center is the existing fixed-size anchor without either edge pinned.
+  writeSketchPins(node, axis === 'horizontal' ? anchor : node.constraints?.horizontal ?? 'center',
+    axis === 'vertical' ? anchor : node.constraints?.vertical ?? 'center')
+}
+
+export function setSketchPinPreset(node: DesignNode, preset: 'all' | 'none' | 'default') {
+  const anchor = preset === 'all' ? 'stretch' : preset === 'default' ? 'start' : 'center'
+  writeSketchPins(node, anchor, anchor)
+}
+
 export function canAutoPinChild(parent: DesignNode, child: DesignNode): boolean {
   return container(parent) && !parent.graphic && !parent.locked && !parent.instance && !parent.instanceOrigin &&
     !child.locked && !child.instanceOrigin && (!parent.layout || parent.layout.mode === 'none' || !!child.sizing?.absolute)

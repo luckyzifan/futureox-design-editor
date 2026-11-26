@@ -2067,8 +2067,7 @@ footer button {
 .sketch-constraint-box .edge-left::after, .sketch-constraint-box .edge-right::after { content: ''; width: 3px; inset-block: 0; }
 .sketch-constraint-box .edge-left::after { left: 8px; }
 .sketch-constraint-box .edge-right::after { right: 8px; }
-.sketch-constraint-box .edge-center { width: 20px; height: 20px; margin: -10px 0 0 -10px; display: grid; place-items: center; }
-.sketch-constraint-box .edge-center:empty::after { content: ''; width: 8px; height: 8px; border-radius: 50%; }
+.sketch-constraint-box .edge-center { width: 20px; height: 20px; margin: -10px 0 0 -10px; display: grid; place-items: center; font-size: 11px; font-weight: 600; line-height: 1; }
 
 /* Shared controls stay readable at the density of a desktop design tool. */
 .workspace-rail { gap: 6px; }
