@@ -86,7 +86,7 @@ pub struct TileCacheStats {
 
 pub struct TileCache {
     entries: HashMap<(i32, i32), CachedTile>,
-    global_key: Option<Key>,
+    global_key: Option<(Key, bool)>,
     pub stats: TileCacheStats,
 }
 
@@ -339,7 +339,7 @@ fn split_frame(
     entries
 }
 
-fn needs_partitioned_seed(scene: &GpuScene, profile: RasterProfile) -> bool {
+fn needs_partitioned_crops(scene: &GpuScene, profile: RasterProfile) -> bool {
     profile == RasterProfile::Analytic
         && scene.color_management.is_none()
         && scene.nodes.len() <= MAX_SCENE_NODES
@@ -399,6 +399,7 @@ impl TileCache {
                 "Scene presents a resampled crop; tile cache needs a direct viewport".into(),
             );
         }
+        let partitioned = needs_partitioned_crops(&scene, options.raster_profile);
         let global = global_key(&scene)?;
         let node_keys: BTreeMap<&str, Key> = scene
             .nodes
@@ -408,11 +409,11 @@ impl TileCache {
         self.stats.compile_ms += compile_started.elapsed().as_secs_f64() * 1000.;
 
         let key_started = Instant::now();
-        if self.global_key.as_ref() != Some(&global) {
-            // Viewport transform or raster settings moved: every tile is
-            // stale. Counted as a full frame below, when all tiles re-compose.
+        if self.global_key != Some((global, partitioned)) {
+            // Viewport, raster settings or the crop policy changed. No tile
+            // retains a key across that change.
             self.entries.clear();
-            self.global_key = Some(global);
+            self.global_key = Some((global, partitioned));
         }
         let influence = influence_rects(&scene);
         let keyed: Vec<(Tile, Key)> = tiles
@@ -431,13 +432,12 @@ impl TileCache {
             .collect();
         self.stats.tiles_cached = tiles.len() - dirty.len();
 
-        let all_dirty = dirty.len() == tiles.len();
-        let partitioned_seed = all_dirty && needs_partitioned_seed(&scene, options.raster_profile);
-        let full_frame = all_dirty && !partitioned_seed;
+        let full_frame = dirty.len() == tiles.len() && !partitioned;
         let mut totals = FrameTotals {
             // Each crop keeps ordinary native scene admission. The cold
-            // partition also shares the old full-frame command budget.
-            remaining_commands: partitioned_seed.then_some(MAX_COMMANDS),
+            // partition shares the old full-frame command budget with its
+            // subsequent edits.
+            remaining_commands: partitioned.then_some(MAX_COMMANDS),
             ..Default::default()
         };
         let frame_rect = Rect::new(0, 0, options.width, options.height);
@@ -461,13 +461,22 @@ impl TileCache {
             // Compose stale tiles through cropped command scenes, then
             // stitch them with the cached presented bytes.
             self.stats.tiles_rendered = dirty.len();
+            let compile_region = |rect: Rect| {
+                if partitioned {
+                    rect.expand(1).intersect(frame_rect)
+                } else {
+                    rect
+                }
+            };
             // One prepare guard shared by every dirty tile: the engine caches
-            // the flattened-geometry phase per camera for this union.
-            let prepare = (!dirty.is_empty())
-                .then(|| dirty.iter().fold(dirty[0].0.rect, |acc, (tile, _)| acc.union(tile.rect)));
+            // the flattened-geometry phase per camera for this union. The
+            // shader gets its normal one-pixel gutter; readback stays on-grid.
+            let prepare = (!dirty.is_empty()).then(|| {
+                compile_region(dirty.iter().fold(dirty[0].0.rect, |acc, (tile, _)| acc.union(tile.rect)))
+            });
             for (tile, _) in &dirty {
                 let compile_started = Instant::now();
-                let tile_scene = engine.compile_gpu_region(options, tile.rect, prepare)?;
+                let tile_scene = engine.compile_gpu_region(options, compile_region(tile.rect), prepare)?;
                 self.stats.compile_ms += compile_started.elapsed().as_secs_f64() * 1000.;
                 let raw = self.compose_and_read(gpu, &tile_scene, tile.rect, &mut totals)?;
                 let presented = present_bytes(
@@ -647,12 +656,12 @@ mod tests {
     fn cold_partition_requires_an_oversized_analytic_sdr_curve_buffer() {
         let mut scene = scene();
         scene.curves.resize(MAX_SCENE_CURVE_WORDS, 0.);
-        assert!(!needs_partitioned_seed(&scene, RasterProfile::Analytic));
+        assert!(!needs_partitioned_crops(&scene, RasterProfile::Analytic));
         scene.curves.extend([0.; 4]);
-        assert!(needs_partitioned_seed(&scene, RasterProfile::Analytic));
-        assert!(!needs_partitioned_seed(&scene, RasterProfile::FigmaSubpixel));
+        assert!(needs_partitioned_crops(&scene, RasterProfile::Analytic));
+        assert!(!needs_partitioned_crops(&scene, RasterProfile::FigmaSubpixel));
         scene.color_management = Some(Default::default());
-        assert!(!needs_partitioned_seed(&scene, RasterProfile::Analytic));
+        assert!(!needs_partitioned_crops(&scene, RasterProfile::Analytic));
     }
 
     #[test]
