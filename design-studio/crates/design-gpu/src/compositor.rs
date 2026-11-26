@@ -13,7 +13,7 @@ use futureox_design_kernel::{
 };
 use std::collections::HashMap;
 
-const BLENDS: [&str; 19] = [
+const BLENDS: [&str; 20] = [
     "normal",
     "multiply",
     "screen",
@@ -33,6 +33,7 @@ const BLENDS: [&str; 19] = [
     "linear-burn",
     "linear-dodge",
     "plus-lighter",
+    "sketch-gradient-over",
 ];
 const SKETCH_LAYER_GAUSSIAN_MODE: f32 = 98.;
 fn blend(mode: &str) -> Result<f32, String> {
@@ -1479,6 +1480,10 @@ impl Compositor<'_, '_, '_> {
             u[252] = fixed.bits as f32;
             u[253] = 0.;
             u[254] = 0.;
+        }
+        if p.sketch_gradient {
+            u[60..146].copy_from_slice(futureox_design_kernel::sketch_gradient::phase_uniforms());
+            u[199] = -1.;
         }
         Ok(())
     }

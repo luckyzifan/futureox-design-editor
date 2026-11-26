@@ -61,9 +61,11 @@ fn append_batch(s:&Session,batch:&[(usize,usize)],cancel:&AtomicBool,context:&pr
         Ok((mut doc,notes))=>{
             // Export provenance stays in the immutable source and editable
             // windows. The full-source display store never exports or edits
-            // this copy, and no renderer consumes sketch_containers. Avoid
-            // merging/serializing/decoding hundreds of MB of opaque receipts.
-            if render_only {if let Some(system)=&mut doc.design_system {system.sketch_containers.clear();}}
+            // this copy. Keep the small gradient render receipt and discard
+            // the remaining opaque archive container payloads.
+            if render_only {
+                futureox_design_kernel::sketch_gradient::retain_render_metadata(&mut doc).map_err(issue)?;
+            }
             warnings.extend(notes);if let Some(full)=full {scene::merge_window(full,doc)?;}else{*full=Some(doc);}Ok(())}
         // A batch cannot relax existing image/dependency/window admission.
         // Split conservatively; a failing original singleton still fails.
@@ -113,7 +115,9 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
             // admission and are not reconstructed from singleton caches.
             let (p,n)=batch[0];
             let (mut document,warnings)=window_cache::convert(s,p,n,cancel,&context)?;
-            if render_only {if let Some(system)=&mut document.design_system{system.sketch_containers.clear();}}
+            if render_only {
+                futureox_design_kernel::sketch_gradient::retain_render_metadata(&mut document).map_err(issue)?;
+            }
             return Ok((document,warnings.into_iter().collect()));
         }
         let mut document=None;let mut notes=std::collections::BTreeSet::new();

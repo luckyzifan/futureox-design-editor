@@ -834,6 +834,7 @@ impl Engine {
         // Keep render-relevant Sketch provenance for the demanded nodes.
         // Inert metadata outside this working set remains with the source.
         let mut render_metadata = serde_json::Map::new();
+        let mut has_sketch_gradient = false;
         for node in nodes.values() {
             crate::render_cancellation::checkpoint()?;
             let mut bindings = serde_json::Map::new();
@@ -847,13 +848,22 @@ impl Engine {
                 // belongs to the complete document's exporter.
                 bindings.insert("sketchSourceBlur".into(), serde_json::json!(""));
             }
+            if node.fills.first().is_some_and(|paint| paint.kind == "linear")
+                && let Some(binding) = crate::sketch_gradient::render_paint_binding(source, node)
+            {
+                has_sketch_gradient = true;
+                bindings.insert("sketchSourceGradients".into(), binding);
+            }
             if !bindings.is_empty() {
                 render_metadata.insert(node.id.clone(), serde_json::json!({"bindings":bindings}));
             }
         }
-        let design_system = (!render_metadata.is_empty()).then(|| crate::design_system::DesignSystem {
-            sketch_containers: std::collections::BTreeMap::from([("nodeMetadata".into(), render_metadata.into())]),
-            ..Default::default()
+        let design_system = (!render_metadata.is_empty()).then(|| {
+            let mut sketch_containers = std::collections::BTreeMap::from([("nodeMetadata".into(), render_metadata.into())]);
+            if has_sketch_gradient {
+                sketch_containers.insert("sketchDocumentColorSpace".into(), serde_json::json!(1));
+            }
+            crate::design_system::DesignSystem { sketch_containers, ..Default::default() }
         });
         // This already-resolved projection can compile but cannot edit/export.
         let document=Document{fd_compatibility:None,reviews:vec![],design_system,prototype:None,
@@ -5651,6 +5661,15 @@ impl Painter<'_> {
         let n=outline.as_ref().unwrap_or(n);
         if !n.visible || n.opacity <= 0. {
             return Ok(());
+        }
+        if !geometric && self.profile == crate::fidelity::RasterProfile::Analytic
+            && n.fills.first().is_some_and(|paint| paint.kind == "linear")
+            && let Some(prepared) = self.prepared.get(id)
+            && let Some(edges) = crate::coverage::rectangle(&prepared.fill)
+            && let Some(gradient) = crate::sketch_gradient::SketchGradient::for_node(self.doc, n, prepared.matrix, edges)
+        {
+            self.stats.nodes += 1;
+            return gradient.composite(target, output, clip);
         }
         let Some((layer, backdrop_coverage)) = self.node_layer(id, target, true, output, original_target, geometric)? else {
             return Ok(());

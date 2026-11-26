@@ -735,6 +735,9 @@ pub struct GpuPaint {
     pub sketch_bitmap_sampling: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub sketch_cover_fill_footprint: bool,
+    /// Use the measured Sketch RGBA8 gradient source pass.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub sketch_gradient: bool,
 }
 impl std::ops::Deref for GpuPaint {
     type Target = Paint;
@@ -781,6 +784,7 @@ impl GpuPaint {
             )?,
             sketch_bitmap_sampling: false,
             sketch_cover_fill_footprint: false,
+            sketch_gradient: false,
         })
     }
 }
@@ -2360,6 +2364,10 @@ impl Compiler<'_> {
         let packet_children=if source_filter_field.as_ref().is_some_and(|f|f.gaussian&&!f.group_roots.is_empty()){vec![]}else{n.render_children().to_vec()};
         let opaque_coverage = opaque_interior(n, matrix, extent);
         self.compiled_order.push(id.to_owned());
+        let sketch_gradient = self.profile == crate::fidelity::RasterProfile::Analytic && !geometric
+            && n.fills.first().is_some_and(|paint| paint.kind == "linear")
+            && prepared.and_then(|p| crate::coverage::rectangle(&p.fill)).is_some_and(|edges|
+                crate::sketch_gradient::SketchGradient::for_node(self.doc, n, matrix, edges).is_some());
         self.nodes.insert(
             id.to_owned(),
             GpuNode {
@@ -2444,6 +2452,10 @@ impl Compiler<'_> {
                             let mut paint = paint.with_sketch_bitmap_sampling(sketch_bitmap_sampling);
                             paint.sketch_cover_fill_footprint = self.profile == crate::fidelity::RasterProfile::Analytic
                                 && crate::paint::sketch_cover_fill_footprint(self.doc, n, p);
+                            paint.sketch_gradient = sketch_gradient;
+                            if sketch_gradient {
+                                paint.fixed_gradient = None;
+                            }
                             paint
                         })
                     })
@@ -2455,7 +2467,7 @@ impl Compiler<'_> {
                 mask: n.mask,
                 clip: n.clip,
                 opacity: n.opacity,
-                blend: n.composite_blend().to_owned(),
+                blend: if sketch_gradient { crate::sketch_gradient::BLEND } else { n.composite_blend() }.to_owned(),
                 effects: n
                     .effects
                     .iter()

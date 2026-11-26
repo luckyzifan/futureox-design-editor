@@ -26,6 +26,45 @@ pub use session::{
     Session, SketchCommand,
 };
 
+use serde_json::Value;
+
+pub(crate) fn uses_legacy_transparent_artboards(meta: &Value) -> bool {
+    if !matches!(
+        meta.get("app").and_then(Value::as_str),
+        Some("com.bohemiancoding.sketch3" | "com.bohemiancoding.sketchtool")
+    ) || !meta.get("version").and_then(Value::as_u64).is_some_and(|version| version > 0)
+    {
+        return false;
+    }
+    let Some(version) = meta.get("appVersion").and_then(Value::as_str) else {
+        return false;
+    };
+    let mut parts = version.split('.');
+    let is_number = |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+    // Sketch 101.9 was the last release before Athens 2025.1, which migrates
+    // legacy artboards into frames when opening a document.
+    parts.next().filter(|part| is_number(part))
+        .and_then(|major| major.parse::<u32>().ok())
+        .is_some_and(|major| (1..=101).contains(&major))
+        && parts.all(is_number)
+}
+
+pub(crate) fn implicit_white_artboard_background(
+    layer: &Value,
+    inside_artboard: bool,
+    legacy_transparent_artboards: bool,
+) -> bool {
+    let legacy_background_disabled = legacy_transparent_artboards
+        && layer.get("hasBackgroundColor").and_then(Value::as_bool) == Some(false)
+        && layer.get("includeBackgroundColorInExport").and_then(Value::as_bool) == Some(false);
+    inside_artboard
+        && !legacy_background_disabled
+        && layer.get("backgroundColor").is_some()
+        && !layer
+            .pointer("/userInfo/com.futureox.design-kernel")
+            .is_some_and(Value::is_object)
+}
+
 /// Legacy archive-session protocol discriminator; not an application kernel.
 pub const KERNEL_ID: &str = "sketch";
 pub const DOCUMENT_SCHEMA: &str = "sketch-native-v1";

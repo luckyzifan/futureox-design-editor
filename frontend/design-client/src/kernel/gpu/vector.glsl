@@ -218,7 +218,14 @@ vec4 gradientBlurComposite(vec2 p){
  float ws=mulRN(b,b);float total=addRN(wb,ws);
  return vec4(divideRN(addRN(mulRN(wb,blurred.x),mulRN(ws,sharp.x)),total),divideRN(addRN(mulRN(wb,blurred.y),mulRN(ws,sharp.y)),total),divideRN(addRN(mulRN(wb,blurred.z),mulRN(ws,sharp.z)),total),divideRN(addRN(mulRN(wb,blurred.w),mulRN(ws,sharp.w)),total));
 }
-vec4 over(vec4 b,vec4 s,int mode){if(mode==18)return min(vec4(1.),addRN4(b,s));if(s.a<=0.)return b;if(b.a<=0.)return s;if(mode==0){if(u[60].x>.5)return addRN4(s,mulRN4(b,vec4(addRN(1.,-s.a))));return s+b*(1.-s.a);}if(u[60].x>.5)return blendRN(b,s,mode);vec3 cb=b.rgb/b.a,cs=s.rgb/s.a,m=vec3(channel(cb.r,cs.r,mode),channel(cb.g,cs.g,mode),channel(cb.b,cs.b,mode));if(mode==12)m=setLum(setSat(cs,sat(cb)),lum(cb));if(mode==13)m=setLum(setSat(cb,sat(cs)),lum(cb));if(mode==14)m=setLum(cs,lum(cb));if(mode==15)m=setLum(cb,lum(cs));return vec4(s.rgb*(1.-b.a)+s.a*b.a*m+b.rgb*(1.-s.a),s.a+b.a*(1.-s.a));}
+// RGBA8 attachment math for the admitted legacy Sketch gradient pass only.
+vec4 sketchGradientOver(vec4 b,vec4 s){
+ if(s.a<=0.)return b;
+ uvec4 dst=uvec4(roundEven(clamp(b,vec4(0.),vec4(1.))*255.));
+ uvec4 src=uvec4(roundEven(clamp(s,vec4(0.),vec4(1.))*255.));
+ return vec4(src+(dst*(255u-src.a)+uvec4(127u))/255u)/255.;
+}
+vec4 over(vec4 b,vec4 s,int mode){if(mode==19)return sketchGradientOver(b,s);if(mode==18)return min(vec4(1.),addRN4(b,s));if(s.a<=0.)return b;if(b.a<=0.)return s;if(mode==0){if(u[60].x>.5)return addRN4(s,mulRN4(b,vec4(addRN(1.,-s.a))));return s+b*(1.-s.a);}if(u[60].x>.5)return blendRN(b,s,mode);vec3 cb=b.rgb/b.a,cs=s.rgb/s.a,m=vec3(channel(cb.r,cs.r,mode),channel(cb.g,cs.g,mode),channel(cb.b,cs.b,mode));if(mode==12)m=setLum(setSat(cs,sat(cb)),lum(cb));if(mode==13)m=setLum(setSat(cb,sat(cs)),lum(cb));if(mode==14)m=setLum(cs,lum(cb));if(mode==15)m=setLum(cb,lum(cs));return vec4(s.rgb*(1.-b.a)+s.a*b.a*m+b.rgb*(1.-s.a),s.a+b.a*(1.-s.a));}
 float noise(ivec2 p,uint seed){uint h=uint(p.x)*0x9e3779b1u^uint(p.y)*0x85ebca77u^seed;h^=h>>16;h*=0x7feb352du;h^=h>>15;h*=0x846ca68bu;h^=h>>16;return divideRN(float(h&0x00ffffffu),16777215.);}
 vec2 local(vec2 p){return vec2(u[5].x*p.x+u[5].z*p.y+u[6].x,u[5].y*p.x+u[5].w*p.y+u[6].y);}
 vec2 halfScaleTexel(vec2 localPx){
@@ -1207,10 +1214,23 @@ vec4 sketchLayerGaussian(vec2 p){
  if(axis==1)value.a=max(value.a,max(value.r,max(value.g,value.b)));
  return vec4(value)/255.;
 }
+vec4 sketchGradientPaint(vec2 q){
+ ivec2 phase=ivec2(floor(q))&ivec2(15);
+ int index=phase.y*16+phase.x;
+ uint packed=uint(u[15+index/12][(index/3)%4]);
+ float threshold=float((packed>>(8u*uint(index%3)))&255u)/256.;
+ float t=clamp(addRN(1.,-divideRN(q.x,u[6].z)),0.,1.);
+ vec4 a=vec4(gradientStop(0u).yzw,gradientStopAlpha(0u));
+ vec4 b=vec4(gradientStop(1u).yzw,gradientStopAlpha(1u));
+ vec4 rgba=addRN4(a,mulRN4(addRN4(b,-a),vec4(t)));
+ vec4 premult=vec4(mulRN4(rgba,vec4(rgba.a)).rgb,rgba.a);
+ return floor(addRN4(mulRN4(premult,vec4(255.)),vec4(threshold)))/255.;
+}
+int clippedBlend(float mode,float opacity){return mode==19.&&opacity!=1.?0:int(mode);}
 vec4 shade(vec2 p){
  int mode=COMPOSITOR_MODE;if(mode==98)return sketchLayerGaussian(p);if(BYTE_SURFACE&&mode==43)return textureReplayEffect(p);if(BYTE_SURFACE&&mode==44)return textureReplayCopyback(p);if(BYTE_SURFACE&&mode==45)return textureReplaySource(p);if(BYTE_SURFACE&&mode==42)return measuredGradientOver(p);if(BYTE_SURFACE&&mode==40)return captureDownscale(p);if(BYTE_SURFACE&&mode==41)return captureTriangle(p);if(BYTE_SURFACE&&mode==36)return figmaFourPass(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]),softwareRasterByte());if(BYTE_SURFACE&&mode==35)return solidPaintOver(p);if(mode==34)return analyticGlass(p);if(mode==33)return bytePreview(p);if(mode==61)return motionBlurPixel(p);if(mode==62)return zoomBlurPixel(p);if(mode==63)return vec4(min(1.,smp(sourceA,p,u[1]).a*u[10].y));if(mode==46)return gradientBlurComposite(p);if(mode==65)return progressiveTent(p);if(mode==64)return sketchBlurBox(p);if(mode==8&&u[10].z>.5)return materialTexture(p);if(mode==11&&u[10].w>.5)return materialGlass(p);vec4 a=smp(sourceA,p,u[1]);
  if(u[60].x>.5){
-  if(mode==3||mode==15){float opacity=u[4].z;if(u[4].w>.5)opacity=mulRN(opacity,at(sourceC,p,u[3]).a);vec4 src=mulRN4(a,vec4(opacity));if(mode==15)return src;return over(smp(sourceB,p,u[2]),src,int(u[4].y));}
+  if(mode==3||mode==15){float opacity=u[4].z;if(u[4].w>.5)opacity=mulRN(opacity,at(sourceC,p,u[3]).a);vec4 src=mulRN4(a,vec4(opacity));if(mode==15)return src;return over(smp(sourceB,p,u[2]),src,clippedBlend(u[4].y,opacity));}
   if(mode==8){return legacyTexture(p,true);}
   if(mode==11){return linearGlass(p);}
   if(mode==23)return meanFourRN(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]));
@@ -1249,10 +1269,13 @@ vec4 shade(vec2 p){
  if(mode==0||mode==14)return a;
  if(mode==1){float v=at(sourceA,p,u[1]).a,b=at(sourceB,p,u[2]).a;v*=u[9].x>.5?1.-b:b;return vec4(v);}
  if(mode==2||mode==16){vec2 q=local(p+u[46].xy);int kind=int(u[7].x);float opacity=u[8].x;vec4 paint=vec4(u[7].yzw*opacity*u[60].y,opacity*u[60].y);if(kind==0&&u[46].z>.5)paint=u[48];
-  if((kind==1||kind==2||kind==4||kind==5)&&u[60].x<.5){float t=gradientT(p,q,kind);int count=int(u[8].w);if(count>0){bool bytePaint=u[46].w>.5;float firstAlpha=gradientStopAlpha(0u);vec4 rgba=vec4(gradientStop(0u).yzw*firstAlpha,firstAlpha);if(bytePaint)rgba=roundEven(rgba*255.);for(int i=1;i<64;i++){if(i>=count)break;vec4 l=gradientStop(uint(i-1)),r=gradientStop(uint(i));if(t>l.x){float la=gradientStopAlpha(uint(i-1)),ra=gradientStopAlpha(uint(i));vec4 left=vec4(l.yzw*la,la),right=vec4(r.yzw*ra,ra);if(bytePaint){left=roundEven(left*255.);right=roundEven(right*255.);}float k=clamp((t-l.x)/max(r.x-l.x,1e-8),0.,1.);rgba=bytePaint?vec4(colourMix(left.r,right.r,k),colourMix(left.g,right.g,k),colourMix(left.b,right.b,k),colourMix(left.a,right.a,k)):left+(right-left)*k;}}paint=rgba*opacity;if(bytePaint)paint=roundEven(rgba*opacity)/255.;}}
+  // The nonnegative fixed-gradient words also use this slot.
+  bool sketch=kind==1&&u[49].w==-1.;
+  if(sketch)paint=sketchGradientPaint(q);
+  if(!sketch&&(kind==1||kind==2||kind==4||kind==5)&&u[60].x<.5){float t=gradientT(p,q,kind);int count=int(u[8].w);if(count>0){bool bytePaint=u[46].w>.5;float firstAlpha=gradientStopAlpha(0u);vec4 rgba=vec4(gradientStop(0u).yzw*firstAlpha,firstAlpha);if(bytePaint)rgba=roundEven(rgba*255.);for(int i=1;i<64;i++){if(i>=count)break;vec4 l=gradientStop(uint(i-1)),r=gradientStop(uint(i));if(t>l.x){float la=gradientStopAlpha(uint(i-1)),ra=gradientStopAlpha(uint(i));vec4 left=vec4(l.yzw*la,la),right=vec4(r.yzw*ra,ra);if(bytePaint){left=roundEven(left*255.);right=roundEven(right*255.);}float k=clamp((t-l.x)/max(r.x-l.x,1e-8),0.,1.);rgba=bytePaint?vec4(colourMix(left.r,right.r,k),colourMix(left.g,right.g,k),colourMix(left.b,right.b,k),colourMix(left.a,right.a,k)):left+(right-left)*k;}}paint=rgba*opacity;if(bytePaint)paint=roundEven(rgba*opacity)/255.;}}
   if(u[60].x>.5){
    if(kind==0)paint=mulRN4(mulRN4(vec4(u[7].yzw,1.),vec4(u[60].y)),vec4(opacity));
-   if(kind==1||kind==2||kind==4||kind==5){paint=mulRN4(linearGradient(p),vec4(opacity));}
+   if(!sketch&&(kind==1||kind==2||kind==4||kind==5)){paint=mulRN4(linearGradient(p),vec4(opacity));}
   }
   if(kind==3&&u[60].x>.5){paint=mulRN4(linearImage(p),vec4(opacity));}else if(kind==3&&u[46].w>.5){vec4 grid=byteImageAddress(p);paint=grid.z>.5?roundEven(smpBytesIndex(sourceB,grid.xy,u[2])*opacity)/255.:vec4(0);}else if(kind==3){vec2 size=u[2].zw;vec2 coord=paintUV(q)*size-.5;if(u[62].z<.5){coord=(q*size-u[6].zw*.5)/u[6].zw;if(u[8].z<1.5){float ratio=u[8].z<.5?max(u[6].z/size.x,u[6].w/size.y):min(u[6].z/size.x,u[6].w/size.y);coord=(q-(u[6].zw-(size-1.)*ratio)*.5)/ratio;}}if(u[8].z>.5&&u[8].z<1.5&&(any(lessThan(coord,vec2(-.5)))||any(greaterThanEqual(coord,size-.5))))paint=vec4(0);else if(u[46].w>.5)paint=roundEven(smpBytesIndex(sourceB,clamp(coord,vec2(0),size-1.),u[2])*opacity)/255.;else paint=smpIndex(sourceB,clamp(coord,vec2(0),size-1.),u[2])*opacity;}
   if(kind==3){vec4 filteredImage=halfScaleStretch(p);if(filteredImage.w>=0.){if(u[60].x>.5)paint=mulRN4(filteredImage,vec4(opacity));else paint=filteredImage*opacity;}}
@@ -1260,7 +1283,7 @@ vec4 shade(vec2 p){
  }
  if(mode==15){vec4 src=a*u[4].z;if(u[4].w>0.5)src*=at(sourceC,p,u[3]).a;return src;}
  if(mode==3&&u[60].x<.5&&u[4].z<1.&&(u[4].y==1.||u[4].y==2.)){uvec4 dst=uvec4(roundEven(smp(sourceB,p,u[2])*255.));uvec4 src=uvec4(roundEven(a*255.));float opacity=u[4].z;if(u[4].w>.5)opacity*=at(sourceC,p,u[3]).a;uint weight=uint(roundEven(clamp(opacity,0.,1.)*65535.));uint denominator=16711425u;uvec4 sum=dst*(denominator-src.a*weight)+src*(255u*weight);if(u[4].y==1.)sum=uvec4(src.rgb*weight*(uvec3(255u-dst.a)+dst.rgb)+dst.rgb*(denominator-src.a*weight),sum.a);else sum=uvec4(src.rgb*weight*(uvec3(255)-dst.rgb)+dst.rgb*denominator,sum.a);uvec4 q=sum/denominator;uvec4 rem=sum-q*denominator;return vec4(q+uvec4(greaterThan(rem*2u,uvec4(denominator))))/255.;}
- if(mode==3){vec4 src=a*u[4].z;if(u[4].w>.5)src*=at(sourceC,p,u[3]).a;return over(smp(sourceB,p,u[2]),src,int(u[4].y));}
+ if(mode==3){float opacity=u[4].z;vec4 src=a*opacity;if(u[4].w>.5){float coverage=at(sourceC,p,u[3]).a;src*=coverage;opacity*=coverage;}return over(smp(sourceB,p,u[2]),src,clippedBlend(u[4].y,opacity));}
  if(mode==4||mode==5){int r=int(u[9].x);vec2 axis=u[9].y<.5?vec2(1,0):vec2(0,1);vec4 total=vec4(0);float alpha=u[9].z>.5?0.:1.;for(int i=-r;i<=r;i++){vec4 v=(mode==5&&u[9].w>.5)?at(sourceA,p+axis*float(i),u[1]):smp(sourceA,p+axis*float(i),u[1]);if(mode==4)total+=v;else alpha=u[9].z>.5?max(alpha,v.a):min(alpha,v.a);}return mode==4?total/float(2*r+1):vec4(0,0,0,alpha);}
  if(mode==6){if(u[9].x>.5){float b=smpBytes(sourceB,p-u[9].yz,u[2]).a;float shapeByte=roundEven(a.a*255.);float outside=u[10].y>.5?b*(shapeByte<255.?(255.-min(255.,shapeByte*u[10].y))/max(255.-shapeByte,1.):0.):b;float coverage=u[9].w>.5?shapeByte*(1.-b/255.):outside;uint alpha=uint(roundEven(clamp(u[8].x*coverage,0.,255.)*65536.));uvec4 numerator=uvec4(roundEven(vec4(u[7].yzw,1.)*255.))*alpha;uint denominator=16711680u;uvec4 q=numerator/denominator,r=numerator-q*denominator;uvec4 up=uvec4(greaterThan(r*2u,uvec4(denominator)))+(uvec4(equal(r*2u,uvec4(denominator)))&(q&1u));return vec4(q+up)/255.;}float b=smp(sourceB,p-u[9].yz,u[2]).a;float outside=u[10].y>.5?b*(a.a<1.?(1.-min(1.,a.a*u[10].y))/max(1.-a.a,1e-6):0.):b;float coverage=u[9].w>.5?a.a*(1.-b):outside;float alpha=u[8].x*coverage;vec4 result=vec4(u[7].yzw*alpha,alpha);return u[9].x>.5?roundEven(result*255.)/255.:result;}
  if(mode==60)return colorControlsPixel(a);

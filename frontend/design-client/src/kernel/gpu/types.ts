@@ -165,6 +165,7 @@ export type GpuPaint = Paint & {
   fixedGradient?: { bits: number; words: number[][] }
   sketchBitmapSampling?: boolean
   sketchCoverFillFootprint?: boolean
+  sketchGradient?: boolean
 }
 export type GpuScene = {
   /** Worker-owned exact regional display request. */
@@ -617,6 +618,7 @@ export const blends = [
   'linear-burn',
   'linear-dodge',
   'plus-lighter',
+  'sketch-gradient-over',
 ]
 export const rect = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h })
 export function intersect(a: Rect, b: Rect): Rect {

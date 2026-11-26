@@ -91,6 +91,7 @@ pub mod gpu;
 pub mod gradient_blur;
 pub mod sketch_progressive_blur;
 pub mod sketch_layer_gaussian;
+pub mod sketch_gradient;
 pub mod graph_api;
 pub mod handles;
 mod image_color;

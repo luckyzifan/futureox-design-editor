@@ -568,9 +568,9 @@ impl Projection<'_> {
                     0,
                     solid(format!("{id}:background"), color(&v["backgroundColor"])?),
                 );
-            } else if inside_artboard && v.get("backgroundColor").is_some()
-                && !v.pointer("/userInfo/com.futureox.design-kernel").is_some_and(Value::is_object)
-            {
+            } else if crate::sketch::implicit_white_artboard_background(
+                &v, inside_artboard, self.source.uses_legacy_transparent_artboards(),
+            ) {
                 n.fills.insert(0, solid(format!("{id}:background"), "#ffffff".into()));
             }
         }
