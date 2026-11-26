@@ -941,9 +941,10 @@ test('QuickJS WASM attribution uses lock-verified bytes without installed JS dep
       { path: 'renderer/assets/emscripten-module-Valid.wasm', bytes: wasm },
       { path: 'renderer/assets/emscripten-module-Stale.wasm', bytes: changed },
     ]))
-    const report = (lockedIntegrity = integrity) => inventoryFromPackageBytes({
+    const report = (lockedIntegrity = integrity, supplementalLicenses = []) => inventoryFromPackageBytes({
       root, layout: electronPackageLayout(bundle), openAsar, rust: { crates: [] },
       javascript: { distributed: [{ package: packageName, version: sourceNotice.version, integrity: lockedIntegrity }], developmentOnly: [] },
+      supplementalLicenses,
     }).components.filter(item => item.kind === 'wasm')
     const files = report()
     const [valid, stale] = ['Valid', 'Stale'].map(name => files.find(item => item.packagePath.includes(`-${name}.wasm`)))
@@ -953,6 +954,15 @@ test('QuickJS WASM attribution uses lock-verified bytes without installed JS dep
     assert.equal(stale.traceable, false)
     assert.equal(stale.gap, 'wasm_source_unidentified')
     assert.equal(report('sha512-changed').filter(item => item.traceable).length, 0)
+    const { wasm: recordedWasm, ...oldNotice } = sourceNotice
+    await writeFile(path.join(root, inventoryPath), JSON.stringify({ packages: [oldNotice] }))
+    assert.equal(report().filter(item => item.traceable).length, 0)
+    assert.equal(report(integrity, [sourceNotice]).filter(item => item.traceable).length, 1)
+    assert.equal(report('sha512-changed', [sourceNotice]).filter(item => item.traceable).length, 0)
+    assert.equal(report(integrity, [{ ...sourceNotice, sha256: '0'.repeat(64) }]).filter(item => item.traceable).length, 0)
+    const wrongWasm = { ...recordedWasm, sha256: '0'.repeat(64) }
+    await writeFile(path.join(root, inventoryPath), JSON.stringify({ packages: [{ ...oldNotice, wasm: wrongWasm }] }))
+    assert.equal(report(integrity, [sourceNotice]).filter(item => item.traceable).length, 0)
     assert.equal(existsSync(path.join(root, 'frontend/design-client/node_modules')), false)
   } finally {
     await rm(root, { recursive: true, force: true })

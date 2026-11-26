@@ -90,6 +90,8 @@ node frontend/design-desktop/scripts/release-component-inventory.mjs \
 
 这组参数会对照源码提交与 Git 树，并校验包内 ASAR、内核 WASM 和记录列出的原生文件。清单使用发布记录的 Rust 目标归因依赖，包括 Windows gnullvm。提供可选的 `--installer` 后，脚本也会按解包目录所属平台校验原安装包的 SHA-256，在 `publishedRuntime.verifiedInstaller` 中记录测得的哈希和字节数。签名和启动验收仍由对应的安装包流程记录。
 
+若历史源码的许可记录还没有 QuickJS WASM 哈希，审计工具可以使用当前仓库许可清单中已经验证过的记录。归因要求包名、版本、许可证、包内许可文本、npm 压缩包完整性和实际 WASM 字节全部匹配。报告用 `fromAuditorInventory` 标出此记录。
+
 清单区分这些东西：
 
 - 四个会装进包里的 Rust 二进制的 `cargo tree --locked --edges normal`，以及 wasm32 的 kernel 图。`futureox-design-server`、`utoipa`、`sqlx-postgres` 和 dev-dependency `tiny-skia` 不在这个图里。
