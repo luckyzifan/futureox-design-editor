@@ -67,5 +67,6 @@ export function canvasCommandLabel(command: string, chinese: string, locale: Int
   if (locale !== 'en') return chinese
   if (command === 'rename' && multiple) return 'Batch rename…'
   if (command === 'unlock-selection' && lockedParent) return 'Unlock layers and ancestors'
+  if (command === 'mask-selection' && chinese === '移除蒙版') return 'Remove mask'
   return canvasCommandEnglish[command] ?? chinese
 }

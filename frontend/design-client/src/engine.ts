@@ -223,6 +223,13 @@ export type CommittedEditReceipt = Readonly<{
   selection: readonly string[]; canUndo: boolean; canRedo: boolean
 }>
 type History = { doc: DesignDocument; page: string; selection: string[]; label: string }
+type CanvasMoveIntent = {
+  ids: string[]
+  point: Point
+  force: boolean
+  preserveParent: boolean
+  allowOversize?: boolean
+}
 class GeometryCancelled extends Error {}
 export type EditorEditEvent = { documentId: string; session: number; revision: number; source: 'user' | 'automation'; kind: 'edit' | 'undo' | 'redo'; summary: string }
 export class Editor {
@@ -306,7 +313,7 @@ export class Editor {
     }
     return next
   }
-  private transaction: (History & { placement?: { document:DesignDocument; ids:string[]; point:Point; force:boolean; preserveParent:boolean }; movePreview?: {source:DesignDocument;document:DesignDocument;published:DesignDocument;key:string;parents:ParentMap;epoch:object;translation:TranslationPreviewPlan}; dropIndex?: CanvasDropIndex; placementSizing?: Map<string, DesignNode['sizing']>; flow?: { base: DesignDocument; sizing: Map<string, DesignNode['sizing']> }; previewBase?: DesignDocument; copy?: { document: DesignDocument; roots: string[]; originals: string[]; flowSizing: Map<string, DesignNode['sizing']> } }) | null = null
+  private transaction: (History & { placement?: CanvasMoveIntent & { document: DesignDocument }; movePreview?: {source:DesignDocument;document:DesignDocument;published:DesignDocument;key:string;parents:ParentMap;epoch:object;translation:TranslationPreviewPlan}; dropIndex?: CanvasDropIndex; placementSizing?: Map<string, DesignNode['sizing']>; flow?: { base: DesignDocument; sizing: Map<string, DesignNode['sizing']> }; previewBase?: DesignDocument; copy?: { document: DesignDocument; roots: string[]; originals: string[]; flowSizing: Map<string, DesignNode['sizing']> } }) | null = null
   private propertyPreview: {
     lease: PropertyPreviewLease; history: History; session: number; revision: number
     targets: readonly SolidFillTarget[]; document: DesignDocument; draft: SolidFillDraft
@@ -1125,9 +1132,9 @@ export class Editor {
     if(this.posePreview.allowed && this.posePreview.plan.acceptsAffine(patches) &&
         booleanPoseUnchanged(base,this.posePreview.plan.booleanRoots,patches)) return this.posePublication(base,patches)
   }
-  private publishTranslationPreview(base: DesignDocument, patches: Record<string, Partial<DesignNode>>, move: { ids: string[]; point: Point; force: boolean; preserveParent: boolean }, previewOwner: Editor['transaction'], previewStarted: number) {
+  private publishTranslationPreview(base: DesignDocument, patches: Record<string, Partial<DesignNode>>, move: CanvasMoveIntent, previewOwner: Editor['transaction'], previewStarted: number) {
     const multiple = move.ids.length > 1
-    if (!multiple && !this.canvasMovePreservesParents(move.ids, move.point, move.force, move.preserveParent)) return false
+    if (!multiple && !this.canvasMovePreservesParents(move.ids, move.point, move.force, move.preserveParent, undefined, move.allowOversize)) return false
     if (Object.entries(patches).some(([id, patch]) => !base.nodes[id] || Object.keys(patch).some(key => key !== 'transform'))) return false
     const pose = this.certifiedGesturePose(base,patches)
     let candidate = pose
@@ -1138,14 +1145,14 @@ export class Editor {
       if (!translationOnlyChanges(base,candidate)) return false
     }
     // The cross-frame exception requires containment of the current pose.
-    if (multiple && !this.canvasMovePreservesParents(move.ids, move.point, move.force, move.preserveParent, candidate)) return false
+    if (multiple && !this.canvasMovePreservesParents(move.ids, move.point, move.force, move.preserveParent, candidate, move.allowOversize)) return false
     const resolved=pose ?? kernelLayout(candidate,base,true)
     const published = performance.now()
     this.set({ doc: resolved })
     if (this.transaction === previewOwner && previewOwner && this.state.doc === resolved) {
       previewOwner.placement = { ...move, ids: [...move.ids], point: { ...move.point }, document: resolved }
       if (move.ids.length === 1 && Object.keys(patches).length === 1 && !previewOwner.copy && !previewOwner.flow) {
-        const plan = this.movePlacement(candidate, move.ids, move.point, move.force, move.preserveParent)
+        const plan = this.movePlacement(candidate, move)
         previewOwner.movePreview = { source: base, document: resolved, published: resolved, key: plan.key,
           parents: this.parentMap(resolved), epoch: pickingGeometryEpoch(),
           translation: new TranslationPreviewPlan(resolved, move.ids) }
@@ -1163,12 +1170,12 @@ export class Editor {
       this.transaction = history
     }
   }
-  preview(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }, reuseOwnedPose = false) {
+  preview(patches: Record<string, Partial<DesignNode>>, move?: CanvasMoveIntent, reuseOwnedPose = false) {
     return canvasActions(this).cpu.run(CpuStage.preview, () => this.previewCore(patches, move, reuseOwnedPose))
   }
   private previewLayout?: PreviewLayout
   private posePreview?:{base:DesignDocument;epoch:object;key:string;plan:TranslationPreviewPlan;allowed:boolean}
-  private previewCore(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }, reuseOwnedPose = false) {
+  private previewCore(patches: Record<string, Partial<DesignNode>>, move?: CanvasMoveIntent, reuseOwnedPose = false) {
     if (this.propertyPreview && !this.propertyPreviewWrite) return false
     const previewStarted = performance.now()
     const previewOwner=this.transaction
@@ -1236,7 +1243,7 @@ export class Editor {
         if(candidate.schemaVersion < 10 && hasLocalTools(featureDoc))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 11 && hasRulerGuides(featureDoc))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 12 && hasSchema12FrameProperties(featureDoc))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 13 && hasImageAdjusts(featureDoc))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 14 && hasPatternTiles(featureDoc))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(featureDoc))candidate.schemaVersion=15;if(candidate.schemaVersion < 16 && featureNodes.some(n=>n.vectorGeometry))candidate.schemaVersion=16;if(candidate.schemaVersion < 17 && hasSchema17Features(featureDoc))candidate.schemaVersion=17;if(candidate.schemaVersion < 18 && hasSchema18Features(featureDoc))candidate.schemaVersion=18;if(candidate.schemaVersion < 20 && hasSchema20Features(featureDoc))candidate.schemaVersion=20;if(candidate.schemaVersion < 21 && hasSchema21Features(featureDoc))candidate.schemaVersion=21;if(candidate.schemaVersion < 19 && hasSchema19Features(featureDoc))candidate.schemaVersion=19
         if (candidate.schemaVersion < 22 && hasSchema22Features(featureDoc)) candidate.schemaVersion = 22
         if (candidate.schemaVersion < 8 && (hasStrokeMarkers(featureDoc) || hasLayerExports(featureDoc))) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
-        const visible=move?this.movePreviewDocument(candidate,move.ids,move.point,move.force,move.preserveParent):candidate
+        const visible=move?this.movePreviewDocument(candidate, move):candidate
         if (visible !== candidate) validateStructure(visible)
         return visible
       })
@@ -1258,7 +1265,7 @@ export class Editor {
         previewOwner.placement=move?{...move,ids:[...move.ids],point:{...move.point},document:resolved}:undefined
       if(move&&this.transaction===previewOwner&&previewOwner&&this.state.doc===resolved&&resolvedEpoch===pickingGeometryEpoch()&&move.ids.length===1&&!previewOwner.copy&&!previewOwner.flow&&
           Object.keys(patches).length===1&&Object.keys(patches[move.ids[0]]||{}).every(key=>key==='transform')){
-        const plan=this.movePlacement({ ...base,nodes },move.ids,move.point,move.force,move.preserveParent)
+        const plan=this.movePlacement({ ...base,nodes }, move)
         previewOwner.movePreview={source:base,document:resolved,published:resolved,key:plan.key,parents:allParents(resolved),epoch:resolvedEpoch,translation:new TranslationPreviewPlan(resolved,move.ids)}
       }
       if (this.diagnosticOperation !== null) this.operationDiagnostics.preview(this.diagnosticOperation, true)
@@ -2736,19 +2743,19 @@ export class Editor {
     this.set({ doc: transaction.previewBase })
   }
   previewMoveParent(ids: string[], point: Point, force = false, preserveParent = false) {
-    const next=this.movePreviewDocument(this.state.doc,ids,point,force,preserveParent)
+    const next=this.movePreviewDocument(this.state.doc, { ids, point, force, preserveParent })
     if(next!==this.state.doc)this.set({doc:kernelLayout(next)})
   }
   /** Retained pixels cannot represent a changed clipping/parent boundary.
    * Keep the transaction's hierarchy and evaluate containment in its proposed
    * pose when a multi-selection can span independent frames. */
-  canvasMovePreservesParents(ids: string[], point: Point, force = false, preserveParent = false, pose?: DesignDocument): boolean {
+  canvasMovePreservesParents(ids: string[], point: Point, force = false, preserveParent = false, pose?: DesignDocument, allowOversize = false): boolean {
     const tx = this.transaction
     if (!tx) return true
     const base = tx.previewBase || tx.doc
     const index = tx.dropIndex ??= createCanvasDropIndex(base, this.state.page)
     const source = pose ?? base
-    const plan = this.movePlacement(source, ids, point, force, preserveParent, index)
+    const plan = this.movePlacement(source, { ids, point, force, preserveParent, allowOversize }, index)
     return plan.moving.length === 0 && (!plan.retained || plan.retained === source)
   }
   /** Read-only projection for a move query, never published, serialized or
@@ -2759,14 +2766,14 @@ export class Editor {
     for(const [id,patch] of Object.entries(patches))Object.defineProperty(nodes,id,{value:{...base.nodes[id],...patch},enumerable:true})
     return {...base,nodes}
   }
-  private cachedMovePreview(patches:Record<string,Partial<DesignNode>>,move:{ids:string[];point:Point;force:boolean;preserveParent:boolean},pruneClippedRoots=false){
+  private cachedMovePreview(patches:Record<string,Partial<DesignNode>>,move:CanvasMoveIntent,pruneClippedRoots=false){
     const tx=this.transaction,cache=tx?.movePreview,source=tx?.previewBase||tx?.doc
     if(!tx||!cache||source!==cache.source||cache.published!==this.state.doc||tx.page!==this.state.page||
         cache.epoch!==pickingGeometryEpoch()||tx.copy||tx.flow||move.ids.length!==1||
         Object.keys(patches).length!==move.ids.length||move.ids.some(id=>!source.nodes[id]||!patches[id]?.transform||Object.keys(patches[id]).some(key=>key!=='transform')))return
     const index=tx.dropIndex??=createCanvasDropIndex(source,this.state.page,pruneClippedRoots?this.parentMap(source):undefined)
     const query=this.moveQuery(source,patches,move.ids)
-    const plan=this.movePlacement(query,move.ids,move.point,move.force,move.preserveParent,index,pruneClippedRoots)
+    const plan=this.movePlacement(query, move, index, pruneClippedRoots)
     if(plan.key!==cache.key)return
     const poses:Record<string,Partial<DesignNode>>={}
     for(const id of move.ids){
@@ -2779,14 +2786,14 @@ export class Editor {
     if(!cache.translation.accepts(poses))return
     return {patches:poses}
   }
-  canvasMovePreview(patches:Record<string,Partial<DesignNode>>,move:{ids:string[];point:Point;force:boolean;preserveParent:boolean},pruneClippedRoots=false){
+  canvasMovePreview(patches:Record<string,Partial<DesignNode>>,move:CanvasMoveIntent,pruneClippedRoots=false){
     const cached=this.cachedMovePreview(patches,move,pruneClippedRoots)
     if(cached)return {patches:cached.patches,retainsParents:true}
     const tx=this.transaction;if(!tx)return {patches,retainsParents:true}
     const base=tx.previewBase||tx.doc
     const topology=pruneClippedRoots&&base===this.state.doc?this.pickContext(base).parents:undefined
     const index=tx.dropIndex??=createCanvasDropIndex(base,this.state.page,topology)
-    const plan=this.movePlacement(this.moveQuery(base,patches,move.ids),move.ids,move.point,move.force,move.preserveParent,index,pruneClippedRoots)
+    const plan=this.movePlacement(this.moveQuery(base,patches,move.ids), move, index, pruneClippedRoots)
     const current=topology??this.parentMap()
     const retainsParents=plan.moving.length===0&&move.ids.every(id=>current.get(id)===index.parents.get(id))
     if(retainsParents&&base===this.state.doc&&!tx.copy&&!tx.flow&&move.ids.length===1){
@@ -2799,12 +2806,13 @@ export class Editor {
     }
     return {patches,retainsParents}
   }
-  private movePlacement(source:DesignDocument,ids:string[],point:Point,force:boolean,preserveParent:boolean,index?:CanvasDropIndex,pruneClippedRoots=false){
+  private movePlacement(source:DesignDocument,move:CanvasMoveIntent,index?:CanvasDropIndex,pruneClippedRoots=false){
+    const { ids, point, force, preserveParent, allowOversize } = move
     const tx=this.transaction
     index??=tx?(tx.dropIndex??=createCanvasDropIndex(tx.previewBase||tx.doc,this.state.page)):createCanvasDropIndex(source,this.state.page)
     const parents=index.parents
-    const retained=tx&&!preserveParent?this.retainContainedMoveParents(source,ids,point,force):null
-    const frame=tx&&!preserveParent&&!retained?canvasDropFrame(source,this.state.page,ids,point,force,index,pruneClippedRoots):undefined,target=frame||this.state.page
+    const retained=tx&&!preserveParent?this.retainContainedMoveParents(source, ids, point, force, allowOversize):null
+    const frame=tx&&!preserveParent&&!retained?canvasDropFrame(source, this.state.page, ids, point, force, index, { pruneClippedRoots, allowOversize }):undefined,target=frame||this.state.page
     let moving=tx&&!preserveParent&&!retained?ids.filter(id=>!canvasMoveKeepsContainer(source,id,force,parents)&&(frame?containingFrame(source,id,parents)!==frame:!!containingFrame(source,id,parents))&&parents.get(id)!==target):[]
     const animated=new Set(source.animations?.flatMap(c=>c.tracks.map(t=>t.nodeId))||[])
     if(moving.some(id=>{for(let at:string|undefined=id;at&&source.nodes[at];at=parents.get(at))if(animated.has(at)||source.nodes[at].instanceOrigin||(at!==id&&source.nodes[at].instance))return true;return false}))moving=[]
@@ -2814,7 +2822,7 @@ export class Editor {
    * their own original frames must not all adopt the frame under one pointer.
    * Other placement intents (including groups, overlap and auto layout) retain
    * the existing drop path. A null result means this exception is inapplicable. */
-  private retainContainedMoveParents(source: DesignDocument, ids: string[], point: Point, force: boolean): DesignDocument | null {
+  private retainContainedMoveParents(source: DesignDocument, ids: string[], point: Point, force: boolean, allowOversize = false): DesignDocument | null {
     const tx = this.transaction
     if (!tx || force || tx.copy || ids.length < 2 || source.id !== tx.doc.id || this.state.page !== tx.page) return null
     const original = allParents(tx.doc), current = allParents(source), roots = new Set(ids)
@@ -2853,7 +2861,7 @@ export class Editor {
       const a = boxes[i], b = boxes[j]
       if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) return null
     }
-    const target = canvasDropFrame(source, tx.page, ids, point)
+    const target = canvasDropFrame(source, tx.page, ids, point, false, undefined, { allowOversize })
     if (!target || !frames.has(target)) return null
     const moving = ids.filter(id => current.get(id) !== original.get(id))
     if (!moving.length) return source
@@ -2878,10 +2886,10 @@ export class Editor {
       }
     })
   }
-  private movePreviewDocument(source: DesignDocument, ids: string[], point: Point, force: boolean, preserveParent: boolean): DesignDocument {
+  private movePreviewDocument(source: DesignDocument, move: CanvasMoveIntent): DesignDocument {
     const tx=this.transaction
-    if(!tx || preserveParent)return source
-    const plan=this.movePlacement(source,ids,point,force,preserveParent)
+    if(!tx || move.preserveParent)return source
+    const plan=this.movePlacement(source, move)
     const retained = plan.retained
     if (retained) return retained
     const {parents,target,moving}=plan
@@ -2905,11 +2913,11 @@ export class Editor {
     // draft is reparented, keeping matrices independent of pointer event count.
     return next
   }
-  finishCanvasMove(point: Point, force = false, absolute = false, preserveParent = false) {
+  finishCanvasMove(point: Point, force = false, absolute = false, preserveParent = false, allowOversize = false) {
     const transaction = this.transaction
     if (!transaction) return
     const roots = this.topSelection(), session = this.sessionGeneration, page = this.state.page
-    const retained = preserveParent ? null : this.retainContainedMoveParents(this.state.doc, roots, point, force)
+    const retained = preserveParent ? null : this.retainContainedMoveParents(this.state.doc, roots, point, force, allowOversize)
     if (retained && retained !== this.state.doc) {
       this.set({ doc: retained })
       // Publication can synchronously load another document or start a new
@@ -2923,9 +2931,10 @@ export class Editor {
     // again (layout can resize targets and change which overlapping frame wins).
     const receipt=transaction.placement
     const previewed=receipt?.document===doc&&receipt.force===force&&receipt.preserveParent===preserveParent&&
+      (receipt.allowOversize ?? false)===allowOversize&&
       receipt.point.x===point.x&&receipt.point.y===point.y&&receipt.ids.length===roots.length&&
       receipt.ids.every((id,i)=>id===roots[i])
-    const frame = previewed ? undefined : canvasDropFrame(doc, this.state.page, roots, point, force)
+    const frame = previewed ? undefined : canvasDropFrame(doc, this.state.page, roots, point, force, undefined, { allowOversize })
     const target = frame || this.state.page
     const relocating = previewed || preserveParent || retained ? [] : roots.filter(id => {
       const currentFrame = containingFrame(doc,id,parents)

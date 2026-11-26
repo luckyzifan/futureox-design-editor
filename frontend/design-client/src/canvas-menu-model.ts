@@ -73,7 +73,12 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
   if (nodes.length && nodes.every((n) => !container(n) && n.kind !== 'text' && n.kind !== 'vector')) items.push({ command: 'convert-vector', label: '转换为矢量', group: 'geometry', disabled: !mutable })
   if (nodes.length && nodes.every((n) => !container(n) && n.kind !== 'text') && nodes.some((n) => n.strokes.some((stroke) => stroke.visible && stroke.width > 0)))
     items.push({ command: 'outline-stroke', label: '轮廓化描边', group: 'geometry', disabled: !mutable || !siblings })
-  if (nodes.length) items.push({ command: 'mask-selection', label: '用作蒙版', group: 'geometry', disabled: !mutable || !siblings || roots.length < 2 })
+  const singleFigmaMask = context.uiMode === 'figma' && nodes.length === 1 &&
+    !nodes[0].instanceOrigin && (nodes[0].visible || nodes[0].mask)
+  if (nodes.length) items.push({
+    command: 'mask-selection', label: singleFigmaMask && nodes[0].mask ? '移除蒙版' : '用作蒙版', group: 'geometry',
+    disabled: !mutable || !siblings || (roots.length < 2 && !singleFigmaMask),
+  })
   const namingGroup = context.uiMode === 'figma' ? 'structure' : 'naming'
   if (nodes.length) items.push({ command: 'rename', label: nodes.length > 1 ? '批量重命名…' : '重命名', group: namingGroup, disabled: busy || editor.interactionActive || (nodes.length > 1 && (!mutable || nodes.some(n => n.instanceOrigin))) })
   if (nodes.length && nodes.every(n => n.kind === 'frame' && !n.component && !n.instance && !n.componentSet)) items.push({ command: 'convert-section', label: '转换为分区', group: namingGroup, disabled: !mutable })

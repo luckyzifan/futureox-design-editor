@@ -132,6 +132,47 @@ test('a native trailing mask cannot erase content painted before it',()=>{
  }finally{engine.free()}
 })
 
+test.each([
+  { page: true, prefix: true, hidden: false },
+  { page: false, prefix: true, hidden: false },
+  { page: false, prefix: false, hidden: false },
+  { page: false, prefix: true, hidden: true },
+])('native FIG alpha runs stop at the next visible mask %j', ({ page, prefix, hidden }) => {
+  const paint = (r: number, g: number, b: number) => [{ type: 'SOLID', color: { r, g, b, a: 1 } }]
+  const parent = { guid: guid(page ? 2 : 3) }
+  const rectangle = (id: number, name: string, position: string, props: Record<string, unknown>) => ({
+    guid: guid(id), type: 'RECTANGLE', name, parentIndex: { ...parent, position }, size: { x: 28, y: 16 }, ...props,
+  })
+  const mask = (id: number, position: string, x: number, visible: boolean) => rectangle(id, 'Mask', position, {
+    size: { x: 8, y: 8 }, transform: { m00: 1, m01: 0, m02: x, m10: 0, m11: 1, m12: 4 },
+    fillPaints: paint(1, 1, 1), mask: true, maskType: 'ALPHA', visible,
+  })
+  const first = page ? { size: { x: 28, y: 16 }, fillPaints: paint(1, 0, 0) }
+    : { type: 'FRAME', frameMaskDisabled: true, size: { x: 28, y: 16 }, fillPaints: [] }
+  const children = [
+    ...(!page && prefix ? [rectangle(4, 'Underlay', 'a', { fillPaints: paint(1, 0, 0) })] : []),
+    mask(5, 'b', 8, true),
+    rectangle(6, 'Green', 'c', { fillPaints: paint(0, 1, 0) }),
+    mask(7, 'd', 16, !hidden),
+    rectangle(8, 'Blue', 'e', { fillPaints: paint(0, 0, 1) }),
+  ]
+  const { document } = importFig(encoded(first, {}, [], children))
+  validateDocument(document)
+  const engine = new VectorEngine()
+  try {
+    engine.load_document(JSON.stringify(document))
+    const red = [255, 0, 0, 255], green = [0, 255, 0, 255], blue = [0, 0, 255, 255]
+    for (const rasterProfile of ['figma', 'analytic']) {
+      const rgba = engine.render_rgba(JSON.stringify({ pageId: document.pages[0].id, width: 28, height: 16,
+        view: { x: 0, y: 0, zoom: 1 }, transparent: true, rasterProfile }))
+      const sample = (x: number) => Array.from(rgba.slice((8 * 28 + x) * 4, (8 * 28 + x) * 4 + 4))
+      expect([sample(2), sample(12), sample(20)]).toEqual([
+        prefix ? red : [0, 0, 0, 0], hidden ? blue : green, hidden ? red : blue,
+      ])
+    }
+  } finally { engine.free() }
+})
+
 test('FIG brush assets and baked strokes keep the ordinary page and the visible paint order', () => {
   const rectPath = (left: number, right: number) => {
     const points = [[left, 2], [right, 2], [right, 18], [left, 18]]

@@ -63,9 +63,8 @@ pub struct Decoded {
     pub stroke_join: Option<String>,
 }
 
-/// Figma masks only the suffix after each visible mask. Multiple masks nest
-/// (desigma draw_children recurses into the suffix); process right to left so
-/// adding one explicit scope cannot change any earlier source index.
+/// Visible FIG mask indices in descending source order. Each reader scopes
+/// the range from a mask to the next visible mask or the parent's end.
 pub fn mask_suffixes(flags:&[u8])->Result<Vec<u32>,String>{
     if flags.len()>u32::MAX as usize||flags.iter().any(|v|*v>1){return Err("Invalid FIG mask flags".into());}
     Ok(flags.iter().enumerate().rev().filter_map(|(i,v)|(*v==1).then_some(i as u32)).collect())
