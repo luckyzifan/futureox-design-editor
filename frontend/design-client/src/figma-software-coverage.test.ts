@@ -8,7 +8,10 @@ const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest(
 
 test('software export matches the frozen black and white rotated curve', () => {
   const png = readFileSync(new URL('../public/fidelity/rotated-curve.png', import.meta.url))
-  expect(sha256(png)).toBe('9991f106808da73a9ce35148b946e327c20b879d6fce770f64d3dea24d2dd065')
+  const pins: { id: string; referenceSha256: string }[] = JSON.parse(
+    readFileSync(new URL('../public/fidelity/cases.json', import.meta.url), 'utf8'),
+  )
+  expect(sha256(png)).toBe(pins.find(entry => entry.id === 'rotated-curve')?.referenceSha256)
   const document = figmaFixture('rotated-curve')
   const engine = new VectorEngine()
   try {
