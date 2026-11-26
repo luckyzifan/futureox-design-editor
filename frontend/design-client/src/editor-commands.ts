@@ -360,7 +360,9 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         })
         break
       }
-      case 'frame-selection': editor.group(false, undefined, 'frame'); break
+      case 'frame-selection':
+        editor.group(false, undefined, 'frame', { clipFrame: interfacePreference.getSnapshot().uiMode === 'figma' })
+        break
       case 'graphic-selection': editor.group(false, undefined, 'graphic'); break
       case 'edit-frame-bounds': {
         const id = editableFrameCrop(editor)
@@ -402,7 +404,9 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         if (editor.state.doc !== before) editor.clearSelection()
         break
       }
-      case 'group': editor.group(); break
+      case 'group':
+        editor.group(false, undefined, 'group', { stack: interfacePreference.getSnapshot().uiMode === 'figma' ? 'front' : 'back' })
+        break
       case 'ungroup': editor.ungroup(); break
       case 'bring-to-front': editor.reorder('front'); break
       case 'send-to-back': editor.reorder('back'); break
@@ -445,7 +449,9 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         else editor.updateProperties(ids, node => clearStyleStack(node, stack), '去掉描边')
         break
       }
-      case 'flatten': await editor.flattenSelection(); break
+      case 'flatten':
+        await editor.flattenSelection(interfacePreference.getSnapshot().uiMode === 'figma' ? 'front' : 'back')
+        break
       case 'fit-pixel-bounds':
         if (interfacePreference.getSnapshot().uiMode === 'sketch') fitSelectionToPixelBounds(editor)
         break

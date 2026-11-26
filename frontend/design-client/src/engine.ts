@@ -2133,7 +2133,8 @@ export class Editor {
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
-  group(mask = false, booleanOperation?: DesignNode['booleanOperation'], kind: 'group' | 'frame' | 'graphic' = 'group') {
+  group(mask = false, booleanOperation?: DesignNode['booleanOperation'], kind: 'group' | 'frame' | 'graphic' = 'group',
+    options: { stack?: 'back' | 'front'; clipFrame?: boolean } = {}) {
     const action = beginEditorAction(this, CanvasAction.group, ActionSource.unknown, 220)
     try {
       if (this.state.busy || this.interactionActive || !commitPendingEdits(this)) return
@@ -2149,10 +2150,11 @@ export class Editor {
           applyBooleanCreate(draft, plan)
         }, [plan.wrapper.id])
       }
-      const plan = prepareSelectionWrap(base, this.state.selection, { fresh: true })
+      const plan = prepareSelectionWrap(base, this.state.selection, { fresh: true }, undefined, { stack: options.stack })
       if (mask && plan.ids.length < 2) throw new SelectionCommandError('invalid_params', 'Mask grouping requires at least two nodes')
       const group = node(kind === 'graphic' ? 'frame' : kind, 0, 0, plan.width, plan.height)
       configureSelectionWrapper(group, plan)
+      if (kind === 'frame' && options.clipFrame) group.clip = true
       if (kind === 'graphic') {
         group.graphic = true
         group.clip = true
@@ -3134,7 +3136,7 @@ export class Editor {
   /** Bake the selection into one vector. A single boolean uses its own
    * operation, and a boolean nested inside it is baked first. A boolean mixed
    * with other layers is baked with its own operation, then unioned. */
-  async flattenSelection() {
+  async flattenSelection(stack: 'back' | 'front' = 'back') {
     if (this.disposed || this.state.busy || this.interactionActive) return
     const ids = this.topSelection()
     if (!ids.length) return
@@ -3228,20 +3230,22 @@ export class Editor {
       vector.blend = named.blend
       vector.effects = cloneValue(named.effects)
       vector.transform = multiply(inverse(worldMatrix(doc, parent, parents)), vector.transform)
-      const position = Math.min(...ordered.map(id => siblings.indexOf(id)))
+      const position = siblings.indexOf(stack === 'front' ? named.id : ordered[0])
       this.change('展平', next => {
         const removeTree = (id: string) => {
           for (const child of [...(next.nodes[id]?.children || [])]) removeTree(child)
           delete next.nodes[id]
         }
         const list = next.nodes[parent]?.children || next.pages.find(page => page.id === parent)!.children
+        // Insert at the original sibling slot before removing the selected
+        // layers, as with a selection wrapper.
+        next.nodes[vector.id] = vector
+        list.splice(Math.max(position, 0), 0, vector.id)
         for (const id of ordered) {
           const at = list.indexOf(id)
           if (at >= 0) list.splice(at, 1)
           removeTree(id)
         }
-        next.nodes[vector.id] = vector
-        list.splice(Math.min(Math.max(position, 0), list.length), 0, vector.id)
       }, [vector.id])
     } catch (error) {
       if (current()) this.notify(error instanceof Error ? error.message : String(error))
