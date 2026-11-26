@@ -2735,6 +2735,43 @@ test('whole-page translation fills original native world misses through the boun
   request.resolve();await flushRasterWork();expect(failed).not.toHaveBeenCalled()
 })
 
+test.each([
+  { zoom: .8, dpr: 2, setting: undefined, expected: true },
+  { zoom: 1.25, dpr: 2, setting: undefined, expected: true },
+  { zoom: 1.25, dpr: 2, setting: undefined, fitsViewport: true, expected: false },
+  { zoom: 1.25, dpr: 1, setting: undefined, expected: false },
+  { zoom: 1.5, dpr: 2, setting: undefined, expected: false },
+  { zoom: 1.25, dpr: 2, setting: '0', expected: false },
+])('clipped board commit consults the desktop control at its admitted zoom and DPR %j', async ({
+  zoom, dpr, setting, fitsViewport, expected,
+}) => {
+  nativeNavigationHost()
+  vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION', '0')
+  vi.stubEnv('VITE_DESIGN_CLIPPED_BOARD_DRAG', setting)
+  vi.stubGlobal('navigator', { platform: 'MacIntel', gpu: {} })
+  worker.dpr = dpr
+  worker.dynamicPlan = true
+  const doc = blank(), board = makeNode('frame', 0, 0, 1440, 1030)
+  board.clip = true
+  const fill = board.fills[0]
+  if (fill?.kind !== 'solid') throw Error('Expected opaque board fill')
+  fill.color = 'color(srgb 0.86 0.91 0.94 / 1)'
+  doc.nodes[board.id] = board
+  doc.pages[0].children = [board.id]
+  const pageId = doc.pages[0].id
+  const boardCommit = vi.fn(() => true)
+  const h = harness(false, doc)
+  const view = { x: 0, y: 0, zoom }, width = fitsViewport ? 1920 : 1024, height = fitsViewport ? 1300 : 512
+  h.render({ backend: 'webgpu', view, width, height, rasterProfile: 'analytic',
+    interaction: { document: doc, selection: [board.id], active: false, epoch: 1, figmaBoardPreview: true,
+      control: { current: { boardCommit } }, onReady() {} } })
+  await vi.waitFor(() => expect(worker.calls.length).toBeGreaterThan(0))
+  if (expected)
+    expect(boardCommit).toHaveBeenCalledWith(doc, pageId, { view, width, height, dpr })
+  else
+    expect(boardCommit).not.toHaveBeenCalled()
+})
+
 test('clipped board coverage fills each newly revealed edge within the same gesture', async () => {
   nativeNavigationHost()
   worker.dynamicPlan = true
