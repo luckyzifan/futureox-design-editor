@@ -12,7 +12,7 @@ function unsupported(api) {
 }
 function host(op, payload) {
   const reading = {
-    readNode: 1, readDocument: 1, children: 1, fonts: 1, log: 1, logClear: 1, notify: 1, postMessage: 1,
+    readNode: 1, readVectorNetwork: 1, readDocument: 1, children: 1, fonts: 1, log: 1, logClear: 1, notify: 1, postMessage: 1,
     timerSchedule: 1, timerCancel: 1, textSegments: 1,
     showUI: 1, uiResize: 1, uiShow: 1, uiHide: 1, uiClose: 1, loadFont: 1, meta: 1, listen: 1,
     viewportRead: 1, clientStorageGet: 1, clientStorageKeys: 1,
@@ -186,6 +186,7 @@ function wrap(id) {
       }
       if (prop === 'setRelaunchData') return function () { unsupported('SceneNode.setRelaunchData') }
       const snap = read(nodeId)
+      if (prop === 'vectorNetwork' && snap.type === 'VECTOR') return host('readVectorNetwork', { id: nodeId })
       if (Object.prototype.hasOwnProperty.call(snap, prop)) return snap[prop]
       return undefined
     },
@@ -333,6 +334,7 @@ const figma = {
   createSection: function () { return create('section') },
   createPolygon: function () { return create('polygon') },
   createStar: function () { return create('star') },
+  createVector: function () { return create('vector') },
   createLine: function () { return create('line') },
   createSlice: function () { return create('slice') },
   createText: function () { return create('text') },
@@ -569,7 +571,6 @@ const figma = {
     const bytes = host('base64Decode', { data: String(data) })
     return Uint8Array.from(bytes)
   },
-  createVector: function () { unsupported('figma.createVector') },
   loadAllPagesAsync: function () { return Promise.resolve(host('loadAllPages', null)) },
   getNodeByIdAsync: function (id) { return Promise.resolve(figma.getNodeById(id)) },
   setCurrentPageAsync: function (page) { return Promise.resolve(host('setPage', { id: page && page.id })) },
