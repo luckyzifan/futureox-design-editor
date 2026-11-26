@@ -53,6 +53,21 @@ export function classifyFrameArrival(input: {
   return 'current'
 }
 
+/** #59 motion partial-sharp gate (default off). During an active camera gesture
+ * a ready regional sample may replace the stretched preview before the whole
+ * viewport plan commits (coverage=full). This only relaxes the plan-currency
+ * wait while moving; the caller still proves native density and phase per tile
+ * through acceptFrameClarity(coverage:'partial'), which never yields screen-ready.
+ * With the flag off the result is exactly `currentPlan`, preserving HEAD. */
+export function motionPartialSharpAllowed(input: {
+  currentPlan: boolean
+  planExists: boolean
+  moving: boolean
+  enabled: boolean
+}): boolean {
+  return input.currentPlan || (input.enabled && input.planExists && input.moving)
+}
+
 /** Clarity receipt shared by ProgressiveSurface and NativeSourceSurface.
  * Density and phase stay surface-measured: the editor lattice and the source
  * tile cache do not use the same geometry. This function still refuses to

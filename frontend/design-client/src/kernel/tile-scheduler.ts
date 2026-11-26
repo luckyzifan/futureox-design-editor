@@ -175,6 +175,14 @@ export type TileFillSchedulerConfig = {
   budget?: TileFrameBudgetOptions
   /** Interruption-reason accounting hook (stats/telemetry surface). */
   onCutoff?: (reason: TileBudgetCutoffReason, counters: TileFillCounters) => void
+  /** Opt-in latest-viewport preemption (#61). When true the on-screen phase
+   * still owns the budget exemption and submits every visible tile, but it
+   * yields tile by tile instead of awaiting the whole chunk at once. A
+   * superseding plan's cancel() then stops the stale on-screen queue at the
+   * next tile boundary, so the newest input wins the sole raster lane after
+   * one in-flight tile rather than after the entire budget-exempt block.
+   * Default false keeps the historical whole-chunk submission byte-for-byte. */
+  preemptOnScreen?: boolean
 }
 
 export class TileFillScheduler {
@@ -254,9 +262,22 @@ export class TileFillScheduler {
         this.onScreen = []
         this.budget.permitWorkAfterBudgetExceeded()
         try {
-          for (let i = 0; i < chunk.length; i++) this.budget.recordTileWasRendered()
-          this.counters.onScreenSubmitted += chunk.length
-          await this.config.submit(chunk)
+          if (this.config.preemptOnScreen) {
+            // Latest-viewport preemption: yield between visible tiles so a
+            // superseding cancel() abandons the rest of this stale chunk at
+            // tile granularity. The exemption, the tile set and the budget
+            // are unchanged — nothing is dropped or raised, the newest plan
+            // simply takes the raster lane after one in-flight tile.
+            for (let i = 0; i < chunk.length && !this.cancelled; i++) {
+              this.budget.recordTileWasRendered()
+              this.counters.onScreenSubmitted++
+              await this.config.submit([chunk[i]])
+            }
+          } else {
+            for (let i = 0; i < chunk.length; i++) this.budget.recordTileWasRendered()
+            this.counters.onScreenSubmitted += chunk.length
+            await this.config.submit(chunk)
+          }
         } finally {
           this.budget.forbidWorkAfterBudgetExceeded()
         }
