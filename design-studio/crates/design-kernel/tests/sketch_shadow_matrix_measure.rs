@@ -1175,6 +1175,26 @@ fn first_diff(actual: &[u8], expected: &[u8]) -> Option<(usize, [u8; 4], [u8; 4]
     at.filter(|(_, _, _, pixel)| *pixel > 0)
 }
 
+#[test]
+fn issue_177_single_tile_wide_shadow_keeps_the_viewport_alpha() {
+    let cell = cells().into_iter().find(|cell| cell.name == "drop-wide64").unwrap();
+    let doc = import_cell(&cell);
+    let mut engine = Engine::new();
+    engine.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
+    let viewport = engine.render(&render_options(&doc, 256, 256, 1., true)).unwrap();
+    let full = render_unretained_view(&doc, 256, 256, 1.).unwrap();
+    let exported = region_rgba(&doc, 1.).unwrap();
+    let (max, count, ..) = diff_summary(&exported, &viewport);
+    let at = (8 * 256 + 71) * 4 + 3;
+    println!("WIDE64_1X x71,y8 viewport={} unretained={} export={} differences={:?}",
+        viewport[at], full[at], exported[at], diff_summary(&full, &viewport));
+    assert_eq!((count, max), (0, 0), "1× single-tile PNG lost the viewport shadow's alpha");
+    assert_eq!(full, exported, "the unretained viewport must use the same shadow taps");
+    // Three boxes of radius 31, 31 and 32 over the sharp source rectangle
+    // contribute alpha 7 at (71, -2), then the painter offsets it down by 10.
+    assert_eq!(exported[at], 7);
+}
+
 /// Issue #177 CPU checks the published matrix does not already lock.
 /// Tiled 1×/2×/3× PNG must match one analytic frame. Sketch reimport
 /// keeps those pixels. An isolated group at opacity 0.5 matches the same

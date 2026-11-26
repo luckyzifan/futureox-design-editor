@@ -5307,6 +5307,9 @@ impl Painter<'_> {
         if content.empty() {
             return None;
         }
+        let analytic_outer = !self.compatible && self.doc.color_management.is_none()
+            && n.kind != "text" && !n.derived_text_paint
+            && shadows.len() == 1 && shadows[0].kind == "shadow";
         // A second shadow reads the first shadow's already-spread result.
         // One shadow still runs three box passes: each pass reads the
         // previous pass, so a tile clipped to the viewport loses about one
@@ -5319,7 +5322,7 @@ impl Painter<'_> {
                 + effect.y.abs())
                 * scale;
             if pad.is_finite() { pad.ceil() as i32 } else { return None; }
-        } else if self.png_frame.is_some() {
+        } else if analytic_outer || self.png_frame.is_some() {
             let effect = shadows[0];
             let sigma = if !self.compatible && self.doc.color_management.is_none() {
                 n.text_shadow_radius(effect, scale) / 2.
@@ -5339,9 +5342,12 @@ impl Painter<'_> {
             0
         };
         let mut needed = content.union(self.viewport.expand(read));
-        if let Some(frame) = self.png_frame {
-            // Stay inside the exported frame. Margin outside that frame is
-            // not part of the single analytic render this tile must match.
+        if let Some(mut frame) = self.png_frame {
+            // Keep the read margin of a single analytic outer shadow past
+            // the output edge, where an offset tap can still reach it.
+            if analytic_outer {
+                frame = frame.expand(read);
+            }
             needed = needed.intersect(frame);
         }
         let needed = needed.intersect(self.extent);
