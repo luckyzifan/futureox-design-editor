@@ -561,7 +561,8 @@ pub(crate) fn visit_backdrops(
             }
             emit(path.control_bounds(matrix), support);
         }
-        for child in &n.children { visit(doc, child, matrix, projected_color_capture, emit)?; }
+        // Boolean operands contribute geometry to their parent, not separate paints.
+        for child in n.render_children() { visit(doc, child, matrix, projected_color_capture, emit)?; }
         Ok(())
     }
     for (i,id) in roots.iter().enumerate() {
@@ -939,6 +940,44 @@ mod backdrop_budget_tests {
             raster_profile: Some(RasterProfile::Analytic), node_ids: None, color_output: None };
         let png = engine.render_region_png(&request).unwrap();
         assert_eq!(image::load_from_memory(&png).unwrap().into_rgba8().as_raw(), &whole);
+    }
+
+    #[test]
+    fn analytic_png_only_charges_the_painted_boolean_backdrop_at_two_x() {
+        let backdrop = json!({"kind":"background-blur","radius":18.4,
+            "sketchBackdrop":true,"color":"#000000"});
+        let mut nodes = serde_json::Map::from_iter([
+            ("ink".into(), json!({"id":"ink","kind":"rectangle","width":30,"height":64,
+                "fills":[{"kind":"solid","color":"#4488cc"}]})),
+            ("lens".into(), json!({"id":"lens","kind":"vector","width":64,"height":64,
+                "booleanOperation":"union","effects":[backdrop.clone()],"children":[]})),
+        ]);
+        let operands = (0..6).map(|index| {
+            let id = format!("operand{index}");
+            nodes.insert(id.clone(), json!({"id":id,"kind":"rectangle","width":48,"height":48,
+                "transform":[1,0,0,1,index,8],"effects":[backdrop.clone()]}));
+            id
+        }).collect::<Vec<_>>();
+        nodes.get_mut("lens").unwrap()["children"] = json!(operands);
+        let mut doc = json!({"schemaVersion":20,"id":"d","name":"Boolean lens",
+            "pages":[{"id":"p","name":"page","children":["ink","lens"],"background":"#ffffff"}],
+            "nodes":nodes});
+        let request = RegionRequest { page_id: "p".into(),
+            bounds: ExportBounds { x: 0., y: 0., width: 64., height: 64. }, scale: 2.,
+            raster_profile: Some(RasterProfile::Analytic), node_ids: None, color_output: None };
+        let mut engine = Engine::new();
+        let render = |engine: &mut Engine, doc: &serde_json::Value| {
+            engine.load_document(&doc.to_string()).unwrap();
+            engine.render_region_png(&request).unwrap()
+        };
+        let actual = render(&mut engine, &doc);
+        for id in operands {
+            doc["nodes"][id]["effects"] = json!([]);
+        }
+        let reference = render(&mut engine, &doc);
+        assert_eq!(actual, reference);
+        doc["nodes"]["lens"]["effects"] = json!([]);
+        assert_ne!(actual, render(&mut engine, &doc), "the boolean result must still sample its backdrop");
     }
 
     #[test]
