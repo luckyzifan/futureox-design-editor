@@ -873,7 +873,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
               </div>
             </div>
           </>}
-          {showConstraints && <div className="constraint-box" role="group" aria-label={tr("父画板尺寸约束")}>
+          {showConstraints && <div className={uiMode === 'sketch' ? 'constraint-box sketch-constraint-box' : 'constraint-box'} role="group" aria-label={tr("父画板尺寸约束")}>
             {([
               ['top', 'vertical', 'start', tr('顶部')],
               ['left', 'horizontal', 'start', tr('左侧')],
