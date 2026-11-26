@@ -554,7 +554,7 @@ export class KernelClient {
       }, fields => this.terminalDiagnostics.record('preparation', fields))
       this.closeNativePreparation = native.close
       this.serializeNative = native.serialize
-      worker.postMessage({ command: 'prepare-port', port: channel.port2, documentMemoryBytes: documentCapacity().memoryBytes }, [channel.port2])
+      worker.postMessage({ command: 'prepare-port', port: channel.port2, hostFonts: true, documentMemoryBytes: documentCapacity().memoryBytes }, [channel.port2])
     } else if (allowsResidentSdr(renderExecutionPolicy) &&
       typeof navigator !== 'undefined' && !!navigator.gpu && import.meta.env.VITE_DESIGN_PREPARATION_WORKER !== '0') {
       const preparation = new Worker(new URL('./preparation-worker.ts', import.meta.url), { type: 'module' })

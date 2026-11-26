@@ -22,6 +22,7 @@ const expected = [
   ['load_source_snapshot', 'native', false, 'private'],
   ['source_hit', 'native', false, 'renderer'],
   ['interaction_pose_damage', 'all', true, 'renderer'],
+  ['host_fonts_v1', 'native', false, 'renderer'],
 ]
 
 test('the shared preparation protocol is the host and browser allowlist', () => {
@@ -32,6 +33,8 @@ test('the shared preparation protocol is the host and browser allowlist', () => 
   assert.deepEqual([...rendererHostMethods()].sort(), [...preparationProtocol.codecMethods, ...expected.filter(method => method[3] === 'renderer').map(method => method[0])].sort())
   assert.deepEqual(browserPreparationMethods(), expected.filter(method => method[2]).map(method => method[0]))
   assert.equal(rendererHostMethods().has('interaction_pose_damage'), true)
+  assert.equal(rendererHostMethods().has('host_fonts_v1'), true)
+  assert.equal(browserPreparationMethods().includes('host_fonts_v1'), false)
   assert.equal(rendererHostMethods().has('load_source_snapshot'), false)
   assert.equal(rendererHostMethods().has('not-a-method'), false)
   assert.deepEqual(preparationProtocol.codecMethods, ['serialize', 'serialize_delta', 'parse'])
@@ -39,7 +42,7 @@ test('the shared preparation protocol is the host and browser allowlist', () => 
 
 test('protocol validation rejects drifted names, codes, surfaces and unknown fields', () => {
   const broken = structuredClone(preparationProtocol)
-  broken.methods.at(-1).host = 'none'
+  broken.methods.find(method => method.browser).host = 'none'
   assert.throws(() => validatePreparationProtocol(broken), /shared renderer admission/)
   const reordered = structuredClone(preparationProtocol)
   reordered.methods.push(reordered.methods.shift())

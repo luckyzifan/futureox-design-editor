@@ -18,7 +18,8 @@ export const preparationProtocol = {
     { "name": "derive_document_v1", "code": 15, "dispatch": "all", "browser": true, "host": "renderer" },
     { "name": "load_source_snapshot", "code": 16, "dispatch": "native", "browser": false, "host": "private" },
     { "name": "source_hit", "code": 17, "dispatch": "native", "browser": false, "host": "renderer" },
-    { "name": "interaction_pose_damage", "code": 18, "dispatch": "all", "browser": true, "host": "renderer" }
+    { "name": "interaction_pose_damage", "code": 18, "dispatch": "all", "browser": true, "host": "renderer" },
+    { "name": "host_fonts_v1", "code": 19, "dispatch": "native", "browser": false, "host": "renderer" }
   ],
   "codecMethods": ["serialize", "serialize_delta", "parse"]
 } as const

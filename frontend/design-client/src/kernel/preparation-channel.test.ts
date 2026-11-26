@@ -195,6 +195,15 @@ test('empty derive capability alone never implies backend patch CAS', async () =
   expect(await client.supportsDerivation()).toBe(true); expect(await client.supportsGuardedPatch()).toBe(false)
 })
 
+test('only the native transport opts into host font payloads', () => {
+  const nativePair = new MessageChannel(), browserPair = new MessageChannel()
+  const native = new PreparationChannel(nativePair.port1, undefined, true)
+  const browser = new PreparationChannel(browserPair.port1)
+  close.push(() => { native.close(); nativePair.port2.close(); browser.close(); browserPair.port2.close() })
+  expect(native.hostFonts).toBe(true)
+  expect(browser.hostFonts).toBe(false)
+})
+
 test('interaction pose damage keeps the shared diagnostic code', async () => {
   const pair = new MessageChannel(), rows: any[] = []
   const client = new PreparationChannel(pair.port1, { enabled: () => true, owner: () => 4, record: (_event, fields) => rows.push(fields) })

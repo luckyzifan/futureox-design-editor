@@ -1482,7 +1482,7 @@ impl Fonts {
             self.text_paths = Default::default();
         }
     }
-    fn retained_source_font_names(&self) -> BTreeSet<String> {
+    fn retained_source_font_names_all(&self) -> BTreeSet<String> {
         let mut names = BTreeSet::new();
         for source in self.source_names.values() {
             if let Some(name) = &source.style {
@@ -1491,6 +1491,10 @@ impl Fonts {
             names.extend(source.runs.values().cloned());
             names.extend(source.fallbacks.iter().cloned());
         }
+        names
+    }
+    fn retained_source_font_names(&self) -> BTreeSet<String> {
+        let mut names = self.retained_source_font_names_all();
         names.retain(|name| self.local_face_id(name).is_none());
         names
     }
@@ -1508,6 +1512,71 @@ impl Fonts {
             return 0;
         }
         self.install_source_candidates(local_sources::system().candidates(&names))
+    }
+    /// Bounded transport of the host faces already resolved for this document's
+    /// retained Sketch source names. The payload matches `load_local_fonts`
+    /// (`{family, postscript?, data(base64), index}`) so a WASM renderer can
+    /// install the exact runtime-only faces the native lane used. Only faces
+    /// referenced by retained source names are included; the authored document,
+    /// its font table and any save/export bytes stay untouched.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn host_font_payload_json(&self) -> String {
+        const MAX_PAYLOAD_BYTES: usize = 24 * 1024 * 1024;
+        if !self.local_source_fonts {
+            return "[]".into();
+        }
+        let names = self.retained_source_font_names_all();
+        if names.is_empty() {
+            return "[]".into();
+        }
+        let mut entries = Vec::new();
+        let mut seen = BTreeSet::new();
+        let mut total = 0usize;
+        for name in &names {
+            if entries.len() >= MAX_HOST_FONTS
+                || name.is_empty()
+                || name.chars().count() > 200
+            {
+                continue;
+            }
+            let Some(id) = self.local_face_id(name).map(str::to_owned) else {
+                continue;
+            };
+            if !seen.insert(id.clone()) {
+                continue;
+            }
+            let Some(face) = self.local.faces.get(&id) else {
+                continue;
+            };
+            if total + face.bytes.len() > MAX_PAYLOAD_BYTES {
+                continue;
+            }
+            let Ok(parsed) = ttf_parser::Face::parse(&face.bytes, face.index) else {
+                continue;
+            };
+            let family = face_name_value(
+                &parsed,
+                &[
+                    ttf_parser::name_id::TYPOGRAPHIC_FAMILY,
+                    ttf_parser::name_id::FAMILY,
+                ],
+            )
+            .unwrap_or_else(|| name.clone());
+            let postscript = face_name_value(&parsed, &[ttf_parser::name_id::POST_SCRIPT_NAME]);
+            let mut entry = serde_json::Map::new();
+            entry.insert("family".into(), serde_json::json!(family));
+            if let Some(postscript) = postscript {
+                entry.insert("postscript".into(), serde_json::json!(postscript));
+            }
+            entry.insert(
+                "data".into(),
+                serde_json::json!(base64::engine::general_purpose::STANDARD.encode(face.bytes.as_slice())),
+            );
+            entry.insert("index".into(), serde_json::json!(face.index));
+            total += face.bytes.len();
+            entries.push(serde_json::Value::Object(entry));
+        }
+        serde_json::to_string(&entries).unwrap_or_else(|_| "[]".into())
     }
     /// Same document-level resolution against explicit roots, for tests and
     /// hosts that stage a font directory themselves.

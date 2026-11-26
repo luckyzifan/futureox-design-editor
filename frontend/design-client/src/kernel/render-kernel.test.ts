@@ -1,5 +1,6 @@
 import { emptyFrame } from './gpu/frame-wire.test-helper'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { VectorEngine } from '../generated/design-kernel/design_kernel'
 import { blank, node, paint } from '../model'
 import { decodeScenePacket, scenePacketWitness } from './gpu/scene-packet'
@@ -7,6 +8,78 @@ import { copyWitness } from './compilation-witness'
 import { pixelContentProof, pixelSourceContract } from './gpu/page-background'
 import { PreparationChannel } from './preparation-channel'
 import { RenderKernel } from './render-kernel'
+
+const abeezee = readFileSync(new URL('../../public/fonts/abeezee/ABeeZee-Regular.ttf', import.meta.url)).toString('base64')
+function hostFontReply(id: number) {
+  const value = new TextEncoder().encode(JSON.stringify([{
+    family: 'ABeeZee', postscript: 'ABeeZee-Regular', data: abeezee, index: 0,
+  }]))
+  return { id, value, transfer: [value.buffer] as Transferable[] }
+}
+
+test('native host fonts are installed once after document load and never gate it', async () => {
+  const load = vi.fn((payload: string) => JSON.parse(payload).length)
+  const assets = { load_local_fonts: load, bind_frame_scene_scope() {}, color_settings() { return 'null' } } as unknown as VectorEngine
+  const ports = new MessageChannel()
+  const channel = new PreparationChannel(ports.port1, undefined, true), kernel = new RenderKernel(assets, 'canvas', channel)
+  const requests: string[] = []
+  ports.port2.onmessage = event => {
+    const { id, method } = event.data
+    requests.push(method)
+    if (method === 'load_document') {
+      ports.port2.postMessage({ id, settings: 'null' })
+    } else if (method === 'host_fonts_v1') {
+      const reply = hostFontReply(id)
+      ports.port2.postMessage(reply, reply.transfer)
+    } else {
+      ports.port2.postMessage({ id })
+    }
+  }
+  try {
+    const document = JSON.stringify(blank())
+    await kernel.load_document(document)
+    expect(load).toHaveBeenCalledTimes(1)
+    const payload = JSON.parse(load.mock.calls[0][0])
+    expect(payload).toHaveLength(1)
+    expect(payload[0]).toMatchObject({ family: 'ABeeZee', postscript: 'ABeeZee-Regular', index: 0 })
+    expect(payload[0].data).toBe(abeezee)
+    await kernel.load_document(document)
+    expect(load).toHaveBeenCalledTimes(1)
+    expect(requests.filter(method => method === 'host_fonts_v1')).toHaveLength(1)
+    // A failed optional fetch leaves the already-loaded document usable.
+    const failedLoad = vi.fn()
+    const failedAssets = { load_local_fonts: failedLoad, bind_frame_scene_scope() {}, color_settings() { return 'null' } } as unknown as VectorEngine
+    const failedPorts = new MessageChannel()
+    const failedChannel = new PreparationChannel(failedPorts.port1, undefined, true)
+    const failedKernel = new RenderKernel(failedAssets, 'canvas', failedChannel)
+    failedPorts.port2.onmessage = event => {
+      const { id, method } = event.data
+      failedPorts.port2.postMessage(method === 'load_document' ? { id, settings: 'null' } : { id, error: 'host fonts unavailable' })
+    }
+    try {
+      await expect(failedKernel.load_document(document)).resolves.toBeUndefined()
+      expect(failedLoad).not.toHaveBeenCalled()
+    } finally { failedChannel.close(); failedPorts.port2.close() }
+  } finally { channel.close(); ports.port2.close() }
+})
+
+test('browser kernels never request native host fonts', async () => {
+  const load = vi.fn()
+  const assets = { load_local_fonts: load, bind_frame_scene_scope() {}, color_settings() { return 'null' } } as unknown as VectorEngine
+  const ports = new MessageChannel()
+  const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+  const requests: string[] = []
+  ports.port2.onmessage = event => {
+    const { id, method } = event.data
+    requests.push(method)
+    ports.port2.postMessage({ id, settings: 'null' })
+  }
+  try {
+    await kernel.load_document(JSON.stringify(blank()))
+    expect(requests).not.toContain('host_fonts_v1')
+    expect(load).not.toHaveBeenCalled()
+  } finally { channel.close(); ports.port2.close() }
+})
 
 test('native source loads carry an opaque token and adopt the actual native identity',async()=>{
  const ports=new MessageChannel(),assets=new VectorEngine(),channel=new PreparationChannel(ports.port1),kernel=new RenderKernel(assets,'canvas',channel)

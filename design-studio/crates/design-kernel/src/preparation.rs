@@ -218,6 +218,16 @@ impl Preparation {
         #[cfg(not(target_arch = "wasm32"))]
         let mut pack_pose = false;
         match method {
+            #[cfg(not(target_arch = "wasm32"))]
+            "host_fonts_v1" => {
+                if !args.is_empty() { return Err("Invalid host font request".into()); }
+                // Runtime-only host faces matched to the document's retained
+                // Sketch source names. Binary transport keeps the payload out
+                // of the 2 MiB metadata envelope; the JS worker installs it
+                // through the existing `load_local_fonts` transport.
+                bytes = engine.fonts.host_font_payload_json().into_bytes();
+                encoding = Some("u8");
+            }
             "warm_resources" => (),
             "initialize" => engine.set_image_mips(args.first().and_then(Value::as_bool).ok_or("Expected mip flag")?),
             "load_document" => {
@@ -991,6 +1001,76 @@ mod tests {
         assert_eq!(session.request("canvas", "not-a-method", &[]).err().expect("unknown method"), "Unsupported native preparation method");
         assert_eq!(session.request("canvas", "serialize", &[]).err().expect("codec method"), "Unsupported native preparation method");
         assert_eq!(session.lanes[0].receipt, receipt);
+    }
+
+    #[test]
+    fn host_font_payload_carries_only_resolved_retained_source_faces() {
+        use base64::Engine as _;
+        let bytes = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../frontend/design-client/public/fonts/abeezee/ABeeZee-Regular.ttf"
+        )).unwrap();
+        let dir = std::env::temp_dir().join(format!(
+            "futureox-preparation-host-fonts-{}-{:?}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH).unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("ABeeZee-Regular.ttf"), &bytes).unwrap();
+        let mut session = Preparation {
+            lanes: [Lane::default(), Lane::default()],
+            owner: session_owner(), sequence: 0, operation: 0,
+        };
+        for lane in &mut session.lanes { lane.engine.fonts.enable_local_source_fonts(); }
+        let installed = session.lanes[0].engine.fonts.install_source_fonts_from_dirs(
+            &[dir.clone()],
+            &std::collections::BTreeSet::from(["ABeeZee-Regular".to_string()]),
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(installed, 1);
+        let document = json!({
+            "schemaVersion":16,"id":"host-fonts","name":"host fonts",
+            "pages":[{"id":"p","name":"p","children":["t"],"background":"#ffffff"}],
+            "nodes":{"t":{"id":"t","kind":"text","text":"KPI 123","fontSize":20,
+                "width":400,"height":40,"textStyle":{"fontId":"default"}}},
+            "designSystem":{"sketchContainers":{"nodeMetadata":{"t":{"bindings":{
+                "sketchSourceFonts": json!({"style":"ABeeZee-Regular","runs":{"0":"ABeeZee-Regular"}}).to_string()
+            }}}}},
+            "fonts":{}
+        });
+        session.request("canvas", "load_document", &[json!(document.to_string())]).unwrap();
+        let reply = session.request("canvas", "host_fonts_v1", &[]).unwrap();
+        assert_eq!(reply.metadata["encoding"], "u8");
+        let payload: Value = serde_json::from_slice(&reply.bytes).unwrap();
+        let entries = payload.as_array().expect("payload array");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["family"], "ABeeZee");
+        assert_eq!(entries[0]["postscript"], "ABeeZee-Regular");
+        assert_eq!(entries[0]["index"], 0);
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(entries[0]["data"].as_str().unwrap()).unwrap();
+        assert_eq!(decoded, bytes);
+        // The exact payload is accepted by the WASM host transport unchanged.
+        let mut portable = crate::font::Fonts::new();
+        assert_eq!(portable.install_local_fonts_json(
+            std::str::from_utf8(&reply.bytes).unwrap()
+        ).unwrap(), 1);
+        // The authored document still has no host face identity or bytes.
+        let serialized = serde_json::to_string(session.lanes[0].engine.authored_document().unwrap()).unwrap();
+        assert!(!serialized.contains("\u{0}host:"));
+        assert!(session.lanes[0].engine.authored_document().unwrap().fonts.is_empty());
+        let empty = session.request("canvas", "host_fonts_v1", &[json!("unexpected")]);
+        assert_eq!(empty.err().unwrap(), "Invalid host font request");
+    }
+
+    #[test]
+    fn host_font_payload_is_empty_without_retained_source_names() {
+        let mut session = session();
+        let reply = session.request("canvas", "host_fonts_v1", &[]).unwrap();
+        assert_eq!(reply.metadata["encoding"], "u8");
+        assert_eq!(reply.bytes, b"[]");
     }
 
     #[test]

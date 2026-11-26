@@ -61,7 +61,7 @@ export class PreparationChannel {
     this.terminalDepth++
     try {return await work()} finally {this.terminalDepth--}
   }
-  constructor(private port: MessagePort, private diagnostics?: Diagnostics) {
+  constructor(private port: MessagePort, private diagnostics?: Diagnostics, readonly hostFonts = false) {
     const receive=(event:MessageEvent,source:MessagePort)=>{
       if(source===port && event.data?.terminalPort instanceof MessagePort && !this.terminalPort){
         const direct:MessagePort=event.data.terminalPort;this.terminalPort=direct

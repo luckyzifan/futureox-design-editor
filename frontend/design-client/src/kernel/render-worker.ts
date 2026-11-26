@@ -1240,7 +1240,7 @@ self.onmessage = (e) => {
     return
   }
   if (request.command === 'prepare-port') {
-    if (!preparation && !laneState.enginePromise && request.port instanceof MessagePort) preparation = new PreparationChannel(request.port, { enabled: () => terminalDiagnostics.enabled, owner: () => diagnosticRequestId, record: (event, fields) => terminalDiagnostics.record(event, fields) })
+    if (!preparation && !laneState.enginePromise && request.port instanceof MessagePort) preparation = new PreparationChannel(request.port, { enabled: () => terminalDiagnostics.enabled, owner: () => diagnosticRequestId, record: (event, fields) => terminalDiagnostics.record(event, fields) }, request.hostFonts === true)
     return
   }
   const channel = request.channel === 'interaction' ? 'interaction' : 'canvas'

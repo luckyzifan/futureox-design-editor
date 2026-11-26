@@ -42,6 +42,7 @@ export class RenderKernel {
   private pendingMutations = 0
   private pendingPackets = new Map<string, { revision: number; bytes: Promise<Uint8Array>; shared: boolean }>()
   packetCoalesced = 0
+  private hostFonts?: Promise<boolean>
   get preparationStateReceipt() { return this.preparation?.currentReceipt(this.lane) }
   supportsDocumentDerivation() {
     if (import.meta.env.VITE_DESIGN_DOCUMENT_DERIVATION === '0') return Promise.resolve(false)
@@ -118,7 +119,37 @@ export class RenderKernel {
     if (this.preparation) await this.call('initialize', [mips])
     else if (font) this.assets.load_font(font)
   }
-  private async call<T>(method: Exclude<PreparationMethod, 'warm_resources'>, args: unknown[] = [], signal?: AbortSignal): Promise<T> {
+  /** Native preparation owns the retained Sketch source names. Install the
+   * exact host faces it resolved into the local WASM engine as well, so a
+   * worker-side document/export lane never falls back to NotoSansSC alone.
+   * Absent native transport, empty payloads and transport errors are
+   * non-fatal; the bundled terminal fallback and pure-browser behavior are
+   * unchanged. */
+  private loadHostFonts(): Promise<void> {
+    this.hostFonts ??= this.fetchHostFonts()
+    const pending = this.hostFonts
+    return pending.then(loaded => {
+      if (!loaded && this.hostFonts === pending) this.hostFonts = undefined
+    })
+  }
+  private async fetchHostFonts(): Promise<boolean> {
+    try {
+      if (!this.preparation?.hostFonts) return false
+      const reply = await this.preparation.request(this.lane, 'host_fonts_v1')
+      const payload = reply.value
+      if (!(payload instanceof Uint8Array) || payload.byteLength <= 2 ||
+          payload.byteLength > 48 * 1024 * 1024) return false
+      const json = new TextDecoder().decode(payload)
+      // The generated bindings are rebuilt with the kernel; older bundles do
+      // not expose this optional transport yet.
+      const install = (this.assets as unknown as { load_local_fonts?(value: string): number }).load_local_fonts
+      return typeof install === 'function' && install.call(this.assets, json) > 0
+    } catch {
+      // Host font discovery is optional fidelity, never a document gate.
+      return false
+    }
+  }
+  private async call<T>(method: Exclude<PreparationMethod, 'warm_resources' | 'host_fonts_v1'>, args: unknown[] = [], signal?: AbortSignal): Promise<T> {
     try {
     if (this.preparation) {
       const reply = await this.preparation.request(this.lane, method, args, signal)
@@ -160,7 +191,12 @@ export class RenderKernel {
   async load_document(value: string) {
     this.documentLoadForked = false
     this.contentOwner={}; this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.clear()
-    try { await this.call<void>('load_document', [value]) }
+    try {
+      await this.call<void>('load_document', [value])
+      // The native lane retained this document's source names during the call
+      // above; fetch their host faces once, before any worker-side render.
+      await this.loadHostFonts()
+    }
     finally { this.pendingMutations-- }
   }
   async load_source_snapshot(token:string):Promise<NativeSourceIdentity> {
@@ -170,6 +206,7 @@ export class RenderKernel {
       const identity=await this.call<NativeSourceIdentity>('load_source_snapshot',[token])
       if(!identity||['documentId','pageId','stageId'].some(key=>typeof identity[key as keyof NativeSourceIdentity]!=='string')||
         !Number.isSafeInteger(identity.nodes)||identity.nodes<1||!this.preparationStateReceipt)throw Error('Invalid native source identity')
+      await this.loadHostFonts()
       return identity
     }finally{this.pendingMutations--}
   }
