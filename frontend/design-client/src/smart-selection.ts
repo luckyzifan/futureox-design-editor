@@ -1,7 +1,7 @@
 import type {Bounds,DesignDocument,Matrix,Point} from './model'
 import {allParents,scene,unionBounds,multiply,inverse,worldMatrix,translate,type SceneEntry} from './geometry'
 export type SmartTrack={ids:string[];bounds:Bounds}
-export type SmartSelection={ids:string[];boxes:Record<string,Bounds>;x:SmartTrack[];y:SmartTrack[];gapX:number;gapY:number}
+export type SmartSelection={ids:string[];boxes:Record<string,Bounds>;x:SmartTrack[];y:SmartTrack[];gapX:number;gapY:number;unevenAxis?:'x'|'y'}
 function tracks(ids:string[],boxes:Record<string,Bounds>,axis:'x'|'y'):SmartTrack[]{
   const length=axis==='x'?'width':'height',sorted=[...ids].sort((a,b)=>boxes[a][axis]-boxes[b][axis]),groups:SmartTrack[]=[]
   let end=-Infinity
@@ -11,14 +11,19 @@ function tracks(ids:string[],boxes:Record<string,Bounds>,axis:'x'|'y'):SmartTrac
   }
   return groups
 }
-function gap(tracks:SmartTrack[],axis:'x'|'y'):number|null{
-  if(tracks.length<2)return 0
-  const length=axis==='x'?'width':'height',values=tracks.slice(1).map((t,i)=>t.bounds[axis]-tracks[i].bounds[axis]-tracks[i].bounds[length])
-  return values.every(g=>g>=-0.01&&Math.abs(g-values[0])<=0.02)?values[0]:null
+function trackGaps(tracks: SmartTrack[], axis: 'x' | 'y'): number[] {
+  const length = axis === 'x' ? 'width' : 'height'
+  return tracks.slice(1).map((track, index) =>
+    track.bounds[axis] - tracks[index].bounds[axis] - tracks[index].bounds[length])
+}
+function gap(values: readonly number[]): number | null {
+  if (!values.length) return 0
+  return values.every(value => value >= -0.01 && Math.abs(value - values[0]) <= 0.02) ? values[0] : null
 }
 /** Geometric inference only. Never changes parentage or treats auto-layout
  * children as freely positioned objects. No retained inference in the file. */
-export function smartSelection(doc:DesignDocument,page:string,ids:string[],publishedEntries?:readonly SceneEntry[]):SmartSelection|null{
+export function smartSelection(doc:DesignDocument,page:string,ids:string[],publishedEntries?:readonly SceneEntry[],
+  allowUnevenLine = false):SmartSelection|null{
   if(ids.length<2||ids.length>256)return null
   const selected = new Set(ids)
   const entries = (publishedEntries ?? scene(doc,page)).filter(entry => selected.has(entry.id))
@@ -27,9 +32,19 @@ export function smartSelection(doc:DesignDocument,page:string,ids:string[],publi
     return entry.locked || entry.ancestors.some(id => selected.has(id)) || node.instanceOrigin ||
       (parent?.layout && parent.layout.mode !== 'none' && !node.sizing?.absolute)
   })) return null
-  const boxes=Object.fromEntries(entries.map(e=>[e.id,e.bounds])),x=tracks(ids,boxes,'x'),y=tracks(ids,boxes,'y'),gapX=gap(x,'x'),gapY=gap(y,'y')
-  if(gapX===null||gapY===null||x.length*y.length!==ids.length||x.some(c=>y.some(r=>c.ids.filter(id=>r.ids.includes(id)).length!==1)))return null
-  return {ids:[...ids],boxes,x,y,gapX,gapY}
+  const boxes=Object.fromEntries(entries.map(e=>[e.id,e.bounds])),x=tracks(ids,boxes,'x'),y=tracks(ids,boxes,'y')
+  if(x.length*y.length!==ids.length||x.some(c=>y.some(r=>c.ids.filter(id=>r.ids.includes(id)).length!==1)))return null
+  const gapsX = trackGaps(x, 'x'), gapsY = trackGaps(y, 'y')
+  const gapX = gap(gapsX), gapY = gap(gapsY)
+  if (gapX !== null && gapY !== null) return { ids: [...ids], boxes, x, y, gapX, gapY }
+  // An irregular row or column can be respaced directly from the Inspector.
+  // Grid inference and canvas reorder still require a uniform selection.
+  const unevenAxis = y.length === 1 && gapX === null ? 'x' : x.length === 1 && gapY === null ? 'y' : null
+  if (!allowUnevenLine || !unevenAxis) return null
+  const unevenGaps = unevenAxis === 'x' ? gapsX : gapsY
+  if (unevenGaps.some(value => value < -0.01)) return null
+  const average = unevenGaps.reduce((sum, value) => sum + value, 0) / unevenGaps.length
+  return { ids: [...ids], boxes, x, y, gapX: gapX ?? average, gapY: gapY ?? average, unevenAxis }
 }
 /**
  * Infer a same-parent row or column around a single selected Sketch layer.
@@ -89,8 +104,14 @@ function patchesFor(doc:DesignDocument,positions:Record<string,Point>):Record<st
 }
 export function smartSpacing(doc:DesignDocument,model:SmartSelection,axis:'x'|'y',value:number){
   if(!Number.isFinite(value)||Math.abs(value)>1e6)throw Error('间距数值无效')
-  const delta=value-(axis==='x'?model.gapX:model.gapY),positions:Record<string,Point>={}
-  model[axis].forEach((track,index)=>track.ids.forEach(id=>positions[id]=axis==='x'?{x:delta*index,y:0}:{x:0,y:delta*index}))
+  const positions: Record<string,Point> = {}
+  const length = axis === 'x' ? 'width' : 'height'
+  let cursor = model[axis][0].bounds[axis]
+  for (const { bounds, ids } of model[axis]) {
+    const delta = cursor - bounds[axis]
+    for (const id of ids) positions[id] = axis === 'x' ? { x: delta, y: 0 } : { x: 0, y: delta }
+    cursor += bounds[length] + value
+  }
   return patchesFor(doc,positions)
 }
 export function smartReorder(doc:DesignDocument,model:SmartSelection,marked:string[],target:string,swap=false){

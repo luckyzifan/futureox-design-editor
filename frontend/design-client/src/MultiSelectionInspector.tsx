@@ -3,7 +3,7 @@ import { FontManagementPanel } from './FontManagementPanel'
 import { MultiStylePanel } from './MultiStylePanel'
 import {smartSelection,smartSpacing} from './smart-selection'
 import { AlignmentControls, FlipControls } from './AlignmentControls'
-import { CalculatedDimension, NumberField } from './fields'
+import { CalculatedDimension } from './fields'
 import { propertyUnitReader, styleUnitDescription, type PropertyUnitReader } from './property-units'
 import { propertyExpression } from './numeric-expression'
 import { SelectionColorsPanel } from './SelectionColorsPanel'
@@ -49,8 +49,25 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
   })
   const smartIds = editor.topSelection()
   const smart = smartIds.length >= 2 && smartIds.length <= 256
-    ? smartSelection(editor.state.doc, editor.state.page, smartIds, editor.entries())
+    ? smartSelection(editor.state.doc, editor.state.page, smartIds, editor.entries(), sketch)
     : null
+  const spacingBesideTidy = !!smart && sketch && (smart.x.length === 1 || smart.y.length === 1)
+  const spacingFields = smart && <div className="selection-spacing-fields field-grid">
+    {(['x', 'y'] as const).filter(axis => smart[axis].length > 1).map(axis => {
+      const label = axis === 'x' ? '水平间距' : '垂直间距'
+      return <MixedNumberField key={axis} historyLabel={label} unit="length" diagnosticFamily={2}
+        label={tr(label)} value={smart.unevenAxis === axis ? undefined : axis === 'x' ? smart.gapX : smart.gapY}
+        min={0} onChange={value => {
+          const doc = editor.state.doc
+          const current = smartSelection(doc, editor.state.page, editor.topSelection(), editor.entries(), sketch)
+          if (!current || current[axis].length < 2) return
+          const patches = smartSpacing(doc, current, axis, value)
+          editor.change('调整智能选区间距', draft => {
+            for (const [id, patch] of Object.entries(patches)) Object.assign(draft.nodes[id], patch)
+          })
+        }} />
+    })}
+  </div>
   const blend = commonValue(nodes.map((node) => node.blend))
   const visible = commonValue(nodes.map((node) => node.visible)), locked = commonValue(nodes.map((node) => node.locked))
   const metricField = (field: SelectionMetric, label: string) => {
@@ -79,7 +96,8 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
   const textNodes = nodes.filter(node => node.kind === 'text'), textIds = textNodes.map(node => node.id)
   const textSizing = textNodes.length === nodes.length && <TextSizingControls editor={editor} nodes={textNodes} sketch={sketch} />
   return <aside className="inspector" aria-label={tr("多选属性")} data-geometry-mode={uiMode}>
-    {sketch && <div className="sketch-inspector-alignment"><AlignmentControls editor={editor} compact /></div>}
+    {sketch && <div className="sketch-inspector-alignment"><AlignmentControls editor={editor} compact />
+      {spacingBesideTidy && spacingFields}</div>}
     <div className="panel-tabs"><span>{propertyLayerCount(nodes.length, locale)}</span></div>
     <div className="inspector-scroll">
       {styleDescription && <p role="note" className="property-unit-notice">{tr('＊ 最大缩放系数换算。')}{tr(styleDescription)}</p>}
@@ -102,7 +120,7 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
           <button type="button" onClick={() => update('切换锁定', (node) => { node.locked = locked !== true })}>{tr(locked === true ? '解锁所选图层' : '锁定所选图层')}</button>
         </div>
       </section>
-      {smart&&<section><h3>{tr("智能选择")}</h3><div className="field-grid">{(['x','y'] as const).filter(axis=>smart[axis].length>1).map(axis=><NumberField historyLabel={axis==='x'?'水平间距':'垂直间距'} key={axis} unit="length" diagnosticFamily={2} label={tr(axis==='x'?'水平间距':'垂直间距')} value={axis==='x'?smart.gapX:smart.gapY} min={0} onChange={value=>{const patches=smartSpacing(editor.state.doc,smart,axis,value);editor.change('调整智能选区间距',d=>{for(const [id,patch] of Object.entries(patches))Object.assign(d.nodes[id],patch)})}}/>)}</div></section>}
+      {smart && !spacingBesideTidy && <section><h3>{tr("智能选择")}</h3>{spacingFields}</section>}
       <SelectionColorsPanel editor={editor} />
       {!!textNodes.length && <FontManagementPanel editor={editor} ids={textIds} />}
       {!!textNodes.length && <section aria-label={tr("多选文字")}><h3>{tr(sketch ? '字符' : '排版')}</h3>

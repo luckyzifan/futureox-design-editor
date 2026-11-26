@@ -48,3 +48,18 @@ test('a single Sketch selection stops at locked siblings and explicit stack layo
   frame.layout = { ...defaultLayout(), mode: 'horizontal' }
   expect(smartSelectionForLayer(doc, page.id, selected.id)).toBeNull()
 })
+
+
+test('an irregular one-dimensional selection can be respaced without moving its first edge', () => {
+  const doc = blank()
+  const row = [0, 50, 90].map((x, index) => node('rectangle', x, [0, 2, 1][index], 20, 20))
+  const ids = row.map(shape => shape.id)
+  for (const shape of row) doc.nodes[shape.id] = shape
+  const page = doc.pages[0]
+  page.children = ids
+  expect(smartSelection(doc, page.id, ids)).toBeNull()
+  const model = smartSelection(doc, page.id, ids, undefined, true)!
+  expect(model.unevenAxis).toBe('x')
+  const patches = smartSpacing(doc, model, 'x', 24)
+  expect(ids.map(id => patches[id].transform.slice(4))).toEqual([[0, 0], [44, 2], [88, 1]])
+})
