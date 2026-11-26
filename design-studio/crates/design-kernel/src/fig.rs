@@ -2409,6 +2409,10 @@ impl FigImporter {
             match line_height_multiplier(lh, node.font_size) {
                 Some(m) => {
                     style.line_height = m;
+                    if str_of(lh, "units") == Some("PIXELS") {
+                        style.line_height_pixels = lh["value"].as_f64().filter(|value| (0.1..=40960.).contains(value));
+                        if style.line_height_pixels.is_some() { style.line_height = m.clamp(0.1, 10.); }
+                    }
                     if has_fig_automatic_line_height(change, node.font_size) {
                         style.line_height_auto = true;
                         style.line_box_baseline = "figma-font-metrics".into();

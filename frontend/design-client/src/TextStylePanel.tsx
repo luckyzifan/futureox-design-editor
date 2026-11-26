@@ -52,6 +52,7 @@ export function variationsIssue(rows: { tag: string; value: string }[], locale: 
   return ''
 }
 type VariationRow = { tag: string; value: string }
+type LineHeightMode = 'auto' | 'percent' | 'pixels'
 export function TextStylePanel({
   editor,
   node,
@@ -93,6 +94,7 @@ export function TextStylePanel({
   const file = useRef<HTMLInputElement>(null),
     style = { ...defaultTextStyle(), ...node.textStyle }
   const textCase = wholeTextCase(node)
+  const lineHeightMode: LineHeightMode = style.lineHeightAuto ? 'auto' : style.lineHeightPixels !== undefined ? 'pixels' : 'percent'
   // Drafts for the comma-list fields stay local until blur; the effect
   // re-syncs them whenever the committed value moves (undo, other panels).
   const featuresValue = (style.features ?? []).join(',')
@@ -129,6 +131,23 @@ export function TextStylePanel({
       },
       '修改文字排版',
     )
+  const updateLineHeight = (mode: LineHeightMode, value?: number) => {
+    editor.updateProperties(ids, n => {
+      if (mode === 'auto') {
+        applyWholeTextStyle(n, { lineHeightAuto: true, lineBoxBaseline: 'figma-font-metrics' })
+        return
+      }
+      const previous = n.textStyle ?? defaultTextStyle()
+      const pixels = previous.lineHeightPixels ?? previous.lineHeight * n.fontSize
+      const lineHeightPixels = mode === 'pixels' ? value ?? Math.max(.1, Math.min(40960, Math.round(pixels))) : undefined
+      const multiplier = lineHeightPixels !== undefined ? lineHeightPixels / n.fontSize
+        : value === undefined ? pixels / n.fontSize : value / 100
+      applyWholeTextStyle(n, {
+        lineHeight: Math.max(.1, Math.min(10, multiplier)), lineHeightPixels,
+        lineHeightAuto: false, lineBoxBaseline: 'figma-pixel-leading',
+      })
+    }, '修改文字排版')
+  }
   // These pre-existing list/axis inputs keep local drafts. Font application,
   // replacement, save and navigation must honor them just like DraftInput.
   const composing = useRef(false), draftSession = useRef(editor.sessionGeneration)
@@ -240,13 +259,29 @@ export function TextStylePanel({
         max={1000}
         onChange={(weight) => update({ weight })}
       />
-      <NumberField historyLabel="行高倍数" diagnosticFamily={2} unit="length"
+      {uiMode === 'figma' ? <>
+        <label>{tr('行高模式')}<select aria-label={tr('行高模式')} value={lineHeightMode}
+          onChange={event => {
+            const mode = event.currentTarget.value as LineHeightMode
+            if (commitPendingEdits(editor)) updateLineHeight(mode)
+          }}>
+          <option value="auto">{tr('自动')}</option>
+          <option value="percent">%</option>
+          <option value="pixels">px</option>
+        </select></label>
+        {lineHeightMode !== 'auto' && <NumberField key={lineHeightMode} historyLabel="行高" diagnosticFamily={2}
+          unit={lineHeightMode === 'pixels' ? 'length' : 'number'}
+          label={tr(lineHeightMode === 'pixels' ? '行高（px）' : '行高（%）')}
+          value={lineHeightMode === 'pixels' ? style.lineHeightPixels ?? style.lineHeight * node.fontSize : style.lineHeight * 100}
+          min={lineHeightMode === 'pixels' ? .1 : 10} max={lineHeightMode === 'pixels' ? 40960 : 1000}
+          onChange={value => updateLineHeight(lineHeightMode, value)} />}
+      </> : <NumberField historyLabel="行高倍数" diagnosticFamily={2} unit="length"
         label={tr("行高倍数")}
-        value={style.lineHeight}
+        value={style.lineHeightPixels !== undefined ? Math.max(.1, Math.min(10, style.lineHeightPixels / node.fontSize)) : style.lineHeight}
         min={0.1}
         max={10}
         onChange={(lineHeight) => update({ lineHeight })}
-      />
+      />}
       <UnitNumberField unitDescription={styleDescription} historyLabel="字间距" diagnosticFamily={2} unit="length" unitScale={units.style}
         label={tr("字间距")}
         value={style.letterSpacing}
@@ -278,6 +313,18 @@ export function TextStylePanel({
         </select>
       </label>}
       <UnitNumberField unitDescription={styleDescription} historyLabel="段落间距" diagnosticFamily={2} unit="length" unitScale={units.style} label={tr("段落间距")} value={style.paragraphSpacing||0} min={0} max={10000} onChange={paragraphSpacing=>update({paragraphSpacing})}/><UnitNumberField unitDescription={styleDescription} historyLabel="首行缩进" diagnosticFamily={2} unit="number" unitScale={units.style} label={tr("首行缩进")} value={style.paragraphIndent||0} min={-10000} max={10000} onChange={paragraphIndent=>update({paragraphIndent})}/>
+      {uiMode === 'figma' && <>
+        <label>{tr('列表样式')}<select aria-label={tr('列表样式')} value={style.list ?? ''}
+          onChange={event => update({ list: (event.target.value || undefined) as TextStyle['list'],
+            listLevel: event.target.value ? style.listLevel : undefined })}>
+          <option value="">{tr('无')}</option>
+          <option value="bullet">{tr('项目符号列表')}</option>
+          <option value="ordered">{tr('编号列表')}</option>
+        </select></label>
+        <UnitNumberField unitDescription={styleDescription} historyLabel="列表间距" diagnosticFamily={2} unit="length"
+          unitScale={units.style} label={tr('列表间距')} value={style.listSpacing ?? 0} min={0} max={10000}
+          onChange={listSpacing => update({ listSpacing })} />
+      </>}
       {paragraphs.length > 0 && <details><summary>{tr('分段样式')}</summary>
         <label>{tr('段落')}<select aria-label={tr('选择段落')} value={Math.min(paragraphIndex,paragraphs.length-1)} onChange={e=>setParagraphIndex(Number(e.target.value))}>
           {paragraphs.map((p,i)=><option key={p.start} value={i}>{i+1} · {p.text.trim().slice(0,24) || tr('空段落')}</option>)}
@@ -315,6 +362,10 @@ export function TextStylePanel({
         <option value="upper">{tr('全部大写')}</option>
         <option value="lower">{tr('全部小写')}</option>
         <option value="title">{tr('词首大写')}</option>
+        {(uiMode === 'figma' || textCase === 'smallCaps' || textCase === 'smallCapsForced') && <>
+          <option value="smallCaps">{tr('小型大写')}</option>
+          <option value="smallCapsForced">{tr('强制小型大写')}</option>
+        </>}
       </select></label>
       <label>{tr("排版走向")}<select
           aria-label={tr("文字排版走向")}

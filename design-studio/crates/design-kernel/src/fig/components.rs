@@ -1432,6 +1432,9 @@ fn apply_text(
         match super::line_height_multiplier(value, font_size).filter(|v| (0.1..=10.).contains(v)) {
             Some(multiplier) => {
                 style.line_height = multiplier;
+                style.line_height_pixels = if super::str_of(value, "units") == Some("PIXELS") {
+                    value["value"].as_f64().filter(|value| (0.1..=40960.).contains(value))
+                } else { None };
                 style.line_height_auto = false;
                 style.line_box_baseline = "figma-pixel-leading".into();
                 changed = true;

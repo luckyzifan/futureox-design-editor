@@ -11,15 +11,28 @@ export function applyWholeTextStyle(node: DesignNode, patch: Partial<TextStyle>)
   const missing = Object.fromEntries(Object.entries(defaultTextStyle()).filter(([key]) => !Object.hasOwn(node.textStyle!, key)))
   Object.assign(node.textStyle, missing, patch)
   if (patch.lineHeight !== undefined && patch.lineHeightAuto === undefined) node.textStyle.lineHeightAuto = false
+  if (patch.lineHeightAuto || (patch.lineHeight !== undefined && !Object.hasOwn(patch, 'lineHeightPixels'))) {
+    delete node.textStyle.lineHeightPixels
+  }
+  const editsList = Object.hasOwn(patch, 'list')
   for (const run of node.textRuns || []) {
     if (patch.fontId !== undefined) delete run.fontId
     if (patch.weight !== undefined) delete run.weight
     if (patch.textCase !== undefined) delete run.textCase
+    if (patch.lineHeightAuto !== undefined) delete run.lineHeight
     if (run.paragraph) {
       if (patch.align !== undefined) run.paragraph.align = patch.align
       if (patch.paragraphSpacing !== undefined) run.paragraph.spacing = patch.paragraphSpacing
       if (patch.paragraphIndent !== undefined) run.paragraph.indent = patch.paragraphIndent
-      if (patch.lineHeight !== undefined) run.paragraph.minimumLineHeight = run.paragraph.maximumLineHeight = patch.lineHeight * (run.fontSize ?? node.fontSize)
+      if (editsList) {
+        delete run.paragraph.list
+        delete run.paragraph.listLevel
+      }
+      if (patch.lineHeightAuto) run.paragraph.minimumLineHeight = run.paragraph.maximumLineHeight = 0
+      else if (patch.lineHeight !== undefined) {
+        run.paragraph.minimumLineHeight = run.paragraph.maximumLineHeight =
+          patch.lineHeightPixels ?? patch.lineHeight * (run.fontSize ?? node.fontSize)
+      }
     }
   }
 }

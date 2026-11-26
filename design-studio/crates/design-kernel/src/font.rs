@@ -90,6 +90,9 @@ pub struct TextStyle {
     pub fallbacks: Vec<String>,
     pub weight: f32,
     pub line_height: f64,
+    /// An explicitly fixed line height remains in pixels when the font size changes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_height_pixels: Option<f64>,
     /// Empty keeps the historical unrounded half-leading baseline. `nearest-point`
     /// is the Sketch fixed line box used by native text-preview matrices.
     /// `sketch-font-leading` uses the font ascender and includes font leading
@@ -186,6 +189,7 @@ impl Default for TextStyle {
             fallbacks: vec![],
             weight: 400.,
             line_height: 1.35,
+            line_height_pixels: None,
             line_box_baseline: String::new(),
             line_height_auto: false,
             letter_spacing: 0.,
@@ -626,6 +630,15 @@ fn valid_font_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 128 && !matches!(id, SKETCH_UI_TEXT_ID | SKETCH_UI_DISPLAY_ID)
 }
 impl TextStyle {
+    pub(crate) fn line_height_at(&self, size: f64) -> f64 {
+        self.line_height_pixels.unwrap_or(self.line_height * size)
+    }
+
+    pub(crate) fn has_fixed_line_height(&self) -> bool {
+        !self.line_height_auto && (self.line_height_pixels.is_some()
+            || (self.line_height > 0. && (self.line_height - 1.35).abs() > 1e-9))
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if !["top", "center", "bottom"].contains(&self.vertical_align.as_str())
             || !valid_font_id(&self.font_id)
@@ -635,6 +648,7 @@ impl TextStyle {
             || !(1. ..=1000.).contains(&self.weight)
             || !self.line_height.is_finite()
             || !(0.1..=10.).contains(&self.line_height)
+            || self.line_height_pixels.is_some_and(|height| !(0.1..=40960.).contains(&height))
             || !["", "nearest-point", "sketch-font-leading", "sketch-fixed-advance", "figma-pixel-leading", "figma-font-metrics"]
                 .contains(&self.line_box_baseline.as_str())
             || !self.letter_spacing.is_finite()
@@ -1064,10 +1078,10 @@ fn is_noto_sans_sc(face: &ttf_parser::Face<'_>) -> bool {
             && name.to_string().is_some_and(|name| name.starts_with("NotoSansSC-"))
     })
 }
-fn cluster_line_multiplier(runs: &[TextRun], cluster: usize, style: &TextStyle) -> f64 {
+fn cluster_line_height(runs: &[TextRun], cluster: usize, size: f64, style: &TextStyle) -> f64 {
     run_covering(runs, cluster)
         .and_then(|run| run.line_height)
-        .unwrap_or(style.line_height)
+        .map_or_else(|| style.line_height_at(size), |multiplier| size * multiplier)
 }
 impl Fonts {
     pub fn new() -> Self {
@@ -1757,6 +1771,8 @@ impl Fonts {
             .map(|f| rustybuzz::Feature::from_str(f))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|_| "Invalid text style".to_string())?;
+        let mut small_caps_features = None;
+        let mut forced_caps_features = None;
         let variations = Self::style_variations(style)?;
         let bidi = unicode_bidi::BidiInfo::new(
             text,
@@ -1867,6 +1883,23 @@ impl Fonts {
                 pieces.reverse();
             }
             for (start, end, id, size, weight, _) in pieces {
+                let case = run_covering(runs, utf16[base + start])
+                    .and_then(|run| run.text_case)
+                    .unwrap_or(style.text_case);
+                let features: &[rustybuzz::Feature] = match case {
+                    TextCase::SmallCaps => small_caps_features.get_or_insert_with(|| {
+                        let mut features = features.clone();
+                        features.push(rustybuzz::Feature::from_str("smcp").unwrap());
+                        features
+                    }),
+                    TextCase::SmallCapsForced => forced_caps_features.get_or_insert_with(|| {
+                        let mut features = features.clone();
+                        features.push(rustybuzz::Feature::from_str("smcp").unwrap());
+                        features.push(rustybuzz::Feature::from_str("c2sc").unwrap());
+                        features
+                    }),
+                    _ => &features,
+                };
                 let face = self.face_with(&id, weight, &variations)?;
                 let em = f64::from(face.borrow_face().units_per_em());
                 let scale = size / em;
@@ -1878,7 +1911,7 @@ impl Fonts {
                 } else {
                     rustybuzz::Direction::LeftToRight
                 });
-                let shaped = self.shape_run(&face, &text[start..end], &features, buffer)?;
+                let shaped = self.shape_run(&face, &text[start..end], features, buffer)?;
                 for (index, (glyph, p)) in shaped.infos.iter().zip(&shaped.positions).enumerate() {
                     let last_in_cluster = shaped
                         .infos
@@ -2417,7 +2450,7 @@ impl Fonts {
                 let mut height = if explicit_line_height {
                     0.
                 } else {
-                    size * style.line_height
+                    style.line_height_at(size)
                 };
                 let mut natural = 0f64;
                 let use_sketch_ascender = (style.line_box_baseline == "sketch-font-leading"
@@ -2441,12 +2474,12 @@ impl Fonts {
                         })
                     } else { None };
                     ascent = ascent.max(fallback_ascent.unwrap_or(natural_ascent));
-                    let multiplier = if explicit_line_height {
-                        cluster_line_multiplier(runs, glyph.cluster, style)
+                    let glyph_height = if explicit_line_height {
+                        cluster_line_height(runs, glyph.cluster, glyph.size, style)
                     } else {
-                        style.line_height
+                        style.line_height_at(glyph.size)
                     };
-                    height = height.max(glyph.size * multiplier);
+                    height = height.max(glyph_height);
                     natural = natural.max(
                         (face.ascender() as f64 - face.descender() as f64 + face.line_gap() as f64)
                             * glyph.size
@@ -2667,6 +2700,9 @@ impl Fonts {
                     column_x += style.paragraph_spacing;
                 } else {
                     y += style.paragraph_spacing;
+                    if list_item.is_some() && list_items.get(paragraph_index + 1).is_some_and(Option::is_some) {
+                        y += style.list_spacing.unwrap_or(0.);
+                    }
                 }
             }
         }
@@ -2993,6 +3029,43 @@ mod tests {
         assert!(measurement.cap_y.unwrap() > 0.);
         assert!(measurement.baseline_y < node.height);
     }
+    #[test]
+    fn explicit_pixel_line_height_does_not_scale_with_the_font() {
+        let fonts = fonts();
+        let mut fixed = node("A\nB", serde_json::json!({
+            "lineHeight": 1.5,
+            "lineHeightPixels": 30.,
+            "lineBoxBaseline": "figma-pixel-leading",
+        }), 200.);
+        let advance = |n: &Node| fonts.node_layout(n, Some(n.width)).unwrap().lines[0].height;
+        assert_eq!(advance(&fixed), 30.);
+        fixed.font_size = 40.;
+        assert_eq!(advance(&fixed), 30.);
+        fixed.text_style.as_mut().unwrap().line_height_pixels = None;
+        assert_eq!(advance(&fixed), 60.);
+    }
+
+    #[test]
+    fn authored_list_spacing_only_separates_neighboring_list_items() {
+        let fonts = fonts();
+        let text = "A\nB\nC";
+        let plain = node(text, serde_json::json!({"listSpacing": 7.}), 200.);
+        let default = node(text, serde_json::json!({}), 200.);
+        let line_positions = |n: &Node| fonts.node_layout(n, Some(n.width)).unwrap()
+            .lines.into_iter().map(|line| line.y).collect::<Vec<_>>();
+        assert_eq!(line_positions(&plain), line_positions(&default));
+
+        let mut list = node(text, serde_json::json!({"list":"bullet", "listSpacing": 7.}), 200.);
+        list.text_runs = vec![TextRun {
+            start: 4, end: 5, paragraph: Some(TextParagraph { list: "none".into(), ..Default::default() }),
+            ..Default::default()
+        }].into();
+        let spaced = line_positions(&list);
+        list.text_style.as_mut().unwrap().list_spacing = None;
+        let base = line_positions(&list);
+        assert_eq!(spaced.iter().zip(base).map(|(a,b)| a-b).collect::<Vec<_>>(), [0.,7.,7.]);
+    }
+
     #[test]
     fn figma_pixel_line_box_keeps_fractional_half_leading() {
         let fonts = fonts();

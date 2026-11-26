@@ -144,7 +144,11 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
   const warn = (code: string, message: string, nodeId?: string) => {
     if (!warnings.some(w => w.code === code && w.nodeId === nodeId)) warnings.push({ code, message, ...(nodeId ? { nodeId } : {}) })
   }
-  const textTransformCss = (textCase: TextCase) => `text-transform:${{ original: 'none', upper: 'uppercase', lower: 'lowercase', title: 'capitalize' }[textCase]}`
+  const textTransformCss = (textCase: TextCase) => {
+    if (textCase === 'smallCaps') return 'text-transform:none;font-variant-caps:small-caps'
+    if (textCase === 'smallCapsForced') return 'text-transform:none;font-variant-caps:all-small-caps'
+    return `text-transform:${{ original: 'none', upper: 'uppercase', lower: 'lowercase', title: 'capitalize' }[textCase]};font-variant-caps:normal`
+  }
   const textTransform = (textCase: TextCase, nodeId: string) => {
     if (textCase === 'title')
       warn('TEXT_CASE_APPROXIMATION', 'Browser capitalization may preserve uppercase letters that the native title case lowers.', nodeId)
@@ -296,8 +300,14 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     parts.push({ css: family, scss: family })
     const weight = number(style?.weight ?? 400)
     parts.push({ css: `font-weight:${weight}`, scss: `font-weight:${token('textStyle.weight', style?.weight ?? 400, 'none', weight)}` })
-    const line = number(style?.lineHeight ?? 1.35)
-    parts.push({ css: `line-height:${line}`, scss: `line-height:${token('textStyle.lineHeight', style?.lineHeight ?? 1.35, 'none', line)}` })
+    if (style?.lineHeightAuto) parts.push({ css: 'line-height:normal', scss: 'line-height:normal' })
+    else if (style?.lineHeightPixels !== undefined) {
+      const line = `line-height:${px(style.lineHeightPixels)}`
+      parts.push({ css: line, scss: line })
+    } else {
+      const line = number(style?.lineHeight ?? 1.35)
+      parts.push({ css: `line-height:${line}`, scss: `line-height:${token('textStyle.lineHeight', style?.lineHeight ?? 1.35, 'none', line)}` })
+    }
     const spacing = px(style?.letterSpacing ?? 0)
     parts.push({ css: `letter-spacing:${spacing}`, scss: `letter-spacing:${token('textStyle.letterSpacing', style?.letterSpacing ?? 0, 'px', spacing)}` })
     parts.push({ css: `text-align:${style?.align ?? 'start'}`, scss: `text-align:${style?.align ?? 'start'}` })

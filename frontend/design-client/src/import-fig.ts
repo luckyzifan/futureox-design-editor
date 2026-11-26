@@ -1012,7 +1012,12 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       else if (r.textCase && !textCase) warnings.add(`文字大小写 ${r.textCase} 尚需核对`)
       // Preserve authoring metrics instead of silently using 1.35em/zero.
       if (r.lineHeight?.units === 'PIXELS') {
-        n.textStyle.lineHeight = r.lineHeight.value / n.fontSize
+        const pixels = r.lineHeight.value
+        n.textStyle.lineHeight = pixels / n.fontSize
+        if (pixels >= .1 && pixels <= 40960) {
+          n.textStyle.lineHeightPixels = pixels
+          n.textStyle.lineHeight = Math.max(.1, Math.min(10, n.textStyle.lineHeight))
+        }
         n.textStyle.lineBoxBaseline = 'figma-pixel-leading'
       }
       if (r.lineHeight?.units === 'PERCENT') {
