@@ -16,7 +16,10 @@ export type InteractionInput = { sequence:number; at:number; guides?:readonly im
 export type GpuMoveControl = {
   /** Release coordinates are flushed; this is only a preview priority hint. */
   releaseInput?(gesture?:'move'|'rotate'):void
+  prioritizeClippedRelease?(): void
   isActive(): boolean
+  /** The committed translation of an isolated board at this exact camera. */
+  boardCommit?(document: DesignDocument, pageId: string, camera: import('./clipped-board-drag').BoardViewport): boolean
   /** Private complete-layer authority; structural eligibility alone is not
    * enough to suspend an ordinary viewport repair. */
   blocksCanvasRefinement?(document:DesignDocument,ids:string[],view:CanvasCamera):boolean
@@ -33,6 +36,8 @@ export type GpuMoveControl = {
 export type InteractionProps = {
   readinessRevision?:number
   figmaBoardPreview?: boolean
+  /** Set by the compositor when a certified clipped board hands off to native rendering. */
+  clippedBoardHandoff?: boolean
   /** Optional selection warming yields to the current camera's visible work. */
   navigating?:boolean
   /** Canvas gesture semantics; affine edits must not be rebound to a translation-only owner. */

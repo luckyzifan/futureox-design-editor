@@ -38,6 +38,12 @@ try {
   })
   child = app.process()
   const page = await app.firstWindow({ timeout: 20000 })
+  await app.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().startsWith('design-app:'))
+    window.setIgnoreMouseEvents(true)
+    window.showInactive()
+    window.webContents.setBackgroundThrottling(false)
+  })
   page.on('pageerror', error => report.errors.push(String(error)))
   await page.locator('.app-shell[data-editor-ready="true"]').waitFor({ timeout: 45000 })
   await page.locator('input[type=file][accept*=".fd"]').setInputFiles(fixture)
@@ -73,10 +79,14 @@ try {
   await settle('initial')
   if (option('layer-name')) {
     const layer = option('layer-name')
-    await page.getByRole('textbox', { name: '搜索图层', exact: true }).fill(layer)
-    await page.getByRole('treeitem', { name: layer, exact: true }).first().click()
+    await page.getByRole('button', { name: '搜索图层', exact: true }).click()
+    const search = page.getByRole('textbox', { name: '搜索图层', exact: true })
+    await search.fill(layer)
+    const results = page.getByRole('listbox', { name: '查找结果', exact: true })
+    await results.getByRole('option').filter({ has: page.getByText(layer, { exact: true }) }).first().click()
+    await search.press('Escape')
     await page.getByLabel('缩放与视图设置').click()
-    await page.getByRole('button', { name: '适合选择　⇧2', exact: true }).click()
+    await page.getByRole('button', { name: /^适合选择/ }).click()
     await settle('selection-fit')
   }
   if (process.argv.includes('--measure-motion')) {
@@ -132,10 +142,13 @@ try {
     const targets = zoomReplayTargets(zoomReplay)
     for (const [index, zoom] of targets.entries()) {
       const percent = zoom * 100
-      await page.getByLabel('缩放与视图设置').click()
+      const menu = page.getByLabel('缩放与视图设置')
       const field = page.getByRole('spinbutton', { name: '缩放比例', exact: true })
+      if (!await field.isVisible()) await menu.click()
       await field.fill(String(percent)); await field.press('Enter')
-      await page.getByLabel('缩放与视图设置').click()
+      if (await field.isVisible()) await menu.click()
+      await page.waitForFunction(percent => document.querySelector('[data-testid="zoom-readout"]')?.textContent === `${percent}%`,
+        percent, { timeout: 15000 })
       const settled = await settle(`zoom-${percent}${zoomReplay ? `-step-${index}` : ''}`, zoom)
       if (editAfterZoom && zoom <= 5) await editAndUndo(zoom, settled)
     }

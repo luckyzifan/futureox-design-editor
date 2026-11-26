@@ -66,6 +66,7 @@ export type SurfaceProps = {
   navigationInputOwner?: object
   /** Explicit hand/space/middle-button pan ownership; never object editing. */
   panGestureActive?: boolean
+  livePanCamera?: Pick<import('../engine').Editor, 'effectiveView' | 'subscribeCamera'>
   overlay?: { document: DesignDocument; pageId: string; epoch: number; uiIdentity?: string; selectionIdentity?: string; commands: import('./gpu/canvas-overlay').CanvasOverlay }
   interaction?: import('./interaction-layers').InteractionProps
   interactionPreview?: boolean

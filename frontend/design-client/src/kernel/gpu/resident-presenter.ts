@@ -8,7 +8,7 @@ import type { CanvasCamera } from '../../canvas-camera'
 import type { CompositeItem } from './tile-compositor'
 import { presentationQuality } from './presentation-quality'
 import { compositeDrawPlan, compositeRasterQuad, subtract } from './composite-draw-plan'
-import { DISPLAY_TEXTURE_BUDGET } from './display-budget'
+import { DISPLAY_TEXTURE_BUDGET, isDisplayBudgetError } from './display-budget'
 import { CanvasOverlayRenderer, translateOverlay, transformOverlay, type CanvasOverlay } from './canvas-overlay'
 import { ResidentUniforms } from './resident-uniforms'
 import { physicalCoverage, physicalPixelCoverage, physicalCoverageGaps } from './physical-coverage'
@@ -42,6 +42,7 @@ export type ResidentFrame = {
   height: number
   dpr: number
   interaction?: boolean
+  panGesture?: boolean
   gestureGuides?: boolean
   allowEmpty?: boolean
   allowBackground?: boolean
@@ -464,6 +465,87 @@ export class ResidentPresenter {
     this.bytes -= old.bytes
     this.textures.delete(next)
     this.textures.set(slot, replacement)
+  }
+  snapshotExactClippedViewport(owner: object, contract: string, view: CanvasCamera, output: Rect) {
+    const frame = this.drawn
+    if (!frame || frame.interaction || frame.linearBlend || frame.allowEmpty || this.drawnPreview || !this.drawnIds.length ||
+        frame.view.zoom * frame.dpr !== view.zoom || view.x - frame.view.x * frame.dpr !== output.x ||
+        view.y - frame.view.y * frame.dpr !== output.y ||
+        Math.ceil(frame.width * frame.dpr) !== output.w || Math.ceil(frame.height * frame.dpr) !== output.h ||
+        !this.drawnIds.every(id => {
+          const tile = this.textures.get(id), raster = tile?.raster
+          return !!raster && !tile?.linear && tile?.content?.owner === owner && tile.content.contract === contract &&
+            raster.view.zoom === view.zoom && Number.isSafeInteger(raster.view.x - view.x) &&
+            Number.isSafeInteger(raster.view.y - view.y)
+        })) return
+    return this.snapshot()?.gpuTile
+  }
+  private clippedTexture(slot: number) {
+    const entry = this.textures.get(slot)
+    return !this.disposed && entry && !entry.linear && entry.samples === 1 ? entry.texture : undefined
+  }
+  private clippedCopy(width: number, height: number, encode: (dst: GPUTexture, commands: GPUCommandEncoder) => void) {
+    let target: ReturnType<ResidentPresenter['capture']> | undefined
+    try {
+      target = this.capture(width, height)
+      const commands = this.device.createCommandEncoder()
+      encode(target.texture, commands)
+      this.device.queue.submit([commands.finish()])
+      return target.id
+    } catch (error) {
+      if (target) this.release([target.id])
+      if (!isDisplayBudgetError(error)) throw error
+    }
+  }
+  saveClippedBackground(slot: number, hole: Rect, sample: { x: number; y: number }) {
+    const source = this.clippedTexture(slot)
+    if (!source || !this.fitsClippedTexture(source, hole) ||
+        !this.fitsClippedTexture(source, { ...sample, w: 1, h: 1 })) return
+    const single = this.clippedCopy(1, 1, (dst, commands) =>
+      commands.copyTextureToTexture({ texture: source, origin: [sample.x, sample.y] }, { texture: dst }, [1, 1]))
+    if (single === undefined) return
+    try {
+      const { width, height } = source
+      const bounds = { left: 0, top: 0, right: width, bottom: height }
+      const stationary = subtract([bounds], { left: hole.x, top: hole.y, right: hole.x + hole.w, bottom: hole.y + hole.h })
+      return this.clippedCopy(width, height, (dst, commands) => {
+        this.transformData.begin()
+        this.transformData.set(0, [hole.x, hole.y, hole.w, hole.h, .5, .5, 0, 0, width, height, 0, 0])
+        const update = this.transformData.changed()
+        if (update) this.device.queue.writeBuffer(this.uniforms, update.offset, update.data)
+        const pass = commands.beginRenderPass({
+          colorAttachments: [{ view: dst.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0] }],
+        })
+        pass.setPipeline(this.pipeline)
+        pass.setBindGroup(0, this.textures.get(single)!.bind, [0])
+        pass.setScissorRect(hole.x, hole.y, hole.w, hole.h)
+        pass.draw(6)
+        pass.end()
+        for (const { left, top, right, bottom } of stationary)
+          commands.copyTextureToTexture({ texture: source, origin: [left, top] }, { texture: dst, origin: [left, top] },
+            [right - left, bottom - top])
+      })
+    } finally { this.release([single]) }
+  }
+  private fitsClippedTexture(texture: GPUTexture, { x, y, w, h }: Rect) {
+    return [x, y, w, h].every(Number.isSafeInteger) && x >= 0 && y >= 0 && w > 0 && h > 0 &&
+      x + w <= texture.width && y + h <= texture.height
+  }
+  saveClippedRegion(slot: number, region: Rect) {
+    const source = this.clippedTexture(slot)
+    if (!source || !this.fitsClippedTexture(source, region)) return
+    return this.clippedCopy(region.w, region.h, (dst, commands) =>
+      commands.copyTextureToTexture({ texture: source, origin: [region.x, region.y] }, { texture: dst }, [region.w, region.h]))
+  }
+  copyClippedPose(background: number, board: number, from: Rect, to: { x: number; y: number }) {
+    const base = this.clippedTexture(background), tile = this.clippedTexture(board)
+    if (!base || !tile || !this.fitsClippedTexture(tile, from) ||
+        !this.fitsClippedTexture(base, { ...from, ...to })) return
+    return this.clippedCopy(base.width, base.height, (dst, commands) => {
+      commands.copyTextureToTexture({ texture: base }, { texture: dst }, [base.width, base.height])
+      commands.copyTextureToTexture({ texture: tile, origin: [from.x, from.y] },
+        { texture: dst, origin: [to.x, to.y] }, [from.w, from.h])
+    })
   }
   tagExactTile(id:number, owner:object, contract:string, gutter:number) {
     const entry = this.textures.get(id)

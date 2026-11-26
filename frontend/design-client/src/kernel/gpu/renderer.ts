@@ -8972,11 +8972,12 @@ export class GpuRenderer {
     // Scene policy is installed synchronously before its async pipeline work.
     // Filter programs and image uploads can then prepare independently.
     const preparation = [this.prepareWithFailureOrigin(1, () => this.driver.prepareScene?.(scene, !readback && present, this.gradientFusionActive))]
-    // The exact prefix can sum the same Gaussian boxes for colour and alpha
-    // at high density. Keep the optional lower-zoom admission alpha-only.
-    // Proof or scratch rejection still uses the same rational box shader.
-    const highZoom = scene.view.zoom >= 32
-    const shadowBoxLowZoom = import.meta.env.VITE_DESIGN_EXACT_SHADOW_BOX_LOW_ZOOM === '1' && scene.view.zoom >= 8
+// The exact prefix can sum the same Gaussian boxes for colour and alpha
+    // at high density. The low-zoom admission defaults on at 800% and stays
+    // alpha-only; proof or scratch rejection still uses the rational box shader.
+    const zoom = scene.view?.zoom ?? 0
+    const highZoom = zoom >= 32
+    const shadowBoxLowZoom = import.meta.env.VITE_DESIGN_EXACT_SHADOW_BOX_LOW_ZOOM !== '0' && zoom >= 8
     const analyticBoxes = index.hasFilters && managedDisplay && this.optimized && !!scene.output && scene.coherentSamples === false &&
       !scene.colorManagement && !scene.integratedBlur && !scene.interactionRetained && !scene.resolve && !scene.presentation &&
       !scene.softwareRaster && (highZoom || shadowBoxLowZoom) && Object.values(scene.nodes).some(node => node.effects.some(effect =>

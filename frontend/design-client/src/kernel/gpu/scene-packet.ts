@@ -10,8 +10,10 @@ const witnesses=new WeakMap<Uint8Array,CompilationWitness>()
 const byteEstimates = new WeakMap<Uint8Array, number>()
 const transportStats = new WeakMap<Uint8Array, PacketTransportStats>()
 const FGSC = 0x43534746
+const wireCurveBytes = new WeakMap<Uint8Array, number>()
 type PacketTransportStats = Readonly<{scenePacketProtocol:number;scenePacketVersion:number;
-  scenePacketBytes:number;scenePacketMetadataBytes:number;scenePacketResourceBytes:number}>
+  scenePacketBytes:number;scenePacketMetadataBytes:number;scenePacketResourceBytes:number;
+  sceneCurveBytes:number;sceneWireCurveBytes:number}>
 
 function rememberTransport(wire: Uint8Array, packet: Uint8Array) {
   const header = new DataView(packet.buffer, packet.byteOffset, packet.byteLength)
@@ -21,6 +23,8 @@ function rememberTransport(wire: Uint8Array, packet: Uint8Array) {
     scenePacketBytes: wire.byteLength,
     scenePacketMetadataBytes: header.getUint32(8, true),
     scenePacketResourceBytes: header.getUint32(20, true),
+    sceneCurveBytes: 0,
+    sceneWireCurveBytes: wireCurveBytes.get(wire) ?? header.getUint32(16, true) * 4,
   }))
 }
 
@@ -54,7 +58,9 @@ export class CompiledScenePacket {
       scene = copied
       witness=witness instanceof Uint8Array?witness.slice():segmentedWitness([witness.parts[0],geometry])
     }
-    return new CompiledScenePacket(scene,witness,transport,byteEstimates.get(bytes) ?? Infinity)
+    return new CompiledScenePacket(scene,witness,Object.freeze({...transport,
+      sceneCurveBytes:(scene.curves?.length ?? 0)*4,
+      sceneWireCurveBytes:wireCurveBytes.get(bytes) ?? transport.sceneWireCurveBytes}),byteEstimates.get(bytes) ?? Infinity)
   }
 }
 export type ScenePacket = Uint8Array | CompiledScenePacket
@@ -93,6 +99,7 @@ export function decodeScenePacket(input:ScenePacket,store?:FrameResources,lease?
     const id=header.getUint32(cursor,true),kind=bytes[cursor+4],length=header.getUint32(cursor+5,true);cursor+=9
     if(length>bytes.length-cursor||incoming.has(id))throw Error('Invalid frame resource length or identity')
     const data=bytes.subarray(cursor,cursor+length);cursor+=length
+    if (kind === 4 && curveResources === undefined) throw Error('Curve program without an arena')
     const prior=priorResources?.get(id)
     if(prior){
       if(prior.kind!==kind||prior.data.length!==data.length||!prior.data.every((v,i)=>v===data[i]))throw Error('Frame resource identity changed')
@@ -139,22 +146,29 @@ export function decodeScenePacket(input:ScenePacket,store?:FrameResources,lease?
   Object.freeze(nodes)
   // One independent program allocation replaces the old eager full-geometry
   // witness copy. Long-lived scenes cannot retain inline image/resource bodies.
-  let geometry:Uint8Array<ArrayBuffer>, curveWords = nc
-  if (curveResources === undefined) geometry = bytes.slice(start, resourceStart)
-  else {
-    if (!resourceScope || nc !== 0 || !Number.isSafeInteger(curveResources?.words) || curveResources.words <= 0 ||
-        curveResources.words > 8_000_000 || !Array.isArray(curveResources.ids) || !curveResources.ids.length)
-      throw Error('Invalid frame curve resources')
-    const programs = curveResources.ids.map((id:number)=>resource(id,4).data)
-    const curveBytes = programs.reduce((total:number, program:Uint8Array)=>total+program.byteLength,0)
-    curveWords=curveResources.words
-    if (curveBytes!==curveWords*4) throw Error('Frame curve length changed')
-    geometry = new Uint8Array(nv*4+curveBytes)
-    geometry.set(bytes.subarray(start,resourceStart))
-    let offset=nv*4
+let geometry: Uint8Array<ArrayBuffer>, curveWords = nc, curveBytes = 0
+  let curveIds: Set<number> | undefined
+  if (curveResources === undefined) {
+    geometry = bytes.slice(start, resourceStart)
+  } else {
+    const { words, ids } = curveResources
+    if (!resourceScope || nc !== 0 || !Number.isSafeInteger(words) || words <= 0 || words > 8_000_000 ||
+        start + (nv + words) * 4 > 128 * 1024 * 1024 ||
+        !Array.isArray(ids) || !ids.length || ids.length > Math.min(words, 8192))
+      throw Error('Invalid frame curve arena')
+    const programs = ids.map((id: number) => resource(id, 4).data)
+    curveWords = words
+    curveBytes = programs.reduce((sum, program) => sum + program.byteLength, 0)
+    if (curveBytes !== curveWords * 4) throw Error('Frame curve length changed')
+    curveIds = new Set(ids)
+    for (const [id, entry] of incoming)
+      if (entry.kind === 4 && !curveIds.has(id)) throw Error('Unbound curve program')
+    geometry = new Uint8Array(nv * 4 + curveBytes)
+    geometry.set(bytes.subarray(start, resourceStart))
+    let offset = nv * 4
     for (const program of programs) {
-      geometry.set(program,offset)
-      offset+=program.byteLength
+      geometry.set(program, offset)
+      offset += program.byteLength
     }
   }
   const scene={...fields,nodes,vertices:new Float32Array(geometry.buffer,geometry.byteOffset,nv),
@@ -162,11 +176,12 @@ export function decodeScenePacket(input:ScenePacket,store?:FrameResources,lease?
   bindSourcePrograms(scene)
   bindScenePlan(scene,immutable(resource(scenePlan,3).value) as NativeScenePlan)
   // No partial dictionary publication on malformed data or missing dependencies.
-  if(store&&lease){
-    store.commit(resourceScope,incoming,lease,curveResources===undefined?undefined:new Set<number>(curveResources.ids))
+if(store&&lease){
+    store.commit(resourceScope,incoming,lease,curveIds)
     for(const id of used)if(lease.scope===resourceScope&&lease.entries.has(id))store.touch(id)
   }
   decoded.set(input,scene)
+  if (curveResources !== undefined) wireCurveBytes.set(input, curveBytes)
   // Exact tile equivalence excludes retransmitted resource bodies, but includes
   // the producer scope and immutable logical IDs that prove their identity.
   let witness:CompilationWitness=bytes
@@ -185,8 +200,10 @@ export function copyScenePacket(input:Uint8Array):Uint8Array {
   const transport=transportStats.get(input)
   if(transport)transportStats.set(copy,Object.freeze({...transport,scenePacketBytes:copy.byteLength}))
   if(scene){
-    const { geometry, copied } = copyProgramStorage(scene)
+const { geometry, copied } = copyProgramStorage(scene)
     decoded.set(copy,copied)
+    const curveBytes = wireCurveBytes.get(input)
+    if (curveBytes !== undefined) wireCurveBytes.set(copy, curveBytes)
     const witness=witnesses.get(input);if(witness)witnesses.set(copy,witness instanceof Uint8Array?copy:segmentedWitness([witness.parts[0],geometry]))
     const estimate = byteEstimates.get(input)
     if (estimate !== undefined) byteEstimates.set(copy, estimate)

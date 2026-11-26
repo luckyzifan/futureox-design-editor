@@ -484,6 +484,22 @@ mod wasm {
     use js_sys::{Array, Uint8Array};
     use wasm_bindgen::prelude::*;
     use wasm_bindgen::JsCast;
+
+    /// Undo the optional native IPC encoding before interpreting any FGSC
+    /// fields. The expanded pose retains the existing 32 MiB capture limit.
+    #[wasm_bindgen]
+    pub fn unpack_native_pose_packet(bytes: &[u8], size: usize) -> Result<Vec<u8>, JsValue> {
+        if !(262_144..=33_554_432).contains(&size) || bytes.len() >= size {
+            return Err(JsValue::from_str("Invalid native pose packet size"));
+        }
+        let packet = lz4_flex::block::decompress(bytes, size)
+            .map_err(|_| JsValue::from_str("Invalid packed native pose packet"))?;
+        if packet.len() != size {
+            return Err(JsValue::from_str("Packed native pose length changed"));
+        }
+        Ok(packet)
+    }
+
     /// Trusted bootstrap only. No document field or operation argument routes here.
     #[wasm_bindgen]
     pub fn color_fully_opaque(color: &str, opacity: f64) -> bool {

@@ -1297,6 +1297,11 @@ impl Engine {
             let node = &self.doc.as_ref().unwrap().nodes[id];
             node.children.is_empty() && (!affine || node.effects.iter().all(|effect| !effect.visible))
         });
+let retain_translated_roots = !affine && self.frame_scene.clipped_pose_transport() &&
+            transforms.keys().all(|id| {
+                let node = &self.doc.as_ref().unwrap().nodes[id];
+                index.page_roots.contains(id) && node.kind == "frame" && node.clip
+            });
         if self.source_compile_context.is_none() {
             if let Some(cache)=&mut self.world_support {
                 if cache.revision==previous_revision {
@@ -1304,7 +1309,13 @@ impl Engine {
                     // A private cache can forget the moved geometry without
                     // rebuilding every untouched sibling on the next sample.
                     if let Some(support)=Arc::get_mut(&mut cache.index) {
-                        if affine {
+if retain_translated_roots {
+                            support.invalidate_translated_roots(self.doc.as_deref().unwrap(), transforms.keys().map(String::as_str));
+                            // The stored transforms of the effect chain still
+                            // refer to the previous position of this subtree.
+                            cache.margin = None;
+                            cache.revision=self.geo_revision;
+                        } else if affine {
                             if local_support_only {
                                 support.invalidate_leaf_transforms(transforms.keys(),parents);
                                 cache.revision=self.geo_revision;

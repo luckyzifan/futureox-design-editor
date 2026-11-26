@@ -3589,6 +3589,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         modifiers.ctrl !== e.ctrlKey || modifiers.meta !== e.metaKey)
       if (d.kind !== 'create' && (d.kind === 'move' || release.x !== last.x || release.y !== last.y ||
         (changedModifiers && d.sampledMovement))) move(e)
+      if (d.kind==='move' && import.meta.env.VITE_DESIGN_CLIPPED_EARLY_RELEASE === '1')
+        gpuMove.current?.prioritizeClippedRelease?.()
       const pending = pendingBoardMove.current
       if (pending) {
         pendingBoardMove.current = null; retainedMove.current?.restore()
@@ -4176,6 +4178,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }}/>:<KernelSurface
         navigationInputOwner={editor}
         panGestureActive={panning}
+        livePanCamera={import.meta.env.VITE_DESIGN_LIVE_RESIDENT_PAN === '1' ? editor : undefined}
         overlay={overlay}
         // Nudges present the edited document through the canvas tile path.
         interaction={canvasFilterEdit || keyboardNudgeActive(editor) ? undefined : gpuInteraction}

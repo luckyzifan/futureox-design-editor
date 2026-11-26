@@ -43,6 +43,7 @@ type ResidentInteraction = {
   affine?: boolean
   affinePlan?: InteractionAffinePlan
   inputPriority?: boolean
+  clippedViewportRevision?: number
   displayedTransforms?: Record<string, Matrix>
   // Only a complete capture may retain chrome from that exact document. World
   // AABBs, size text and measurements cannot be recovered by inverse affine.
@@ -290,13 +291,17 @@ export class InteractionRenderer {
   lastSamplePrepareMs = 0
   lastEnd = ''
   get tracing() { return import.meta.env.DEV || this.poseLog.enabled }
-  readonly sampleTrace: { documentForks?:number; total: number; prepare: number; load: number; compile: number; graph: number; finish: number; reused: boolean; active: boolean; backend?:string; reason?:string; scale?:number; pixels?:number;sceneUpdateBytes?:number;geometryUploadBytes?:number;residentProgramHits?:number;residentProgramHitBytes?:number;posePrepareMs?:number;documentMs?:number;translationMs?:number;patchSession?:boolean;affectedNodes?:number;passTimings?:unknown[];compileStats?:Record<string,unknown>;fieldUploadBytes?:number;groupBytes?:number;prefixHits?:number;fieldHits?:number;checkpointMs?:number;fieldMs?:number;drawCalls?:number;passPixels?:number;textureBytes?:number }[] = []
+  readonly sampleTrace: { phaseReplay?:boolean; documentForks?:number; total: number; prepare: number; load: number; compile: number; graph: number; finish: number; reused: boolean; active: boolean; backend?:string; reason?:string; scale?:number; pixels?:number;sceneUpdateBytes?:number;geometryUploadBytes?:number;residentProgramHits?:number;residentProgramHitBytes?:number;posePrepareMs?:number;documentMs?:number;translationMs?:number;patchSession?:boolean;affectedNodes?:number;passTimings?:unknown[];compileStats?:Record<string,unknown>;fieldUploadBytes?:number;groupBytes?:number;prefixHits?:number;fieldHits?:number;checkpointMs?:number;fieldMs?:number;drawCalls?:number;passPixels?:number;textureBytes?:number }[] = []
   readonly control: GpuMoveControl
 
   constructor(private readonly changed: () => void, private readonly sharedClient?: KernelClient,
     private readonly allowIdleWarm = false, poseDiagnostics?:PoseDiagnostics, private readonly handoffTrace:HandoffTrace=createHandoffTrace()) {
     this.poseLog=poseDiagnostics??createPoseDiagnostics(this.interactionOwner)
     this.control = {
+      prioritizeClippedRelease:()=>{
+        const resident=this.resident
+        if (resident && this.useClippedPoseStartup(resident))this.control.releaseInput?.('move')
+      },
       releaseInput:gesture=>{
         const r=this.resident
         if(gesture==='rotate' && (!r?.affine || !exactInnerShadowGesture(r)))return
@@ -651,6 +656,16 @@ export class InteractionRenderer {
     return interactionTransformsOnly(plan,document)
   }
 
+  private useClippedPoseStartup(resident: ResidentInteraction) {
+    const viewport = this.viewport
+    if (!viewport || resident.containedForeground || allowsReducedSampling(viewport.view.zoom)) return false
+    const width = Math.ceil(viewport.width * viewport.dpr), height = Math.ceil(viewport.height * viewport.dpr)
+    return resident.clippedViewportRevision === this.viewportRevision &&
+      this.profile === 'analytic' && this.backend === 'webgpu' && !!this.sharedClient &&
+      width > 0 && height > 0 && width <= 8192 && height <= 8192 && width * height <= 8_388_608 &&
+      import.meta.env.VITE_DESIGN_CLIPPED_POSE_AHEAD !== '0'
+  }
+
   private captureMoveOverlay(document:DesignDocument,resident:ResidentInteraction,planOffsets:ReturnType<typeof interactionOffsets>) {
     const source=this.overlaySource,ids=resident.plan.ids,commands=source?.commands,owners=commands?.selection?.owners
     // Freeze chrome with the consumed capture input, before awaiting the GPU.
@@ -667,10 +682,16 @@ export class InteractionRenderer {
     if(!local)return
     const offset={x:parent[0]*local.x+parent[2]*local.y,y:parent[1]*local.x+parent[3]*local.y}
     if(!Number.isFinite(offset.x)||!Number.isFinite(offset.y))return
-    const snapshot=translateOverlay(structuredClone(commands),new Map([[id,offset]]))
+    const original=structuredClone(commands)
+    const snapshot=translateOverlay(original,new Map([[id,offset]]))
     snapshot.transforms={[id]:[...document.nodes[id].transform]}
     this.overlayWork.snapshotCopies++
-    return {uiIdentity:source.uiIdentity,sourceCommands:commands,commands:snapshot}
+    const projected = {uiIdentity:source.uiIdentity,sourceCommands:commands,commands:snapshot}
+    // The fixed native slot already knows the absolute compiled pose. Keep
+    // its chrome on the original authored basis through every later sample.
+    const authored = this.useClippedPoseStartup(resident) && source.document === resident.plan.document
+      ? {...projected,commands:original} : undefined
+    return {projected,authored}
   }
 
   private cancelIdleWarmTimer() {
@@ -695,14 +716,18 @@ export class InteractionRenderer {
       (mask.width + 64) * (mask.height + 64) * (viewport.view.zoom * viewport.dpr) ** 2 <= 1_048_576
     const legacyWarm = this.allowIdleWarm && import.meta.env.VITE_DESIGN_NESTED_IDLE_WARM === '1' &&
       this.profile === 'figmaSubpixel'
-    if ((!warmMask && !legacyWarm) || !this.sharedClient || this.backend !== 'webgpu' && this.backend !== 'auto' ||
+    const warmClipped = import.meta.env.VITE_DESIGN_CLIPPED_IDLE_CAPTURE === '1' &&
+      !!props?.clippedBoardHandoff && !!resident && this.useClippedPoseStartup(resident)
+    if ((!warmMask && !legacyWarm && !warmClipped) || !this.sharedClient || this.backend !== 'webgpu' && this.backend !== 'auto' ||
         !props || !resident?.live || !viewport || this.disposed ||
         props.active || resident.active || this.handoff || this.error || this.liveRunning || this.livePending ||
         this.lastSettledDocument !== props.document || resident.plan.document !== props.document ||
         this.sessionEpoch !== props.epoch || !this.sameIds(props.selection) ||
         resident.tiles.length > 0 && !this.inlineDisabled) return
     const page = props.document.pages.find(page => page.id === resident.plan.pageId)
-    if (!page || !props.selection.length || props.selection.some(id => page.children.includes(id))) return
+    if (!page || !props.selection.length ||
+        (warmClipped ? props.selection.length !== 1 || !page.children.includes(props.selection[0]) :
+          props.selection.some(id => page.children.includes(id)))) return
     const same = (context: IdleWarmContext | undefined) => !!context &&
       this.sameIdleWarmContext(context, props, resident.plan.pageId, this.profile, this.backend)
     if (same(this.idleWarmWaiting) || same(this.idleWarmAttempt)) return
@@ -725,7 +750,7 @@ export class InteractionRenderer {
         resident.affine = true
         resident.maskWarmOnly = true
       }
-      else if (!legacyWarm) return
+      else if (!legacyWarm && !(warmClipped && this.settledViewportMatches(context.document, context.view))) return
       this.idleWarmAttempt = context; this.idleWarmCapture = context; this.idleWarmFailed = undefined
       this.renderLive(context.document)
     }, 150)
@@ -1030,11 +1055,11 @@ export class InteractionRenderer {
     const pad = 128 / view.zoom
     const captureViewport = viewport ? { x: viewport.x - pad, y: viewport.y - pad,
       width: viewport.width + 2 * pad, height: viewport.height + 2 * pad } : undefined
-    const layerOptions = {scene:props.scene,epoch:props.epoch,
+const layerOptions = {scene:props.scene,epoch:props.epoch,
       neutralPageGroup:import.meta.env.VITE_DESIGN_NEUTRAL_PAGE_GROUP==='1'&&this.allowIdleWarm&&!!this.sharedClient&&
       profile==='figmaSubpixel'&&(backend==='webgpu'||backend==='auto')}
     const managedBytes = props.document.colorManagement && !this.sharedClient
-    let plan = contentGesture || managedBytes
+    let plan = contentGesture || props.clippedBoardHandoff || managedBytes
       ? null : this.layerPlanner.plan(props.document, pageId, props.selection, captureViewport, layerOptions)
     if (plan && !this.layersFit(plan, view.zoom, dpr)) plan = null
     // A zoom-blur center edit is not a transform, so it used to drop the
@@ -1087,7 +1112,8 @@ export class InteractionRenderer {
         const livePlan = { document: props.document, pageId, ids: [...props.selection], layers: [] }
         this.resident = { plan: livePlan, tiles: [], scale: view.zoom * dpr,
           offsets: interactionOffsets(livePlan, props.document)!, active: props.active, live: true,
-          affine: ['rotate', 'scale'].includes(props.gestureKind || '') }
+          affine: ['rotate', 'scale'].includes(props.gestureKind || ''),
+          clippedViewportRevision: props.clippedBoardHandoff ? this.viewportRevision : undefined }
         // Borrow only current Canvas geometry under its original slot/scope
         // guards. No cache is created for mutable or standalone callers.
         const entries = props.scene?.entriesFor(props.document, pageId, props.epoch) ?? scene(props.document, pageId)
@@ -1098,8 +1124,18 @@ export class InteractionRenderer {
         // Navigation temporarily removes interaction props and recreates this
         // resident when it settles. Install its control/scope now, but give the
         // exact canvas the queue until an actual gesture needs live pixels.
-        if (props.active) this.renderLive(props.document)
-        else { this.liveDeferred = true; this.scheduleIdleWarm() }
+        if (props.active) {
+          if (this.useClippedPoseStartup(this.resident)) {
+            // The handoff supplies the first fractional position in the
+            // same input event. Do not queue the unchanged screen first.
+            const resident = this.resident
+            queueMicrotask(() => {
+              if (!this.disposed && token === this.generation && this.resident === resident &&
+                  this.props?.document === props.document && this.props.active &&
+                  !this.endedDocument && !this.liveRunning && !this.livePending) this.renderLive(props.document)
+            })
+          } else this.renderLive(props.document)
+        } else { this.liveDeferred = true; this.scheduleIdleWarm() }
       } else { this.releaseClient() }
       props.onReady(); this.changed(); return
     }
@@ -1365,7 +1401,7 @@ export class InteractionRenderer {
     this.props!.onPosePresented?.({ sequence, offset, document: this.liveAuthored!, epoch: this.props!.epoch, control:this.control, latencyMs: Math.max(0, performance.now() - at) })
   }
 
-  acceptResidentSample(sample:{slot:number;sequence:number;at:number;guides?:InteractionInput['guides'];total?:number;compileMs?:number;nativePose?:boolean;graphMs?:number;finishMs?:number;groupHits?:number;sceneUpdateBytes?:number;geometryUploadBytes?:number;residentProgramHits?:number;residentProgramHitBytes?:number;posePrepareMs?:number;documentMs?:number;translationMs?:number;patchSession?:boolean;affectedNodes?:number;passTimings?:unknown[];compileStats?:Record<string,unknown>;fieldUploadBytes?:number;groupBytes?:number;prefixHits?:number;fieldHits?:number;checkpointMs?:number;fieldMs?:number;drawCalls?:number;passPixels?:number;textureBytes?:number;bounds?:Bounds;needsRebase?:boolean;expandCapture?:boolean;signature?:string}, accepted?:()=>void) {
+  acceptResidentSample(sample:{slot:number;sequence:number;at:number;guides?:InteractionInput['guides'];total?:number;compileMs?:number;nativePose?:boolean;phaseReplay?:boolean;graphMs?:number;finishMs?:number;groupHits?:number;sceneUpdateBytes?:number;geometryUploadBytes?:number;residentProgramHits?:number;residentProgramHitBytes?:number;posePrepareMs?:number;documentMs?:number;translationMs?:number;patchSession?:boolean;affectedNodes?:number;passTimings?:unknown[];compileStats?:Record<string,unknown>;fieldUploadBytes?:number;groupBytes?:number;prefixHits?:number;fieldHits?:number;checkpointMs?:number;fieldMs?:number;drawCalls?:number;passPixels?:number;textureBytes?:number;bounds?:Bounds;needsRebase?:boolean;expandCapture?:boolean;signature?:string}, accepted?:()=>void) {
     const resident=this.resident
     if(this.disposed||!resident?.live||resident.held||this.inlineDisabled||!resident.workerPoses||resident.tiles[0]?.gpuTile!==sample.slot){this.poseEvent(4,this.disposed?6:9,sample.sequence);return}
     this.poseEvent(2,0,sample.sequence,1)
@@ -1396,7 +1432,7 @@ export class InteractionRenderer {
     this.lastSampleReused=!sample.nativePose;this.lastSampleLoadMs=0;this.lastSampleGroupHits=sample.groupHits||0
     if(this.tracing){this.sampleTrace.push({total:this.lastSampleMs,prepare:0,load:0,compile:this.lastSampleCompileMs,graph:this.lastSampleGraphMs,
       finish:sample.finishMs||0,reused:this.lastSampleReused,active:!!this.props?.active,backend:'webgpu',scale:resident.scale,
-      sceneUpdateBytes:sample.sceneUpdateBytes,geometryUploadBytes:sample.geometryUploadBytes,residentProgramHits:sample.residentProgramHits,residentProgramHitBytes:sample.residentProgramHitBytes,posePrepareMs:sample.posePrepareMs,documentMs:sample.documentMs,translationMs:sample.translationMs,patchSession:sample.patchSession,affectedNodes:sample.affectedNodes,passTimings:sample.passTimings,compileStats:sample.compileStats,fieldUploadBytes:sample.fieldUploadBytes,
+      phaseReplay:sample.phaseReplay,sceneUpdateBytes:sample.sceneUpdateBytes,geometryUploadBytes:sample.geometryUploadBytes,residentProgramHits:sample.residentProgramHits,residentProgramHitBytes:sample.residentProgramHitBytes,posePrepareMs:sample.posePrepareMs,documentMs:sample.documentMs,translationMs:sample.translationMs,patchSession:sample.patchSession,affectedNodes:sample.affectedNodes,passTimings:sample.passTimings,compileStats:sample.compileStats,fieldUploadBytes:sample.fieldUploadBytes,
       groupBytes:sample.groupBytes,prefixHits:sample.prefixHits,fieldHits:sample.fieldHits,checkpointMs:sample.checkpointMs,fieldMs:sample.fieldMs,drawCalls:sample.drawCalls,passPixels:sample.passPixels,textureBytes:sample.textureBytes})
       if(this.sampleTrace.length>120)this.sampleTrace.shift()}
     this.changed()
@@ -1490,7 +1526,10 @@ export class InteractionRenderer {
             // Re-render the swept selection plus its backdrop dependency halo.
             // Unaffected pixels continue using the settled resident tile stack.
             const affected = unionBounds(resident.plan.ids.flatMap(id => {
-              const source=roots.get(id)!, local=offsets.get(id) || {x:0,y:0},m=resident.parentLinear?.get(id)||[1,0,0,1]
+              const source=roots.get(id)!,m=resident.parentLinear?.get(id)||[1,0,0,1]
+              // The first clipped capture uses the same computation origin
+              // as the authored position, even when its pixels have moved.
+              const local=(!resident.captureBounds && this.useClippedPoseStartup(resident) ? undefined : offsets.get(id)) || {x:0,y:0}
               const offset={x:m[0]*local.x+m[2]*local.y,y:m[1]*local.x+m[3]*local.y}
               return resident.fixedBounds?.has(id) ? [source] : [source,{...source,x:source.x+offset.x,y:source.y+offset.y}]
             }))
@@ -1631,8 +1670,29 @@ export class InteractionRenderer {
                   resident.containedForeground && import.meta.env.VITE_DESIGN_BOUNDED_POSE_CAPTURE !== '0') &&
                   !reduced && this.profile === 'figmaSubpixel' ||
                 localNativePose&&(this.profile==='figmaSubpixel'||this.profile==='analytic'))
-              const captureViewport=canonicalCapture?{x:originX+Math.floor(captureCamera.x),y:originY+Math.floor(captureCamera.y),w:width,h:height}:
+              let captureViewport=canonicalCapture?{x:originX+Math.floor(captureCamera.x),y:originY+Math.floor(captureCamera.y),w:width,h:height}:
                 worldCapture?{x:originX,y:originY,w:width,h:height}:boundedCapture?{x:0,y:0,w:width,h:height}:undefined
+              let fixedClippedViewport = false
+              const viewport = this.viewport
+              const clippedBoard = resident.clippedViewportRevision === viewportRevision && nativeDensity && !resident.affine
+              if (clippedBoard && viewport &&
+                  !resident.containedForeground && this.profile === 'analytic') {
+                const x = captureCamera.x - viewport.view.x * viewport.dpr
+                const y = captureCamera.y - viewport.view.y * viewport.dpr
+                const w = Math.ceil(viewport.width * viewport.dpr), h = Math.ceil(viewport.height * viewport.dpr)
+                // Keep the original computation camera. Only the consumed
+                // output is smaller, and every edge is on its pixel lattice.
+                if ([x, y, w, h].every(Number.isSafeInteger) && Math.abs(x) <= 16_000_000 && Math.abs(y) <= 16_000_000 &&
+                    w > 0 && h > 0 && w <= 8192 && h <= 8192 && w * h <= 8_388_608) {
+                  captureViewport = { x, y, w, h }
+                  fixedClippedViewport = true
+                  originX = x - Math.floor(captureCamera.x)
+                  originY = y - Math.floor(captureCamera.y)
+                  width = w; height = h
+                  const { view, width: cssWidth, height: cssHeight } = viewport
+                  bounds = { x: -view.x / view.zoom, y: -view.y / view.zoom, width: cssWidth / view.zoom, height: cssHeight / view.zoom }
+                }
+              }
               causePhase=2;causeBranch=3
               result = await client.render(document, { pageId: resident.plan.pageId, width, height,
                 view:captureCamera,transparent:false,grid:false,...(bitmapViewport||exactInnerShadowGesture(resident)?{checkerboard:false}:{}),
@@ -1641,11 +1701,15 @@ export class InteractionRenderer {
                 rasterProfile: this.profile, livePreview: true, retainInteractionGraph: true, interactionSelection: resident.plan.ids,
                 interactionNative: !!resident.affine || !reduced || localNativePose || nativeImagePose,
                 interactionAffine: !!resident.affine, interactionLocalFootprint: resident.containedForeground,
+                ...(clippedBoard ? { interactionClippedBoard: true } : {}),
+                ...(fixedClippedViewport && this.idleWarmCapture?.resident===resident && !resident.active
+                  ? { interactionClippedIdleCapture: true } : {}),
                 ...(maskedRotation && nativeDensity ? { interactionFixedMask: true } : {}),
                 ...(exactInnerShadowGesture(resident)&&roots?.get(resident.plan.ids[0])&&!resident.repairBounds?{interactionBaseFill:roots.get(resident.plan.ids[0])}:{}),
                 renderIntent: 'preview', interactionChannel: !!this.sharedClient,
-                interactionWindowFixed: !!resident.affine || resident.plan.ids.every(id=>resident.fixedBounds?.has(id)),
-                ...(this.viewport ? { interactionWindow: { x: bounds.x*scale+captureCamera.x,
+                interactionWindowFixed: fixedClippedViewport || !!resident.affine || resident.plan.ids.every(id=>resident.fixedBounds?.has(id)),
+                ...(fixedClippedViewport ? { interactionWindow: captureViewport } :
+                  this.viewport ? { interactionWindow: { x: bounds.x*scale+captureCamera.x,
                   y:bounds.y*scale+captureCamera.y,
                   w: bounds.width * scale, h: bounds.height * scale } } : {}) }, false, this.backend, false, false, undefined, undefined, signal)
               causePhase=3
@@ -1720,7 +1784,8 @@ export class InteractionRenderer {
             x: originX, y: originY, width, height, zoom: scale, phaseX, phaseY, bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile }]
           const slots=Object.freeze(resident.tiles.map(tile=>tile.gpuTile||0))
           resident.overlayCapture = { document, tiles:resident.tiles, slots, cohort:Object.freeze({slots}),
-            pageId:resident.plan.pageId, epoch:this.sessionEpoch!, generation:token, ids:this.selectionIds(resident.plan),overlay:capturedCommands }
+            pageId:resident.plan.pageId, epoch:this.sessionEpoch!, generation:token, ids:this.selectionIds(resident.plan),
+            overlay:resident.workerPoses && capturedCommands?.authored ? capturedCommands.authored : capturedCommands?.projected }
           this.samples++; this.lastSampleMs = performance.now() - started
           this.lastSampleCompileMs = result.compileMs; this.lastSampleGraphMs = result.graphMs || 0
           this.lastSampleReused = !!result.compileCacheHit

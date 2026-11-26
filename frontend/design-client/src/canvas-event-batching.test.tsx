@@ -517,3 +517,20 @@ test.each([1, 10, 120])('zoom audit accumulates %i native pinch samples without 
   expect(editor.state.version).toBe(version)
   unbindInput(); unsubscribe()
 })
+
+test.each([0,1])('a hand pan uses the real mouse-up position after losing capture with button %s',async button=>{
+  await render([])
+  Object.defineProperty(document,'hidden',{configurable:true,value:false})
+  await act(async()=>editor.set({tool:'hand'}))
+  const camera={...editor.state.view},revision=editor.state.version,buttons=button===1?4:1
+  await act(async()=>pointer('pointerdown',280,260,{button,buttons}))
+  await act(async()=>pointer('pointermove',322,283,{button,buttons}))
+  await act(async()=>pointer('lostpointercapture',322,283,{button,buttons:0}))
+  expect(host().classList.contains('canvas-panning')).toBe(true)
+  await act(async()=>pointer('pointermove',353,307,{button,buttons},document.body))
+  expect(editor.effectiveView()).toEqual({...camera,x:camera.x+73,y:camera.y+47})
+  await act(async()=>pointer('pointerup',280,260,{button,buttons:0},document.body))
+  expect(host().classList.contains('canvas-panning')).toBe(false)
+  expect(editor.state.view).toEqual(camera)
+  expect(editor.state.version).toBe(revision)
+})

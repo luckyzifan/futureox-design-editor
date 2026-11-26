@@ -42,6 +42,8 @@ import { panPrefetch } from './pan-prefetch'
 import { tilePrepareViewport, tileBatchPrepareViewport } from './tile-prepare-viewport'
 import { TileCompositeSurface } from './TileCompositeSurface'
 import { ResidentCompositeSurface, type ProjectedPageOverview } from './ResidentCompositeSurface'
+import { isolatedSrgbBoard } from './page-translation'
+import { clippedBoardPrefetch, clippedBoardSource, clippedCommitTiles, tileOnBoardLattice } from './clipped-board-drag'
 import { PresentationOwnership } from './presentation-ownership'
 import { PageResidencyCache, pageResidencyScope } from './page-residency-cache'
 import { BitmapRetirement } from './bitmap-retirement'
@@ -597,6 +599,21 @@ export function ProgressiveSurfaceImpl(
     grid: !!props.grid, checkerboard: !!props.checkerboard, pixelPreview: props.pixelPreview || 0,
     rasterProfile, displayCapability, hdrCompositing })
   const filteredContent = useMemo(() => pageHasFilteredContent(doc, pageId), [doc.nodes, doc.pages, pageId])
+  const clippedBoardSetting = import.meta.env.VITE_DESIGN_CLIPPED_BOARD_DRAG
+  const poseTransportSetting = import.meta.env.VITE_DESIGN_CLIPPED_POSE_CURVE_RESOURCES
+  const defaultClippedBoardDrag = clippedBoardSetting === undefined &&
+    (poseTransportSetting === undefined || poseTransportSetting === '1') &&
+    navigator.platform?.startsWith('Mac') === true && backend === 'webgpu' && rasterProfile === 'analytic' &&
+    view.zoom < 1 && !allowsReducedSampling(view.zoom) &&
+    usesDesktopDisplay(renderExecutionPolicy, { renderIntent: 'canvas', rasterProfile })
+  const clippedBoardId = (clippedBoardSetting === '1' || defaultClippedBoardDrag) &&
+    import.meta.env.VITE_DESIGN_RETAINED_TRANSLATION !== '0' && residentDisplay &&
+    renderExecutionPolicy.desktopDisplay && !cameraDependent && !hdrCompositing &&
+    !props.grid && !props.checkerboard && !props.pixelPreview && !props.animation &&
+    props.interaction?.figmaBoardPreview && props.interaction.selection.length === 1
+    ? props.interaction.selection[0] : undefined
+  const clippedBoard = useMemo(() => clippedBoardId ? isolatedSrgbBoard(doc, pageId, clippedBoardId) : undefined,
+    [doc, pageId, clippedBoardId])
   const sharpNavigation = import.meta.env.VITE_DESIGN_SHARP_ZOOM === '1' && usesSharpZoom(renderExecutionPolicy,
     { resident: residentDisplay, pixelPreview: props.pixelPreview, grid: props.grid, checkerboard: props.checkerboard }) &&
     rasterProfile !== 'figmaSoftware'
@@ -1339,7 +1356,8 @@ export function ProgressiveSurfaceImpl(
     }
     const request = async (plan: RasterTile[], preparePlan: RasterTile[],
       prefetch: { rim: RasterTile[]; cacheLimitSkipped: number; protect?: boolean }, bootstrapCoverage?: () => Promise<void>,
-      focus?: SurfaceProps['overview']) => {
+focus?: SurfaceProps['overview'],
+      clippedCommit = false) => {
       const orderVisibleWork = (tiles: RasterTile[], priorities?: Map<RasterTile, import('./tile-cache').TileFillPriority>) => {
         const residents = [...tileRef.current.values()].filter(tile => tile.document === doc &&
           tile.revision === contract.revision && ready.current.has(tile.key))
@@ -1423,6 +1441,7 @@ export function ProgressiveSurfaceImpl(
               pixelPreview: props.pixelPreview || undefined,
               rasterProfile,
               tileViewport: ordered,
+              ...(clippedCommit && !prefetchOnly ? { clippedCommitTiles: true } : {}),
               ...(prefetchOnly ? {} : { tileFillPriorities: ordered.map(tile => priorities.get(tile)!) }),
               tilePrepareViewport: import.meta.env.VITE_DESIGN_PREPARE_CACHE === '0' ? undefined :
                 nativeVisibleTiles ? tilePrepareViewport(ordered, renderCamera) :
@@ -2266,8 +2285,20 @@ export function ProgressiveSurfaceImpl(
           !retainedEditViewport && syncedDoc.current === doc && hasContinuityBacking()
           ? { x: -Math.floor(view.x * dpr), y: -Math.floor(view.y * dpr), w: Math.ceil(width * dpr), h: Math.ceil(height * dpr) }
           : undefined
-        const fullPlan = planned.viewport.map(rekey)
-        const plan = fullPlan.map((full, index) => {
+        const clippedCamera = { view, width, height, dpr }
+        const bands = clippedBoardId && backend === 'webgpu' && rasterProfile === 'analytic' &&
+          usesDesktopDisplay(renderExecutionPolicy, { renderIntent: 'canvas', rasterProfile }) &&
+          !cameraMoving && !navigationZoom.active && !zooming && !props.interaction?.active &&
+          renderScale === detailLevel && phaseExact &&
+          rejectedEdgeCrop.current !== frameKey &&
+          props.interaction?.control.current?.boardCommit?.(doc, pageId, clippedCamera)
+          ? clippedCommitTiles({
+            x: -Math.floor(renderCamera.x), y: -Math.floor(renderCamera.y),
+            w: Math.ceil(width * dpr), h: Math.ceil(height * dpr),
+          }, renderScale, renderPhase)
+          : undefined
+        const fullPlan = (bands ?? planned.viewport).map(rekey)
+        const plan = bands ? fullPlan : fullPlan.map((full, index) => {
           if (!edgeViewport) return full
           const existing = tileRef.current.get(full.key)
           if (existing?.document === doc && existing.revision === contract.revision) return full
@@ -2277,10 +2308,17 @@ export function ProgressiveSurfaceImpl(
           croppedVisibleTiles = true
           return rekey(cropped)
         })
+        if (bands) croppedVisibleTiles = true
         const rim = planned.rim.map(rekey)
-        const prefetch = props.progressiveBlurRepair || props.interaction?.selection.length || zooming || nativeVisibleTiles && cameraMoving ? {rim:[],cacheLimitSkipped:0} :
-          cameraMoving ? { rim: cameraDependent ? [] : panPrefetch(rim, previousView, view, viewport), cacheLimitSkipped: 0, protect: true } :
-          { rim, cacheLimitSkipped: planned.cacheLimitSkipped }
+        const clippedSource = clippedBoard && !cameraMoving && !navigationZoom.active && !zooming &&
+          !props.interaction?.active && renderScale === detailLevel && phaseExact
+          ? clippedBoardSource(clippedBoard, clippedCamera) : undefined
+        const boardRim = clippedSource ? clippedBoardPrefetch(clippedSource, clippedCamera,
+          [...planned.viewport, ...planned.rim], Math.max(0, budgetTileLimit(budget, false) - plan.length)).map(rekey) : []
+        const prefetch = props.progressiveBlurRepair || props.interaction?.selection.length || zooming || nativeVisibleTiles && cameraMoving
+          ? {rim:boardRim,cacheLimitSkipped:0}
+          : cameraMoving ? { rim: cameraDependent ? [] : panPrefetch(rim, previousView, view, viewport), cacheLimitSkipped: 0, protect: true }
+          : { rim, cacheLimitSkipped: planned.cacheLimitSkipped }
         desired.current = plan.map((t) => t.key)
         failedTiles.current.clear()
         activePlan.current = {
@@ -2520,9 +2558,10 @@ export function ProgressiveSurfaceImpl(
               console.debug('[coverage] startup overview unavailable', String(error))
             }
           } : undefined
-        // With page continuity already displayed, refine the content before
+// With page continuity already displayed, refine the content before
         // the empty pasteboard. This changes order only; every tile remains.
-        await request(plan, fullPlan, prefetch, bootstrap, reusePageOverview && pageFitsView ? extent : undefined)
+        await request(plan, fullPlan, prefetch, bootstrap,
+          reusePageOverview && pageFitsView ? extent : undefined, !!bands)
         // A selected object is about to move (or is warming its live scene).
         // A monolithic overview tile cannot be preempted inside WASM, so do
         // not put it behind selection warm-up and ahead of the first pose.
@@ -2635,6 +2674,7 @@ export function ProgressiveSurfaceImpl(
     props.panGestureActive,
     retainedEditing,
     props.interaction?.selection.join(','),
+    clippedBoard,
     motionPreview,
     nativeNavigation,
     nativeVisibleTiles,
@@ -2747,6 +2787,20 @@ export function ProgressiveSurfaceImpl(
     generation: 1,
     acceptedGeneration: 1,
   }).partialSharp
+  const clippedTranslationItems = fullPlanReady && clippedBoard &&
+      clippedBoardSource(clippedBoard, {view: requestedView, width, height, dpr})
+    ? visible.filter(tile => {
+      if (tileRef.current.get(tile.key) !== tile || tile.document !== doc || tile.revision !== contract.revision ||
+          !ready.current.has(tile.key) || !tile.gpuTile || tile.viewportPreview ||
+          !tileOnBoardLattice(tile, requestedView, dpr) || tile.residentDevice &&
+          (tile.residentDevice.client !== rasterClient || tile.residentDevice.key !== previewDevice.current.key)) return false
+      if (plan?.ids.has(tile.key)) return true
+      const pad = TILE_SIDE / (2 * dpr)
+      return tile.prefetch && tileIntersectsView(tile,
+        { ...requestedView, x: requestedView.x + pad, y: requestedView.y + pad },
+        { width: width + 2 * pad, height: height + 2 * pad })
+    }).map(tile => ({tile,active:true,layer:0}))
+    : undefined
   const fineTile = (tile: PaintedTile) => tileRef.current.get(tile.key) === tile &&
     (fullPlanReady||partialDetail&&partialFrame(tile, tile.zoom>=detailLevel)&&
       !!tile.gpuTile&&previewDevice.current.client===rasterClient&&!!previewDevice.current.key&&
@@ -3053,9 +3107,10 @@ export function ProgressiveSurfaceImpl(
         {singleCanvas ? (() => {
           const CompositeSurface = residentDisplay && rasterClient ? ResidentCompositeSurface : TileCompositeSurface
           return <CompositeSurface key={residentDisplay && rasterClient ? 'resident' : 'bitmap'} client={rasterClient!}
-          navigationInputOwner={props.navigationInputOwner}
+navigationInputOwner={props.navigationInputOwner}
           {...(residentDisplay ? { reuseSequence: previewReuseSequence.current, overviewPresentation,
-            progressiveBlurDragActive: props.progressiveBlurDragActive } : {})}
+            progressiveBlurDragActive: props.progressiveBlurDragActive,
+            panGestureActive: props.panGestureActive, livePanCamera: props.livePanCamera } : {})}
           items={compositeItems}
           onCompositeItems={residentDisplay ? items => compositeCacheFrame.stage(compositeOwner, {
             ...compositeOwner,
@@ -3089,7 +3144,8 @@ export function ProgressiveSurfaceImpl(
           sourceDocument={doc} contentRevision={contract.revision} translationItems={visible.filter(tile=>syncedDoc.current===doc&&ready.current.has(tile.key)&&
             partialFrame(tile, tile.zoom===detailLevel)&&
             (!fullPlanReady||props.interaction?.active||!plan||plan.ids.has(tile.key)))
-            .map(tile=>({tile,active:true,layer:0}))} allowPageTranslation={!props.grid&&!props.checkerboard&&!props.pixelPreview}
+            .map(tile=>({tile,active:true,layer:0}))} clippedTranslationItems={clippedTranslationItems}
+          allowPageTranslation={!props.grid&&!props.checkerboard&&!props.pixelPreview}
           interaction={navigationZoom.active ? undefined : props.interaction?{...props.interaction,navigating:cameraMoving}:undefined} pageId={pageId} rasterProfile={rasterProfile} backend={backend}
           settledDocument={fullPlanReady ? doc : undefined}
           onPresented={(frame,source,device?: ViewportPreviewDevice)=>{
@@ -3285,6 +3341,7 @@ export const ProgressiveSurface = memo(ProgressiveSurfaceImpl, (prev, next) =>
   prev.onRenderFailure === next.onRenderFailure &&
   prev.navigationInputOwner === next.navigationInputOwner &&
   prev.panGestureActive === next.panGestureActive &&
+  prev.livePanCamera === next.livePanCamera &&
   (prev.requestedView || prev.view).x === (next.requestedView || next.view).x &&
   (prev.requestedView || prev.view).y === (next.requestedView || next.view).y &&
   (prev.requestedView || prev.view).zoom === (next.requestedView || next.view).zoom &&

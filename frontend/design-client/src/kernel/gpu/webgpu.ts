@@ -230,7 +230,7 @@ export class WebGpuDriver implements Driver {
   private bindingCache = new GpuBindingCache()
   // Rollout gate until real-device validation and timings are available. The
   // static-offset route remains an exact negative control for bisection.
-  private dynamicUniformBindings = import.meta.env.VITE_DESIGN_DYNAMIC_UNIFORMS === '1'
+  private dynamicUniformBindings = import.meta.env.VITE_DESIGN_DYNAMIC_UNIFORMS !== '0'
   resourceEpoch = 0
   completedResourceEpoch = 0
   private rationalKernelBounds = new WeakMap<Texture, { packet: PrefixRationalBoundCertificate; resource: unknown; width: number; height: number }>()
@@ -319,6 +319,11 @@ export class WebGpuDriver implements Driver {
   presentFrame(frame: ResidentFrame) { this.presenter?.draw(frame) }
   releasePresented(ids: number[]) { this.presenter?.release(ids) }
   replacePresented(slot:number,next:number){this.presenter?.replace(slot,next)}
+  snapshotExactClippedViewport(...args: Parameters<ResidentPresenter['snapshotExactClippedViewport']>) { return this.presenter?.snapshotExactClippedViewport(...args) }
+  saveClippedBackground(...args: Parameters<ResidentPresenter['saveClippedBackground']>) { return this.presenter?.saveClippedBackground(...args) }
+  saveClippedRegion(...args: Parameters<ResidentPresenter['saveClippedRegion']>) { return this.presenter?.saveClippedRegion(...args) }
+  copyClippedPose(...args: Parameters<ResidentPresenter['copyClippedPose']>) { return this.presenter?.copyClippedPose(...args) }
+
   presentedContentToken(slot:number){return this.lost||this.disposed?undefined:this.presenter?.contentToken(slot)}
   tagExactTile(...args: Parameters<ResidentPresenter['tagExactTile']>) { this.presenter?.tagExactTile(...args) }
   forwardPaintDamage(...args: Parameters<ResidentPresenter['forwardPaintDamage']>) { this.presenter?.forwardPaintDamage(...args) }
@@ -417,7 +422,8 @@ export class WebGpuDriver implements Driver {
   private prefixCounterDeferredFrames = 0
   private interactionPresentation = false
   private nativeInteractionPresentation = false
-  private queuedNativeInteractionPresentation = false
+private queuedNativeInteractionPresentation = false
+  private queuedInteractionPresentation = false
   private prefix?: TexturePrefix
   private byteTent?: ByteTentPrefix
   private byteTentPreparing?: Promise<boolean>
@@ -1462,11 +1468,13 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.displayImageRequested = displayImageRequested
     this.interactionPresentation = scene.interactionRetained === true
     this.nativeInteractionPresentation = scene.nativeInteraction === true
-    this.queuedNativeInteractionPresentation = this.interactionPresentation && this.nativeInteractionPresentation && !scene.softwareRaster
+this.queuedNativeInteractionPresentation = this.interactionPresentation && this.nativeInteractionPresentation && !scene.softwareRaster
     this.releasePose = displayOnly && scene.interactionRelease === true && scene.interactionFixedMask === true &&
       this.queuedNativeInteractionPresentation
     this.smallExactBoxRequested = displayOnly && scene.interactionFixedMask===true && this.queuedNativeInteractionPresentation &&
       this.managed && !this.hdr && !this.displayMath && !scene.displayFilters
+    this.queuedInteractionPresentation = scene.interactionRetained === true && scene.nativeInteraction === true &&
+      (scene.interactionFixedMask === true || scene.queuedClippedMotion === true) && !scene.softwareRaster
     const radiusLimit = scene.displayFilterRadiusLimit
     this.pairDisplayTaps = (radiusLimit === undefined || displayOnly) &&
       (scene.pairedDisplayFilters ?? (import.meta.env.VITE_DESIGN_PAIRED_DISPLAY === '1'))
@@ -3926,10 +3934,12 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     // GPU-complete or physical-presentation acknowledgement.
     const deferImageScratch = !!captured && !readback && !timingRead &&
       !this.transientTargets.length && !this.transient.length && !this.transientBytes && this.canDeferImageTables()
-    // A native pose consumed by the same-device presenter is ordered by
+// A native pose consumed by the same-device presenter is ordered by
     // that queue. The atomic display waits for completion before transfer.
-    // Keep the periodic fence and all scratch, readback and transfer fences.
-    const queuedPose = this.queuedNativeInteractionPresentation && !!captured && !transfer && !preview &&
+    // Clipped motion uses the same bounded completion rule. Keep the periodic
+    // fence and all scratch, readback and transfer fences.
+    const queuedPose = (this.queuedNativeInteractionPresentation || this.queuedInteractionPresentation) &&
+      !!captured && !transfer && !preview &&
       !samples && !this.linearCapture && !this.transientTargets.length && !this.transient.length && !this.transientBytes
     // Keep the existing interaction/periodic backpressure. Only per-tile waits
     // whose purpose was scratch destruction or diagnostic counters disappear.
@@ -3940,7 +3950,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     }
     const waitReason: QueueWaitReason | undefined = readback ? 'readback' : timingRead ? 'timing' : transfer ? 'presentation-transfer' :
       this.byteTentLeases?.size ? 'prefix-scratch' :
-      !retainFilterScratch && (this.prefix?.scratchBytes||this.boxPrefix?.scratchBytes) ? 'prefix-scratch' :
+!retainFilterScratch && (this.prefix?.scratchBytes||this.boxPrefix?.scratchBytes) ? 'prefix-scratch' :
       !deferImageScratch && this.imageTables.size ? 'image-table-scratch' : this.interactionPresentation && !queuedPose &&
         (!this.nativeInteractionPresentation || import.meta.env.VITE_DESIGN_NATIVE_PIPELINE !== '1') ? 'interaction' :
         ++this.presentationSubmissions >= 4 ? 'periodic' : undefined

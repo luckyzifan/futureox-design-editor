@@ -19,7 +19,75 @@ type StaticRequest=((u64,bool,bool),String);
 fn source_request_key(revision:(u64,bool,bool),fields:&serde_json::Value)->Result<StaticRequest,String>{
     let object=fields.as_object().ok_or("Render options must be an object")?;
     let semantic=object.iter().filter(|(key,_)|key.as_str()!="frameResources").collect::<BTreeMap<_,_>>();
-    Ok((revision,serde_json::to_string(&semantic).map_err(|e|e.to_string())?))
+    Ok((revision, packet_request_key(&semantic, fields)?))
+}
+fn packet_request_key(
+    fields: &BTreeMap<&String, &serde_json::Value>,
+    request: &serde_json::Value,
+) -> Result<String, String> {
+    // The receiver must advertise the layout of any cached packet again.
+    // Acknowledgement ranges themselves never enter an identity or key.
+    serde_json::to_string(&(curve_programs_requested(Some(request)), fields)).map_err(|e| e.to_string())
+}
+fn curve_programs_requested(request: Option<&serde_json::Value>) -> bool {
+    request.and_then(|value| value.get("frameResources"))
+        .and_then(|value| value.get("curvePrograms"))
+        .and_then(serde_json::Value::as_bool) == Some(true)
+}
+
+const CURVE_RESOURCE: u8 = 4;
+const MAX_CURVE_WORDS: usize = 8_000_000;
+const MAX_CURVE_SPANS: usize = 8192;
+const CURVE_CHUNK_WORDS: usize = 8192;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CurveResources {
+    words: usize,
+    ids: Vec<u32>,
+}
+
+fn curve_range(path: &GpuPath) -> Option<Option<(usize, usize)>> {
+    let (first, count, stride) = if let Some(area) = &path.area {
+        (area.first, area.count, 4)
+    } else if let Some(analytic) = &path.analytic {
+        (analytic.first, analytic.count, 16)
+    } else {
+        return Some(None);
+    };
+    if count == 0 { return Some(None); }
+    let start = (first as usize).checked_mul(4)?;
+    let len = (count as usize).checked_mul(stride)?;
+    Some(Some((start, start.checked_add(len)?)))
+}
+
+/// Preserve program boundaries when preceding programs grow or disappear.
+/// Gaps and overlapping references still encode every arena word exactly once.
+fn curve_spans(scene: &GpuScene) -> Option<Vec<std::ops::Range<usize>>> {
+    let words = scene.curves.len();
+    if !(16_384..=MAX_CURVE_WORDS).contains(&words) { return None; }
+    let mut edges = vec![0, words];
+    for node in scene.nodes.values() {
+        let paths = std::iter::once(&node.fill)
+            .chain(node.strokes.iter().map(|stroke| &stroke.path))
+            .chain(node.source_filter_field.iter().flat_map(|field| field.channels().map(|mesh| &mesh.path)));
+        for path in paths {
+            if let Some((start, end)) = curve_range(path)? {
+                if end > words || edges.len() >= MAX_CURVE_SPANS * 2 { return None; }
+                edges.extend([start, end]);
+            }
+        }
+    }
+    edges.sort_unstable();
+    edges.dedup();
+    let mut spans = Vec::with_capacity(edges.len());
+    for pair in edges.windows(2) {
+        for start in (pair[0]..pair[1]).step_by(CURVE_CHUNK_WORDS) {
+            if spans.len() == MAX_CURVE_SPANS { return None; }
+            spans.push(start..(start + CURVE_CHUNK_WORDS).min(pair[1]));
+        }
+    }
+    Some(spans)
 }
 struct EncodedFrame {
     key:StaticRequest,
@@ -32,6 +100,7 @@ struct EncodedFrame {
     sequence:u32,
     nodes:usize,
     authored_nodes:usize,
+    resolved_nodes:usize,
 }
 fn acknowledged_ranges(scope:&str,request:Option<&serde_json::Value>)->Result<Vec<(u32,u32)>,String>{
     let acknowledged=request.and_then(|r|r.get("frameResources"));
@@ -201,7 +270,8 @@ pub(crate) struct FrameSceneContext {
     // Numeric addresses are private lookup hints backed by the strong Arc key
     // in image_semantics. They are never dereferenced or accepted from callers.
     image_allocations:HashMap<usize,u32>,image_transfer_keys:HashMap<u32,Key>,image_transfer_sources:HashMap<u32,u32>,
-    curve_transfer_keys: HashMap<u32, Key>,
+curve_transfer_keys: HashMap<u32, Key>,
+    clipped_pose_transport: bool,
     image_allocation_hits:u64,image_transfer_hits:u64,
     cached:Option<EncodedFrame>,pending_request:Option<StaticRequest>,compilations:u64,reuses:u64,
     retention_limit:Option<usize>,
@@ -226,6 +296,7 @@ pub(crate) struct FrameSceneContext {
     #[cfg(test)] limit_override:Option<usize>,
 }
 impl FrameSceneContext {
+    pub(crate) fn clipped_pose_transport(&self) -> bool { self.clipped_pose_transport }
     fn limit(&self)->usize {
         let host=crate::capacity::memory_budget_bytes().min(usize::MAX as u64) as usize;
         #[cfg(test)] let host=self.limit_override.unwrap_or(host);
@@ -251,7 +322,7 @@ impl FrameSceneContext {
     pub(crate) fn bytes(&self)->usize{self.bytes+self.semantic_bytes+self.cached.as_ref().map_or(0,|frame|frame.charge)+self.source_history_bytes}
     fn evict_source_frame(&mut self){if let Some(frame)=self.source_history.pop_front(){self.source_history_bytes-=frame.charge;}}
     pub(crate) fn clear_source_history(&mut self){self.source_history.clear();self.source_history_bytes=0;}
-    pub(crate) fn reuse_source(&mut self,revision:(u64,bool,bool),request:&str)->Result<Option<(Vec<u8>,usize,usize)>,String>{
+    pub(crate) fn reuse_source(&mut self,revision:(u64,bool,bool),request:&str)->Result<Option<(Vec<u8>,usize,usize,usize)>,String>{
         crate::render_cancellation::checkpoint()?;
         if self.source_history.is_empty() { return Ok(None); }
         let fields:serde_json::Value=serde_json::from_str(request).map_err(|e|e.to_string())?;
@@ -266,13 +337,18 @@ impl FrameSceneContext {
             frame.prefix[frame.sequence_offset..frame.sequence_offset+8].copy_from_slice(&f64::from(self.frame).to_le_bytes());
             frame.sequence=self.frame;self.frame_key=None;
         }
-        let bytes=frame.emit(&ranges)?;let nodes=frame.nodes;let authored=frame.authored_nodes;
+        let bytes = frame.emit(&ranges)?;
+        let (compiled, authored, resolved) = (frame.nodes, frame.authored_nodes, frame.resolved_nodes);
         let frame=self.source_history.remove(index).unwrap();self.source_history.push_back(frame);
-        self.source_history_hits+=1;Ok(Some((bytes,nodes,authored)))
+        self.source_history_hits+=1;Ok(Some((bytes,compiled,authored,resolved)))
     }
-    pub(crate) fn retain_source(&mut self,revision:(u64,bool,bool),authored_nodes:usize){
+    pub(crate) fn cached_scene_nodes(&self) -> Option<usize> {
+        self.cached.as_ref().map(|frame| frame.nodes)
+    }
+    pub(crate) fn retain_source(&mut self,revision:(u64,bool,bool),authored_nodes:usize,resolved_nodes:usize){
         let Some(mut frame)=self.cached.take()else{return};
         frame.authored_nodes=authored_nodes;
+        frame.resolved_nodes=resolved_nodes;
         // replace the projection-local epoch with the complete source lineage;
         // this method is called only after demand closure and successful encode.
         frame.key.0=revision;
@@ -347,7 +423,7 @@ impl FrameSceneContext {
         let limit=self.limit().saturating_sub(self.source_history_bytes).saturating_sub(self.semantic_bytes).saturating_sub(self.cached.as_ref().map_or(0,|frame|frame.charge));
         if !self.scope.is_empty()&&bytes<=limit{
             while self.bytes+bytes>limit {let Some((_,old))=self.ages.pop_first()else{break};self.evict_transfer(&old);}
-            if kind == 4 { self.curve_transfer_keys.insert(id, key.clone()); }
+if kind == CURVE_RESOURCE { self.curve_transfer_keys.insert(id, key.clone()); }
             self.entries.insert(key.clone(),Entry{id,age:self.clock,bytes});self.ages.insert(self.clock,key);self.bytes+=bytes;
         }
         Ok((id,data))
@@ -355,7 +431,7 @@ impl FrameSceneContext {
     fn evict_transfer(&mut self,key:&Key){
         if let Some(entry)=self.entries.remove(key){
             self.bytes-=entry.bytes;
-            if key.kind == 4 { self.curve_transfer_keys.remove(&entry.id); }
+if key.kind == CURVE_RESOURCE { self.curve_transfer_keys.remove(&entry.id); }
             if let Some(source)=self.image_transfer_sources.remove(&entry.id){self.image_transfer_keys.remove(&source);}
         }
     }
@@ -450,7 +526,7 @@ impl FrameSceneContext {
             if scene.nodes.contains_key(name){true}else{self.semantic_bytes-=entry.charge;false}
         });
         let plan=scene.scene_plan();
-        let curve_spans = if !self.scope.is_empty() && curve_resources_requested(request) { curve_partition(&scene) } else { None };
+let curve_spans = if !self.scope.is_empty() && curve_resources_requested(request) { curve_partition(&scene) } else { None };
         // Scene drop would see empty buffers after these takes. Recycle the
         // allocations the encoder still owns, including when encoding fails.
         let vertices=super::scratch::RecycledF32::vertices(std::mem::take(&mut scene.vertices));
@@ -466,7 +542,7 @@ impl FrameSceneContext {
             for (slot, (first, count)) in spans.into_iter().enumerate() {
                 crate::render_cancellation::checkpoint()?;
                 let (id, data) = self.intern_curve(&curves[first..first + count], previous_curves.get(slot).copied())?;
-                record(id, 4, &data)?;
+                record(id, CURVE_RESOURCE, &data)?;
                 ids.push(id);
                 curve_ids.insert((first, count), id);
             }
@@ -572,7 +648,7 @@ impl FrameSceneContext {
         let compiled_nodes=node_resources.len();
         let (plan_id,data)=self.intern(3,frame_wire::encode(&plan)?)?;record(plan_id,3,&data)?;
         #[derive(Serialize)]#[serde(rename_all="camelCase")]
-        struct Metadata<'a>{#[serde(flatten)]scene:&'a GpuScene,resource_scope:&'a str,frame_sequence:frame_wire::FrameSequence,node_resources:Vec<(String,u32)>,scene_plan:u32,
+struct Metadata<'a>{#[serde(flatten)]scene:&'a GpuScene,resource_scope:&'a str,frame_sequence:frame_wire::FrameSequence,node_resources:Vec<(String,u32)>,scene_plan:u32,
             #[serde(skip_serializing_if="Option::is_none")] curve_resources:Option<&'a CurveResources>}
         let (metadata,sequence_offset)=frame_wire::encode_frame(&Metadata{scene:&scene,resource_scope:&self.scope,frame_sequence:frame_wire::FrameSequence(self.frame),node_resources,scene_plan:plan_id,curve_resources:curve_resources.as_ref()})?;
         let start=24usize.checked_add(metadata.len()).and_then(|n|n.checked_add(3)).map(|n|n&!3).ok_or("GPU frame too large")?;
@@ -590,7 +666,7 @@ impl FrameSceneContext {
             append_resource(&mut bytes, id, kind, &data)?;
         }
         crate::render_cancellation::checkpoint()?;
-        if let Some(key)=cache_key {
+                if let Some(key)=cache_key {
             let charge=resource_charge.saturating_add(prefix_len).saturating_add(key.1.capacity()).saturating_add(256);
             if charge.saturating_add(self.semantic_bytes)<=cache_limit {
                 while self.source_history_bytes.saturating_add(self.semantic_bytes).saturating_add(charge)>cache_limit && !self.source_history.is_empty(){self.evict_source_frame();}
@@ -605,7 +681,7 @@ impl FrameSceneContext {
                     resource_wire_bytes += 9 + data.len();
                 }
                 let resource_bounds = (!resources.is_empty()).then_some((min_id, max_id));
-                self.cached=Some(EncodedFrame{key,prefix,resources,resource_bounds,resource_wire_bytes,charge,sequence_offset:24+sequence_offset,sequence:self.frame,nodes:compiled_nodes,authored_nodes:compiled_nodes});
+                self.cached=Some(EncodedFrame{key,prefix,resources,resource_bounds,resource_wire_bytes,charge,sequence_offset:24+sequence_offset,sequence:self.frame,nodes:compiled_nodes,authored_nodes:0,resolved_nodes:0});
             }
         }
         Ok(bytes)
@@ -650,13 +726,21 @@ impl crate::Engine {
         let fields:serde_json::Value=serde_json::from_str(options).map_err(|e|e.to_string())?;
         let object=fields.as_object().ok_or("Render options must be an object")?;
         let semantic=object.iter().filter(|(key,_)|key.as_str()!="frameResources").collect::<BTreeMap<_,_>>();
+        let clipped_pose_transport = !self.frame_scene.scope.is_empty() && fields.get("captureViewport").is_some() &&
+            fields.get("rasterProfile").and_then(serde_json::Value::as_str) == Some("analytic") &&
+            fields.get("frameResources").and_then(|value| value.get("clippedPoseTransport"))
+                .and_then(serde_json::Value::as_bool) == Some(true);
+        // Release can cancel a superseded packet for the same clipped lane.
+        // Keep its established index eligibility until the lane's contract
+        // changes, so that cancellation cannot force a whole-page rebuild.
+        self.frame_scene.clipped_pose_transport &= clipped_pose_transport;
         let request_key=if !self.frame_scene.scope.is_empty()&&fields.get("animation").is_none_or(serde_json::Value::is_null){
-            let mut key=serde_json::to_string(&semantic).map_err(|e|e.to_string())?;
-            if curve_resources_requested(Some(&fields)) { key.push('\0'); }
+let key=packet_request_key(&semantic,&fields)?;
             (key.len()<=65536).then_some(key)
         }else{None};
         if let (Some(revision),Some(key))=(self.static_scene_revision(),request_key.as_ref()) {
             if let Some(bytes)=self.frame_scene.reuse(&(revision,key.clone()),&fields)?{
+                self.frame_scene.clipped_pose_transport = clipped_pose_transport;
                 return self.deliver_scene_packet(&fields, bytes, 0., 0.);
             }
         }
@@ -690,8 +774,12 @@ impl crate::Engine {
             return self.deliver_scene_packet(&fields, raw, compile_ms, packet_millis(encode_started));
         }
         self.frame_scene.pending_request=request_key.and_then(|key|self.static_scene_revision().map(|revision|(revision,key)));
-        let raw=self.frame_scene.encode_with_curves(scene,Some(&fields),self.geo_revision,&previous_curves)?;
+let encoded=self.frame_scene.encode_with_curves(scene,Some(&fields),self.geo_revision,&previous_curves);
+        if encoded.is_ok() {
+            self.frame_scene.clipped_pose_transport = clipped_pose_transport;
+        }
         self.reserve_render_cache_bytes();
+        let raw=encoded?;
         self.deliver_scene_packet(&fields, raw, compile_ms, packet_millis(encode_started))
     }
 }
@@ -705,6 +793,35 @@ impl crate::Engine {
             "nodes":{"r":{"id":"r","kind":"ellipse","width":30,"height":20,"fills":[{"kind":"solid","color":"#123456"}]}}}).to_string()).unwrap();
         let options=json!({"pageId":"p","width":64,"height":64,"view":{"x":0.125,"y":0.375,"zoom":1.3},"rasterProfile":"figmaSubpixel"}).to_string();
         (engine,options)
+    }
+    #[test]
+    fn canceled_clipped_packet_preserves_index_eligibility_for_the_terminal_pose() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let (mut engine, options) = fixture();
+        engine.bind_frame_scene_scope("clipped-pose").unwrap();
+        let mut request: serde_json::Value = serde_json::from_str(&options).unwrap();
+        request["rasterProfile"] = json!("analytic");
+        request["captureViewport"] = json!({"x":0,"y":0,"w":64,"h":64});
+        request["frameResources"] = json!({"clippedPoseTransport":true});
+        engine.compile_gpu_packet_request(&request.to_string()).unwrap();
+        assert!(engine.frame_scene.clipped_pose_transport());
+
+        let canceled = Arc::new(AtomicBool::new(false));
+        let probe = Arc::clone(&canceled);
+        request["view"]["x"] = json!(1.125);
+        let result = crate::render_cancellation::with_probe(move || probe.load(Ordering::Relaxed), || {
+            engine.compile_gpu_packet_request_checked(&request.to_string(), |_| {
+                canceled.store(true, Ordering::Relaxed);
+                Ok(())
+            })
+        });
+        assert_eq!(result.unwrap_err(), "PREVIEW_CANCELLED");
+        assert!(engine.frame_scene.clipped_pose_transport());
+
+        request["frameResources"] = json!({});
+        engine.compile_gpu_packet_request(&request.to_string()).unwrap();
+        assert!(!engine.frame_scene.clipped_pose_transport());
     }
     #[test]
     fn source_demand_recovers_after_full_overview_fills_transfer_cache() {
@@ -729,13 +846,18 @@ impl crate::Engine {
             let local=json!({"pageId":"page","width":64,"height":64,"view":{"x":-480,"y":-480,"zoom":1},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":64,"h":64}});
             runtime.compile(&mut engine,&descriptor,"stage","page",&local.to_string()).unwrap();
             assert_eq!(runtime.stats["mode"],"demand","{}",runtime.stats);
-            assert_eq!(runtime.stats["resolvedCompileNodes"],2);
+            assert_eq!(runtime.stats["residentAuthoredNodes"], 2);
+            assert_eq!(runtime.stats["compiledSceneNodes"], 2);
+            let resolved = runtime.stats["resolvedCompileNodes"].clone();
             assert_eq!(engine.frame_scene.scope,"overview-return");
             assert!(engine.frame_scene.next>next,"eviction must not reuse wire IDs");
             assert!(engine.frame_scene.bytes()+runtime.stats["contextMarginBytes"].as_u64().unwrap() as usize<=64*1024*1024);
             runtime.compile(&mut engine,&descriptor,"stage","page",&local.to_string()).unwrap();
             assert_eq!(runtime.stats["projectionRebuilds"],1);
             assert_eq!(runtime.stats["projectionReuses"],1);
+            assert_eq!(runtime.stats["residentAuthoredNodes"], 2);
+            assert_eq!(runtime.stats["compiledSceneNodes"], 2);
+            assert_eq!(runtime.stats["resolvedCompileNodes"], resolved);
         });
     }
     #[test] fn identical_static_request_returns_before_scene_compilation(){

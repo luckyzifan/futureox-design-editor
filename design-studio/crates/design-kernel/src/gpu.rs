@@ -365,7 +365,7 @@ impl CachedProgram {
         use std::hash::{Hash, Hasher};
         let mut hash = std::collections::hash_map::DefaultHasher::new();
         program.data.len().hash(&mut hash);
-        // On little-endian machines the coverage word stream already has
+// On little-endian machines the coverage word stream already has
         // the bytes consumed by write_u32, including signed zero.
         #[cfg(target_endian = "little")]
         hash.write(bytemuck::cast_slice(&program.data));

@@ -57,6 +57,7 @@ export function ResidentCompositeSurface(props: {
   sourceDocument: DesignDocument
   contentRevision: number
   translationItems: CompositeItem[]
+  clippedTranslationItems?: CompositeItem[]
   allowPageTranslation: boolean
   onGone: (key: string, serial: number) => void
   onError?: (key: string, serial: number, message: string) => void
@@ -64,8 +65,10 @@ export function ResidentCompositeSurface(props: {
   terminalQuality?: ResidentFrame['terminalQuality']
   presentation: PresentedFrame | null
   allowPanPreview?:boolean
-  /** Zoom of the picture already on screen, when this surface has not accepted one yet. */
+/** Zoom of the picture already on screen, when this surface has not accepted one yet. */
   retainedZoom?: number
+  panGestureActive?:boolean
+  livePanCamera?:SurfaceProps['livePanCamera']
   preserveZoomBasis?: boolean
   zoomInputActive?: boolean
   overview?: import('../model').Bounds
@@ -102,6 +105,7 @@ export function ResidentCompositeSurface(props: {
   const inputScope=useRef(crypto.randomUUID()),inputOwner=useRef('')
   const lastFrameSignature = useRef('')
   const deferredZoomSubmission = useRef(false)
+  const panDelivery = useRef<{handle:number; client:KernelClient; frame:ResidentAcknowledgement; source?:PresentedFrame; device?:ViewportPreviewDevice}|undefined>(undefined)
   const presentation = useRef(new ResidentPresentation())
   const actualPresentation=useRef<ResidentAcknowledgement|undefined>(undefined)
   const acceptedChrome=useRef<{source:PresentedFrame;actual:ResidentAcknowledgement;client:KernelClient}|undefined>(undefined)
@@ -114,7 +118,7 @@ export function ResidentCompositeSurface(props: {
     props.presentation?.animation])
   const currentHistoryScope = useRef(historyScope)
   currentHistoryScope.current = historyScope
-  const panOwner = props.navigationInputOwner as PanFollowOwner | undefined
+const panOwner = props.navigationInputOwner as PanFollowOwner | undefined
   const projectLivePan=(live: CanvasCamera)=>{
     const committed = latest.current.view
     if (!coalescedSameZoomPan(live, committed)) return
@@ -135,8 +139,32 @@ export function ResidentCompositeSurface(props: {
   const projectLivePanRef = useRef(projectLivePan)
   projectLivePanRef.current = projectLivePan
   useEffect(() => subscribeCoalescedPan(panOwner, view => projectLivePanRef.current(view)), [panOwner])
+  const cancelPanDelivery = () => {
+    if(panDelivery.current)cancelAnimationFrame(panDelivery.current.handle)
+    panDelivery.current=undefined
+  }
+  const publishCameraFrame = (frame: ResidentAcknowledgement,source?: PresentedFrame,device?: ViewportPreviewDevice) => {
+    const p=latest.current
+    if (import.meta.env.VITE_DESIGN_PAN_COALESCE_ACK === '1' && p.panGestureActive && !frame.interaction && source) {
+      const existing=panDelivery.current
+      if(existing){Object.assign(existing,{client:p.client,frame,source,device});return}
+      const handle=requestAnimationFrame(()=>{
+        const delivered=panDelivery.current,next=latest.current
+        panDelivery.current=undefined
+        const owner=delivered?.source
+        if (delivered?.client===next.client && owner && next.panGestureActive && owner.document===next.sourceDocument &&
+            owner.pageId===next.pageId && owner.epoch===next.presentation?.epoch) next.onPresented?.(delivered.frame,owner,delivered.device)
+      })
+      panDelivery.current={handle,client:p.client,frame,source,device}
+      return
+    }
+    cancelPanDelivery()
+    p.onPresented?.(frame,source,device)
+  }
   const projectCamera=(newBacking=false)=>{
     const p=latest.current,backing=acceptedCamera.current
+    const live = p.panGestureActive && p.livePanCamera?.effectiveView()
+    const view = live && live.zoom === p.view.zoom ? live : p.view
     const allowed=atomicCanvas.current&&p.allowPanPreview===true&&!!backing&&
       backing.client===p.client&&backing.source.document===p.sourceDocument&&backing.source.pageId===p.pageId&&
       backing.source.epoch===p.presentation?.epoch&&backing.source.rasterProfile===p.rasterProfile&&
@@ -147,22 +175,24 @@ export function ResidentCompositeSurface(props: {
     // Starting an edit must not suddenly undo a projection of the still-visible
     // backing. Freeze that projection until a worker receipt replaces its basis;
     // never publish new camera/content authority across this boundary.
-    const projection = cameraProjection.current
+const projection = cameraProjection.current
     projection?.history.bind(currentHistoryScope.current)
+    if (canvas.current && p.livePanCamera)
+      canvas.current.style.willChange = p.panGestureActive && allowed ? 'transform' : ''
     if (p.overviewPresentation) p.overviewPresentation.current = undefined
     if(!allowed&&!newBacking)return
-    const projected = projection?.update(backing?.actual,p.view,p.width,p.height,allowed,p.overview)
-    if (p.overviewPresentation && allowed && projected?.active && p.overview && allowsReducedSampling(p.view.zoom) &&
+    const projected = projection?.update(backing?.actual,view,p.width,p.height,allowed,p.overview)
+    if (p.overviewPresentation && allowed && projected?.active && p.overview && allowsReducedSampling(view.zoom) &&
         projection?.history.canProject(backing.actual, p, p.overview)) {
       p.overviewPresentation.current = { client: p.client, document: p.sourceDocument, pageId: p.pageId, revision: p.contentRevision,
-        view: p.view, width: p.width, height: p.height, dpr: p.dpr }
+        view, width: p.width, height: p.height, dpr: p.dpr }
     }
     // A render of the committed camera must not pull the picture back over a
     // newer same-zoom sample that has not reached this snapshot yet.
-    const live = panOwner?.effectiveView?.()
-    if (live && projection && backing && allowed && coalescedSameZoomPan(live, p.view))
-      projection.update(backing.actual, live, p.width, p.height, true, p.overview)
-    return { ...projected, allowed }
+    const followed = !p.livePanCamera ? panOwner?.effectiveView?.() : undefined
+    if (followed && projection && backing && allowed && coalescedSameZoomPan(followed, p.view))
+      projection.update(backing.actual, followed, p.width, p.height, true, p.overview)
+    return { ...projected, allowed, view }
   }
   repaint.current = () => {
     if (!attached.current) return
@@ -179,7 +209,9 @@ export function ResidentCompositeSurface(props: {
       if(canvas.current){canvas.current.dataset.inputTrace='[]';canvas.current.dataset.contentSequence='0'}
     }
     p.client.presentationInputOwner=owner
-    const all = [...p.items.map((i) => i.tile), ...(moving?.tiles || [])]
+    const warmClipped = import.meta.env.VITE_DESIGN_CLIPPED_IDLE_CAPTURE === '1' && moving === pageTranslation.current
+      ? interaction.current?.tiles.filter(tile=>!!tile.gpuTile) : undefined
+    const all = [...p.items.map((i) => i.tile), ...(moving?.tiles || []), ...(warmClipped || [])]
     const keep = new Set(all.map((t) => t.serial)),
       keepGpu = new Set(all.map((t) => t.gpuTile)),
       release = new Set<number>()
@@ -222,8 +254,8 @@ export function ResidentCompositeSurface(props: {
     if(projected?.active&&projected.changed&&camera&&!moved){
       // This receipt describes a DOM projection of previously accepted pixels,
       // not a new worker submission. Exact readiness explicitly excludes it.
-      const actual={...camera.actual,view:p.view,width:p.width,height:p.height,dpr:p.dpr,preview:true}
-      p.onPresented?.(actual,{...camera.source,view:p.view,width:p.width,height:p.height,pixelRatio:p.dpr,preview:true},camera.device)
+      const actual={...camera.actual,view:projected.view,width:p.width,height:p.height,dpr:p.dpr,preview:true}
+      publishCameraFrame(actual,{...camera.source,view:projected.view,width:p.width,height:p.height,pixelRatio:p.dpr,preview:true},camera.device)
     }
     const items =
       moved && moving?.mode === 'live-kernel'
@@ -309,6 +341,7 @@ export function ResidentCompositeSurface(props: {
         height: p.height,
         dpr: p.dpr,
         interaction: !!moved,
+        panGesture: import.meta.env.VITE_DESIGN_PAN_BITMAP_PIPELINE === '1' && !moved && p.panGestureActive || undefined,
         gestureGuides:!!p.interaction?.active && p.interaction.gestureKind === 'move',
         allowEmpty: !!moved && moving === interaction.current && moving?.mode !== 'live-kernel',
         cameraPreview: panPreview ? { anchor: p.items.find(item => item.tile.gpuTile)?.tile.gpuTile || 0 } : undefined,
@@ -405,6 +438,11 @@ export function ResidentCompositeSurface(props: {
       // and camera were already staged while the wide basis was held.
       lastFrameSignature.current='';repaint.current()
     })
+    const stopPanProjection = p.livePanCamera?.subscribeCamera(() => {
+      // The editor publishes the pointer camera before its coalesced React
+      // commit. Move only the already acknowledged bitmap on this task.
+      if (latest.current.panGestureActive && canvas.current === el && !document.hidden) projectCamera()
+    })
     const unregisterContent=registerContentPlane(el,{
       pixel:(u,v)=>actualPresentation.current?p.client.readContentPixel(u,v,actualPresentation.current):Promise.reject(Error('当前画面尚未同步')),
       capture:async()=>{const resolveSnapshot=presentation.current.snapshotResolver()
@@ -417,7 +455,7 @@ export function ResidentCompositeSurface(props: {
       attached.current = true
       p.client.onPresentation = (stats) => {
         const bitmap=stats.bitmap as ImageBitmap|undefined
-        let bitmapApplied=false
+        let bitmapApplied=false, bitmapAcknowledged=false
         try {
         const deferredInput = stats.input as ResidentFrame['input']
         if (stats.interactionCoverageMissing && deferredInput?.owner === inputOwner.current && usePageTranslation.current)
@@ -481,7 +519,14 @@ export function ResidentCompositeSurface(props: {
           if (bitmap && keepCompleteCameraBacking(previous,actual,canProject,
               nav?.zooming || target.preserveZoomBasis && target.zoomInputActive,
               target,nav?.history.completeFrame,target.preserveZoomBasis)) return
-          if(bitmap&&bitmapContext){consumePresentationBitmap(bitmapContext,el,bitmap);bitmapApplied=true}
+          if(bitmap&&bitmapContext){
+            consumePresentationBitmap(bitmapContext,el,bitmap)
+            bitmapApplied=true
+            if (import.meta.env.VITE_DESIGN_PAN_BITMAP_PIPELINE === '1' && latest.current.panGestureActive) {
+              p.client.acceptPresentation?.(actual.presentationToken,true)
+              bitmapAcknowledged=true
+            }
+          }
           actualPresentation.current=actual
           acceptedChrome.current=source?.gpuOverlay&&actual.gpuOverlay?{source,actual,client:p.client}:undefined
           // Use the exact displayed input and its owner, not the latest pointer
@@ -499,16 +544,17 @@ export function ResidentCompositeSurface(props: {
             cameraProjection.current?.history.bind(undefined)
           acceptedCamera.current=source?{source,actual,client:p.client,device:deviceOwner}:undefined
           const projected=projectCamera(true),current=latest.current
-          const captureHistory = bitmapApplied && projected?.allowed && source ? cameraProjection.current?.history : undefined
+const captureHistory = bitmapApplied && projected?.allowed && source ? cameraProjection.current?.history : undefined
           const captureScope = currentHistoryScope.current
-          captureHistory?.capture(el, actual, current.overview)
+          if (!(import.meta.env.VITE_DESIGN_PAN_COALESCE_ACK === '1' && current.panGestureActive))
+            captureHistory?.capture(el, actual, current.overview)
           flushSync(() => {
             if(input?.sequence&&!usePageTranslation.current)
               interaction.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,true,actual.ids)
             if(input?.sequence&&usePageTranslation.current)
               pageTranslation.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,actual.ids)
-            latest.current.onPresented?.(projected?.active?{...actual,view:current.view,width:current.width,height:current.height,dpr:current.dpr,preview:true}:actual,
-              projected?.active&&source?{...source,view:current.view,width:current.width,height:current.height,pixelRatio:current.dpr,preview:true}:source,deviceOwner)
+            publishCameraFrame(projected?.active?{...actual,view:projected.view,width:current.width,height:current.height,dpr:current.dpr,preview:true}:actual,
+              projected?.active&&source?{...source,view:projected.view,width:current.width,height:current.height,pixelRatio:current.dpr,preview:true}:source,deviceOwner)
           })
           const latestView = latest.current
           if(captureHistory && captureHistory === cameraProjection.current?.history &&
@@ -518,7 +564,7 @@ export function ResidentCompositeSurface(props: {
         }
         } catch(error){latest.current.onFailure(String(error))} finally {
           bitmap?.close()
-          if(bitmap)p.client.acceptPresentation?.((stats.presented as ResidentAcknowledgement|undefined)?.presentationToken,bitmapApplied)
+          if(bitmap&&!bitmapAcknowledged)p.client.acceptPresentation?.((stats.presented as ResidentAcknowledgement|undefined)?.presentationToken,bitmapApplied)
         }
       }
       interaction.current = new InteractionRenderer(() => repaint.current(), p.client, renderExecutionPolicy.desktopDisplay, undefined, trace.current!)
@@ -526,10 +572,16 @@ export function ResidentCompositeSurface(props: {
         const p = latest.current, renderer = interaction.current
         if (!p.interaction || !renderer) return null
         usePageTranslation.current = false; interactionStarted.current = true
-        // Warm at the last displayed pose, so a fractional move never falls
-        // back to the unshifted page while its native GPU sample is pending.
-        renderer.prepare({ ...p.interaction, document: displayed }, p.pageId, p.view, p.dpr,
-          p.rasterProfile, p.backend, p.settledDocument, { width: p.width, height: p.height })
+        const camera = { view: p.view, width: p.width, height: p.height, dpr: p.dpr }
+        const clipped = pageTranslation.current?.ownsClippedSource(displayed, p.pageId, camera) &&
+          p.rasterProfile === 'analytic' && p.backend === 'webgpu'
+        // Keep the original capture and sample origin for the native pose.
+        // A certified clipped board already has complete canvas coverage.
+        if (clipped) p.client.cancelTileFill()
+        renderer.prepare({ ...p.interaction, document: displayed,
+          ...(clipped ? { clippedBoardHandoff: true } : {}) }, p.pageId, p.view, p.dpr,
+          p.rasterProfile, p.backend, clipped ? displayed : p.settledDocument, { width: p.width, height: p.height },
+          clipped ? p.overlay : undefined)
         return renderer.control.apply(document, patches, undefined, guides)
       }, p.client.presentationDiagnosticsEnabled?.() ? fields=>latest.current.client.recordViewportDiagnostic(fields) : undefined,
         (source,offset,sequence,failed,region)=>latest.current.onTranslatedCoverage?.(source,offset,sequence,failed,region)===true)
@@ -538,7 +590,9 @@ export function ResidentCompositeSurface(props: {
     }
     return () => {
       unregisterContent()
-      if (p.overviewPresentation) p.overviewPresentation.current = undefined
+if (p.overviewPresentation) p.overviewPresentation.current = undefined
+      stopPanProjection?.()
+      cancelPanDelivery()
       interactionStarted.current = false
       presentation.current = new ResidentPresentation()
       actualPresentation.current=undefined
@@ -568,7 +622,7 @@ export function ResidentCompositeSurface(props: {
       el.remove()
       if (canvas.current === el) canvas.current = null
     }
-  }, [props.client])
+  }, [props.client, props.livePanCamera])
   useLayoutEffect(() => {
     const p = latest.current
     if (canvas.current) {
@@ -590,10 +644,22 @@ export function ResidentCompositeSurface(props: {
         p.allowPageTranslation,
         renderExecutionPolicy.desktopDisplay&&p.rasterProfile==='figmaSubpixel'&&import.meta.env.VITE_DESIGN_RETAINED_TRANSLATION!=='0',
         renderExecutionPolicy.desktopDisplay && import.meta.env.VITE_DESIGN_RETAINED_TRANSLATION!=='0'
-          ? { view: p.view, width: p.width, height: p.height } : undefined,
+          ? { view: p.view, width: p.width, height: p.height, dpr: p.dpr } : undefined,
+        p.clippedTranslationItems,
       ) === true
     if (usePageTranslation.current) {
-      interaction.current?.prepare(undefined, p.pageId, p.view, p.dpr, p.rasterProfile, p.backend)
+      const canWarmClipped = import.meta.env.VITE_DESIGN_CLIPPED_IDLE_CAPTURE === '1' &&
+        !!p.interaction && !p.interaction.navigating && p.sourceDocument === p.interaction.document &&
+        p.settledDocument === p.sourceDocument && p.rasterProfile === 'analytic' && p.backend === 'webgpu' &&
+        pageTranslation.current?.ownsClippedSource(p.sourceDocument, p.pageId,
+          { view: p.view, width: p.width, height: p.height, dpr: p.dpr })
+      if (canWarmClipped && p.interaction) {
+        // The ordinary retained pixels still own the selection. Warm the
+        // exact native slot underneath them for the first fractional move.
+        interaction.current?.prepare({ ...p.interaction, active: false, clippedBoardHandoff: true },
+          p.pageId, p.view, p.dpr, p.rasterProfile, p.backend, p.settledDocument,
+          { width: p.width, height: p.height }, p.overlay)
+      } else interaction.current?.prepare(undefined, p.pageId, p.view, p.dpr, p.rasterProfile, p.backend)
       pageTranslation.current?.bind()
     } else if (interactionStarted.current || p.settledDocument || p.interaction?.active) {
       interactionStarted.current = true
@@ -609,6 +675,7 @@ export function ResidentCompositeSurface(props: {
         p.overlay,
       )
     }
+    if (!p.panGestureActive) cancelPanDelivery()
     repaint.current()
   }, [
     props.items,
@@ -625,10 +692,12 @@ export function ResidentCompositeSurface(props: {
     props.rasterProfile,
     props.sourceDocument,
     props.translationItems,
+    props.clippedTranslationItems,
     props.allowPageTranslation,
     props.overlay,
     props.presentation,
     props.allowPanPreview,
+    props.panGestureActive,
     props.preserveZoomBasis,
     props.zoomInputActive,
     props.panBacking,

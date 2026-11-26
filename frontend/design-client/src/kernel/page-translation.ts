@@ -1,6 +1,7 @@
 import type { CanvasCamera } from '../canvas-camera'
 import type { Bounds, DesignDocument } from '../model'
 import { validColor } from '../color'
+import { boardViewportBounds, clippedBoardSource, containsBoardSource, sameBoardViewport, visibleBoardSource, type BoardViewport } from './clipped-board-drag'
 import { translateOverlay, type CanvasOverlay } from './gpu/canvas-overlay'
 import { tilesCoverBounds } from './tile-cache'
 import type { CompositeItem, CompositeTile } from './gpu/tile-compositor'
@@ -58,6 +59,9 @@ export class PageTranslation {
   private residents: CompositeTile[] = []
   private active = false
   private phaseRevoked = false
+  private clippedInputClosed = false
+  private releaseCamera?: BoardViewport
+  private boardCommit?: { document: DesignDocument; camera: BoardViewport }
   private fractional = false
   private feedback = new PoseFeedback()
   private offset = { x: 0, y: 0 }
@@ -65,11 +69,11 @@ export class PageTranslation {
   private input: InteractionInput = { sequence: 0, at: 0 }
   private pendingPose?: { document: DesignDocument; patches: Parameters<GpuMoveControl['apply']>[1] }
   private board?: Bounds
-  private tracking = false
+private tracking = false
   private readonly fillToken = ++boardFillTokens
   private boardFillSequence = 0
   private coveredMisses = 0
-  private srgbBoard?: { others: Bounds[]; viewport: Bounds; shown: { x: number; y: number } }
+  private srgbBoard?: { others: Bounds[]; viewport: Bounds; camera: BoardViewport; shown: { x: number; y: number }; clipped?: { source: Bounds; camera: BoardViewport } }
   private checkedDocument?: DesignDocument
   private checkedOffset: { x: number; y: number } | null = null
   moves = 0
@@ -77,7 +81,7 @@ export class PageTranslation {
   readonly warming = false
   readonly error = ''
   lastEnd = ''
-  get mode() { return this.board ? 'retained-board' : 'retained-page' }
+  get mode() { return this.srgbBoard?.clipped ? 'retained-clipped-board' : this.board ? 'retained-board' : 'retained-page' }
   readonly lastSampleMs = 0
   readonly lastSampleCompileMs = 0
   readonly lastSampleGraphMs = 0
@@ -90,6 +94,11 @@ export class PageTranslation {
   ) => ReturnType<GpuMoveControl['apply']>, private reportPhase?: (fields:Record<string,number>)=>void,
     private fillCoverage?: (source:DesignDocument,offset:{x:number;y:number},sequence:number,failed:()=>void,region?:Bounds)=>boolean) {}
   get handingOff() { return this.phaseRevoked }
+  ownsClippedSource(document: DesignDocument, pageId: string, camera: BoardViewport) {
+    const clipped = this.srgbBoard?.clipped
+    return !!clipped && !this.clippedInputClosed && this.plan?.document === document &&
+      this.plan.pageId === pageId && sameBoardViewport(clipped.camera, camera)
+  }
   get backgroundTranslation() { return this.board ? undefined : { ...this.offset } }
   get backgroundBoard() {
     if (!this.srgbBoard || !this.board) return
@@ -105,7 +114,7 @@ export class PageTranslation {
    * retired owner, and a pointer-up does not. */
   repairMissingCoverage(sequence: number) {
     const pending = this.pendingPose
-    if (!this.active || this.phaseRevoked || sequence !== this.input.sequence || !pending) return false
+    if (!this.active || this.phaseRevoked || this.clippedInputClosed || sequence !== this.input.sequence || !pending) return false
     // An uncommitted whole-page translation can fill the missing original
     // world tiles through the canvas's existing owner/budget/queue. No document
     // patch or enlarged capture is needed. A clipped board uses that same
@@ -129,7 +138,7 @@ export class PageTranslation {
     this.rebase(pending.document, pending.patches)
     return true
   }
-  private requestBoardFill() {
+private requestBoardFill() {
     const owner = this.plan, board = this.board
     if (!owner || !board || !this.tracking || this.phaseRevoked || tilesCoverBounds(this.residents, board)) return false
     if (!this.boardFillSequence) this.boardFillSequence = this.fillToken
@@ -144,15 +153,18 @@ export class PageTranslation {
       [offset.x * tile.zoom, offset.y * tile.zoom].every(Number.isSafeInteger))
   }
   private reusableOffset(offset: { x: number; y: number }) {
-    // A clipped board's texels belong to one sample lattice. Both axes must
-    // land on whole physical pixels before those texels can move. A fractional
-    // axis keeps the last accepted frame and asks native to rasterize the real
-    // pose on that same camera lattice. Whole-page desktop reprojection is
-    // unchanged.
-    if (this.board) return this.integerPhysicalOffset(offset)
+    // A fractional page translation or a clipped finite window keeps its
+    // texels on one sample lattice and must hand off to native when an axis
+    // leaves whole physical pixels. A fully visible isolated sRGB board may
+    // use its exact release bands at fractional offsets.
+    const worldInteger = Number.isSafeInteger(offset.x) && Number.isSafeInteger(offset.y)
+    if (this.board && (this.fractional || !this.srgbBoard || this.srgbBoard.clipped || !worldInteger))
+      return this.integerPhysicalOffset(offset)
+    if (this.srgbBoard) return this.residents.length > 0
     return this.residents.length > 0 && (this.fractional || this.integerPhysicalOffset(offset))
   }
   private rebase(document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1], guides=this.input.guides) {
+if (this.clippedInputClosed) return null
     this.tracking = false
     this.phaseRevoked = true
     if(this.reportPhase){
@@ -164,7 +176,10 @@ export class PageTranslation {
         error=Math.max(error,Math.abs(shift-Math.round(shift)))
       this.reportPhase({retainedPhaseRejects:1,retainedPhaseSamples:this.residents.length*2,retainedPhaseError:error})
     }
-    return this.fractionalPose?.(document, patches, this.displayedDocument(), guides) ?? null
+    // The clipped gesture still displays its last native texture while the
+    // renderer takes over. Use the original authored snapshot for derivation.
+    const source = this.srgbBoard?.clipped ? this.plan!.document : this.displayedDocument()
+    return this.fractionalPose?.(document, patches, source, guides) ?? null
   }
   private displayedDocument() {
     const document = this.plan!.document
@@ -180,6 +195,12 @@ export class PageTranslation {
         return [id, { ...node, transform }]
       })),
     } }
+  }
+  private clippedPoseCovered(offset: { x: number; y: number }) {
+    const clip = this.srgbBoard?.clipped
+    if (!clip || !this.board || !this.srgbBoard) return true
+    const source = visibleBoardSource(this.board, this.srgbBoard.viewport, offset)
+    return !source || containsBoardSource(clip.source, source)
   }
   private overlapsStationary(offset: { x: number; y: number }) {
     if (!this.board || !this.srgbBoard) return false
@@ -206,7 +227,17 @@ export class PageTranslation {
       : null
   }
   readonly control: GpuMoveControl = {
+    releaseInput: (gesture) => {
+      if (this.srgbBoard?.clipped) this.clippedInputClosed = true
+      if (gesture === 'move' && this.active && !this.phaseRevoked)
+        this.releaseCamera = this.srgbBoard?.camera
+    },
     isActive: () => this.active,
+    boardCommit: (doc, pageId, camera) => {
+      const commit = this.boardCommit
+      return commit?.document === doc && this.plan?.pageId === pageId &&
+        sameBoardViewport(commit.camera, camera)
+    },
     guidesInSurface:()=>true,
     feedbackPending:()=>true,
     inputSequence:()=>this.input.sequence,
@@ -216,7 +247,7 @@ export class PageTranslation {
       ids.every((id) => this.plan!.ids.includes(id)) &&
       !!this.delta(document),
     apply: (document, patches, _trace, guides) => {
-      if (!this.plan || Object.keys(patches).some((id) => !this.plan!.ids.includes(id))) return null
+      if (this.clippedInputClosed || !this.plan || Object.keys(patches).some((id) => !this.plan!.ids.includes(id))) return null
       if (!this.delta(document)) return null
       // The editor document is immutable during a retained move. Validate it
       // once by identity; pointer samples only need the selected transforms.
@@ -235,10 +266,10 @@ export class PageTranslation {
       // A visible overlap needs native painter order. Motion beyond the edge
       // of the viewport does not invalidate this composition.
       if (this.overlapsStationary(offset)) return this.rebase(document, patches, guides)
-      // Whole-page desktop motion may reproject full-density texels. Clipped
-      // boards require an integer physical phase on both axes. Final readiness
-      // always belongs to the committed native page, not this pose.
-      if (!this.reusableOffset(offset)) return this.rebase(document, patches, guides)
+// A clipped crop preserves antialiasing coverage only on its native pixel
+      // lattice. Fractional poses require the existing native renderer; final
+      // readiness always belongs to the committed native page, not this pose.
+      if (!this.clippedPoseCovered(offset) || !this.reusableOffset(offset)) return this.rebase(document, patches, guides)
       const id = this.plan.ids[0],
         before = document.nodes[id].transform,
         after = patches[id]?.transform || before
@@ -261,11 +292,23 @@ export class PageTranslation {
       this.tracking = false
       this.input = { ...this.input, guides:undefined }
       this.feedback.clear()
+      const clipped = this.srgbBoard?.clipped
+      const camera = clipped?.camera ?? this.releaseCamera
+      this.releaseCamera = undefined
+      if (clipped) this.clippedInputClosed = true
       if (!this.active || this.phaseRevoked) return
       const offset = this.delta(document)
-      if (offset && !this.reusableOffset(offset)) { this.rebase(document, {}); return }
+      if (offset && (!this.clippedPoseCovered(offset) || !this.reusableOffset(offset))) {
+        if (this.clippedInputClosed) {
+          this.clear()
+          this.changed()
+        } else this.rebase(document, {})
+        return
+      }
       this.active = !!offset && (offset.x !== 0 || offset.y !== 0)
       if (offset) this.offset = offset
+      if (this.active && camera) this.boardCommit = { document, camera }
+      else if (!this.active || this.boardCommit?.document !== document) this.boardCommit = undefined
       this.lastEnd = offset ? `${offset.x},${offset.y}` : 'content-changed'
       this.changed()
     },
@@ -278,15 +321,31 @@ export class PageTranslation {
     settled: DesignDocument | undefined,
     allowed: boolean,
     fractional=false,
-    camera?: { view: CanvasCamera; width: number; height: number },
+    camera?: BoardViewport,
+    clippedItems?: CompositeItem[],
   ) {
     if(this.fractional!==fractional){this.clear();this.fractional=fractional}
+    // A second drag can start before the committed frame arrives. The old
+    // clipped pose must not become the source of that new gesture.
+    if (this.clippedInputClosed && props?.active && this.props?.active === false) this.clear()
+    if (props?.active && this.props?.active === false) this.boardCommit = undefined
     if (this.phaseRevoked) {
       // React refreshes during imperative input still refer to the old
       // authored document. Do not rebind its invalid pixel fast path.
       if (this.plan && props?.epoch === this.epoch && source === this.plan.document &&
           props?.selection.length === this.plan.ids.length && props.selection.every(id => this.plan!.ids.includes(id))) return false
       this.clear()
+    }
+    // Pointer down temporarily replaces the viewport plan before the first
+    // move. Keep the prepared pixel owner while this is still its exact view.
+    const prepared = this.srgbBoard?.clipped
+    if (!this.active && prepared && camera && sameBoardViewport(prepared.camera, camera) &&
+        this.ready && allowed && props?.active && props.figmaBoardPreview &&
+        this.epoch === props.epoch && this.plan?.pageId === pageId &&
+        this.plan.document === source && props.document === source &&
+        props.selection.length === 1 && props.selection[0] === this.plan.ids[0]) {
+      this.props = props
+      return true
     }
     const document = this.active && this.plan ? this.plan.document : props?.document
     const page = document?.pages.find((page) => page.id === pageId)
@@ -296,12 +355,19 @@ export class PageTranslation {
     const proof = document && props?.selection.length === 1
       ? opaqueBoardProof(document, roots, props.selection[0], allowSrgb) : undefined
     const board = proof?.box
-    const coveredBoard = !!board && (this.active && !!this.board || boardTilesCover(items.map(i => i.tile), board, camera))
+const coveredBoard = !!board && (this.active && !!this.board || boardTilesCover(items.map(i => i.tile), board, camera))
+    // A proved finite window is smaller than the full board fill and keeps the
+    // exact native lattice, so prefer it whenever the caller supplies one.
+    const clippedSource = board && proof?.srgb && camera && clippedItems?.length
+      ? clippedBoardSource(board, camera) : undefined
+    const clipped = clippedSource && tilesCoverBounds(clippedItems!.map(item => item.tile), clippedSource)
+      ? { source: clippedSource, camera: camera! } : undefined
+    if (clipped) items = clippedItems!
     const eligible =
       !!props &&
       allowed &&
       roots.length > 0 &&
-      (all || coveredBoard)
+      (all || coveredBoard || !!clipped)
     if (!eligible || this.epoch !== props?.epoch || this.plan?.pageId !== pageId) {
       this.clear()
       this.epoch = props?.epoch ?? -1
@@ -309,10 +375,13 @@ export class PageTranslation {
     if (!eligible || !props) return false
     this.props = props
     if (this.active && this.srgbBoard && camera) {
-      this.srgbBoard.viewport = viewportBounds(camera)
-      if (this.pendingPose && this.overlapsStationary(this.offset)) {
+      const supplied = this.srgbBoard.clipped?.camera
+      this.srgbBoard.viewport = boardViewportBounds(camera)
+      if (this.pendingPose && (this.overlapsStationary(this.offset) || !this.clippedPoseCovered(this.offset) ||
+        supplied && !sameBoardViewport(supplied, camera))) {
         const { document, patches } = this.pendingPose
-        this.rebase(document, patches)
+        if (this.clippedInputClosed) this.clear()
+        else this.rebase(document, patches)
         return false
       }
     }
@@ -322,18 +391,23 @@ export class PageTranslation {
         return false
       }
       if (props.active || props.document === this.plan.document) {
-        if (source === this.plan.document && items.length)
+        if (!this.srgbBoard?.clipped && source === this.plan.document && items.length)
           this.residents = items.map((item) => item.tile)
         return true
       }
       if (settled !== props.document) return true
     }
     if (settled === source && items.length) {
+      this.boardCommit = undefined
+      if (this.clippedInputClosed) {
+        this.clippedInputClosed = false
+        this.pendingPose = undefined
+      }
       this.plan = { document: source, pageId, ids: [...props.selection], layers: [] }
       this.checkedDocument = undefined
       this.board = all ? undefined : board
       this.srgbBoard = this.board && proof?.srgb && camera
-        ? { others: proof.others, viewport: viewportBounds(camera), shown: { x: 0, y: 0 } } : undefined
+        ? { others: proof.others, viewport: boardViewportBounds(camera), camera, shown: { x: 0, y: 0 }, clipped } : undefined
       this.residents = items.map((item) => item.tile)
       const offset = this.delta(props.document) || { x: 0, y: 0 }
       this.offset = { x: 0, y: 0 }
@@ -429,6 +503,9 @@ export class PageTranslation {
     this.coveredMisses = 0
     this.active = false
     this.phaseRevoked = false
+    this.clippedInputClosed = false
+    this.releaseCamera = undefined
+    this.boardCommit = undefined
     this.pendingPose = undefined
     this.offset = { x: 0, y: 0 }
   }
@@ -439,6 +516,14 @@ export class PageTranslation {
  * Transparent/overlapping/effect-dependent selections use the layer renderer. */
 export function isolatedOpaqueBoard(document: DesignDocument, roots: string[], id: string): Bounds | undefined {
   return opaqueBoardProof(document, roots, id, false)?.box
+}
+
+export function isolatedSrgbBoard(document: DesignDocument, pageId: string, id: string) {
+  if (document.colorManagement) return
+  const roots = document.pages.find(page => page.id === pageId)?.children.filter(key => document.nodes[key]?.visible)
+  if (!roots) return
+  const proof = opaqueBoardProof(document, roots, id, true)
+  return proof?.srgb ? proof.box : undefined
 }
 
 function opaqueBoardProof(document: DesignDocument, roots: string[], id: string, allowSrgb: boolean) {

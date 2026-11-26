@@ -213,6 +213,10 @@ impl Preparation {
         let engine = &mut lane.engine;
         let mut value = Value::Null; let mut bytes = Vec::new(); let mut encoding = None;
         let mut cpu_frame_mode = None;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut packet_timing = None;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut pack_pose = false;
         match method {
             "warm_resources" => (),
             "initialize" => engine.set_image_mips(args.first().and_then(Value::as_bool).ok_or("Expected mip flag")?),
@@ -267,7 +271,30 @@ impl Preparation {
             }
             "compile_gpu_packet" => {
                 #[cfg(not(target_arch = "wasm32"))]
-                {bytes=if let Some(access)=lane.source_access.as_mut(){access.compile(engine,string(0)?)?}else{engine.compile_gpu_packet_request(string(0)?)?};}
+                {
+                    use std::time::Instant;
+                    static PROFILE_PACKETS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+                    let measured = index == 1 && *PROFILE_PACKETS.get_or_init(||
+                        std::env::var("CORE_RENDER_DIAGNOSTICS").ok().as_deref() == Some("detail"));
+                    let request = string(0)?;
+                    bytes = if let Some(access) = lane.source_access.as_mut() {
+                        access.compile(engine, request)?
+                    } else if measured {
+                        let start = Instant::now();
+                        let mut geometry_ready = None;
+                        let packet = engine.compile_gpu_packet_request_checked(request, |_| {
+                            geometry_ready = Some(Instant::now());
+                            Ok(())
+                        })?;
+                        let ready = geometry_ready.unwrap_or(start);
+                        packet_timing = Some(((ready - start).as_secs_f64() * 1000.0,
+                            ready.elapsed().as_secs_f64() * 1000.0));
+                        packet
+                    } else {
+                        engine.compile_gpu_packet_request(request)?
+                    };
+                    pack_pose = index == 1 && engine.frame_scene.clipped_pose_transport();
+                }
                 #[cfg(target_arch = "wasm32")]
                 {bytes=engine.compile_gpu_packet_request(string(0)?)?;}
                 encoding = Some("u8");
@@ -316,12 +343,19 @@ impl Preparation {
         if method.starts_with("compile_gpu") {
             metadata["compileStats"] = engine.gpu_compile_cache_stats();
             #[cfg(not(target_arch = "wasm32"))]
+            if let Some((geometry, encode)) = packet_timing {
+                metadata["compileStats"]["nativeGeometryMs"] = json!(geometry);
+                metadata["compileStats"]["nativeEncodeMs"] = json!(encode);
+            }
+            #[cfg(not(target_arch = "wasm32"))]
             if let Some(access)=&lane.source_access {
                 let mut stats=access.compile_stats();
                 if let Some(cache)=stats.as_object_mut().and_then(|s|s.remove("cache")){metadata["compileStats"]=cache;}
                 metadata["compileStats"]["sourceDemand"]=stats;
             }
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        if pack_pose { metadata["packPose"] = json!(true); }
         if let Some(mode) = cpu_frame_mode { metadata["cpuFrameMode"] = json!(mode); }
         if mutation {
             let receipt = if method == "load_document" || source_load || previous.is_some() {
@@ -582,16 +616,32 @@ mod tests {
         let store=crate::scene_store::write(&path,"test:0",&doc,&[],&std::sync::atomic::AtomicBool::new(false)).unwrap();
         let descriptor=json!({"path":path,"store":store,"documentId":"cpu-preparation","pageId":"p","stageId":"stage","nodes":3});
         let mut actual=session();actual.request("canvas","load_source_snapshot",&[descriptor]).unwrap();
+        let mut expected=session();
+        expected.request("canvas","load_document",&[json!(source.to_string())]).unwrap();
         let mut query=json!({"pageId":"p","width":64,"height":64,"view":{"x":-480,"y":-480,"zoom":1},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":64,"h":64}});
-        for x in [-480,-9980,-480]{query["view"]["x"]=json!(x);let reply=actual.request("canvas","compile_gpu_packet",&[json!(query.to_string())]).unwrap();
-            assert!(matches!(reply.metadata["compileStats"]["sourceDemand"]["mode"].as_str(),Some("demand" | "demand-replay")));
-            assert_eq!(reply.metadata["compileStats"]["sourceDemand"]["resolvedCompileNodes"],2);
+        let mut resolved = None;
+        for (x, visible) in [(-480, "r"), (-9980, "cold"), (-480, "r")] {
+            query["view"]["x"] = json!(x);
+            let args = [json!(query.to_string())];
+            let reply = actual.request("canvas", "compile_gpu_packet", &args).unwrap();
+            let stats = &reply.metadata["compileStats"]["sourceDemand"];
+            assert!(matches!(stats["mode"].as_str(), Some("demand" | "demand-replay")));
+            assert_eq!(stats["residentAuthoredNodes"], 2);
+            assert_eq!(stats["compiledSceneNodes"], 2);
+            let count = stats["resolvedCompileNodes"].as_u64().unwrap();
+            assert_eq!(count, *resolved.get_or_insert(count));
+            let scene = frame_scene::scene(&reply.bytes);
+            let nodes = scene["nodes"].as_object().unwrap();
+            assert_eq!(nodes.len(), 2);
+            assert!(nodes.contains_key("stage") && nodes.contains_key(visible));
+            let reference = expected.request("canvas", "compile_gpu_packet", &args).unwrap();
+            frame_scene::assert_equivalent(&reply.bytes, &reference.bytes);
         }
         source["nodes"]["r"]["fills"][0]["color"]=json!("#0000ff");
         actual.request("canvas","apply_document_patch_with_damage",&[json!(json!({"nodes":{"r":source["nodes"]["r"]}}).to_string())]).unwrap();
         let reply=actual.request("canvas","compile_gpu_packet",&[json!(query.to_string())]).unwrap();
         assert!(reply.metadata["compileStats"].get("sourceDemand").is_none());
-        let mut expected=session();expected.request("canvas","load_document",&[json!(source.to_string())]).unwrap();
+        expected.request("canvas","load_document",&[json!(source.to_string())]).unwrap();
         let reference=expected.request("canvas","compile_gpu_packet",&[json!(query.to_string())]).unwrap();
         frame_scene::assert_equivalent(&reply.bytes,&reference.bytes);
         assert_eq!(actual.lanes[0].engine.authored_document().unwrap().nodes.len(),3);

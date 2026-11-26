@@ -47,6 +47,7 @@ export function residentFrameMessage(frame: ResidentFrame): ResidentFrame {
     height: frame.height,
     dpr: frame.dpr,
     interaction: frame.interaction,
+    panGesture: frame.panGesture===true || undefined,
     gestureGuides: frame.gestureGuides,
     allowEmpty: frame.allowEmpty,
     allowBackground: frame.allowBackground,
@@ -115,6 +116,7 @@ export function residentFrameSignature(frame: ResidentFrame) {
     frame.height,
     frame.dpr,
     frame.interaction,
+    frame.panGesture,
     frame.gestureGuides,
     // Same snapped pixels can acknowledge a new modifier/guide decision.
     // Live captures expose only their sampled input here, so unfinished

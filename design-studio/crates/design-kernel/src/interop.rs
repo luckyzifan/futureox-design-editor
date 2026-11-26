@@ -2778,6 +2778,26 @@ impl<'a> Importer<'a> {
                     && let Some(bg) = layer.get("backgroundColor")
                 {
                     node.fills.insert(0, solid_paint(bg, 1., "normal", self.color_space));
+                } else if class == "artboard"
+                    && inside_artboard
+                    && layer.get("backgroundColor").is_some()
+                    && !layer
+                        .pointer("/userInfo/com.futureox.design-kernel")
+                        .is_some_and(Value::is_object)
+                {
+                    // Native Sketch paints a nested artboard's default white
+                    // backdrop even when hasBackgroundColor is false. The
+                    // preview path already mirrors this; the editable import
+                    // must not lose it on the way to canvas/export.
+                    node.fills.insert(
+                        0,
+                        solid_paint(
+                            &json!({"red":1.,"green":1.,"blue":1.,"alpha":1.}),
+                            1.,
+                            "normal",
+                            self.color_space,
+                        ),
+                    );
                 }
                 import_layout_grid(&mut node, layer, &mut import_lossy);
             }
@@ -12049,6 +12069,35 @@ mod tests {
             ),
         ]);
         write_zip(&files.into_iter().collect::<Vec<_>>()).unwrap()
+    }
+
+    #[test]
+    fn nested_sketch_artboards_keep_the_native_white_backdrop() {
+        let page = json!([{
+            "_class": "artboard",
+            "do_objectID": "outer",
+            "name": "Outer",
+            "frame": {"_class": "rect", "x": 0, "y": 0, "width": 100, "height": 100},
+            "hasBackgroundColor": false,
+            "backgroundColor": {"_class": "color", "red": 1, "green": 1, "blue": 1, "alpha": 1},
+            "layers": [{
+                "_class": "artboard",
+                "do_objectID": "inner",
+                "name": "Inner",
+                "frame": {"_class": "rect", "x": 10, "y": 10, "width": 20, "height": 20},
+                "hasBackgroundColor": false,
+                "backgroundColor": {"_class": "color", "red": 1, "green": 1, "blue": 1, "alpha": 1},
+                "layers": []
+            }]
+        }]);
+        let doc = import_sketch(&gap_test_files(page, json!({}))).unwrap();
+        let outer = doc.nodes.values().find(|node| node.name == "Outer").unwrap();
+        let inner = doc.nodes.values().find(|node| node.name == "Inner").unwrap();
+        assert!(outer.fills.is_empty(), "top-level artboard keeps its authored background");
+        assert_eq!(inner.fills.len(), 1, "nested artboard keeps the native white backdrop");
+        assert_eq!(inner.fills[0].kind, "solid");
+        let color = &inner.fills[0].color;
+        assert!(color.starts_with("#ffffff") || color.contains("1 1 1"), "{color}");
     }
 
     #[test]

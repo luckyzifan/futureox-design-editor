@@ -191,8 +191,10 @@ export type GpuScene = {
   interactionLocalFootprint?: boolean
   /** Native worker verified the stationary mask and its output window. */
   interactionFixedMask?: boolean
-  /** Worker-owned release after the final gesture transform is known. */
+/** Worker-owned release after the final gesture transform is known. */
   interactionRelease?: boolean
+  /** Same-device clipped motion. The terminating pose still fences the GPU. */
+  queuedClippedMotion?: boolean
   disableSparseGlass?: boolean
   /** Worker-local proof owner for transform-only recompiles; never a document field. */
   interactionLease?: object
@@ -365,6 +367,10 @@ export interface Driver {
   presentFrame?(frame: import('./resident-presenter').ResidentFrame): void
   releasePresented?(ids: number[]): void
   replacePresented?(slot:number,next:number):void
+  saveClippedBackground?(slot: number, hole: Rect, sample: { x: number; y: number }): number | undefined
+  snapshotExactClippedViewport?(owner: object, contract: string, view: GpuScene['view'], output: Rect): number | undefined
+  saveClippedRegion?(slot: number, rect: Rect): number | undefined
+  copyClippedPose?(background: number, board: number, from: Rect, to: { x: number; y: number }): number | undefined
   /** Private immutable captured-texture identity; absent after loss/release. */
   presentedContentToken?(slot:number):object|undefined
   tagExactTile?(id:number, owner:object, contract:string, gutter:number):void

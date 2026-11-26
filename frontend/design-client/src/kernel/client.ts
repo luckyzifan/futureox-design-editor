@@ -223,6 +223,9 @@ export type KernelOptions = {
   interactionNative?: boolean
   /** Full-viewport native affine capture; never a cached-pixel warp. */
   interactionAffine?: boolean
+  /** Prioritize the last native pose of a verified clipped-board handoff. */
+  interactionClippedBoard?: boolean
+  interactionClippedIdleCapture?: boolean
   /** Verify that this fixed native window encloses a stationary Sketch mask. */
   interactionFixedMask?: boolean
   /** A local interaction capture may need different pixels at final tile boundaries. */
@@ -235,6 +238,8 @@ export type KernelOptions = {
   interactionWindow?: import('./gpu/types').Rect
   previewTileFallback?: boolean
   tileViewport?: RasterTile[]
+  /** Optional bounded native display bands for one committed clipped drag. */
+  clippedCommitTiles?: boolean
   /** Parallel original-index hints: holes, coarse coverage, sharp coverage. */
   tileFillPriorities?: import('./tile-cache').TileFillPriority[]
   /** Bounded native viewport capture on the same world sample lattice as tiles. */

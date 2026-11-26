@@ -3,6 +3,7 @@ import { blank, node, effect } from '../model'
 import { PageTranslation, isolatedOpaqueBoard } from './page-translation'
 import type { InteractionProps } from './interaction-layers'
 import { compositeDrawPlan } from './gpu/composite-draw-plan'
+import { clippedBoardPrefetch, clippedBoardSource, clippedCommitTiles, tileOnBoardLattice } from './clipped-board-drag'
 
 test('desktop page textures follow fractional input immediately and chrome waits for the owned frame',()=>{
  const doc=blank(),a=node('frame',0,0,100,80);doc.nodes[a.id]=a;doc.pages[0].children=[a.id]
@@ -443,4 +444,169 @@ test('a clipped board returns to the live scene when the existing tile budget re
   expect(movement.handingOff).toBe(true)
   movement.clear()
   expect(movement.repairMissingCoverage(1)).toBe(false)
+})
+
+test('a clipped board reuses a finite pixel window and rebases when a move exposes a missing source', () => {
+  const doc = blank()
+  const board = node('frame', -400, 0, 800, 90)
+  const neighbor = node('frame', 900, 0, 100, 90)
+  for (const root of [board, neighbor]) {
+    root.blend = 'normal'
+    root.clip = true
+    doc.nodes[root.id] = root
+  }
+  const paint = board.fills[0]
+  if (paint.kind !== 'solid') throw Error('Missing opaque paint')
+  paint.color = 'color(srgb 0.8 0.9 1 / 1)'
+  const page = doc.pages[0]
+  page.children = [board.id, neighbor.id]
+  const props: InteractionProps = { document: doc, selection: [board.id], active: false, epoch: 1,
+    figmaBoardPreview: true, control: { current: null }, onReady() {} }
+  const camera = { view: { x: 0, y: 0, zoom: 1 }, width: 100, height: 90, dpr: 1 }
+  // Deliberately smaller than the visible board so the viewport-coverage
+  // fallback cannot satisfy the first prepare and the finite clipped window
+  // is the only admitted source.
+  const original = { key: 'viewport', serial: 1, gpuTile: 7, bytes: new Uint8Array(),
+    x: 0, y: 0, width: 20, height: 20, zoom: 1 }
+  const expanded = { ...original, key: 'expanded', serial: 2, gpuTile: 8, x: -257, y: -1, width: 614, height: 92 }
+  const visible = [{ tile: original, active: true, layer: 0 }]
+  const available = [{ tile: expanded, active: true, layer: 0 }]
+  const rebase = vi.fn(() => null)
+  const movement = new PageTranslation(vi.fn(), rebase)
+  expect(movement.prepare(props, page.id, doc, visible, doc, true, false, camera)).toBe(false)
+  expect(movement.prepare(props, page.id, doc, visible, doc, true, false, camera, available)).toBe(true)
+  expect(movement.mode).toBe('retained-clipped-board')
+  expect(movement.prepare({ ...props, active: true }, page.id, doc, [], undefined, true, false, camera)).toBe(true)
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, -360, 0] } })).toEqual({ x: 40, y: 0 })
+  expect(rebase).not.toHaveBeenCalled()
+  expect(movement.prepare({ ...props, active: true }, page.id, doc, visible, doc, true, false, camera)).toBe(true)
+  movement.acceptPresentedInput(movement.control.inputSequence!(), 0, true, [8])
+  const before = movement.items(camera.view)
+  const fractional: typeof board.transform = [1, 0, 0, 1, -359.75, .5]
+  expect(movement.control.apply(doc, { [board.id]: { transform: fractional } })).toBeNull()
+  expect(rebase).toHaveBeenCalledWith(doc, { [board.id]: { transform: fractional } }, doc, undefined)
+  expect(movement.items(camera.view)).toEqual(before)
+  expect(movement.handingOff).toBe(true)
+  movement.clear()
+  rebase.mockClear()
+  expect(movement.prepare({ ...props, active: true }, page.id, doc, visible, doc, true, false, camera, available)).toBe(true)
+  expect(movement.tiles).toEqual([expanded])
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, -75, 0] } })).toBeNull()
+  expect(rebase).toHaveBeenCalledOnce()
+  movement.clear()
+  expect(movement.prepare(props, page.id, doc, visible, doc, true, false, camera, visible)).toBe(false)
+})
+
+test('clipped-board prefetch keeps exact native strips outside the viewport', () => {
+  const camera = { view: { x: -1298.1000000000001, y: 271.29999999999995, zoom: .8 },
+    width: 1143, height: 933, dpr: 2 }
+  const source = clippedBoardSource({x:1617,y:-271,width:1440,height:1030},camera)!
+  const phaseX = .7999999999997272, phaseY = .599999999999909
+  const cell=(x:number)=>({key:String(x),x,y:-513,width:514,height:514,
+    zoom:1.6,phaseX,phaseY,gutter:1})
+  expect(tileOnBoardLattice(cell(4607), camera.view, camera.dpr)).toBe(true)
+  expect(tileOnBoardLattice({ ...cell(4607), phaseX: phaseX + .125 }, camera.view, camera.dpr)).toBe(false)
+  const strips = clippedBoardPrefetch(source, camera, [cell(2559),cell(4607)], 4)
+  expect(strips).toHaveLength(2)
+  expect(strips.every(tile=>tile.prefetch && tileOnBoardLattice(tile,camera.view,camera.dpr))).toBe(true)
+  const left = phaseX - camera.view.x * camera.dpr
+  const right = left + camera.width * camera.dpr
+  expect(strips[0].x + strips[0].width - 1).toBe(left)
+  expect(strips[1].x + 1).toBe(right)
+})
+
+test('clipped release bands cover the visible viewport on the ordinary tile lattice', () => {
+  const view = { x: -1298.1000000000001, y: 271.29999999999995, zoom: .8 }
+  const phase = { x: view.x * 2 - Math.floor(view.x * 2), y: view.y * 2 - Math.floor(view.y * 2) }
+  const viewport = { x: -Math.floor(view.x * 2), y: -Math.floor(view.y * 2), w: 2286, h: 1866 }
+  const bands = clippedCommitTiles(viewport, view.zoom * 2, phase)!
+  expect(bands).toHaveLength(6)
+  expect(bands.every(tile => tile.gutter === 1 && tileOnBoardLattice(tile, view, 2))).toBe(true)
+  expect(bands.map(tile => [tile.x - viewport.x + 1, tile.y - viewport.y + 1, tile.width - 2, tile.height - 2]))
+    .toEqual([[0, 0, 960, 960], [960, 0, 960, 960], [1920, 0, 366, 960],
+      [0, 960, 960, 906], [960, 960, 960, 906], [1920, 960, 366, 906]])
+  expect(clippedCommitTiles({ ...viewport, x: viewport.x + .1 }, view.zoom * 2, phase)).toBeUndefined()
+  expect(clippedCommitTiles({ ...viewport, w: 8193 }, view.zoom * 2, phase)).toBeUndefined()
+})
+
+test('a fully visible isolated board can use the exact release bands at the same camera', () => {
+  const doc = blank()
+  const board = node('frame', 0, 0, 80, 70)
+  const neighbor = node('frame', 180, 0, 40, 70)
+  for (const root of [board, neighbor]) {
+    root.blend = 'normal'
+    root.clip = true
+    doc.nodes[root.id] = root
+  }
+  const paint = board.fills[0]
+  if (paint.kind !== 'solid') throw Error('Missing opaque paint')
+  paint.color = 'color(srgb 0.8 0.9 1 / 1)'
+  const page = doc.pages[0]
+  page.children = [board.id, neighbor.id]
+  const props: InteractionProps = { document: doc, selection: [board.id], active: true, epoch: 1,
+    figmaBoardPreview: true, control: { current: null }, onReady() {} }
+  const camera = { view: { x: 10, y: 10, zoom: .75 }, width: 140, height: 120, dpr: 2 }
+  const tile = { key: 'viewport', serial: 1, gpuTile: 7, bytes: new Uint8Array(),
+    x: -24, y: -24, width: 284, height: 244, zoom: 1.5 }
+  const items = [{ tile, active: true, layer: 0 }]
+  const movement = new PageTranslation(vi.fn())
+  const transform: typeof board.transform = [1, 0, 0, 1, 11, 3]
+  const committed = { ...doc, nodes: { ...doc.nodes, [board.id]: { ...board, transform } } }
+  expect(movement.prepare(props, page.id, doc, items, doc, true, false, camera)).toBe(true)
+  expect(movement.control.apply(doc, { [board.id]: { transform } })).toEqual({ x: 11, y: 3 })
+  expect(movement.mode).toBe('retained-board')
+  expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(false)
+  movement.control.releaseInput?.('move')
+  movement.control.end(committed)
+  expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(true)
+  movement.control.end(committed)
+  expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(true)
+  expect(movement.control.boardCommit?.(doc, page.id, camera)).toBe(false)
+  expect(movement.control.boardCommit?.(committed, page.id, { ...camera, width: 141 })).toBe(false)
+  movement.clear()
+  expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(false)
+})
+
+test('a released clipped board never starts native drag repair from a late coverage miss', () => {
+  const doc = blank()
+  const board = node('frame', -400, 0, 800, 90)
+  const neighbor = node('frame', 900, 0, 100, 90)
+  for (const root of [board, neighbor]) {
+    root.blend = 'normal'
+    root.clip = true
+    doc.nodes[root.id] = root
+  }
+  const paint = board.fills[0]
+  if (paint.kind !== 'solid') throw Error('Missing opaque paint')
+  paint.color = 'color(srgb 0.8 0.9 1 / 1)'
+  const page = doc.pages[0]
+  page.children = [board.id, neighbor.id]
+  const props: InteractionProps = { document: doc, selection: [board.id], active: true, epoch: 1,
+    figmaBoardPreview: true, control: { current: null }, onReady() {} }
+  const camera = { view: { x: 0, y: 0, zoom: 1 }, width: 100, height: 90, dpr: 1 }
+  const tile = { key: 'expanded', serial: 1, gpuTile: 7, bytes: new Uint8Array(),
+    x: -257, y: -1, width: 614, height: 92, zoom: 1 }
+  const rebase = vi.fn(() => null)
+  const movement = new PageTranslation(vi.fn(), rebase)
+  expect(movement.prepare(props, page.id, doc, [], doc, true, false, camera,
+    [{ tile, active: true, layer: 0 }])).toBe(true)
+  const transform: typeof board.transform = [1, 0, 0, 1, -360, 0]
+  expect(movement.control.apply(doc, { [board.id]: { transform } })).toEqual({ x: 40, y: 0 })
+  const sequence = movement.control.inputSequence!()
+  expect(movement.control.boardCommit?.(doc, page.id, camera)).toBe(false)
+  movement.control.releaseInput?.('move')
+  const committed = { ...doc, nodes: { ...doc.nodes, [board.id]: { ...board, transform } } }
+  movement.control.end(committed)
+  expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(true)
+  expect(movement.control.boardCommit?.({ ...committed }, page.id, camera)).toBe(false)
+  expect(movement.control.boardCommit?.(committed, 'another-page', camera)).toBe(false)
+  expect(movement.control.boardCommit?.(committed, page.id, { ...camera, dpr: 2 })).toBe(false)
+  expect(movement.repairMissingCoverage(sequence)).toBe(false)
+  expect(movement.control.apply(doc, { [board.id]: { transform } })).toBeNull()
+  expect(movement.items(camera.view)).not.toBeNull()
+  // A resize can invalidate the retained crop while exact tiles are pending.
+  expect(movement.prepare({ ...props, active: false, document: committed }, page.id,
+    committed, [], undefined, true, false, { ...camera, width: 120 })).toBe(false)
+  expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(false)
+  expect(rebase).not.toHaveBeenCalled()
 })

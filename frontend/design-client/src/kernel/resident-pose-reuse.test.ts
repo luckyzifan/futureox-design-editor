@@ -1,5 +1,5 @@
 import {expect,test} from 'vitest'
-import {ResidentPoseReuse} from './resident-pose-reuse'
+import {newerPoseDisposition,ResidentPoseReuse,terminalPoseDisposition} from './resident-pose-reuse'
 import type {Matrix} from '../model'
 const input=()=>({scene:{},driver:{},texture:{},window:{x:-3.5,y:4.25,w:100,h:80},transforms:{a:[1,0,0,1,12.125,4.5] as Matrix}})
 test('only a successful captured texture can certify a repeated exact pose',()=>{
@@ -20,7 +20,7 @@ test('signed zeros, frozen inputs, malformed windows and replacement captures ca
 })
 
 test('only newer same-owner release work may supersede a preparation; movement cannot starve raster',async()=>{
- const {terminalPoseDisposition,samePoseTransforms}=await import('./resident-pose-reuse')
+ const {samePoseTransforms}=await import('./resident-pose-reuse')
  const a={slot:3,input:{owner:'owner',sequence:4},transforms:input().transforms}
  const b={...a,input:{owner:'owner',sequence:5},terminal:true}
  expect(terminalPoseDisposition(a,b)).toBe('same')
@@ -28,4 +28,14 @@ test('only newer same-owner release work may supersede a preparation; movement c
  for(const other of [{...b,terminal:false},{...b,slot:4},{...b,input:{owner:'foreign',sequence:5}},{...b,input:{owner:'owner',sequence:3}}])
   expect(terminalPoseDisposition(a,other)).toBe('none')
  expect(samePoseTransforms({a:new Array(6) as Matrix},a.transforms)).toBe(false)
+})
+
+test('an exact queued motion must be newer and own the same slot and gesture',()=>{
+ const running={slot:3,input:{owner:'gesture',sequence:8},transforms:input().transforms}
+ const queued={...running,input:{owner:'gesture',sequence:12}}
+ expect(newerPoseDisposition(running,queued)).toBe('same')
+ expect(newerPoseDisposition(running,{...queued,transforms:{a:[1,0,0,1,17,9]}})).toBe('changed')
+ expect(newerPoseDisposition(running,{...queued,slot:4})).toBe('none')
+ expect(newerPoseDisposition(running,{...queued,input:{owner:'another',sequence:12}})).toBe('none')
+ expect(newerPoseDisposition(running,{...queued,input:{owner:'gesture',sequence:7}})).toBe('none')
 })
