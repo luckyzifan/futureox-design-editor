@@ -3205,6 +3205,28 @@ mod tests {
     }
 
     #[test]
+    fn figma_inter_applies_variable_kerning_from_the_pair_set() {
+        let mut fonts = Fonts::new();
+        fonts.load(include_bytes!(
+            "../../../../frontend/design-client/public/fonts/inter/v3.19/Inter.ttf"
+        )).unwrap();
+        let mut price = node("$9.99", serde_json::json!({
+            "align": "center",
+            "weight": 900,
+            "wrap": false,
+            "lineBoxBaseline": "figma-pixel-leading",
+            "lineHeight": 24. / 14.,
+            "lineHeightPixels": 24.,
+        }), 42.);
+        price.font_size = 14.;
+        let layout = fonts.node_layout(&price, Some(price.width)).unwrap();
+        // Positions recorded in the public prototyping_swaps_and_instances FIG, fig-14-63.
+        let xs = layout.glyphs.iter().map(|glyph| glyph.x).collect::<Vec<_>>();
+        assert_eq!(xs, [0.123046875, 9.447265625, 18.580078125, 22.708984375, 32.29296875]);
+        assert!(layout.glyphs.iter().all(|glyph| (glyph.y - 17.090909957885742).abs() <= 2.1e-6));
+    }
+
+    #[test]
     fn figma_advances_follow_source_grid_before_tracking() {
         let mut fonts = Fonts::new();
         fonts.load(include_bytes!(

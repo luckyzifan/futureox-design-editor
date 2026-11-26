@@ -432,6 +432,16 @@ fn constraint_anchor(bits: u64) -> crate::layout::Anchor {
     }
 }
 
+fn sketch_pin_anchor(code: u64) -> Option<crate::layout::Anchor> {
+    use crate::layout::Anchor;
+    match code {
+        1 => Some(Anchor::Start),
+        4 => Some(Anchor::End),
+        5 => Some(Anchor::Stretch),
+        _ => None,
+    }
+}
+
 #[derive(serde::Deserialize)]
 struct LegacyConstraintReceipt {
     mask: u64,
@@ -449,10 +459,17 @@ impl LegacyConstraintReceipt {
         serde_json::from_str(sketch_binding(doc, node, "sketchLegacyConstraints")?).ok()
     }
 
-    fn retained_axes(&self, constraints: &crate::layout::Constraints) -> [Option<u64>; 2] {
+    fn retained_axes(
+        &self,
+        constraints: &crate::layout::Constraints,
+        modern_pins: [Option<crate::layout::Anchor>; 2],
+    ) -> [Option<u64>; 2] {
+        let [horizontal, vertical] = modern_pins;
         [
-            (constraints.horizontal == self.model.horizontal).then_some(self.mask & 7),
-            (constraints.vertical == self.model.vertical).then_some((self.mask >> 3) & 7),
+            (constraints.horizontal == horizontal.unwrap_or(self.model.horizontal))
+                .then_some(self.mask & 7),
+            (constraints.vertical == vertical.unwrap_or(self.model.vertical))
+                .then_some((self.mask >> 3) & 7),
         ]
     }
 }
@@ -492,7 +509,7 @@ pub(crate) fn sketch_resize_axes(doc: &Document, node: &Node, use_master_source:
         None
     }.unwrap_or(node);
     let [horizontal, vertical] = LegacyConstraintReceipt::from_node(doc, source)
-        .map_or([None; 2], |receipt| receipt.retained_axes(constraints));
+        .map_or([None; 2], |receipt| receipt.retained_axes(constraints, [None; 2]));
     if !fixed_x && !fixed_y && horizontal.is_none() && vertical.is_none() {
         return [None; 2];
     }
@@ -3199,8 +3216,7 @@ impl<'a> Importer<'a> {
                             }
                         }
                     } else if key.ends_with("Pins") {
-                        let anchor=match code {1=>Some(crate::layout::Anchor::Start),4=>Some(crate::layout::Anchor::End),5=>Some(crate::layout::Anchor::Stretch),_=>None};
-                        if let Some(anchor)=anchor {
+                        if let Some(anchor) = sketch_pin_anchor(code) {
                             let c = node.constraints.get_or_insert_with(|| {
                                 let default_pin = |field: &str| {
                                     let raw = sketch_layout_value(layer, field);
@@ -7406,6 +7422,8 @@ fn export_layer_impl(
         }
         let modern_layout = n.bindings.get("sketchModernLayout")
             .and_then(|raw| serde_json::from_str::<Map<String, Value>>(raw).ok());
+        let modeled: Vec<String> = n.bindings.get("sketchModernLayoutModeled")
+            .and_then(|raw| serde_json::from_str(raw).ok()).unwrap_or_default();
         let has_modern_field = |field: &str| modern_layout.as_ref().is_some_and(|fields| {
             fields.keys().any(|spelling| spelling.trim_start_matches('_') == field)
         });
@@ -7420,7 +7438,20 @@ fn export_layer_impl(
         if let Some(c) = &n.constraints {
             let [fixed_x, fixed_y] = sketch_fixed_unpinned_axes(doc, n);
             let receipt = LegacyConstraintReceipt::from_node(doc, n);
-            let [legacy_x, legacy_y] = receipt.as_ref().map_or([None; 2], |source| source.retained_axes(c));
+            let [legacy_x, legacy_y] = receipt.as_ref().map_or([None; 2], |source| {
+                // A modeled modern pin can override the imported legacy
+                // anchor. Compare edits to the pin that the layer loaded.
+                let modern_pins = ["horizontalPins", "verticalPins"].map(|field| {
+                    let fields = modern_layout.as_ref()?;
+                    modeled.iter().find_map(|spelling| {
+                        if spelling.trim_start_matches('_') != field {
+                            return None;
+                        }
+                        sketch_pin_anchor(fields.get(spelling)?.as_u64()?)
+                    })
+                });
+                source.retained_axes(c, modern_pins)
+            });
             let x = if fixed_x { 5 } else { legacy_x.unwrap_or_else(|| constraint_axis_bits(c.horizontal, &mut lossy)) };
             let y = if fixed_y { 5 } else { legacy_y.unwrap_or_else(|| constraint_axis_bits(c.vertical, &mut lossy)) };
             let mask = receipt.as_ref().filter(|_| !fixed_x && !fixed_y && legacy_x.is_some() && legacy_y.is_some())
@@ -7461,7 +7492,6 @@ fn export_layer_impl(
         // original archived spelling (plain/`_`/`__`), overriding the
         // default zeros written above.
         if let Some(fields) = &modern_layout {
-            let modeled: Vec<String> = n.bindings.get("sketchModernLayoutModeled").and_then(|v|serde_json::from_str(v).ok()).unwrap_or_default();
             for (spelling, value) in fields {
                 let mut value=value.clone();
                 if modeled.contains(spelling) {

@@ -2880,16 +2880,21 @@ focus?: SurfaceProps['overview'],
       tile.gpuTile !== undefined && (!tile.residentDevice ||
         tile.residentDevice.client === rasterClient && tile.residentDevice.key === device.key))
     const zoomingOut = !!displayed && requestedView.zoom < displayed.view.zoom
+    // During a reversal the last exact camera can still be farther in than
+    // the live one. Keep the outward coverage fallback, but let ready sharper
+    // residents replace that fallback while the actual input moves inward.
+    const zoomingIn = progressiveNativeRepair && navigationZoom.active &&
+      navigationZoom.zoomingIn && !cameraDependent && !props.panGestureActive
     // Publish ready screen-density regions during zoom-in, including the first
     // small step over a retained frame. Zoom-out keeps its coverage path.
     const size = { width, height, dpr: progressiveNativeRepair && navigationZoom.active && !cameraDependent ? dpr : undefined }
     if (tilesCoverBounds(shown, world)) {
-      if (zoomingOut) return none
+      if (zoomingOut && !zoomingIn) return none
       const sharper = selectSharperCoverage(candidates, requestedView, size, shown)
       return { tiles: sharper, sharper }
     }
     const under = selectCoverageUnderlay(candidates, requestedView, size, shown, 24, zoomingOut)
-    if (zoomingOut) return { tiles: under, sharper: [] as PaintedTile[] }
+    if (zoomingOut && !zoomingIn) return { tiles: under, sharper: [] as PaintedTile[] }
     const sharper = selectSharperCoverage(candidates, requestedView, size, [...shown, ...under], 24 - under.length)
     return { tiles: [...under, ...sharper], sharper }
   })()

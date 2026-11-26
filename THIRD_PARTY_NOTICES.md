@@ -47,6 +47,8 @@ package source revision remains a release-verification task.
 - flo_curves 0.8.1: Apache-2.0; original license in `vendor/flo_curves/LICENSE`
   and `public/licenses/flo_curves-Apache-2.0.txt`. The local ray-collision ordering
   correction is documented in `vendor/flo_curves/PATCHES.md`.
+- ttf-parser 0.25.1 retains its MIT OR Apache-2.0 license. Both upstream license texts and the
+  GPOS PairSet fix are preserved under `vendor/ttf-parser/`.
 
 ## Release gates
 

@@ -29,7 +29,7 @@ export class NavigationZoom {
   private stableFrames = 0
   private intervals: number[] = []
   private resumedBeforeQuiet = false
-  private zoomingOut = false
+  private direction?: 'in' | 'out'
   private panning = false
   private held = false
   sample: NavigationZoomSample
@@ -44,6 +44,11 @@ export class NavigationZoom {
   get active() { return this.sample.active }
   get zoom() { return this.target.zoom }
   get pointerHeld() { return this.held }
+  /** Includes incoming zoom steps before the preview sampling cadence. */
+  isZoomingIn(view: CanvasCamera) {
+    if (view.zoom !== this.target.zoom) return view.zoom > this.target.zoom
+    return this.direction === 'in' && view.x === this.target.x && view.y === this.target.y
+  }
   inputChanged(view: CanvasCamera) {
     return view.zoom !== this.target.zoom || !!this.options.includeTranslation &&
       (view.x !== this.target.x || view.y !== this.target.y)
@@ -52,18 +57,22 @@ export class NavigationZoom {
     const held = !!this.options.includeTranslation && pointerHeld
     const released = this.held && !held
     const changed = this.inputChanged(view) || held && !this.held
+    const translated = view.x !== this.target.x || view.y !== this.target.y
     if (view.zoom !== this.target.zoom) {
-      this.zoomingOut = view.zoom < this.target.zoom
+      this.direction = view.zoom < this.target.zoom ? 'out' : 'in'
       this.panning = false
-    } else if (changed) {
-      this.panning = !held && (view.x !== this.target.x || view.y !== this.target.y)
+    } else {
+      // A same-scale wheel pan ends inward refinement even when translation
+      // does not own previews. Outward-pan quiet still uses the last zoom out.
+      if (translated && this.direction === 'in') this.direction = undefined
+      if (changed) this.panning = !held && translated
     }
     this.held = held
     this.target = { ...view }
     // Canvas flushes the final pointer position before releasing its gesture.
     // A known release needs no guessed quiet interval before exact refinement.
     if (released) {
-      this.zoomingOut = false
+      this.direction = undefined
       this.changedAt = now; this.stableFrames = 0
       return this.publish(false, now)
     }
@@ -95,14 +104,14 @@ export class NavigationZoom {
     // A wheel pan after zoom-out has one sampling density and can reuse its
     // accepted backing. Let two missing input intervals start native repair.
     // Zoom ticks and a burst that already resumed early keep the full guard.
-    const outwardPan = this.options.adaptiveQuiet === 'outward-pan' && this.zoomingOut && this.panning
+    const outwardPan = this.options.adaptiveQuiet === 'outward-pan' && this.direction === 'out' && this.panning
     const adaptive = this.options.adaptiveQuiet === true || outwardPan
     const quiet = !adaptive || this.resumedBeforeQuiet || this.intervals.length < CADENCE_REQUIRED_INTERVALS ? NAVIGATION_ZOOM_QUIET_MS :
       Math.min(NAVIGATION_ZOOM_QUIET_MS,
         Math.max(NAVIGATION_ZOOM_DENSE_QUIET_MS, ...this.intervals.map(interval =>
           outwardPan ? interval * 2 + 8 : interval * CADENCE_QUIET_MULTIPLIER)))
     if (!this.held && this.stableFrames >= 2 && now - this.changedAt >= quiet) {
-      this.zoomingOut = false
+      this.direction = undefined
       return this.publish(false, now)
     }
     if ((this.options.sampleOnFrame || now - this.sampledAt >= NAVIGATION_ZOOM_SAMPLE_MS) && this.hasUnsampledView())

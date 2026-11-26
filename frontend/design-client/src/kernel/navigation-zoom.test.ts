@@ -94,6 +94,35 @@ test('reversal to the original scale retains the activity window and final lates
   expect(owner.sample.view).toEqual(camera(.1, 3.25, -4.5))
 })
 
+test('sees inward reversal below the last exact scale before the next preview sample', () => {
+  const owner = new NavigationZoom(camera(32))
+  owner.update(camera(1), 0)
+  expect(owner.isZoomingIn(camera(1))).toBe(false)
+
+  const returning = camera(5.6)
+  expect(owner.isZoomingIn(returning)).toBe(true)
+  owner.update(returning, 36)
+  expect(owner.sample.view).toEqual(camera(1))
+  expect(owner.isZoomingIn(returning)).toBe(true)
+
+  owner.frame(195)
+  owner.frame(196)
+  expect(owner.active).toBe(false)
+  expect(owner.isZoomingIn(returning)).toBe(false)
+})
+
+test.each([false, true])('same-scale wheel translation clears inward motion with pan preview=%s', includeTranslation => {
+  const owner = new NavigationZoom(camera(32), { includeTranslation })
+  owner.update(camera(1), 0)
+  owner.update(camera(5.6), 36)
+  expect(owner.isZoomingIn(camera(5.6))).toBe(true)
+
+  const panned = camera(5.6, 17, -9)
+  expect(owner.isZoomingIn(panned)).toBe(false)
+  owner.update(panned, 72)
+  expect(owner.isZoomingIn(panned)).toBe(false)
+})
+
 test('fixed-scale pans never enter the temporary zoom tier', () => {
   const owner = new NavigationZoom(camera(32)), original = owner.sample
   for (let index = 1; index <= 240; index++) {

@@ -392,6 +392,8 @@
         "nodeId": "12:2",
         "x": 1026,
         "y": 0,
+        "width": 128,
+        "height": 128,
         "profile": "SRGB",
         "children": [
           {
