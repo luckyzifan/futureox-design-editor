@@ -1199,6 +1199,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     const command = (name: DesktopCommand) => {
       if (largeDocument || source) return
       if (name === 'settings') { openSettings(); return }
+      if (name === 'command-search') { setMenu(false); requestCommandSearch(document.activeElement); return }
       if (name === 'automation-settings') { setMenu(false); setShowAutomation(true); return }
       if (name === 'plugins') { setMenu(false); setShowPlugins(true); return }
       if (showHome) {

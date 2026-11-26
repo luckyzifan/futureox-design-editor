@@ -6,6 +6,7 @@ import type { Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { CommandSearch } from './CommandSearch'
 import { commandSearchEntries, commandSearchText, filterCommandSearch, runCommandSearch } from './command-search'
+import { recordCommandSearchUse, resetCommandSearchRecent } from './command-recent'
 import { closeCommandSearch, commandSearchSnapshot, requestCommandSearch } from './command-search-session'
 import { canvasMenuItems, sketchCommandLabel } from './canvas-menu-model'
 import { dispatchEditorShortcut } from './editor-shortcuts'
@@ -31,6 +32,7 @@ beforeEach(async () => {
   interfacePreference.set({ locale: 'zh-CN', uiMode: 'sketch' })
   shortcutPreference.set('sketch-like')
   closeCommandSearch()
+  resetCommandSearchRecent()
   mount = document.createElement('div')
   canvas = document.createElement('div')
   canvas.tabIndex = 0
@@ -43,6 +45,7 @@ afterEach(async () => {
   closeCommandSearch()
   await act(async () => root.unmount())
   editors.splice(0).forEach(editor => editor.dispose())
+  resetCommandSearchRecent()
   interfacePreference.reset()
   shortcutPreference.set('figma-like')
   dom.window.close()
@@ -266,4 +269,44 @@ test('catalog follows the layout, and results from the other layout cannot execu
   await runCommandSearch(editor, sketchRows.find(item => item.id === 'set-tool-graphic')!, sketch)
   expect(editor.state.tool).toBe('select')
   expect(editor.canUndo).toBe(false)
+})
+
+test('recently run commands lead the empty query without changing the catalog', async () => {
+  const shape = node('rectangle', 10, 20, 30, 40)
+  const editor = editorWith([shape])
+  const entries = commandSearchEntries(editor, sketch, 'zh-CN')
+  recordCommandSearchUse('send-to-back')
+  expect(filterCommandSearch(entries, '')[0].id).toBe('send-to-back')
+  recordCommandSearchUse('group')
+  expect(filterCommandSearch(entries, '').slice(0, 2).map(entry => entry.id)).toEqual(['group', 'send-to-back'])
+  expect(entries[0].id).not.toBe('group')
+  expect(editor.canUndo).toBe(false)
+})
+
+test('⌘F filter menu, ⌘↑ parent group and ⌥⌘↑ all commands stay inside the command bar', async () => {
+  const shape = node('rectangle', 10, 20, 30, 40)
+  const editor = editorWith([shape])
+  const input = await openSearch()
+  const filterMenu = () => document.querySelector<HTMLElement>('[role="menu"][aria-label="命令分组"]')
+  await act(async () => { press(input, 'f', { metaKey: true }) })
+  expect(filterMenu()).not.toBeNull()
+  expect(filterMenu()!.textContent).toContain('全部命令')
+  expect(filterMenu()!.textContent).toContain('路径')
+  await act(async () => { [...filterMenu()!.querySelectorAll('button')].find(item => item.textContent === '路径')!.click() })
+  await flush()
+  expect(filterMenu()).toBeNull()
+  expect(option('close-path')).not.toBeNull()
+  expect(option('group')).toBeNull()
+  await act(async () => { press(input, 'ArrowUp', { metaKey: true }) })
+  await flush()
+  expect(option('group')).not.toBeNull()
+  expect(option('close-path')).not.toBeNull()
+  await act(async () => { press(input, 'f', { metaKey: true }) })
+  await act(async () => { press(input, 'Escape') })
+  expect(filterMenu()).toBeNull()
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+  await act(async () => { press(input, 'ArrowUp', { metaKey: true, altKey: true }) })
+  expect(option('group')).not.toBeNull()
+  await act(async () => { press(input, 'Escape') })
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
 })
