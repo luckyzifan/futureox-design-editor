@@ -2103,10 +2103,10 @@ impl<'a> Importer<'a> {
         }
 
         // P1-8: FlexGroupLayout stacks (the Sketch 2025 auto-layout).
-        if let Some(group_layout) = layer.get("groupLayout")
-            && group_layout.get("_class").and_then(Value::as_str)
-                == Some("MSImmutableFlexGroupLayout")
-        {
+        let flex_group_layout = layer.get("groupLayout").filter(|group_layout| {
+            group_layout.get("_class").and_then(Value::as_str) == Some("MSImmutableFlexGroupLayout")
+        });
+        if let Some(group_layout) = flex_group_layout {
             let mode = match f64_at(group_layout, "flexDirection") as i64 {
                 1 => crate::layout::Flow::Vertical,
                 _ => crate::layout::Flow::Horizontal,
@@ -2119,12 +2119,14 @@ impl<'a> Importer<'a> {
                 5 => crate::layout::Align::SpaceEvenly,
                 _ => crate::layout::Align::Start,
             };
-            let align = |code: i64| match code {
+            let wrap = bool_at(group_layout, "wrappingEnabled");
+            let align_code = f64_at(group_layout, "alignItems");
+            let align = match align_code as i64 {
                 1 => crate::layout::Align::Center,
                 2 => crate::layout::Align::End,
+                3 if align_code == 3. && !wrap => crate::layout::Align::Stretch,
                 _ => crate::layout::Align::Start,
             };
-            let wrap = bool_at(group_layout, "wrappingEnabled");
             let stacking_order = match group_layout.get("stackingOrder").and_then(Value::as_u64) {
                 Some(0) => Some(crate::layout::StackingOrder::FirstOnTop),
                 Some(1) => Some(crate::layout::StackingOrder::LastOnTop),
@@ -2157,7 +2159,7 @@ impl<'a> Importer<'a> {
                 borders_affect_layout: bool_at(group_layout, "bordersAffectLayout"),
                 stacking_order,
                 justify: axis(justify(f64_at(group_layout, "justifyContent") as i64), "justify"),
-                align: axis(align(f64_at(group_layout, "alignItems") as i64), "align"),
+                align: axis(align, "align"),
                 ..crate::layout::Layout::default()
             });
         } else if let Some(group_layout) = layer.get("groupLayout")
@@ -2201,10 +2203,22 @@ impl<'a> Importer<'a> {
             .and_then(Value::as_array)
             .filter(|a| !a.is_empty())
         {
-            node.bindings.insert(
-                "sketchExportLossy".into(),
-                serde_json::to_string(lossy).unwrap_or_default(),
-            );
+            // Older exports logged these notes even when the native layout
+            // carried the requested values. Retain warnings about absent fields.
+            let retained: Vec<_> = lossy.iter().filter(|note| match note.as_str() {
+                Some("stack-wrap-omitted") => !flex_group_layout
+                    .is_some_and(|layout| bool_at(layout, "wrappingEnabled")),
+                Some("stack-line-gap-omitted") => !flex_group_layout
+                    .and_then(|layout| layout.get("crossAxisGutterGap"))
+                    .is_some_and(Value::is_number),
+                _ => true,
+            }).collect();
+            if !retained.is_empty() {
+                node.bindings.insert(
+                    "sketchExportLossy".into(),
+                    serde_json::to_string(&retained).unwrap_or_default(),
+                );
+            }
         }
         match class {
             "rectangle" => {
@@ -3041,7 +3055,22 @@ impl<'a> Importer<'a> {
                     } else if key.ends_with("Pins") {
                         let anchor=match code {1=>Some(crate::layout::Anchor::Start),4=>Some(crate::layout::Anchor::End),5=>Some(crate::layout::Anchor::Stretch),_=>None};
                         if let Some(anchor)=anchor {
-                            let c=node.constraints.get_or_insert_with(Default::default);
+                            let c = node.constraints.get_or_insert_with(|| {
+                                let default_pin = |field: &str| {
+                                    let raw = [format!("__{field}"), format!("_{field}"), field.to_owned()]
+                                        .iter().find_map(|spelling| layer.get(spelling));
+                                    if raw.and_then(Value::as_u64) == Some(0) {
+                                        crate::layout::Anchor::Scale
+                                    } else {
+                                        crate::layout::Anchor::default()
+                                    }
+                                };
+                                crate::layout::Constraints {
+                                    horizontal: default_pin("horizontalPins"),
+                                    vertical: default_pin("verticalPins"),
+                                    ..Default::default()
+                                }
+                            });
                             if axis {c.vertical=anchor} else {c.horizontal=anchor}
                             modeled.push(spelling.clone());
                         }
@@ -6274,17 +6303,17 @@ fn flex_justify(align: crate::layout::Align, lossy: &mut Vec<String>) -> i64 {
     }
 }
 
-/// FlexAlign: START=0 CENTER=1 END=2 NONE=5. Flex has no stretch align —
-/// the counter axis stretches through per-child alignSelf instead.
-fn flex_align(align: crate::layout::Align, lossy: &mut Vec<String>) -> i64 {
+/// Sketch 2026.3 uses 3 for cross-axis stretch and rejects it when wrapping
+/// is enabled. The native fallback continues to use None (5).
+fn flex_align(align: crate::layout::Align, wrap: bool, lossy: &mut Vec<String>) -> i64 {
     use crate::layout::Align;
     match align {
         Align::Start => 0,
         Align::Center | Align::UnsafeCenter => 1,
         Align::End | Align::UnsafeEnd => 2,
-        other => {
+        Align::Stretch if !wrap => 3,
+        _ => {
             note_lossy(lossy, "stack-align-not-supported");
-            let _ = other;
             5
         }
     }
@@ -7153,6 +7182,19 @@ fn export_layer_impl(
                 json!(n.constrain_proportions),
             );
         }
+        let modern_layout = n.bindings.get("sketchModernLayout")
+            .and_then(|raw| serde_json::from_str::<Map<String, Value>>(raw).ok());
+        let has_modern_field = |field: &str| modern_layout.as_ref().is_some_and(|fields| {
+            fields.keys().any(|spelling| spelling.trim_start_matches('_') == field)
+        });
+        let pin_code = |anchor| match anchor {
+            crate::layout::Anchor::Start => 1,
+            crate::layout::Anchor::End => 4,
+            crate::layout::Anchor::Stretch => 5,
+            _ => 0,
+        };
+        let legacy_constraints = n.bindings.get("sketchLegacyConstraints")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
         // P1-7: constraints → resizingConstraint bits (63 = Sketch's
         // measured default "free" value and must not re-import as a rule).
         if let Some(c) = &n.constraints {
@@ -7160,8 +7202,21 @@ fn export_layer_impl(
             let y = constraint_axis_bits(c.vertical, &mut lossy);
             layer.insert("resizingConstraint".into(), json!(x | (y << 3)));
             layer.insert("hasExplicitConstraints".into(), json!(true));
+            let legacy_model = legacy_constraints.as_ref().and_then(|source| source.get("model"));
+            for (axis, field, anchor) in [
+                ("horizontal", "horizontalPins", c.horizontal),
+                ("vertical", "verticalPins", c.vertical),
+            ] {
+                // An unchanged imported legacy anchor keeps its original
+                // representation even when layout updated its reference size.
+                if !has_modern_field(field)
+                    && legacy_model.and_then(|model| model.get(axis)) != Some(&json!(anchor))
+                {
+                    layer.insert(field.into(), json!(pin_code(anchor)));
+                }
+            }
         }
-        if let Some(source)=n.bindings.get("sketchLegacyConstraints").and_then(|raw|serde_json::from_str::<Value>(raw).ok())
+        if let Some(source)=legacy_constraints
             && source.get("model")==Some(&json!(n.constraints)) {
             layer.insert("resizingConstraint".into(),source["mask"].clone());
         }
@@ -7171,26 +7226,23 @@ fn export_layer_impl(
             crate::layout::SizeMode::Fill => 2,
             crate::layout::SizeMode::Relative => 3,
         };
-        if let Some(sizing) = n.sizing.as_ref().filter(|s| s.has_relative_sizing()) {
-            if sizing.width_ratio.is_some() {
+        if let Some(sizing) = &n.sizing {
+            if sizing.width_ratio.is_some() || !has_modern_field("horizontalSizing") {
                 layer.insert("horizontalSizing".into(), json!(sizing_code(sizing.width)));
             }
-            if sizing.height_ratio.is_some() {
+            if sizing.height_ratio.is_some() || !has_modern_field("verticalSizing") {
                 layer.insert("verticalSizing".into(), json!(sizing_code(sizing.height)));
             }
-            layer.insert("percentageSize".into(), json!(format!(
-                "{{{}, {}}}", sizing.width_ratio.unwrap_or(0.), sizing.height_ratio.unwrap_or(0.)
-            )));
+            if sizing.has_relative_sizing() {
+                layer.insert("percentageSize".into(), json!(format!(
+                    "{{{}, {}}}", sizing.width_ratio.unwrap_or(0.), sizing.height_ratio.unwrap_or(0.)
+                )));
+            }
         }
         // Sketch 2025 modern layout fields return verbatim under their
         // original archived spelling (plain/`_`/`__`), overriding the
         // default zeros written above.
-        if let Some(modern) = n
-            .bindings
-            .get("sketchModernLayout")
-            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
-            && let Some(fields) = modern.as_object()
-        {
+        if let Some(fields) = &modern_layout {
             let modeled: Vec<String> = n.bindings.get("sketchModernLayoutModeled").and_then(|v|serde_json::from_str(v).ok()).unwrap_or_default();
             for (spelling, value) in fields {
                 let mut value=value.clone();
@@ -7200,8 +7252,9 @@ fn export_layer_impl(
                         let z=n.sizing_value(); let mode=if vertical {z.height}else{z.width};
                         value=json!(sizing_code(mode));
                     } else if key.ends_with("Pins") {
-                        let c=n.constraints.clone().unwrap_or_default(); let a=if vertical {c.vertical}else{c.horizontal};
-                        value=json!(match a {crate::layout::Anchor::Start=>1,crate::layout::Anchor::End=>4,crate::layout::Anchor::Stretch=>5,_=>0});
+                        value = json!(n.constraints.as_ref().map_or(0, |constraints| {
+                            pin_code(if vertical { constraints.vertical } else { constraints.horizontal })
+                        }));
                     }
                 }
                 layer.insert(spelling.clone(), value);
@@ -8178,7 +8231,7 @@ fn export_layer_impl(
             )
         {
             let justify = flex_justify(l.justify, &mut lossy);
-            let align = flex_align(l.align, &mut lossy);
+            let align = flex_align(l.align, l.wrap, &mut lossy);
             let mut group = json!({
                 "_class": "MSImmutableFlexGroupLayout",
                 "flexDirection": if l.mode == crate::layout::Flow::Vertical { 1 } else { 0 },
@@ -8213,12 +8266,6 @@ fn export_layer_impl(
                     1
                 }),
             );
-            if l.wrap {
-                note_lossy(&mut lossy, "stack-wrap-omitted");
-            }
-            if l.line_gap != 0. {
-                note_lossy(&mut lossy, "stack-line-gap-omitted");
-            }
         } else if n.layout.is_none()
             && let Some(mut payload) = n
                 .bindings

@@ -2052,6 +2052,22 @@ footer button {
 .constraint-box .edge-left { left: 8px; }
 .constraint-box .edge-right { right: 8px; }
 .constraint-box .edge-center { left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; }
+.constraint-box.sketch-constraint-box .constraint-edge { background: transparent; --pin-color: #c8cdd4; }
+.constraint-box.sketch-constraint-box .constraint-edge[aria-pressed=true] { --pin-color: var(--workspace-accent); }
+.sketch-constraint-box .constraint-edge::after { position: absolute; border-radius: 1px; background: var(--pin-color); pointer-events: none; }
+.sketch-constraint-box .edge-top, .sketch-constraint-box .edge-bottom { height: 16px; }
+.sketch-constraint-box .edge-top { top: 0; }
+.sketch-constraint-box .edge-bottom { bottom: 0; }
+.sketch-constraint-box .edge-top::after, .sketch-constraint-box .edge-bottom::after { content: ''; height: 3px; inset-inline: 0; }
+.sketch-constraint-box .edge-top::after { top: 8px; }
+.sketch-constraint-box .edge-bottom::after { bottom: 8px; }
+.sketch-constraint-box .edge-left, .sketch-constraint-box .edge-right { width: 16px; }
+.sketch-constraint-box .edge-left { left: 0; }
+.sketch-constraint-box .edge-right { right: 0; }
+.sketch-constraint-box .edge-left::after, .sketch-constraint-box .edge-right::after { content: ''; width: 3px; inset-block: 0; }
+.sketch-constraint-box .edge-left::after { left: 8px; }
+.sketch-constraint-box .edge-right::after { right: 8px; }
+.sketch-constraint-box .edge-center { width: 20px; height: 20px; margin: -10px 0 0 -10px; display: grid; place-items: center; font-size: 11px; font-weight: 600; line-height: 1; }
 
 /* Shared controls stay readable at the density of a desktop design tool. */
 .workspace-rail { gap: 6px; }

@@ -33,6 +33,7 @@ import { selectionParentBounds, rotateNode, selectionLocalBounds } from './canva
 import { formatAngleDegrees } from './selection-handles'
 import { figmaRotationDegrees, nodeDegreesForFigmaAngle, type LiveRotation } from './rotation-field'
 import { canAutoPinChild, nextConstraint } from './layout-constraints'
+import { SketchPinControls } from './SketchPinControls'
 import { ComponentPanel } from './ComponentPanel'
 import { CornerRadiusFields } from './corner-radius-fields'
 import { VectorCornerFields } from './VectorCornerFields'
@@ -720,7 +721,10 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
         return { value: propertyExpression(suffix.expression, original, 'length'),
           commit: v => updateBounds(node => resizeNodeDimension(node, field, v, editor.state.doc, undefined, suffix.anchor)) }
       } : undefined}
-      onChange={v => updateBounds(node => resizeNodeDimension(node, field, v, editor.state.doc))} />
+      onChange={v => updateBounds(node => {
+        const pins = uiMode === 'sketch' && constraintParent && canAutoPinChild(constraintParent, node) ? node.constraints : undefined
+        resizeNodeDimension(node, field, v, editor.state.doc, undefined, pins)
+      })} />
   }
   const proportion = <label className="geometry-proportion" title={tr("锁定宽高比")}>
     <input type="checkbox" aria-label={tr("锁定宽高比")} checked={!!n.constrainProportions}
@@ -873,7 +877,10 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
               </div>
             </div>
           </>}
-          {showConstraints && <div className="constraint-box" role="group" aria-label={tr("父画板尺寸约束")}>
+          {showConstraints && (uiMode === 'sketch' ? <SketchPinControls key={`${editor.sessionGeneration}:${n.id}`}
+            editor={editor} node={n}
+            disabled={s.busy || editor.interactionActive || !constraintParent || !canAutoPinChild(constraintParent, n)} />
+          : <div className="constraint-box" role="group" aria-label={tr("父画板尺寸约束")}>
             {([
               ['top', 'vertical', 'start', tr('顶部')],
               ['left', 'horizontal', 'start', tr('左侧')],
@@ -895,7 +902,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
                 node.constraints.horizontal = 'center'
                 node.constraints.vertical = 'center'
               }, '修改约束')} />
-          </div>}
+          </div>)}
         </section>
         <section>
           <h3 className={uiMode === 'figma' ? 'layout-section-heading' : undefined}>{tr("布局")}

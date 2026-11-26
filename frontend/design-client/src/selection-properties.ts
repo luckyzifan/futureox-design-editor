@@ -1,8 +1,8 @@
-import { defaultSizing, defaultTextStyle, type DesignDocument, type DesignNode, type Matrix } from './model'
+import { defaultSizing, defaultTextStyle, type Constraints, type DesignDocument, type DesignNode, type Matrix } from './model'
 import { localBounds, parentBounds, selectionLocalBounds, selectionParentBounds } from './canvas-view'
 import { figmaRotationDegrees } from './rotation-field'
 import { propertyUnits, type PropertyUnits } from './property-units'
-import { inverse, multiply } from './geometry'
+import { apply, bounds, boxPoints, inverse, multiply } from './geometry'
 import { kernelScaleGeometry } from './kernel/picking'
 import type { Editor } from './engine'
 import { interactivePath } from './selection-hierarchy'
@@ -47,7 +47,7 @@ export function setNodePosition(node: DesignNode, axis: 'x' | 'y', value: number
   if (!Number.isFinite(value) || !Number.isFinite(scale) || scale <= 0) throw new Error('图层位置必须为有限数值')
   node.transform[axis === 'x' ? 4 : 5] += value / scale - selectionParentBounds(doc, node.id, node.transform)[axis]
 }
-export function resizeNodeDimension(node: DesignNode, axis: 'width' | 'height', value: number, doc?: DesignDocument, resolvedUnits?: PropertyUnits, anchor: SketchAnchor = 0) {
+export function resizeNodeDimension(node: DesignNode, axis: 'width' | 'height', value: number, doc?: DesignDocument, resolvedUnits?: PropertyUnits, anchor: SketchAnchor | Constraints = 0) {
   const nodeUnits = resolvedUnits ?? (doc ? propertyUnits(doc, node.id) : undefined)
   const units = nodeUnits?.[axis] ?? 1
   const ratio = value / Math.max(1e-10, selectionMetric(node, axis, doc, nodeUnits))
@@ -55,10 +55,25 @@ export function resizeNodeDimension(node: DesignNode, axis: 'width' | 'height', 
   const sx = axis === 'width' || node.constrainProportions ? ratio : 1
   const sy = axis === 'height' || node.constrainProportions ? ratio : 1
   const box = doc ? selectionLocalBounds(doc, node.id) : localBounds(node)
-  const centered = anchor === 0.5 && node.constrainProportions
-  const pivotX = anchor && (axis === 'width' || centered) ? box.x + anchor * box.width : box.x
-  const pivotY = anchor && (axis === 'height' || centered) ? box.y + anchor * box.height : box.y
+  const localAnchor = typeof anchor === 'number' ? anchor : 0
+  const centered = localAnchor === 0.5 && node.constrainProportions
+  const pivotX = localAnchor && (axis === 'width' || centered) ? box.x + localAnchor * box.width : box.x
+  const pivotY = localAnchor && (axis === 'height' || centered) ? box.y + localAnchor * box.height : box.y
   const next = multiply(node.transform, [sx, 0, 0, sy, pivotX * (1 - sx), pivotY * (1 - sy)])
+  if (typeof anchor !== 'number') {
+    const { horizontal, vertical } = anchor
+    const fixedX = horizontal === 'start' || horizontal === 'end'
+    const fixedY = vertical === 'start' || vertical === 'end'
+    if (fixedX || fixedY) {
+      // Pins refer to the parent-space bounds, including for a flipped or
+      // rotated layer. `next` still scales the original local geometry.
+      const corners = boxPoints(box)
+      const before = bounds(corners.map(point => apply(node.transform, point)))
+      const after = bounds(corners.map(point => apply(next, point)))
+      if (fixedX) next[4] += before.x - after.x + (horizontal === 'end' ? before.width - after.width : 0)
+      if (fixedY) next[5] += before.y - after.y + (vertical === 'end' ? before.height - after.height : 0)
+    }
+  }
   Object.assign(node, resizedNode(node, next, node.constrainProportions ? ['width', 'height'] : [axis]))
   // Explicit values must not acquire oldSize*(newSize/oldSize) rounding;
   // otherwise equal batch edits can incorrectly display as mixed values.
