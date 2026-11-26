@@ -2022,6 +2022,18 @@ mod wasm {
             self.inner.load_font(bytes).map_err(|e| JsValue::from_str(&e))?;
             self.component_updates.clear();Ok(())
         }
+        /// Install runtime-only host faces used to resolve retained
+        /// `sketchSourceFonts` names. Payload entries are bounded
+        /// `{family, postscript?, data(base64), index}` objects. The document
+        /// font table is untouched, so save/export keep source metadata and
+        /// never embed these files. Returns the entry count accepted.
+        pub fn load_local_fonts(&mut self, resources: &str) -> Result<u32, JsValue> {
+            self.inner
+                .fonts
+                .install_local_fonts_json(resources)
+                .map(|count| count as u32)
+                .map_err(|e| JsValue::from_str(&e))
+        }
         pub fn load_document(&mut self, json: &str) -> Result<(), JsValue> {
             self.inner
                 .load_document(json)

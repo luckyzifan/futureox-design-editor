@@ -320,13 +320,223 @@ struct FontData {
     index: u32,
 }
 
+/// Host-owned faces used only to resolve non-embedded Sketch source names.
+/// They never enter `Document::fonts`, so saving, `.sketch` round-trips, PDF
+/// text operators and package bytes keep the portable embedded font contract.
+#[derive(Clone, Default)]
+struct LocalFonts {
+    faces: BTreeMap<String, FontData>,
+    /// Compacted PostScript/family/style name to internal face id.
+    names: BTreeMap<String, String>,
+    total_bytes: usize,
+}
+
+fn host_font_id(digest: [u8; 32], index: u32) -> String {
+    let hex = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("{HOST_FONT_ID_PREFIX}{hex}-{index}")
+}
+
+fn compact_font_name(value: &str) -> String {
+    value
+        .chars()
+        .filter(|c| !matches!(c, ' ' | '_' | '-' | '\u{00a0}'))
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
+fn face_name_value(face: &ttf_parser::Face<'_>, ids: &[u16]) -> Option<String> {
+    for id in ids {
+        let mut fallback = None;
+        for name in face.names().into_iter().filter(|name| name.name_id == *id) {
+            let Some(text) = name.to_string() else { continue };
+            let text = text.trim();
+            if text.is_empty() || text.chars().any(char::is_control) || text.chars().count() > 200 {
+                continue;
+            }
+            if name.language_id == 0x0409 {
+                return Some(text.into());
+            }
+            if fallback.is_none() {
+                fallback = Some(text.into());
+            }
+        }
+        if fallback.is_some() {
+            return fallback;
+        }
+    }
+    None
+}
+
+/// All portable identities a source face may be requested by.
+fn face_name_keys(face: &ttf_parser::Face<'_>) -> BTreeSet<String> {
+    let family = face_name_value(
+        face,
+        &[
+            ttf_parser::name_id::TYPOGRAPHIC_FAMILY,
+            ttf_parser::name_id::FAMILY,
+        ],
+    );
+    let style = face_name_value(
+        face,
+        &[
+            ttf_parser::name_id::TYPOGRAPHIC_SUBFAMILY,
+            ttf_parser::name_id::SUBFAMILY,
+        ],
+    );
+    let postscript = face_name_value(face, &[ttf_parser::name_id::POST_SCRIPT_NAME]);
+    let mut keys = BTreeSet::new();
+    for name in family.iter().chain(postscript.iter()) {
+        let key = compact_font_name(name);
+        if !key.is_empty() {
+            keys.insert(key);
+        }
+    }
+    if let (Some(family), Some(style)) = (&family, &style) {
+        for separator in [" ", ""] {
+            let key = compact_font_name(&format!("{family}{separator}{style}"));
+            if !key.is_empty() {
+                keys.insert(key);
+            }
+        }
+    }
+    keys
+}
+
+/// Rank a face against a requested source name. PostScript is the most exact
+/// identity; a bare family name prefers its Regular/Book/Normal cut instead of
+/// whichever collection face happens to come first.
+fn source_face_rank(face: &ttf_parser::Face<'_>, wanted: &str) -> Option<u8> {
+    let family = face_name_value(
+        face,
+        &[
+            ttf_parser::name_id::TYPOGRAPHIC_FAMILY,
+            ttf_parser::name_id::FAMILY,
+        ],
+    )
+    .map(|name| compact_font_name(&name));
+    let style = face_name_value(
+        face,
+        &[
+            ttf_parser::name_id::TYPOGRAPHIC_SUBFAMILY,
+            ttf_parser::name_id::SUBFAMILY,
+        ],
+    )
+    .map(|name| compact_font_name(&name));
+    let postscript = face_name_value(face, &[ttf_parser::name_id::POST_SCRIPT_NAME])
+        .map(|name| compact_font_name(&name));
+    if postscript.as_deref() == Some(wanted) {
+        return Some(0);
+    }
+    if let (Some(family), Some(style)) = (&family, &style)
+        && compact_font_name(&format!("{family} {style}")) == wanted
+    {
+        return Some(1);
+    }
+    if family.as_deref() == Some(wanted) {
+        return Some(match style.as_deref() {
+            Some("regular" | "book" | "normal") => 2,
+            _ => 3,
+        });
+    }
+    face_name_keys(face).contains(wanted).then_some(4)
+}
+
+/// Minimal view of the retained import binding. It deliberately accepts the
+/// extra `fallbacks` key that the full provenance model does not store.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+struct SketchSourceNames {
+    #[serde(default)]
+    style: Option<String>,
+    #[serde(default)]
+    runs: BTreeMap<String, String>,
+    #[serde(default)]
+    fallbacks: Vec<String>,
+}
+
+impl SketchSourceNames {
+    fn from_node(node: &Node) -> Option<Self> {
+        let raw = node.bindings.get("sketchSourceFonts")?;
+        serde_json::from_str(raw).ok()
+    }
+}
+
+/// Collect retained source names from Sketch's node metadata first, then from
+/// the typed design-system provenance and finally any legacy node binding.
+/// The document is only read; nothing is injected into authored nodes.
+fn sketch_source_names_by_node(
+    document: &crate::scene::Document,
+) -> BTreeMap<String, SketchSourceNames> {
+    let mut names = BTreeMap::new();
+    if let Some(system) = &document.design_system {
+        if let Some(metadata) = system
+            .sketch_containers
+            .get("nodeMetadata")
+            .and_then(serde_json::Value::as_object)
+        {
+            for (id, entry) in metadata {
+                let raw = entry
+                    .get("bindings")
+                    .and_then(|bindings| bindings.get("sketchSourceFonts"))
+                    .and_then(serde_json::Value::as_str);
+                if let Some(source) = raw.and_then(|raw| serde_json::from_str(raw).ok()) {
+                    names.insert(id.clone(), source);
+                }
+            }
+        }
+        for (id, source) in &system.font_sources {
+            if names.contains_key(id) || (source.style.is_none() && source.runs.is_empty()) {
+                continue;
+            }
+            names.insert(
+                id.clone(),
+                SketchSourceNames {
+                    style: source.style.clone(),
+                    runs: source.runs.clone(),
+                    fallbacks: Vec::new(),
+                },
+            );
+        }
+    }
+    for node in document.nodes.values() {
+        if node.kind != "text" || names.contains_key(&node.id) {
+            continue;
+        }
+        if let Some(source) = SketchSourceNames::from_node(node) {
+            names.insert(node.id.clone(), source);
+        }
+    }
+    names
+}
+
+/// Explicit host-supplied local face payload. `data` is base64, matching the
+/// document font resource wire shape so hosts can reuse their reader.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LocalFontInput {
+    family: String,
+    #[serde(default)]
+    postscript: Option<String>,
+    data: String,
+    #[serde(default)]
+    index: u32,
+}
+
 // Internal shaping IDs cannot be stored as document font resources. The
 // locally installed typeface never joins the document's transferable fonts.
 #[cfg(target_os = "macos")]
 mod macos_outlines;
+#[cfg(not(target_arch = "wasm32"))]
+mod local_sources;
 
 const SKETCH_UI_TEXT_ID: &str = "\0sketch-ui-han-text";
 const SKETCH_UI_DISPLAY_ID: &str = "\0sketch-ui-han-display";
+const HOST_FONT_ID_PREFIX: &str = "\0host:";
+const MAX_HOST_FONT_BYTES: usize = 20 * 1024 * 1024;
+const MAX_HOST_FONTS: usize = 16;
+const MAX_HOST_FONT_TOTAL_BYTES: usize = 64 * 1024 * 1024;
 
 #[cfg(target_os = "macos")]
 fn system_sketch_ui_face(id: &str) -> Option<&'static FontData> {
@@ -476,6 +686,17 @@ pub struct Fonts {
     faces: Arc<RwLock<FontFaceCache>>,
     shaped_runs: Arc<RwLock<ShapedRunCache>>,
     named: BTreeMap<String, FontData>,
+    /// Runtime-only host faces for missing Sketch source fonts. Never
+    /// serialized and never part of `named`.
+    local: LocalFonts,
+    /// Resolve `sketchSourceFonts` names against `local`. Native preparation
+    /// enables this with local Sketch UI; a WASM host enables it by supplying
+    /// bytes through `load_local_fonts`.
+    local_source_fonts: bool,
+    /// Retained source names by text node id, copied from the document's
+    /// Sketch metadata at load time. This is derived state; it is never
+    /// written back into the authored node.
+    source_names: BTreeMap<String, SketchSourceNames>,
     local_sketch_ui: bool,
     /// Sketch's `allowFontSubpixelQuantization` counterpart: quantise each
     /// glyph's painted outline origin to whole local units. Off by default —
@@ -491,8 +712,10 @@ pub struct Fonts {
 pub(crate) struct FontSourceStamp {
     default: [u8; 32],
     named: BTreeMap<String, ([u8; 32], u32)>,
+    local: BTreeMap<String, ([u8; 32], u32)>,
     quantized: bool,
     local_sketch_ui: bool,
+    local_source_fonts: bool,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum OutlineOutput {
@@ -1092,13 +1315,35 @@ impl Fonts {
     /// existing font book. Missing system faces leave portable fallback active.
     pub fn enable_local_sketch_ui(&mut self) {
         self.local_sketch_ui = cfg!(target_os = "macos");
+        self.local_source_fonts = self.local_sketch_ui;
         self.text_paths = Default::default();
+    }
+    /// Allow installed/host-supplied faces to satisfy `sketchSourceFonts`
+    /// names. The document and its portable font table are never modified.
+    pub fn enable_local_source_fonts(&mut self) {
+        self.local_source_fonts = true;
+        self.text_paths = Default::default();
+    }
+    pub(crate) fn local_source_fonts_enabled(&self) -> bool {
+        self.local_source_fonts
     }
     fn local_sketch_ui(&self, id: &str) -> Option<&'static FontData> {
         self.local_sketch_ui.then(|| system_sketch_ui_face(id)).flatten()
     }
     fn shaping_face_data(&self, id: &str) -> Option<&FontData> {
-        self.named.get(id).or_else(|| self.local_sketch_ui(id))
+        self.named
+            .get(id)
+            .or_else(|| self.local.faces.get(id))
+            .or_else(|| self.local_sketch_ui(id))
+    }
+    fn local_face_id(&self, name: &str) -> Option<&str> {
+        if !self.local_source_fonts {
+            return None;
+        }
+        self.local
+            .names
+            .get(&compact_font_name(name))
+            .map(String::as_str)
     }
     /// Toggle rendering-side glyph-origin quantisation (see the field
     /// documentation); layout and caret geometry never move.
@@ -1120,6 +1365,8 @@ impl Fonts {
     }
     pub(crate) fn source_stamp(&self) -> FontSourceStamp {
         FontSourceStamp { default:self.data_digest, quantized:self.quantize_glyph_origins, local_sketch_ui: self.local_sketch_ui,
+            local_source_fonts: self.local_source_fonts,
+            local:self.local.faces.iter().map(|(id,font)|(id.clone(),(font.digest,font.index))).collect(),
             named:self.named.iter().map(|(id,font)|(id.clone(),(font.digest,font.index))).collect() }
     }
     pub fn load(&mut self, data: &[u8]) -> Result<(), String> {
@@ -1128,6 +1375,221 @@ impl Fonts {
         self.data_digest = Sha256::digest(data).into();
         self.text_paths = Default::default();
         Ok(())
+    }
+    /// Install one runtime-only host face. The face is addressable only by
+    /// source name; it is not a document resource and never appears in
+    /// `Document::fonts` or a `.sketch` export.
+    pub fn install_local_font(
+        &mut self,
+        family: &str,
+        postscript: Option<&str>,
+        data: &[u8],
+        index: u32,
+    ) -> Result<String, String> {
+        if data.len() > MAX_HOST_FONT_BYTES {
+            return Err("Host font file exceeds 20 MiB".into());
+        }
+        self.local_source_fonts = true;
+        let face = ttf_parser::Face::parse(data, index)
+            .map_err(|_| format!("Font face {index} missing from host font"))?;
+        let mut keys = face_name_keys(&face);
+        for name in std::iter::once(family).chain(postscript) {
+            let key = compact_font_name(name);
+            if !key.is_empty() {
+                keys.insert(key);
+            }
+        }
+        self.install_local_face(Arc::new(data.to_vec()), index, keys)
+    }
+    /// Host transport used by the WASM renderer. The payload is a bounded array
+    /// of `{family, postscript?, data(base64), index}` entries. Installing any
+    /// face enables source-name resolution; without entries the portable
+    /// default font remains the terminal fallback.
+    pub fn install_local_fonts_json(&mut self, json: &str) -> Result<usize, String> {
+        let inputs: Vec<LocalFontInput> =
+            serde_json::from_str(json).map_err(|_| "Invalid local font payload")?;
+        if inputs.len() > MAX_HOST_FONTS {
+            return Err(format!("At most {MAX_HOST_FONTS} host fonts are supported"));
+        }
+        let mut installed = 0;
+        for input in inputs {
+            if input.family.trim().is_empty()
+                || input.family.chars().count() > 200
+                || input.postscript.as_deref().is_some_and(|name| {
+                    name.is_empty() || name.chars().count() > 200
+                })
+            {
+                return Err("Invalid host font identity".into());
+            }
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(input.data.as_bytes())
+                .map_err(|_| "Invalid host font base64")?;
+            self.install_local_font(
+                &input.family,
+                input.postscript.as_deref(),
+                &bytes,
+                input.index,
+            )?;
+            installed += 1;
+        }
+        if installed > 0 {
+            self.local_source_fonts = true;
+            self.text_paths = Default::default();
+        }
+        Ok(installed)
+    }
+    fn install_local_face(
+        &mut self,
+        bytes: Arc<Vec<u8>>,
+        index: u32,
+        keys: BTreeSet<String>,
+    ) -> Result<String, String> {
+        self.local_source_fonts = true;
+        let digest: [u8; 32] = Sha256::digest(bytes.as_slice()).into();
+        let id = host_font_id(digest, index);
+        if self.local.faces.contains_key(&id) {
+            for key in keys {
+                self.local.names.entry(key).or_insert_with(|| id.clone());
+            }
+            self.text_paths = Default::default();
+            return Ok(id);
+        }
+        if self.local.faces.len() >= MAX_HOST_FONTS {
+            return Err(format!("At most {MAX_HOST_FONTS} host fonts are supported"));
+        }
+        let total = self.local.total_bytes.checked_add(bytes.len())
+            .ok_or_else(|| "Host font budget overflow".to_string())?;
+        if total > MAX_HOST_FONT_TOTAL_BYTES {
+            return Err("Host fonts exceed their total byte budget".into());
+        }
+        for key in keys {
+            self.local.names.entry(key).or_insert_with(|| id.clone());
+        }
+        self.local.total_bytes = total;
+        self.local.faces.insert(id.clone(), FontData { bytes, digest, index });
+        // Paths cached before the face existed must not keep the portable
+        // outlines for a now-resolved source name.
+        self.text_paths = Default::default();
+        Ok(id)
+    }
+    /// Copy the document's retained Sketch source names into runtime state.
+    /// Runs on every target so a WASM host can install bytes before or after
+    /// `load_document`; the authored document itself is never modified.
+    pub(crate) fn set_sketch_source_names(&mut self, document: &crate::scene::Document) {
+        let names = sketch_source_names_by_node(document);
+        if names != self.source_names {
+            self.source_names = names;
+            self.text_paths = Default::default();
+        }
+    }
+    fn retained_source_font_names(&self) -> BTreeSet<String> {
+        let mut names = BTreeSet::new();
+        for source in self.source_names.values() {
+            if let Some(name) = &source.style {
+                names.insert(name.clone());
+            }
+            names.extend(source.runs.values().cloned());
+            names.extend(source.fallbacks.iter().cloned());
+        }
+        names.retain(|name| self.local_face_id(name).is_none());
+        names
+    }
+    /// Resolve retained `sketchSourceFonts` names against installed host
+    /// faces. Native preparation calls this after document admission; WASM
+    /// hosts call `install_local_fonts_json` instead. Unresolved names keep
+    /// the existing NotoSansSC terminal fallback.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn resolve_sketch_source_fonts(&mut self) -> usize {
+        if !self.local_source_fonts {
+            return 0;
+        }
+        let names = self.retained_source_font_names();
+        if names.is_empty() {
+            return 0;
+        }
+        self.install_source_candidates(local_sources::system().candidates(&names))
+    }
+    /// Same document-level resolution against explicit roots, for tests and
+    /// hosts that stage a font directory themselves.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn resolve_sketch_source_fonts_from_dirs(
+        &mut self,
+        dirs: &[std::path::PathBuf],
+    ) -> usize {
+        if !self.local_source_fonts {
+            return 0;
+        }
+        let names = self.retained_source_font_names();
+        if names.is_empty() {
+            return 0;
+        }
+        self.install_source_fonts_from_dirs(dirs, &names)
+    }
+    /// Trusted host/test entry point with explicit roots. The RPC surface never
+    /// accepts directories; production uses the fixed platform roots above.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn install_source_fonts_from_dirs(
+        &mut self,
+        dirs: &[std::path::PathBuf],
+        names: &BTreeSet<String>,
+    ) -> usize {
+        let index = local_sources::index(dirs);
+        self.install_source_candidates(index.candidates(names))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    fn install_source_candidates(
+        &mut self,
+        candidates: Vec<(String, std::path::PathBuf)>,
+    ) -> usize {
+        const READ_BUDGET: usize = 64 * 1024 * 1024;
+        let mut installed = 0;
+        let mut read_bytes = 0usize;
+        let mut files: HashMap<std::path::PathBuf, Arc<Vec<u8>>> = HashMap::new();
+        for (name, path) in candidates {
+            if self.local_face_id(&name).is_some() {
+                continue;
+            }
+            if self.local.faces.len() >= MAX_HOST_FONTS || read_bytes >= READ_BUDGET {
+                break;
+            }
+            let data = if let Some(data) = files.get(&path) {
+                Arc::clone(data)
+            } else {
+                let Ok(metadata) = std::fs::metadata(&path) else { continue };
+                if !metadata.is_file() || metadata.len() > MAX_HOST_FONT_BYTES as u64 {
+                    continue;
+                }
+                let Ok(bytes) = std::fs::read(&path) else { continue };
+                if bytes.len() > MAX_HOST_FONT_BYTES || read_bytes + bytes.len() > READ_BUDGET {
+                    continue;
+                }
+                read_bytes += bytes.len();
+                let data = Arc::new(bytes);
+                files.insert(path.clone(), Arc::clone(&data));
+                data
+            };
+            let wanted = compact_font_name(&name);
+            let faces = ttf_parser::fonts_in_collection(&data).unwrap_or(1).min(256);
+            let mut found: Option<(u8, u32, BTreeSet<String>)> = None;
+            for index in 0..faces {
+                let Ok(face) = ttf_parser::Face::parse(&data, index) else {
+                    continue;
+                };
+                let Some(rank) = source_face_rank(&face, &wanted) else {
+                    continue;
+                };
+                if found.as_ref().is_none_or(|(best, _, _)| rank < *best) {
+                    found = Some((rank, index, face_name_keys(&face)));
+                }
+            }
+            if let Some((_, index, keys)) = found
+                && self.install_local_face(data, index, keys).is_ok()
+            {
+                installed += 1;
+            }
+        }
+        installed
     }
     pub fn with_resources(
         &self,
@@ -1144,12 +1606,16 @@ impl Fonts {
             faces: self.faces.clone(),
             shaped_runs: self.shaped_runs.clone(),
             named: BTreeMap::new(),
+            local: self.local.clone(),
+            local_source_fonts: self.local_source_fonts,
+            source_names: self.source_names.clone(),
             local_sketch_ui: self.local_sketch_ui,
             quantize_glyph_origins: self.quantize_glyph_origins,
         };
         let mut total = 0;
         for (id, resource) in resources {
             if id == "default"
+                || id.starts_with('\0')
                 || !valid_font_id(id)
                 || resource.family.trim().is_empty()
                 || resource.family.encode_utf16().count() > 200
@@ -1209,12 +1675,25 @@ impl Fonts {
     pub(crate) fn bytes(&self, id: &str) -> Result<&[u8], String> {
         if id == "default" {
             Ok(&self.data)
+        } else if let Some(font) = self.local.faces.get(id) {
+            Ok(font.bytes.as_slice())
         } else {
             self.named
                 .get(id)
                 .map(|f| f.bytes.as_slice())
                 .ok_or_else(|| format!("Missing font resource: {id}"))
         }
+    }
+    /// Portable text view: host-only source faces stay out of PDF font
+    /// embedding, so a host font never becomes an embedded commercial font in
+    /// an exported PDF. The raster/SVG paths keep the resolved outlines.
+    pub(crate) fn portable_text(&self) -> Self {
+        if !self.local_source_fonts {
+            return self.clone();
+        }
+        let mut portable = self.clone();
+        portable.local_source_fonts = false;
+        portable
     }
     fn face(&self, id: &str, weight: f32) -> Result<Arc<ParsedFontFace>, String> {
         self.face_with(id, weight, &[])
@@ -1502,6 +1981,62 @@ impl Fonts {
         }
         Ok(self.node_outline_layout(node, Some(node.width), OutlineOutput::Measurement)?.measurement)
     }
+    fn local_source_style(
+        &self,
+        node: &Node,
+        style: &TextStyle,
+        runs: &[TextRun],
+    ) -> Option<(TextStyle, Vec<TextRun>)> {
+        if !self.local_source_fonts || self.local.faces.is_empty() {
+            return None;
+        }
+        let source = self
+            .source_names
+            .get(&node.id)
+            .cloned()
+            .or_else(|| SketchSourceNames::from_node(node))?;
+        let mut styled = style.clone();
+        let mut changed = false;
+        if style.font_id == "default"
+            && let Some(id) = source
+                .style
+                .as_deref()
+                .and_then(|name| self.local_face_id(name))
+        {
+            styled.font_id = id.to_owned();
+            changed = true;
+        }
+        for name in &source.fallbacks {
+            if styled.fallbacks.len() >= 16 {
+                break;
+            }
+            if let Some(id) = self.local_face_id(name)
+                && !styled.fallbacks.iter().any(|font| font == id)
+            {
+                styled.fallbacks.push(id.to_owned());
+                changed = true;
+            }
+        }
+        let mut resolved_runs = None;
+        for (index, name) in &source.runs {
+            let Ok(index) = index.parse::<usize>() else {
+                continue;
+            };
+            let Some(run) = runs.get(index) else {
+                continue;
+            };
+            if run.font_id.as_deref().unwrap_or("default") != "default" {
+                continue;
+            }
+            let Some(id) = self.local_face_id(name) else {
+                continue;
+            };
+            let runs = resolved_runs.get_or_insert_with(|| runs.to_vec());
+            runs[index].font_id = Some(id.to_owned());
+            changed = true;
+        }
+        changed.then(|| (styled, resolved_runs.unwrap_or_else(|| runs.to_vec())))
+    }
     fn node_outline_layout(
         &self,
         node: &Node,
@@ -1517,11 +2052,16 @@ impl Fonts {
                 &fallback
             }
         };
+        let resolved = self.local_source_style(node, style, &node.text_runs);
+        let (style, runs) = match &resolved {
+            Some((style, runs)) => (style, runs.as_slice()),
+            None => (style, node.text_runs.as_slice()),
+        };
         let mut result = self.layout(
             &node.text,
             node.font_size,
             style,
-            &node.text_runs,
+            runs,
             width,
             output,
             node.text_path.as_deref(),
@@ -1571,11 +2111,16 @@ impl Fonts {
                 &fallback
             }
         };
+        let resolved = self.local_source_style(node, style, &node.text_runs);
+        let (style, runs) = match &resolved {
+            Some((style, runs)) => (style, runs.as_slice()),
+            None => (style, node.text_runs.as_slice()),
+        };
         self.layout(
             &node.text,
             node.font_size,
             style,
-            &node.text_runs,
+            runs,
             width,
             OutlineOutput::None,
             node.text_path.as_deref(),
@@ -1596,6 +2141,7 @@ impl Fonts {
             &node.text_runs,
             &node.text_path,
             self.quantize_glyph_origins,
+            self.local_source_fonts,
         ))
         .map_err(|e| e.to_string())?;
         let cached = self
@@ -3027,6 +3573,195 @@ mod tests {
             "fills":[{"kind":"solid","color":"#112233"}]
         }))
         .unwrap()
+    }
+    fn abeezee_bytes() -> Vec<u8> {
+        std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../frontend/design-client/public/fonts/abeezee/ABeeZee-Regular.ttf"
+        ))
+        .unwrap()
+    }
+    fn source_node(text: &str, source: &str) -> Node {
+        let mut node = node(text, serde_json::json!({"fontId": "default"}), 1000.);
+        node.bindings.insert(
+            "sketchSourceFonts".into(),
+            serde_json::json!({"style": source}).to_string(),
+        );
+        node
+    }
+    #[test]
+    fn host_source_face_bytes_shape_default_text_and_keep_authored_identity() {
+        let mut fonts = fonts();
+        let mut node = source_node("Barlow 123", "ABeeZee-Regular");
+        let portable = fonts.node_measure(&node, None).unwrap();
+        assert!(
+            portable.glyphs.iter().all(|glyph| glyph.font_id == "default"),
+            "without host bytes the portable default font stays terminal"
+        );
+        let bytes = abeezee_bytes();
+        let id = fonts
+            .install_local_font("ABeeZee", Some("ABeeZee-Regular"), &bytes, 0)
+            .unwrap();
+        assert_eq!(
+            fonts.local_face_id("ABeeZee-Regular"),
+            Some(id.as_str()),
+            "the host face is addressable by its source name"
+        );
+        assert_eq!(fonts.bytes(&id).unwrap(), bytes, "exact host bytes are retained");
+        let resolved = fonts.node_measure(&node, None).unwrap();
+        assert!((resolved.width - portable.width).abs() > 0.5, "shaping must use the resolved metrics");
+        assert!(
+            resolved.glyphs.iter().all(|glyph| glyph.font_id == id),
+            "every covered cluster comes from the host face"
+        );
+        // Resolution is runtime-only: authored font id and provenance survive.
+        assert_eq!(node.text_style.as_ref().unwrap().font_id, "default");
+        assert!(node.bindings.contains_key("sketchSourceFonts"));
+        assert!(!fonts.named.contains_key(&id));
+        let document: crate::scene::Document = serde_json::from_value(serde_json::json!({
+            "schemaVersion":16, "id":"d", "name":"d",
+            "pages":[{"id":"p","name":"p","children":["t"],"background":"#ffffff"}],
+            "nodes":{"t":node}, "fonts":{}
+        }))
+        .unwrap();
+        let serialized = serde_json::to_string(&document).unwrap();
+        assert!(!serialized.contains(HOST_FONT_ID_PREFIX));
+        assert!(document.fonts.is_empty());
+        assert_eq!(
+            document.nodes["t"].bindings["sketchSourceFonts"],
+            serde_json::json!({"style": "ABeeZee-Regular"}).to_string()
+        );
+    }
+    #[test]
+    fn bounded_host_resolver_loads_only_the_matching_font_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "futureox-host-fonts-{}-{:?}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("ABeeZee-Regular.ttf"), abeezee_bytes()).unwrap();
+        std::fs::write(dir.join("Unrelated-Medium.ttf"), abeezee_bytes()).unwrap();
+        let mut fonts = fonts();
+        let names = BTreeSet::from([
+            "ABeeZee-Regular".to_string(),
+            "NotInstalled-Medium".to_string(),
+        ]);
+        let installed = fonts.install_source_fonts_from_dirs(&[dir.clone()], &names);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(installed, 1, "one requested source face has host bytes");
+        assert!(fonts.local_face_id("ABeeZee-Regular").is_some());
+        assert!(fonts.local_face_id("NotInstalled-Medium").is_none());
+        let node = source_node("Barlow 123", "ABeeZee-Regular");
+        let layout = fonts.node_measure(&node, None).unwrap();
+        assert!(layout.width.is_finite() && layout.width > 0.);
+        assert!(layout.glyphs.iter().all(|glyph| glyph.font_id.starts_with(HOST_FONT_ID_PREFIX)));
+        assert!(layout.glyphs.iter().all(|glyph| glyph.advance.is_finite()));
+    }
+    #[test]
+    fn local_font_json_is_bounded_and_never_becomes_a_document_resource() {
+        let payload = serde_json::json!([{
+            "family": "ABeeZee",
+            "postscript": "ABeeZee-Regular",
+            "data": base64::engine::general_purpose::STANDARD.encode(abeezee_bytes()),
+            "index": 0
+        }])
+        .to_string();
+        let mut fonts = fonts();
+        assert_eq!(fonts.install_local_fonts_json(&payload).unwrap(), 1);
+        assert!(fonts.local_source_fonts_enabled());
+        assert!(fonts.local_face_id("ABeeZee-Regular").is_some());
+        assert!(fonts.named.is_empty());
+        let oversized = serde_json::json!([{
+            "family": "ABeeZee",
+            "data": base64::engine::general_purpose::STANDARD.encode(vec![0u8; MAX_HOST_FONT_BYTES + 1]),
+            "index": 0
+        }])
+        .to_string();
+        assert!(fonts.install_local_fonts_json(&oversized).is_err());
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn document_source_names_resolve_from_host_files_without_changing_fonts() {
+        let dir = std::env::temp_dir().join(format!(
+            "futureox-host-doc-{}-{:?}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("ABeeZee-Regular.ttf"), abeezee_bytes()).unwrap();
+        let document: crate::scene::Document = serde_json::from_value(serde_json::json!({
+            "schemaVersion":16, "id":"d", "name":"d",
+            "pages":[{"id":"p","name":"p","children":["t"],"background":"#ffffff"}],
+            "nodes":{"t":{
+                "id":"t","kind":"text","text":"KPI 123","fontSize":20,
+                "width":400,"height":40,
+                "textStyle":{"fontId":"default"},
+                "textRuns":[{"start":0,"end":3,"fontId":"default"}]
+            }},
+            "designSystem":{"sketchContainers":{"nodeMetadata":{"t":{"bindings":{
+                "sketchSourceFonts":"{\"style\":\"ABeeZee-Regular\",\"runs\":{\"0\":\"ABeeZee-Regular\"},\"fallbacks\":[\"ABeeZee-Regular\"]}"
+            }}}}},
+            "fonts":{}
+        }))
+        .unwrap();
+        let mut fonts = fonts();
+        fonts.enable_local_source_fonts();
+        fonts.set_sketch_source_names(&document);
+        let installed = fonts.resolve_sketch_source_fonts_from_dirs(&[dir.clone()]);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(installed, 1);
+        let node = &document.nodes["t"];
+        let layout = fonts.node_measure(node, None).unwrap();
+        assert!(layout.glyphs.iter().all(|glyph| glyph.font_id.starts_with(HOST_FONT_ID_PREFIX)));
+        assert!(layout.glyphs.iter().all(|glyph| glyph.advance.is_finite()));
+        // The authored document, its font table and its provenance are intact.
+        assert!(document.fonts.is_empty());
+        let serialized = serde_json::to_string(&document).unwrap();
+        assert!(!serialized.contains(HOST_FONT_ID_PREFIX));
+        assert!(serialized.contains("sketchSourceFonts"));
+        assert!(serialized.contains("ABeeZee-Regular"));
+    }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn engine_document_load_resolves_an_installed_system_source_face() {
+        let mut engine = crate::Engine::new();
+        engine.load_font(&font_bytes()).unwrap();
+        engine.fonts.enable_local_source_fonts();
+        let json = serde_json::json!({
+            "schemaVersion":16, "id":"d", "name":"d",
+            "pages":[{"id":"p","name":"p","children":["t"],"background":"#ffffff"}],
+            "nodes":{"t":{
+                "id":"t","kind":"text","text":"Helvetica 123","fontSize":20,
+                "width":400,"height":40,
+                "textStyle":{"fontId":"default"}
+            }},
+            "designSystem":{"sketchContainers":{"nodeMetadata":{"t":{"bindings":{
+                "sketchSourceFonts":"{\"style\":\"Helvetica\"}"
+            }}}}},
+            "fonts":{}
+        })
+        .to_string();
+        engine.load_document(&json).unwrap();
+        eprintln!("sources={:?} enabled={} locals={:?}", engine.fonts.source_names, engine.fonts.local_source_fonts, engine.fonts.local.names.keys().collect::<Vec<_>>());
+        let names = std::collections::BTreeSet::from(["Helvetica".to_string()]); eprintln!("cands={:?}", local_sources::system().candidates(&names));
+        let n = engine.fonts.resolve_sketch_source_fonts(); eprintln!("resolved {n} local={:?}", engine.fonts.local.names.keys().collect::<Vec<_>>());
+        let id = engine
+            .fonts
+            .local_face_id("Helvetica")
+            .expect("macOS ships Helvetica")
+            .to_owned();
+        let node = &engine.doc.as_ref().unwrap().nodes["t"];
+        let layout = engine.fonts.node_measure(node, None).unwrap();
+        assert!(layout.glyphs.iter().any(|glyph| glyph.font_id == id));
+        assert_eq!(node.text_style.as_ref().unwrap().font_id, "default");
+        assert_eq!(engine.fonts.named.len(), 0);
     }
     fn line_glyphs<'a>(layout: &'a TextLayout, line: &TextLine) -> Vec<&'a Glyph> {
         layout

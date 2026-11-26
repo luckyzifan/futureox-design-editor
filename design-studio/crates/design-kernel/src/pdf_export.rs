@@ -253,6 +253,12 @@ fn write_text_operators(
     fonts: &Fonts,
     layer_opacity: f64,
 ) -> Result<bool, String> {
+    // PDF text operators embed whole font files. Host-only source faces are
+    // runtime substitutes, so this lane keeps the portable font and never
+    // embeds a locally installed commercial font. The outline fallback below
+    // still uses the local outlines when text operators are unavailable.
+    let portable = fonts.portable_text();
+    let fonts = &portable;
     let layout = fonts.node_layout(node, Some(node.width))?;
     if layout.glyphs.iter().any(|g| g.path_transform.is_some()) {
         return Ok(false);

@@ -1605,6 +1605,18 @@ if retain_translated_roots {
         self.source_doc = Some(doc.clone());
         self.doc = Some(doc);
         self.fonts = fonts;
+        // Non-embedded Sketch source names are retained metadata. Copying them
+        // into runtime state is target-independent; only native preparation can
+        // also read the host's installed faces. The authored document and its
+        // portable font table stay untouched.
+        {
+            let doc = self.doc.as_ref().expect("installed document");
+            self.fonts.set_sketch_source_names(doc);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.fonts.local_source_fonts_enabled() {
+            self.fonts.resolve_sketch_source_fonts();
+        }
         self.animation_base = None;
         self.animation_sample = None;
         self.layout_dirty = true;
