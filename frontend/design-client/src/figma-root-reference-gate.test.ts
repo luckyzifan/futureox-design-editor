@@ -165,7 +165,26 @@ test('root Figma CPU references and packs are pinned and pixel-gated', { timeout
   for (const kind of Object.keys(manifest.references)) {
     if (!(referenceCases as readonly string[]).includes(kind))
       failures.push(`${kind}: pinned root reference has no figmaFixture case`)
+    const pinned = manifest.references[kind]
+    if (!pinned.sha256 || !(pinned.width > 0) || !(pinned.height > 0))
+      failures.push(`${kind}: pinned manifest entry is missing SHA-256 or dimensions`)
   }
+  for (const [kind, budget] of Object.entries(budgets)) {
+    if (!(referenceCases as readonly string[]).includes(kind))
+      failures.push(`${kind}: pixel budget has no figmaFixture case`)
+    if (!(kind in manifest.references))
+      failures.push(`${kind}: pixel budget has no root reference`)
+    if (!(budget.pixels >= 0) || !(budget.maxChannel >= 0) || !budget.ticket)
+      failures.push(`${kind}: pixel budget must be non-negative and name its ticket`)
+  }
+  for (const kind of [
+    'group-blur',
+    'group-inner-shadow',
+    'group-shadow',
+    'pass-through-blur',
+    'large-nested',
+  ])
+    expect(budgets[kind]?.ticket, `${kind} tolerance must cite #1265`).toBe('#1265')
   expect(
     noRootReference['mask-half-overlap'],
     'mask-half-overlap is intentionally pack-only',
@@ -199,9 +218,13 @@ test('root Figma CPU references and packs are pinned and pixel-gated', { timeout
         continue
       }
       const bytes = readFileSync(file)
-      if (entry.referenceSha256 && sha256(bytes) !== entry.referenceSha256)
+      if (!entry.referenceSha256)
+        failures.push(`${pack}/${entry.id}: manifest has no referenceSha256`)
+      else if (sha256(bytes) !== entry.referenceSha256)
         failures.push(`${pack}/${entry.id}: SHA-256 changed for ${entry.reference}`)
-      if (entry.options?.width != null && entry.options?.height != null) {
+      if (entry.options?.width == null || entry.options?.height == null) {
+        failures.push(`${pack}/${entry.id}: manifest has no reference dimensions`)
+      } else {
         const { width, height } = header(bytes)
         if (width !== entry.options.width || height !== entry.options.height)
           failures.push(
