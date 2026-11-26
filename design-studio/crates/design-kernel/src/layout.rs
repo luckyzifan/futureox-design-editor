@@ -914,6 +914,19 @@ fn anchor(position: f64, size: f64, old: f64, new: f64, mode: Anchor) -> (f64, f
         ),
     }
 }
+
+fn constrained_axis(
+    position: f64, size: f64, old: f64, new: f64,
+    opcode: ConstraintOpcode, legacy_bits: Option<u8>,
+) -> (f64, f64) {
+    if old != new
+        && let Some(bits) = legacy_bits
+        && let Ok(geometry) = crate::sketch::resize_legacy_axis(position, size, old, new, bits)
+    {
+        return geometry;
+    }
+    opcode.anchor_mode().map_or((position, size), |mode| anchor(position, size, old, new, mode))
+}
 /// A pose changes no dimensions. Reuse is allowed only when the real anchor
 /// operations (including cancellation and minimum-size rules) keep every bit.
 pub(crate) fn pose_constraint_fixed(node:&crate::scene::Node,parent:Option<&crate::scene::Node>,page_root:bool)->bool{
@@ -980,32 +993,23 @@ fn constrain(doc: &mut Document, parent: &str) {
             doc.nodes.get_mut(&id).unwrap().constraints = Some(c);
             continue;
         }
+        let [legacy_x, legacy_y] = if flow {
+            [None; 2]
+        } else {
+            crate::interop::sketch_legacy_resize_axes(doc, &doc.nodes[&id])
+        };
         let n = doc.nodes.get_mut(&id).unwrap();
         let flow_item = flow && !n.sizing_value().absolute;
         if let Some(mut c) = n.constraints.clone() {
             if !flow_item {
                 let horizontal = ConstraintOpcode::from_anchor(0, c.horizontal);
                 let vertical = ConstraintOpcode::from_anchor(1, c.vertical);
-                let (x, nw) = match horizontal.anchor_mode() {
-                    Some(mode) => anchor(
-                        n.transform.0[4],
-                        n.width,
-                        c.reference_width.unwrap_or(w),
-                        w,
-                        mode,
-                    ),
-                    None => (n.transform.0[4], n.width),
-                };
-                let (y, nh) = match vertical.anchor_mode() {
-                    Some(mode) => anchor(
-                        n.transform.0[5],
-                        n.height,
-                        c.reference_height.unwrap_or(h),
-                        h,
-                        mode,
-                    ),
-                    None => (n.transform.0[5], n.height),
-                };
+                let (x, nw) = constrained_axis(
+                    n.transform.0[4], n.width, c.reference_width.unwrap_or(w), w, horizontal, legacy_x,
+                );
+                let (y, nh) = constrained_axis(
+                    n.transform.0[5], n.height, c.reference_height.unwrap_or(h), h, vertical, legacy_y,
+                );
                 n.transform.0[4] = x;
                 n.transform.0[5] = y;
                 resize(n, nw, nh);

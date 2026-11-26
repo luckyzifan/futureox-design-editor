@@ -21,6 +21,7 @@ pub use model::{
     Document, Layer, LayerKind, NativePage, PinConstraints, TextOverrideTarget, TextOverrideValue,
 };
 pub use resize::{Frame, Size};
+pub(crate) use resize::axis as resize_legacy_axis;
 pub use session::{
     Applied, CommandEnvelope, HistoryStatus, MAX_HISTORY_BYTES, MAX_HISTORY_ENTRIES, Owner,
     Session, SketchCommand,

@@ -432,6 +432,60 @@ fn constraint_anchor(bits: u64) -> crate::layout::Anchor {
     }
 }
 
+#[derive(serde::Deserialize)]
+struct LegacyConstraintReceipt {
+    mask: u64,
+    model: LegacyConstraintAnchors,
+}
+
+#[derive(serde::Deserialize)]
+struct LegacyConstraintAnchors {
+    horizontal: crate::layout::Anchor,
+    vertical: crate::layout::Anchor,
+}
+
+impl LegacyConstraintReceipt {
+    fn from_node(doc: &Document, node: &Node) -> Option<Self> {
+        serde_json::from_str(sketch_binding(doc, node, "sketchLegacyConstraints")?).ok()
+    }
+
+    fn retained_axes(&self, constraints: &crate::layout::Constraints) -> [Option<u64>; 2] {
+        [
+            (constraints.horizontal == self.model.horizontal).then_some(self.mask & 7),
+            (constraints.vertical == self.model.vertical).then_some((self.mask >> 3) & 7),
+        ]
+    }
+}
+
+/// The shared solver can apply the legacy resize rule on an unchanged
+/// mixed-flex axis of an untransformed shape. A modern field on that axis
+/// takes precedence even when its value has to stay opaque.
+pub(crate) fn sketch_legacy_resize_axes(doc: &Document, node: &Node) -> [Option<u8>; 2] {
+    if node.constrain_proportions || node.transform.0[..4] != [1., 0., 0., 1.] {
+        return [None; 2];
+    }
+    let (Some(constraints), Some(receipt)) = (&node.constraints, LegacyConstraintReceipt::from_node(doc, node)) else {
+        return [None; 2];
+    };
+    let modern = sketch_binding(doc, node, "sketchModernLayout")
+        .and_then(|raw| serde_json::from_str::<Map<String, Value>>(raw).ok());
+    let [horizontal, vertical] = receipt.retained_axes(constraints);
+    [
+        (horizontal, "horizontalPins", "horizontalSizing"),
+        (vertical, "verticalPins", "verticalSizing"),
+    ].map(|(bits, pins, sizing)| {
+        if modern.as_ref().is_some_and(|fields| {
+            fields.keys().any(|key| {
+                let key = key.trim_start_matches('_');
+                key == pins || key == sizing
+            })
+        }) {
+            return None;
+        }
+        bits.filter(|bits| matches!(bits, 3 | 5 | 6)).map(|bits| bits as u8)
+    })
+}
+
 fn bool_at(v: &Value, key: &str) -> bool {
     v.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
@@ -7193,32 +7247,27 @@ fn export_layer_impl(
             crate::layout::Anchor::Stretch => 5,
             _ => 0,
         };
-        let legacy_constraints = n.bindings.get("sketchLegacyConstraints")
-            .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
         // P1-7: constraints → resizingConstraint bits (63 = Sketch's
         // measured default "free" value and must not re-import as a rule).
         if let Some(c) = &n.constraints {
-            let x = constraint_axis_bits(c.horizontal, &mut lossy);
-            let y = constraint_axis_bits(c.vertical, &mut lossy);
-            layer.insert("resizingConstraint".into(), json!(x | (y << 3)));
+            let receipt = LegacyConstraintReceipt::from_node(doc, n);
+            let [legacy_x, legacy_y] = receipt.as_ref().map_or([None; 2], |source| source.retained_axes(c));
+            let x = legacy_x.unwrap_or_else(|| constraint_axis_bits(c.horizontal, &mut lossy));
+            let y = legacy_y.unwrap_or_else(|| constraint_axis_bits(c.vertical, &mut lossy));
+            let mask = receipt.as_ref().filter(|_| legacy_x.is_some() && legacy_y.is_some())
+                .map_or(x | (y << 3), |source| source.mask);
+            layer.insert("resizingConstraint".into(), json!(mask));
             layer.insert("hasExplicitConstraints".into(), json!(true));
-            let legacy_model = legacy_constraints.as_ref().and_then(|source| source.get("model"));
-            for (axis, field, anchor) in [
-                ("horizontal", "horizontalPins", c.horizontal),
-                ("vertical", "verticalPins", c.vertical),
+            for (field, anchor, legacy_axis) in [
+                ("horizontalPins", c.horizontal, legacy_x),
+                ("verticalPins", c.vertical, legacy_y),
             ] {
                 // An unchanged imported legacy anchor keeps its original
                 // representation even when layout updated its reference size.
-                if !has_modern_field(field)
-                    && legacy_model.and_then(|model| model.get(axis)) != Some(&json!(anchor))
-                {
+                if !has_modern_field(field) && legacy_axis.is_none() {
                     layer.insert(field.into(), json!(pin_code(anchor)));
                 }
             }
-        }
-        if let Some(source)=legacy_constraints
-            && source.get("model")==Some(&json!(n.constraints)) {
-            layer.insert("resizingConstraint".into(),source["mask"].clone());
         }
         let sizing_code = |mode| match mode {
             crate::layout::SizeMode::Fixed => 0,
