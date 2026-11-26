@@ -187,8 +187,9 @@ export function prepareSelectionArrangement(doc: DesignDocument, selected: reado
   }
   const reference = frame ? { x: 0, y: 0, width: frame.width, height: frame.height } :
     !single && target?.kind === 'layer' && index.ids.includes(target.id) ? reader.measure(target.id) : undefined
-  const plan = planArrangement(CORE_SELECTION_PROFILE, rects, axis, mode,
-    single ? { x: 0, y: 0, width: parentNode.width, height: parentNode.height } : undefined, reference)!
+  const parentBounds = single ? reference ?? (parentNode.kind === 'group' ? reader.measure(parent) :
+    { x: 0, y: 0, width: parentNode.width, height: parentNode.height }) : undefined
+  const plan = planArrangement(CORE_SELECTION_PROFILE, rects, axis, mode, parentBounds, reference)!
   return { ids: index.ids, patches: index.ids.map((id, i) => {
     const delta = plan.offsets[i]
     if (delta.x === 0 && delta.y === 0) return { id, transform: doc.nodes[id].transform }

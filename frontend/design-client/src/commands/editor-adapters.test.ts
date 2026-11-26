@@ -101,6 +101,17 @@ for (const operation of ['align', 'wrap', 'unwrap'] as const) test(`auto-layout 
   const params = operation === 'align' ? { ids, axis: 'x', mode: 'start' } : { ids }
   rejectedParity(f.doc, ids, ui => operation === 'align' ? ui.align('x', 'start') : operation === 'wrap' ? ui.group() : ui.ungroup(), method, params, operation === 'align' ? 'auto_layout_position' : 'unsupported_layout_topology')
 })
+test('a group supplies the bounds of its moved contents when aligning one child', () => {
+  const { doc, wrapper, a, b } = childrenFixture()
+  wrapper.width = 80
+  wrapper.height = 30
+  a.transform = translate(0, 0); a.width = 40
+  b.transform = translate(100, 10); b.width = 20; b.height = 20
+  const after = completeParity(doc, [a.id], editor => editor.align('x', 'end'),
+    'node.align', () => ({ ids: [a.id], axis: 'x', mode: 'end' }))
+  expect(after.nodes[a.id].transform[4]).toBe(80)
+  expect(after.nodes[b.id]).toEqual(b)
+})
 test('absolute auto-layout child remains alignable', () => {
   const f = childrenFixture('frame'); f.wrapper.layout = { ...defaultLayout(), mode: 'horizontal' }; f.a.sizing = { ...defaultSizing(), absolute: true }
   completeParity(f.doc, [f.a.id], ui => ui.align('x', 'end'), 'node.align', () => ({ ids: [f.a.id], axis: 'x', mode: 'end' }))
