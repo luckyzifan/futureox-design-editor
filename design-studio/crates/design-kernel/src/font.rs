@@ -2453,6 +2453,10 @@ impl Fonts {
                     style.line_height_at(size)
                 };
                 let mut natural = 0f64;
+                // Figma centers the ascent and descent inside an explicit
+                // line box. Its Auto line advance also includes the font gap.
+                let explicit_figma_box = style.line_box_baseline == "figma-pixel-leading"
+                    && attributes.is_none() && !font_line_box;
                 let use_sketch_ascender = (style.line_box_baseline == "sketch-font-leading"
                     || uniform_sketch_line_height)
                     && attributes.and_then(TextParagraph::fixed_line_height).is_some();
@@ -2480,10 +2484,11 @@ impl Fonts {
                         style.line_height_at(glyph.size)
                     };
                     height = height.max(glyph_height);
+                    let font_gap = if explicit_figma_box { 0. } else { f64::from(face.line_gap()) };
                     natural = natural.max(
-                        (face.ascender() as f64 - face.descender() as f64 + face.line_gap() as f64)
+                        (f64::from(face.ascender()) - f64::from(face.descender()) + font_gap)
                             * glyph.size
-                            / face.units_per_em() as f64,
+                            / f64::from(face.units_per_em()),
                     );
                 }
                 if let Some(p) = attributes {
@@ -3141,6 +3146,32 @@ mod tests {
         for ([a, b], advance) in baselines.array_windows().copied().zip([27., 22., 27., 22.]) {
             assert!((b - a - advance).abs() < 1e-8, "baselines: {baselines:?}");
         }
+    }
+
+    #[test]
+    fn figma_explicit_height_centers_the_glyph_body_without_the_font_gap() {
+        let mut fonts = Fonts::new();
+        fonts.load(include_bytes!(
+            "../../../../frontend/design-client/public/fonts/poppins/Poppins-Regular.ttf"
+        )).unwrap();
+        let mut explicit = node("H\nH", serde_json::json!({
+            "lineHeight": 20. / 14.,
+            "lineHeightPixels": 20.,
+            "lineBoxBaseline": "figma-pixel-leading",
+        }), 200.);
+        explicit.font_size = 14.;
+        let measured = fonts.node_layout(&explicit, Some(explicit.width)).unwrap();
+        assert_eq!(measured.lines[0].height, 20.);
+        assert!((measured.glyphs[0].y - 14.9).abs() < 1e-9);
+        assert!((measured.glyphs[1].y - 34.9).abs() < 1e-9);
+
+        let style = explicit.text_style.as_mut().unwrap();
+        style.line_height_pixels = None;
+        style.line_height_auto = true;
+        style.line_box_baseline = "figma-font-metrics".into();
+        let automatic = fonts.node_layout(&explicit, Some(explicit.width)).unwrap();
+        assert_eq!(automatic.lines[0].height, 21.);
+        assert!((automatic.glyphs[0].y - 14.7).abs() < 1e-9);
     }
 
     #[test]
