@@ -131,7 +131,14 @@ export function NativeSourceSurface(props:Props){
         surface.style.backgroundColor=covers?'transparent':SOURCE_PASTEBOARD.backgroundColor
         surface.style.backgroundImage=covers?'none':SOURCE_PASTEBOARD.backgroundImage
       }
-      return projection.update(backing,p.view,p.width,p.height,!!bitmapContext,source.bounds,covers)
+      // A certified full-source bitmap can cover the entire inward viewport.
+      // Keep those texels visible while exact work runs when the decoded
+      // opening image is no denser in that viewport.
+      const finerNativeBacking=covers && backing && backing===certifiedBacking &&
+        !source.materialKeys && !source.viewportSubset && p.view.zoom>backing.view.zoom &&
+        backingCoversSettledSource(backing,p,density.current) &&
+        p.underlay?.current?.(p.view,p.width,p.height,'all',backing.view.zoom*backing.dpr)
+      return projection.update(backing,p.view,p.width,p.height,!!bitmapContext,source.bounds,covers&&!finerNativeBacking)
     }
     badge.className='kernel-status';badge.setAttribute('role','status');badge.setAttribute('aria-label','完整画板显示状态')
     Object.assign(badge.style,{position:'absolute',right:'14px',top:'var(--kernel-status-top, 12px)',fontSize:'11px',color:'#7b8190',zIndex:'5'})

@@ -532,6 +532,44 @@ test('continuous zoom-in from a settled view requests at least half the native d
   expect(statuses.at(-1)?.sharp).not.toBe(true)
 })
 
+test.each([
+  { name:'coarser opening pixels', thumbnailScale:0.25, x:-800, keepsNative:true },
+  { name:'finer opening pixels', thumbnailScale:2, x:-800, keepsNative:false },
+  { name:'a crop outside the native backing', thumbnailScale:0.25, x:300, keepsNative:false },
+])('full source chooses its continuity pixels with $name',async({ thumbnailScale, x, keepsNative })=>{
+  vi.stubGlobal('OffscreenCanvas', class {})
+  vi.stubGlobal('ImageBitmapRenderingContext', class {})
+  Object.defineProperty(dom.window.HTMLCanvasElement.prototype, 'getContext', {
+    configurable:true, value:()=>({ transferFromImageBitmap() {} }),
+  })
+  state.bitmap=true
+  const underlay = {
+    current: (_view:unknown, _width:number, _height:number, _requirement?:string, maximumScale?:number) =>
+      maximumScale === undefined || thumbnailScale <= maximumScale,
+  }
+  const render=(view:{x:number;y:number;zoom:number}, wheel=false)=>act(async()=>{
+    root.render(<NativeSourceSurface source={source} view={view} wheelView={wheel?view:undefined}
+      width={800} height={700} underlay={underlay} onStatus={value=>statuses.push(value)}/>)
+    await pause()
+  })
+  await render({x:0,y:0,zoom:1})
+  for(let attempt=0;attempt<8&&statuses.at(-1)?.phase!=='ready';attempt++){
+    const job=state.jobs.find(item=>item.active)
+    expect(job).toBeDefined()
+    await act(async()=>{
+      job!.options.tileViewport!.forEach((_,i)=>deliver(job!,i,9000+attempt*20+i))
+      job!.finish();await pause();paint()
+    })
+  }
+  expect(statuses.at(-1)).toMatchObject({phase:'ready',sharp:true,view:{zoom:1}})
+  await render({x,y:-700,zoom:3},true)
+  const canvas=document.querySelector<HTMLCanvasElement>('.native-source-content')!
+  expect(canvas.dataset.previewUpscaleRejected).toBe('true')
+  expect(canvas.style.visibility).toBe(keepsNative?'':'hidden')
+  expect(canvas.dataset.cameraReprojected).toBe(String(keepsNative))
+  expect(statuses.at(-1)).toMatchObject({phase:'refining',sharp:false,view:{zoom:3}})
+})
+
 test('one ready tile below the preview ratio is submitted over the retained picture', async () => {
   vi.stubGlobal('OffscreenCanvas', class {})
   vi.stubGlobal('ImageBitmapRenderingContext', class {})
