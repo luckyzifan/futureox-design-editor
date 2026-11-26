@@ -147,9 +147,65 @@ describe('Figma plugin host', () => {
       if (typeof figma.variables === 'undefined' || typeof figma.createImage !== 'function') throw new Error('host api missing')
       if (!figma.viewport || typeof figma.viewport.zoom !== 'number') throw new Error('viewport missing')
       if (figma.currentUser !== null) throw new Error('user leaked')
-      figma.createVector()
+      figma.createGridStyle()
     `))).rejects.toMatchObject({ code: 'unsupported_api' })
     expect(current.state.version).toBe(version + 1)
+  })
+
+  it('creates an actual empty vector under the current page in one editable transaction', async () => {
+    const current = editor(), before = current.state.doc
+    const run = await openPlugin(current, bundle('Empty vector', `
+      const v = figma.createVector()
+      v.name = 'Empty editable vector'
+      if (v.type !== 'VECTOR' || v.parent.id !== figma.currentPage.id) throw new Error('Wrong kind or parent')
+      const network = v.vectorNetwork
+      if (!network || network.vertices.length || network.segments.length || network.regions.length) throw new Error('Unexpected geometry')
+      figma.closePlugin(v.id)
+    `))
+    try {
+      const v = named(current, 'Empty editable vector')!
+      expect(run.closeMessage).toBe(v.id)
+      expect(current.state.doc.pages[0].children).toEqual([v.id])
+      expect(v.network).toEqual({ vertices: [], edges: [], fillRule: 'nonzero' })
+      expect(current.state.version).toBe(1)
+      current.undo()
+      expect(current.state.doc).toEqual(before)
+      expect(current.canUndo).toBe(false)
+    } finally { run.close() }
+  })
+
+  it('reads actual local VectorNetwork topology and cubic tangents without editing the document', async () => {
+    const current = editor(), v = node('vector', 40, 20, 30, 30)
+    v.network = {
+      vertices: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 10, y: 0 }, { id: 'c', x: 0, y: 10 }],
+      edges: [
+        { id: 'ab', from: 'a', to: 'b', c1: { x: 2, y: 3 }, c2: { x: 8, y: 4 } },
+        { id: 'bc', from: 'b', to: 'c' }, { id: 'ca', from: 'c', to: 'a' },
+      ],
+      fillRule: 'evenodd', filledFaces: [['ab', 'bc', 'ca']],
+    }
+    current.change('Seed editable network', document => {
+      document.nodes[v.id] = v
+      document.pages[0].children.push(v.id)
+    })
+    const before = current.state.doc, revision = current.state.version
+    const run = await openPlugin(current, bundle('Topology read', `
+      const v = figma.getNodeById(${JSON.stringify(v.id)})
+      const first = v.vectorNetwork
+      if (first.vertices[2].x !== 0 || first.vertices[2].y !== 10) throw new Error('Vertex not local')
+      if (first.segments[0].start !== 0 || first.segments[0].end !== 1) throw new Error('Wrong segment relation')
+      if (first.segments[0].tangentStart.x !== 2 || first.segments[0].tangentStart.y !== 3 ||
+          first.segments[0].tangentEnd.x !== -2 || first.segments[0].tangentEnd.y !== 4) throw new Error('Wrong cubic tangents')
+      if (first.regions[0].windingRule !== 'EVENODD' || first.regions[0].loops[0].join() !== '0,1,2') throw new Error('Wrong fill graph')
+      first.vertices[2].y = 999
+      if (v.vectorNetwork.vertices[2].y !== 10) throw new Error('Read object aliases the document')
+      figma.closePlugin('Topology verified')
+    `))
+    try {
+      expect(run.closeMessage).toBe('Topology verified')
+      expect(current.state.doc).toBe(before)
+      expect(current.state.version).toBe(revision)
+    } finally { run.close() }
   })
 
   it('stops at closePlugin and still commits the earlier shape', async () => {
@@ -424,7 +480,7 @@ describe('Figma plugin host', () => {
         if (figma.editorType !== 'dev' || figma.mode !== 'inspect') throw new Error('Wrong plugin mode')
         const found = figma.currentPage.children[0]
         if (found.name !== 'Inspected') throw new Error('Missing inspection data')
-        for (const edit of [() => figma.createRectangle(), () => { found.name = 'Changed' }, () => found.remove()]) {
+        for (const edit of [() => figma.createRectangle(), () => figma.createVector(), () => { found.name = 'Changed' }, () => found.remove()]) {
           try { edit(); throw new Error('Edit was accepted') }
           catch (error) { if (!String(error).includes('permission_denied')) throw error }
         }
