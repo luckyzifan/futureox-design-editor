@@ -56,3 +56,15 @@ export function unionBounds(bs: Bounds[]): Bounds {
   }
   return { x, y, width: right - x, height: bottom - y }
 }
+
+/** A transform can put an already integral edge a few ulps away from its
+ * pixel. Canonicalize that drift before taking an outward floor or ceiling. */
+export function stablePixelEdge(value: number) {
+  const whole = Math.round(value)
+  const tolerance = Math.max(1e-9, 8 * Number.EPSILON * Math.abs(value))
+  return Math.abs(value - whole) <= tolerance ? whole : value
+}
+
+export function nearestPixel(value: number) {
+  return Math.sign(value) * Math.round(Math.abs(value))
+}
