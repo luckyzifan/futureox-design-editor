@@ -3106,16 +3106,11 @@ html[data-reduced-motion=true] .animation-modal * {
 @media (max-width: 1280px) {
   .file-menu .compact-library-entry { display: flex; }
   .editor-shell[data-ui-mode="sketch"] .editor-header .document-title .document-location { display: none; }
-  .editor-shell[data-ui-mode="sketch"] .editor-header .save-status { max-width: 72px; }
-}
-@media (max-width: 1180px) {
-  .editor-shell[data-ui-mode="sketch"] .floating-toolbar { gap: 3px; }
-  .editor-shell[data-ui-mode="sketch"] .floating-toolbar .tool-group { gap: 0; }
-}
-@media (max-width: 1000px) {
   .editor-shell[data-ui-mode="sketch"] > .editor-header { gap: 4px; }
   .editor-shell[data-ui-mode="sketch"] .editor-header .header-right { gap: 2px; }
-  .editor-shell[data-ui-mode="sketch"] .editor-header .save-status { display: none; }
+  .editor-shell[data-ui-mode="sketch"] .editor-header .save-status { max-width: 72px; }
+  .editor-shell[data-ui-mode="sketch"] .floating-toolbar { gap: 3px; }
+  .editor-shell[data-ui-mode="sketch"] .floating-toolbar .tool-group { gap: 0; }
   .editor-shell[data-ui-mode="sketch"] .header-right .locale-switch select { max-width: 60px; }
   .editor-shell[data-ui-mode="sketch"] .header-right .ui-mode-switch button { padding-inline: 5px; }
   .editor-shell[data-ui-mode="sketch"] .header-right .local-window-control > button { padding-inline: 4px; }
@@ -3132,6 +3127,9 @@ html[data-reduced-motion=true] .animation-modal * {
   }
   .editor-shell[data-ui-mode="sketch"] .header-right .design-agent-toggle span,
   .editor-shell[data-ui-mode="sketch"] .header-right .app-settings-button span { display: none; }
+}
+@media (max-width: 1000px) {
+  .editor-shell[data-ui-mode="sketch"] .editor-header .save-status { display: none; }
 }
 .editor-shell[data-ui-mode="sketch"] .sketch-window-zoom { display: flex; align-items: center; flex: none; height: 30px; }
 .editor-shell[data-ui-mode="sketch"] .sketch-window-zoom .view-menu:not([open]) > .view-menu-body { display: none; }
@@ -3163,7 +3161,7 @@ html[data-reduced-motion=true] .animation-modal * {
   position: relative;
   top: auto; right: auto; bottom: auto; left: auto; transform: none;
   order: 0;
-  flex: none;
+  flex: 0 1 auto;
   align-self: center;
   width: auto;
   min-width: 0;
@@ -3177,7 +3175,8 @@ html[data-reduced-motion=true] .animation-modal * {
   align-content: center;
   justify-content: flex-start;
   row-gap: 0;
-  overflow: visible;
+  overflow: auto hidden;
+  scrollbar-width: none;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -3209,7 +3208,7 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell[data-ui-mode="sketch"] .sketch-window-tools button.sketch-preview-tool {
   width: 48px; height: 52px; padding: 0; flex: none;
 }
-@media (max-width: 1180px) {
+@media (max-width: 1280px) {
   .editor-shell[data-ui-mode="sketch"] .sketch-window-tools .sketch-secondary-tool { display: none; }
 }
 @media (max-width: 980px) {
