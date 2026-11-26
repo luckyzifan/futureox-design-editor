@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
-import { blank, uid, validateDocument } from './model'
+import { blank, node, uid, validateDocument } from './model'
+import { primitivePoints } from './geometry'
 import { createShapeSeed, creationGhostNode, creationPointCount, creationPreviewPoints, creationToolStaysArmed, creationVisiblePaint, resolveShapeCreation, translateCreationAnchor, type ShapeCreationKind } from './shape-creation'
 
 const anchor = { x: 10.25, y: -9.75 }
@@ -129,10 +130,30 @@ test('rectangle, ellipse, polygon and frame stay armed; text and select do not',
 test('polygon creation defaults to three vertices and arrow changes are bounded', () => {
   expect(createShapeSeed('polygon').points).toBe(3)
   expect(createShapeSeed('star').points).toBe(5)
+  expect(createShapeSeed('star').innerRadius).toBeCloseTo(0.38196601125, 10)
+  for (const kind of ['polygon', 'star'] as const) {
+    expect(node(kind).fills[0].color).toBe('#d9d9d9')
+    expect(creationVisiblePaint(createShapeSeed(kind))).toBe('#d9d9d9')
+    expect(node(kind).strokes).toHaveLength(0)
+  }
   expect(creationPointCount(3, -1)).toBe(3)
   expect(creationPointCount(3, 1)).toBe(4)
-  expect(creationPointCount(60, 1)).toBe(60)
-  expect(creationPointCount(60, -1)).toBe(59)
+  expect(creationPointCount(60, 1)).toBe(61)
+  expect(creationPointCount(128, 1)).toBe(128)
+  expect(creationPointCount(128, -1)).toBe(127)
+})
+
+for (const innerRadius of [0, 0.005, 1]) test(`star preview keeps both sets of vertices at ratio ${innerRadius}`, () => {
+  const star = createShapeSeed('star')
+  star.innerRadius = innerRadius
+  star.points = 128
+  const expected = primitivePoints(star)
+  expect(expected).toHaveLength(256)
+  expect(creationPreviewPoints(star)).toBe(expected.map(point => `${point.x},${point.y}`).join(' '))
+  const doc = blank()
+  doc.nodes[star.id] = star
+  doc.pages[0].children = [star.id]
+  expect(validateDocument(doc).nodes[star.id].innerRadius).toBe(innerRadius)
 })
 
 test('the creation ghost keeps the seed fill until the committed node is presented', () => {

@@ -60,6 +60,7 @@ import { Plus, Minus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Li
 import type { Editor } from './engine'
 import { VectorBrushPanel } from './VectorBrushPanel'
 import {
+  MAX_SHAPE_POINTS,
   type DesignNode,
   type Paint,
   type Stroke,
@@ -731,6 +732,19 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
       onChange={event => update(node => { node.constrainProportions = event.target.checked }, '锁定宽高比')} />
     {n.constrainProportions ? <Link2 size={14} aria-hidden /> : <Unlink2 size={14} aria-hidden />}
   </label>
+  const primitiveShape = n.kind === 'polygon' || n.kind === 'star'
+  const primitiveCount = primitiveShape && <NumberField historyLabel="顶点数量" diagnosticFamily={2} unit="number"
+    label={uiMode === 'figma' && locale === 'en' ? 'Count' : tr('顶点数量')}
+    value={n.points} min={3} max={MAX_SHAPE_POINTS}
+    onChange={value => update(node => { node.points = Math.round(value) })} />
+  const primitiveRatio = n.kind === 'star' && <NumberField historyLabel="内半径 %" diagnosticFamily={2} unit="percent"
+    label={uiMode === 'figma' && locale === 'en' ? 'Ratio' : tr('内半径 %')}
+    value={n.innerRadius * 100} min={0} max={100}
+    onChange={value => update(node => { node.innerRadius = value / 100 })} />
+  const primitiveCorner = primitiveShape && !n.network && <UnitNumberField unitDescription={styleDescription}
+    historyLabel="顶点圆角" diagnosticFamily={2} unit="length" unitScale={units.style}
+    label={uiMode === 'figma' && locale === 'en' ? 'Corner radius' : tr('顶点圆角')} min={0} value={n.cornerRadius ?? 0}
+    onChange={value => update(node => { node.cornerRadius = value })} />
   const dimensions = <>
     <div className="geometry-dimensions">
       {dimensionField('width')}
@@ -738,6 +752,8 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
       {dimensionField('height')}
       {uiMode === 'sketch' ? <div className="geometry-actions"><FlipControls editor={editor} /></div> : proportion}
     </div>
+    {uiMode === 'figma' && primitiveShape && <div className="geometry-primitive-fields" role="group"
+      aria-label={locale === 'en' ? 'Shape' : '形状'}>{primitiveCount}{primitiveRatio}{primitiveCorner}</div>}
     {container(n) && <label className="check-row geometry-clip">
       <input type="checkbox" checked={n.clip} onChange={event => update(node => { node.clip = event.target.checked })} />
       {tr("裁剪超出内容")}
@@ -922,8 +938,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
                 onChange={v => update(n => { n.arc = { startAngle: 0, sweepAngle: Math.PI * 2, ...n.arc, innerRadius: v / 100 } })} />
             </div>
           )}
-          {['polygon', 'star'].includes(n.kind) && !n.network && <UnitNumberField unitDescription={styleDescription} historyLabel="顶点圆角" diagnosticFamily={2} unit="length" unitScale={units.style} label={tr("顶点圆角")} min={0} value={n.cornerRadius ?? 0}
-            onChange={v => update(n => { n.cornerRadius = v })} />}
+          {uiMode === 'sketch' && primitiveCorner}
           {uiMode === 'sketch' && n.kind === 'frame' && ids.length === 1 && <button type="button"
             disabled={!canFitFrameContents(s.doc, n) || !editor.topSelection().length}
             onClick={() => void dispatchEditorCommand(editor, 'fit-frame-content')}>
@@ -985,32 +1000,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
           {n.kind === 'vector' && n.vectorGeometry?.cornerSource &&
             <VectorCornerFields key={n.id} geometry={n.vectorGeometry} styleScale={units.style}
               styleDescription={styleDescription} update={update}/>}
-          {['star', 'polygon'].includes(n.kind) && (
-            <NumberField historyLabel="顶点数量" diagnosticFamily={2} unit="number"
-              label={tr("顶点数量")}
-              value={n.points}
-              min={3}
-              max={60}
-              onChange={(v) =>
-                update((n) => {
-                  n.points = Math.round(v)
-                })
-              }
-            />
-          )}
-          {n.kind === 'star' && (
-            <NumberField historyLabel="内半径 %" diagnosticFamily={2} unit="percent"
-              label={tr("内半径 %")}
-              value={n.innerRadius * 100}
-              min={1}
-              max={99}
-              onChange={(v) =>
-                update((n) => {
-                  n.innerRadius = v / 100
-                })
-              }
-            />
-          )}
+          {uiMode === 'sketch' && <>{primitiveCount}{primitiveRatio}</>}
         </section>}
         {n.kind === 'text' && (
             <section>

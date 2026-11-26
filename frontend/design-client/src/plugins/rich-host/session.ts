@@ -731,7 +731,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       working.textStyle = { ...(working.textStyle ?? defaultTextStyle()), fontId: resolved.fontId, weight: resolved.weight }
       patch.textStyle = working.textStyle
     } else if (key === 'pointCount') patch.points = finite(value, 'pointCount', 3, 128)
-    else if (key === 'innerRadius') patch.innerRadius = finite(value, 'innerRadius', 0.01, 1)
+    else if (key === 'innerRadius') patch.innerRadius = finite(value, 'innerRadius', 0, 1)
     else if (key === 'layoutMode' || key === 'itemSpacing' || key === 'paddingTop' || key === 'paddingRight' || key === 'paddingBottom' || key === 'paddingLeft' || key === 'primaryAxisAlignItems' || key === 'counterAxisAlignItems') {
       if (!working.layout) {
         if (key !== 'layoutMode') throw new PluginApiError('invalid_value', 'Set layoutMode before other auto-layout properties')
