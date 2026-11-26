@@ -10,7 +10,7 @@ import { recoverInteractionPreview } from './kernel/interaction-preview-recovery
 import { selectionSizeLabel } from './selection-size-label'
 import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_MEMBER_STROKE_PX, SELECTION_UNION_STROKE_PX, SIZE_PILL_TEXT } from './selection-blue'
 import { SpatialCanvasControls, spatialPivotPoint, spatialPoseAfterDrag, type SpatialHandle } from './spatial-canvas-controls'
-import { kernelSpatialPivotPlane, type SpatialPivotPlane } from './kernel/picking'
+import { kernelSpatialPivotPlane, kernelSpatialSelectionCorners, type SpatialPivotPlane } from './kernel/picking'
 import { rotationChromeHeldToTexture, rotationDocumentChromeSuppressed, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
 import { selectionMemberCorners, sharedRotationFrame } from './selection-outline'
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
@@ -381,7 +381,7 @@ function MeasurementGuides({ measurements, labels, zoom, hidden, crisp, testId =
   </g>
 }
 
-function MoveGapGuides({ gaps, zoom }: { gaps: NonNullable<SmartSnapResult['gaps']>; zoom: number }) {
+function MoveGapGuides({ gaps, zoom, crisp }: { gaps: NonNullable<SmartSnapResult['gaps']>; zoom: number; crisp: boolean }) {
   const measurements: Measurement[] = []
   const labels: (SpacingPill & { size: number })[] = []
   gaps.forEach((pair, slot) => {
@@ -396,7 +396,7 @@ function MoveGapGuides({ gaps, zoom }: { gaps: NonNullable<SmartSnapResult['gaps
     measurements.push(...lines)
     labels.push(...diagramFromLines([lines[1]], zoom).pills.map(label => ({ ...label, size: 11 })))
   })
-  return <MeasurementGuides measurements={measurements} labels={labels} zoom={zoom} hidden={false}
+  return <MeasurementGuides measurements={measurements} labels={labels} zoom={zoom} hidden={false} crisp={crisp}
     testId="canvas-gap-snap" pillPrefix="canvas-gap-pill" />
 }
 
@@ -1419,6 +1419,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const spatialId = state.selection.length === 1 ? state.selection[0] : undefined
   const shownSpatialDocument = displayedSnapshot?.document
   const shownPose = spatialId && shownSpatialDocument?.nodes[spatialId]?.spatial?.pose
+  const spatialOutline = uiMode === 'figma' && spatialId && selected[0]?.id === spatialId && shownSpatialDocument && shownPose && shownPose.visible
+    ? kernelSpatialSelectionCorners(shownSpatialDocument, spatialId) : undefined
   const spatialPlane = uiMode === 'figma' && state.tool === 'select' && !selectionFeedback.readOnly &&
     canTransform && !editingBlur && !nativeSource && !openingSource && (!ownedDrag || ownedDrag.spatial) &&
     spatialId && shownSpatialDocument && shownPose && shownPose.visible && state.doc.nodes[spatialId]?.visible
@@ -1432,11 +1434,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }), [entries, state.doc, selection, uiMode])
   const overlay = useMemo(() => canvasOverlayCommands({
     document:state.doc,pageId:state.page,epoch:editor.sessionGeneration,tool:state.tool,pixelGrid:showPixelGrid,
-    canTransform:showTransformHandles,selected:showSelectionChrome ? selected : [],owners:selectionFeedback.ids,frameTitles,localSelection,selectionCorners,selectionBox,
+    canTransform:showTransformHandles,selected:showSelectionChrome ? selected : [],owners:selectionFeedback.ids,frameTitles,localSelection,
+    selectionCorners:spatialOutline ?? selectionCorners,selectionBox,
     orientedFrame:sharedOutline,measurementTarget:measurementTarget&&measurementBounds?{id:measurementTarget,bounds:measurementBounds}:null,
     directMeasurement, zoom, uiMode,
   }), [state.doc,state.page,state.tool,showPixelGrid,editor.sessionGeneration,frameTitles,showSelectionChrome,showTransformHandles,selected,
-    measurementTarget,measurementBounds,directMeasurement,selectionCorners,selectionBox,localSelection,selectionFeedback,zoom,uiMode,sharedOutline])
+    measurementTarget,measurementBounds,directMeasurement,spatialOutline,selectionCorners,selectionBox,localSelection,selectionFeedback,zoom,uiMode,sharedOutline])
   const frameTitleLabels = useMemo(() => new Map(overlay.commands.labels.filter(label =>
     label.kind === 'frame-title' || label.kind === 'section-title').map(label => [label.owners?.at(-1), label])), [overlay])
   const measurements = overlay.commands.measurements || []
@@ -4154,8 +4157,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return <>
           <svg className="keyboard-box-selection-overlay" aria-hidden="true">
             {box && corner && <rect data-testid="keyboard-selection-box" x={corner.x} y={corner.y}
-              width={box.width * displayView.zoom} height={box.height * displayView.zoom} />}
-            <circle data-testid="keyboard-selection-cursor" cx={screen.x} cy={screen.y} r={5} />
+              width={box.width * displayView.zoom} height={box.height * displayView.zoom}
+              fill={MARQUEE_FILL} stroke={SELECTION_BLUE} strokeWidth={SELECTION_UNION_STROKE_PX} shapeRendering="crispEdges" />}
+            <circle data-testid="keyboard-selection-cursor" cx={screen.x} cy={screen.y} r={5}
+              fill={SELECTION_BLUE} stroke="#fff" strokeWidth={1.5} />
             {keyboardMark.pick && (() => {
               const entry = entries.find(item => item.id === keyboardMark.pick)
               const corners = entry && selectionMemberCorners(state.doc, entry.id, entry.matrix)
@@ -4494,7 +4499,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 data-selection-role={selected.length > 1 ? 'union' : 'object'}
                 data-selection-held={heldRotationMembers ? 'texture' : undefined}
                 opacity={cropFrame ? 1 : documentChromeOpacity}
-                points={drawnCorners.map((p) => `${p.x},${p.y}`).join(' ')}
+                points={(spatialOutline ?? drawnCorners).map((p) => `${p.x},${p.y}`).join(' ')}
                 fill="none"
                 stroke={SELECTION_BLUE}
                 strokeWidth={SELECTION_UNION_STROKE_PX}
@@ -4640,7 +4645,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   corners.forEach((index) => {
                     const p = worldPoint(cornerHandlePoint(n.width, n.height, n.radii, index, 14 / zoom))
                     marks.push(<circle key={`corner-${index}`} data-testid={`corner-radius-${index}`} cx={p.x} cy={p.y} r={5 / zoom}
-                      fill="white" stroke="#0d99ff" strokeWidth={1 / zoom} style={{ cursor: 'crosshair' }}
+                      fill="white" stroke={uiMode === 'figma' ? SELECTION_BLUE : '#0d99ff'} strokeWidth={1 / zoom}
+                      shapeRendering={uiMode === 'figma' ? 'crispEdges' : undefined} style={{ cursor: 'crosshair' }}
                       onPointerDown={(event) => beginMaterial(event, 'rectangleCorner', index, '调整圆角')}>
                       <title>{chromeCopy.rectangleCorner}</title>
                     </circle>)
@@ -4787,6 +4793,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               ))}
               {vectorNode.network.vertices.map((v) => {
                 const mode = explicitCurveMode(vectorNode.network!, v.id)
+                const accent = uiMode === 'figma' ? SELECTION_BLUE : '#0d99ff'
                 return (
                 <rect
                   key={v.id}
@@ -4798,9 +4805,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   y={v.y - 4 / zoom}
                   width={8 / zoom}
                   height={8 / zoom}
-                  fill={(state.editingVertices?.includes(v.id) || state.editingVertex === v.id) ? '#0d99ff' : 'white'}
-                  stroke="#0d99ff"
+                  fill={(state.editingVertices?.includes(v.id) || state.editingVertex === v.id) ? accent : 'white'}
+                  stroke={accent}
                   strokeWidth={1 / zoom}
+                  shapeRendering={uiMode === 'figma' ? 'crispEdges' : undefined}
                   onPointerEnter={() => setVectorAnchorHover(v.id)}
                   onPointerLeave={() => setVectorAnchorHover(current => current === v.id ? null : current)}
                   onPointerDown={(e) => {
@@ -4904,7 +4912,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             return <path key={axis} data-testid="canvas-alignment-guide" data-axis={axis} data-position={guide.position}
               d={d} fill={ALIGNMENT_GUIDE} stroke="none" shapeRendering="crispEdges" pointerEvents="none" />
           })}
-          {guides.gaps && <MoveGapGuides gaps={guides.gaps} zoom={zoom} />}
+          {guides.gaps && <MoveGapGuides gaps={guides.gaps} zoom={zoom} crisp={uiMode === 'figma'} />}
           {pen && (
             <g
               transform={pen.id ? matrixString(worldMatrix(state.doc, pen.id)) : undefined}

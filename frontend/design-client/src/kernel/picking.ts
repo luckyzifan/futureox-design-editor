@@ -41,12 +41,17 @@ export const pickingGeometryEpoch = () => geometryEpoch
 const spatialViews = new WeakMap<DesignDocument, DesignDocument>()
 export type SpatialPivotPlane = readonly [readonly [number, number, number], readonly [number, number, number], readonly [number, number, number]]
 type SpatialPatch = Pick<DesignNode, 'visible' | 'transform' | 'vectorGeometry'> &
-  { hideFills?: boolean; hideStrokes?: boolean; composed?: boolean; pivotPlane?: SpatialPivotPlane }
+  { hideFills?: boolean; hideStrokes?: boolean; composed?: boolean; pivotPlane?: SpatialPivotPlane; selectionCorners?: Point[] }
 const composedSpatialRoots = new WeakMap<DesignDocument, Set<string>>()
 const spatialPivotPlanes = new WeakMap<DesignDocument, ReadonlyMap<string, SpatialPivotPlane>>()
+const spatialSelections = new WeakMap<DesignDocument, ReadonlyMap<string, Point[]>>()
 export function kernelSpatialPivotPlane(doc: DesignDocument, id: string): SpatialPivotPlane | undefined {
   kernelSpatialDocument(doc)
   return spatialPivotPlanes.get(doc)?.get(id)
+}
+export function kernelSpatialSelectionCorners(doc: DesignDocument, id: string): Point[] | undefined {
+  kernelSpatialDocument(doc)
+  return spatialSelections.get(doc)?.get(id)
 }
 export function requiresSpatialRaster(doc: DesignDocument, selected: readonly string[] = []) {
   kernelSpatialDocument(doc)
@@ -79,12 +84,17 @@ export function kernelSpatialDocument(doc: DesignDocument): DesignDocument {
   const patches = JSON.parse(spatial_projections_json(JSON.stringify(doc))) as Record<string, SpatialPatch>
   const view = applySpatialPatches(doc, patches)
   const composed = new Set<string>(), pivots = new Map<string, SpatialPivotPlane>()
+  const selections = new Map<string, Point[]>()
   for (const [id, patch] of Object.entries(patches)) {
     if (patch.composed) composed.add(id)
     if (patch.pivotPlane) pivots.set(id, patch.pivotPlane)
+    if (patch.selectionCorners?.length === 4 && patch.selectionCorners.every(p => Number.isFinite(p.x) && Number.isFinite(p.y))) {
+      selections.set(id, patch.selectionCorners)
+    }
   }
   composedSpatialRoots.set(doc, composed)
   if (pivots.size) spatialPivotPlanes.set(doc, pivots)
+  if (selections.size) spatialSelections.set(doc, selections)
   spatialViews.set(doc, view)
   spatialViews.set(view, view)
   return view
