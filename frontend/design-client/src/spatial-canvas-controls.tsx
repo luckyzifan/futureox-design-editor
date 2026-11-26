@@ -75,7 +75,8 @@ export function SpatialCanvasControls({ pivot, zoom, locale, onStart }: {
         <line x2={x} y2={y} stroke={SELECTION_BLUE} strokeWidth={1} pointerEvents="none" />
         <g data-testid={`spatial-rotate-${axis.toLowerCase()}`} {...anchor(x, y)} transform={`translate(${x} ${y})`}
           aria-label={label} style={{ cursor }} onPointerDown={event => onStart(event, handle)}>
-          <circle r={10} fill="white" stroke={SELECTION_BLUE} pointerEvents="all" />
+          <circle r={10.5} fill={SELECTION_BLUE} pointerEvents="all" />
+          <circle r={9.5} fill="white" pointerEvents="none" />
           <text textAnchor="middle" dy=".35em" fontSize={11} fill={SELECTION_BLUE} pointerEvents="none">{axis}</text>
           <title>{label}</title>
         </g>
