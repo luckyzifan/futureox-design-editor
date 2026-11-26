@@ -41,6 +41,76 @@ function canvasPixels(document: DesignDocument, points: readonly [number, number
   } finally { renderer.free() }
 }
 
+function maskCommandFixture() {
+  const doc = blank(), behind = node('rectangle', 0, 0, 28, 16)
+  const mask = node('rectangle', 8, 4, 8, 8)
+  const selected = node('rectangle', 0, 0, 28, 16)
+  const unselected = node('rectangle', 0, 0, 28, 16)
+  behind.fills = [paint('#ff0000')]
+  mask.fills = [paint('#ffffff')]
+  selected.fills = [paint('#0000ff')]
+  unselected.fills = [paint('#00ff00')]
+  doc.nodes = Object.fromEntries([behind, mask, selected, unselected].map(layer => [layer.id, layer]))
+  doc.pages[0].children = [behind.id, mask.id, selected.id, unselected.id]
+  return { doc, mask, selected, unselected }
+}
+
+test('Figma uses one selected layer as an in-place alpha mask', async () => {
+  const previous = interfacePreference.getSnapshot().uiMode
+  interfacePreference.set({ uiMode: 'figma' })
+  const { doc, mask } = maskCommandFixture()
+  const editor = new Editor(doc)
+  try {
+    editor.select([mask.id])
+    const before = editor.authoredDocument
+    const item = canvasMenuItems(editor).find(item => item.command === 'mask-selection')!
+    expect(item.disabled).toBe(false)
+    await dispatchEditorCommand(editor, 'mask-selection')
+    const after = editor.authoredDocument
+    expect(after.nodes[mask.id]).toMatchObject({ mask: true, maskType: 'alpha', maskChain: 'start' })
+    expect(after.pages[0].children).toEqual(before.pages[0].children)
+    expect(Object.keys(after.nodes)).toEqual(Object.keys(before.nodes))
+    expect(canvasPixels(after, [[2, 2], [12, 8]])).toEqual([[255, 0, 0, 255], [0, 255, 0, 255]])
+    expect(editor.state.selection).toEqual([mask.id])
+    expect(canvasMenuItems(editor).find(item => item.command === 'mask-selection')?.label).toMatch(/移除蒙版|Remove mask/)
+    editor.undo()
+    expect(editor.authoredDocument).toEqual(before)
+    expect(editor.canUndo).toBe(false)
+    editor.redo()
+    await dispatchEditorCommand(editor, 'mask-selection')
+    expect(editor.authoredDocument.nodes[mask.id].mask).toBe(false)
+    expect(editor.authoredDocument.nodes[mask.id].maskChain).toBeUndefined()
+    expect(canvasPixels(editor.authoredDocument, [[2, 2], [12, 8]])).toEqual([[0, 255, 0, 255], [0, 255, 0, 255]])
+  } finally {
+    editor.dispose()
+    interfacePreference.set({ uiMode: previous })
+  }
+})
+
+test.each(['figma', 'sketch'] as const)('%s groups only the selected objects for a multi-layer mask', async uiMode => {
+  const previous = interfacePreference.getSnapshot().uiMode
+  interfacePreference.set({ uiMode })
+  const { doc, mask, selected, unselected } = maskCommandFixture()
+  const editor = new Editor(doc)
+  try {
+    editor.select([selected.id, mask.id])
+    await dispatchEditorCommand(editor, 'mask-selection')
+    const after = editor.authoredDocument
+    const wrapper = after.nodes[editor.state.selection[0]]
+    expect(wrapper.children).toEqual([mask.id, selected.id])
+    expect(after.nodes[mask.id].mask).toBe(true)
+    expect(after.nodes[mask.id].maskChain).toBeUndefined()
+    expect(after.pages[0].children.at(-1)).toBe(unselected.id)
+    expect(canvasPixels(after, [[2, 2], [12, 8]])).toEqual([[0, 255, 0, 255], [0, 255, 0, 255]])
+    editor.undo()
+    expect(editor.authoredDocument.nodes[mask.id].mask).toBe(false)
+    expect(editor.canUndo).toBe(false)
+  } finally {
+    editor.dispose()
+    interfacePreference.set({ uiMode: previous })
+  }
+})
+
 test.each(['figma', 'sketch'] as const)('%s Group keeps the selected children in order and places the wrapper at the expected slot', async uiMode => {
   const previous = interfacePreference.getSnapshot()
   interfacePreference.set({ uiMode })
