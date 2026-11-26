@@ -80,6 +80,23 @@ node scripts/run-test.mjs -- node frontend/design-desktop/scripts/check-real-can
 
 大 Sketch 使用 `--material` 指定完整画板中的一个可编辑素材。FIG 文件的导入和首帧检查使用 `--open-only`。比较不同版本时，可用 `--application` 指向相应工作树的绝对 `frontend/design-desktop` 路径，并分别保存结果到新建的 `--output` 目录。
 
+### Figma 静态参考 CPU 像素门禁
+
+准备当前源码的 WASM、Python 3 和 Pillow，然后从仓库根目录执行。默认检查 20 个固定 SHA-256 和尺寸的根 PNG、仓库内参考包及其已声明的案例。`--root-only` 可只运行根案例。
+
+```sh
+node scripts/run-test.mjs -- bun run --cwd frontend/design-client --silent test:figma-pixels
+node scripts/run-test.mjs -- bun run --cwd frontend/design-client --silent test:figma-pixels --root-only
+DESIGN_FIGMA_REFERENCES=/absolute/optional-pack \
+  node scripts/run-test.mjs -- bun run --cwd frontend/design-client --silent test:figma-pixels
+```
+
+命令用生产 WASM 的 CPU `figma` 路径，与 Pillow 解码的原始 RGBA 逐字节比较。JSON 输出包含每个案例的状态、差异像素数、第一个差异及双方 RGBA 哈希。像素差异、缺图、校验失败或渲染错误使退出码为 1。标记为不可比较的映射和未配置案例的 PNG 会列出原因。仓库文字模板缺少引用 PNG 时逐项显示为 `missing`。外部参考包是额外输入，保留它的 `cases.json` 格式。
+
+汇总包中重复出现的参考仍逐项核验文件。文档、渲染参数和参考 PNG 三者一致时复用同一比较，报告中的 `reused` 标出这些行。
+
+这条门禁测量静态 PNG 和 CPU 渲染。Figma 原生窗口、编辑操作、Products 和 GPU 路径需要相应的实测记录。
+
 ### Figma 文字像素对照
 
 在 Figma 校准文件中运行生成脚本，用已配置的 sRGB 设置导出选中画板。保留 `KernelTextQA-*.png` 和 `KernelTextQA-*@2x.png` 文件名。准备脚本按七组 1×、2× 画板核对尺寸，并为原像素文件计算 SHA-256。[画板生成脚本](../frontend/design-client/public/fidelity/text-2026-10-09/create-in-figma.js)

@@ -1,0 +1,182 @@
+[
+  {
+    "id": "alpha-curve",
+    "reference": "alpha-curve.png",
+    "referenceSha256": "152c5790a1ef53763bee22c87c961700d527b48bb0b18d191acd820dfcc41b8e",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "backdrop-blur",
+    "reference": "backdrop-blur.png",
+    "referenceSha256": "1a957889f9e36d8410e01c4c6314d1ba487e43cd68fd12bb24ff4ea0f4eab72e",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "blur-radii",
+    "reference": "blur-radii.png",
+    "referenceSha256": "1c9b48593e5c04053386619640c7adaba5fae24ed78b17e5ac8578375dfdb9d1",
+    "options": {
+      "width": 512,
+      "height": 128
+    }
+  },
+  {
+    "id": "coverage-overlap-2x",
+    "reference": "coverage-overlap-2x.png",
+    "referenceSha256": "b45ec5b8d583f310b490a2fd0f9c76e468f8fe18de88145c46e3b40c87744742",
+    "options": {
+      "width": 768,
+      "height": 256
+    }
+  },
+  {
+    "id": "coverage-overlap",
+    "reference": "coverage-overlap.png",
+    "referenceSha256": "991af4e1f403b59b38a234bea8fe776ec860a3786f1d83fb551efe19a1a185c8",
+    "options": {
+      "width": 384,
+      "height": 128
+    }
+  },
+  {
+    "id": "curve",
+    "reference": "curve.png",
+    "referenceSha256": "b52b3d2c975dc59113abe29e6c930a5bd635ab866d74973239bea14d0fb556e0",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "group-blur",
+    "reference": "group-blur.png",
+    "referenceSha256": "d283f2529f49a94628bd03db89c49153d77c2df908731c9b9019f5ecdac8dd37",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "group-inner-shadow",
+    "reference": "group-inner-shadow.png",
+    "referenceSha256": "99009e13d09b2630378460b2f1cfe3c07b80999ed61e02c641fefa8c05184e92",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "group-shadow",
+    "reference": "group-shadow.png",
+    "referenceSha256": "498dd9938ff542f6365ffe6ce58b4fa5e87988470df71bb269a37b0ad205ac2c",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "isolated-opacity",
+    "reference": "isolated-opacity.png",
+    "referenceSha256": "f5c67c3921f43f90616d39e89e8ad157abcfc20dd288d8a4add7344137390935",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "large-nested",
+    "reference": "large-nested.png",
+    "referenceSha256": "b2d88ddb3045f91f17beac22fa2b7f50726ac5a20ab87e741e08d294434cafc2",
+    "options": {
+      "width": 1024,
+      "height": 768
+    }
+  },
+  {
+    "id": "layer-blur",
+    "reference": "layer-blur.png",
+    "referenceSha256": "cb58bf174ad8f0d17366ef3ea4074cbd8e9def0ea17e59dbc473366cfc17a60e",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "mask-outside",
+    "reference": "mask-outside.png",
+    "referenceSha256": "244164c468425702d07d39808331ce13297c9f8a5cc2a5dce946cac7a9fa62ff",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "mask-overlap",
+    "reference": "mask-overlap.png",
+    "referenceSha256": "3e4a83ec0df131ed5e0c6535e5d9faf017c8c816cb689b9844717d81ce930690",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "pass-through-blur",
+    "reference": "pass-through-blur.png",
+    "referenceSha256": "243e28c28288d349f799b08a01509d9f5bf0c0b7791a0a9d823bb97c51ee1435",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "pass-through-opacity",
+    "reference": "pass-through-opacity.png",
+    "referenceSha256": "c7ca14b8fb35f1d77d2721d5091380be6189a9ff1c717998fe9ffbda48e0602a",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "pass-through",
+    "reference": "pass-through.png",
+    "referenceSha256": "a0ea432c3ad966287e6a3adf74a9737d85fa23c3db2939debaba5039c848ad7b",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "rectangle",
+    "reference": "rectangle.png",
+    "referenceSha256": "49efb66d57948dc00e45eacc3902e3bcc6005b1783d3e6eb6229f38ccf4e7831",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "rotated-curve",
+    "reference": "rotated-curve.png",
+    "referenceSha256": "9991f106808da73a9ce35148b946e327c20b879d6fce770f64d3dea24d2dd065",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  },
+  {
+    "id": "shadow",
+    "reference": "shadow.png",
+    "referenceSha256": "40ba48ba82e2796732fb201e8609de3071879df1613a8d5cf58a24db139c22f9",
+    "options": {
+      "width": 128,
+      "height": 128
+    }
+  }
+]

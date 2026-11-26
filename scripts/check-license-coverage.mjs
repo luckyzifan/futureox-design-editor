@@ -40,6 +40,7 @@ export function inspectLicenseCoverage(root) {
   const vendors = [
     { crate: 'vendor/moxcms', license: quotedLicense(root, 'vendor/moxcms/Cargo.toml') },
     { crate: 'vendor/flo_curves', license: quotedLicense(root, 'vendor/flo_curves/Cargo.toml') },
+    { crate: 'vendor/ttf-parser', license: quotedLicense(root, 'vendor/ttf-parser/Cargo.toml') },
   ]
   const problems = []
   if (!license.startsWith('MIT License\n')) problems.push('root LICENSE is not the MIT text')

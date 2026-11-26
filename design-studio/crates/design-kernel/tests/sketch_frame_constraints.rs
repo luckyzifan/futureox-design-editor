@@ -175,6 +175,36 @@ fn modern_frame_relative_size_keeps_the_archived_pins_and_round_trips() {
 }
 
 #[test]
+fn unchanged_modeled_pins_keep_the_archived_mixed_legacy_mask() {
+    let archive = modern_frame(json!({
+        "_class": "rectangle", "do_objectID": "child", "name": "Child",
+        "frame": {"x": 20, "y": 30, "width": 40, "height": 10},
+        "resizingConstraint": 27, "hasExplicitConstraints": true,
+        "horizontalPins": 1, "verticalPins": 1,
+        "horizontalSizing": 3, "verticalSizing": 3,
+    }));
+    let fonts = Fonts::new();
+    let mut doc = import_sketch_report(&archive).unwrap().document;
+    layout::resolve(&mut doc, &fonts).unwrap();
+    resize_parent(&mut doc, "frame", Size { width: 200., height: 140. }, &fonts);
+    assert_box(&doc, "child", [20., 30., 80., 17.5]);
+
+    let fields = export_sketch_layer_fields(&doc, "child").unwrap();
+    assert_eq!(fields["resizingConstraint"], 27);
+    assert_eq!([&fields["horizontalPins"], &fields["verticalPins"]], [&json!(1), &json!(1)]);
+    assert_eq!([&fields["horizontalSizing"], &fields["verticalSizing"]], [&json!(3), &json!(3)]);
+
+    // A previously imported document also retains the original comparison
+    // baseline. Editing just one pin updates only that axis of the mask.
+    let mut reopened = import_sketch_report(&export_sketch(&doc).unwrap()).unwrap().document;
+    reopened.nodes.get_mut("child").unwrap().constraints.as_mut().unwrap().horizontal = layout::Anchor::End;
+    let fields = export_sketch_layer_fields(&reopened, "child").unwrap();
+    assert_eq!(fields["resizingConstraint"], 28);
+    assert_eq!([&fields["horizontalPins"], &fields["verticalPins"]], [&json!(4), &json!(1)]);
+    assert_eq!([&fields["horizontalSizing"], &fields["verticalSizing"]], [&json!(3), &json!(3)]);
+}
+
+#[test]
 #[ignore = "requires the original Sketch 2026.1.2 test.sketch fixture"]
 fn actual_sketch_frame_infers_nonstack_ratios_from_the_saved_geometry() {
     const FRAME: &str = "71AD6CBC-2C77-467C-9C3A-CBD8F9D8BAB5";

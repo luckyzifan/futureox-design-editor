@@ -19,6 +19,7 @@ export const BUILD_DIRECTORIES = [
   'design-studio/crates/design-kernel/shaders',
   'vendor/moxcms/src',
   'vendor/flo_curves/src',
+  'vendor/ttf-parser/src',
 ]
 export const BUILD_FILES = [
   'frontend/design-client/bun.lock',
@@ -46,6 +47,10 @@ export const BUILD_FILES = [
   'vendor/flo_curves/Cargo.toml',
   'vendor/flo_curves/LICENSE',
   'vendor/flo_curves/PATCHES.md',
+  'vendor/ttf-parser/Cargo.toml',
+  'vendor/ttf-parser/LICENSE-APACHE',
+  'vendor/ttf-parser/LICENSE-MIT',
+  'vendor/ttf-parser/PATCHES.md',
   'frontend/design-desktop/vendor/ffmpeg/README.md',
   'frontend/design-desktop/vendor/ffmpeg/linux-x64/ffmpeg',
   'frontend/design-desktop/vendor/ffmpeg/linux-x64/LICENSE.txt',
