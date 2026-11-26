@@ -125,10 +125,21 @@ test('equal edge gaps have full parity and fixed outer objects', () => {
   const after = completeParity(doc, [c.id, b.id, a.id], ui => ui.align('x', 'distribute'), 'node.distribute', () => ({ ids: [c.id, b.id, a.id], axis: 'x' }))
   expect(after.nodes[a.id]).toEqual(a); expect(after.nodes[c.id]).toEqual(c); expect(after.nodes[b.id].transform[4]).toBe(45)
 })
-test('overlap/containment distribution is explicitly unsupported on both routes', () => {
-  const doc = blank(), a = node('rectangle', 0, 0, 100, 20), b = node('rectangle', 10, 10, 20, 20), c = node('rectangle', 150, 30, 10, 20)
-  doc.nodes = Object.fromEntries([a, b, c].map(n => [n.id, n])); doc.pages[0].children = [a.id, b.id, c.id]; const ids = [a.id, b.id, c.id]
-  rejectedParity(doc, ids, ui => ui.align('x', 'distribute'), 'node.distribute', { ids, axis: 'x' }, 'unsupported_distribution_geometry')
+for (const { title, layouts, expectedMiddle } of [
+  { title: 'overlapping intervals', layouts: [[0, 40], [5, 40], [30, 40]], expectedMiddle: 15 },
+  { title: 'a contained middle', layouts: [[0, 100], [10, 20], [150, 10]], expectedMiddle: 115 },
+  { title: 'a contained trailing endpoint', layouts: [[0, 40], [20, 100], [80, 10]], expectedMiddle: 10 },
+]) test(`distribution preserves ordered endpoints with ${title}`, () => {
+  const doc = blank(), layers = layouts.map(([x, width]) => node('rectangle', x, 0, width, 20))
+  for (const layer of layers) doc.nodes[layer.id] = layer
+  const ids = layers.map(layer => layer.id)
+  doc.pages[0].children = ids
+  const after = completeParity(doc, ids, ui => ui.align('x', 'distribute'), 'node.distribute', () => ({ ids, axis: 'x' }))
+  expect(after.nodes[ids[0]]).toEqual(layers[0])
+  expect(after.nodes[ids[2]]).toEqual(layers[2])
+  const middle = after.nodes[ids[1]]
+  expect(middle.transform[4]).toBe(expectedMiddle)
+  expect(middle.transform[4] - (layouts[0][0] + layouts[0][1])).toBe(layouts[2][0] - (middle.transform[4] + middle.width))
 })
 test('batch simple vector measurements are fresh after earlier mutation, with one commit and exact retry', () => {
   const doc = figmaFixture('curve'), frame = doc.nodes[doc.pages[0].children[0]], id = frame.children[0], [ui, mcp] = pair(doc), api = createEditorDesignAutomation(mcp)
