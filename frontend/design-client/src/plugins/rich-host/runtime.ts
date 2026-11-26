@@ -149,7 +149,8 @@ export class PluginController {
       uiFiles.dispose()
     }
     try {
-      const pending = controller.evaluate(PLUGIN_PRELUDE + '\n' + bundle.main)
+      // The first guest expression can begin with '(' after Node strips a type-only import.
+      const pending = controller.evaluate(PLUGIN_PRELUDE + '\n;\n' + bundle.main)
       if (pending) await pending
       hooks?.signal?.throwIfAborted()
       controller.finishTurn()
