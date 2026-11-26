@@ -1,4 +1,5 @@
-import { node, uid, type Bounds, type DesignNode, type Point } from './model'
+import { MAX_SHAPE_POINTS, node, uid, type Bounds, type DesignNode, type Point } from './model'
+import { regularShapePoints } from './geometry'
 import { kernelSnapPoint } from './kernel/picking'
 
 export type ShapeCreationKind = 'slice' | 'rectangle' | 'ellipse' | 'polygon' | 'star' | 'line' | 'arrow' | 'frame' | 'section' | 'text'
@@ -38,7 +39,7 @@ export function creationToolStaysArmed(tool: string) { return armedCreationTools
 
 export function creationPointCount(current: number, delta: number) {
   if (!Number.isFinite(current) || !Number.isFinite(delta)) throw new Error('Invalid polygon point count')
-  return Math.max(3, Math.min(60, Math.round(current) + Math.trunc(delta)))
+  return Math.max(3, Math.min(MAX_SHAPE_POINTS, Math.round(current) + Math.trunc(delta)))
 }
 
 /** Space during a draw moves both corners by the same world delta. `anchor`
@@ -54,7 +55,7 @@ export function createShapeSeed(kind: ShapeCreationKind | 'graphic', id: string 
   seed.id = id
   // Fresh geometric tools use the neutral fill observed in the reference UI.
   // Existing documents and explicitly styled board/pencil tools retain their paints.
-  if (['rectangle','ellipse','polygon','star'].includes(kind)) seed.fills[0].color = '#d9d9d9'
+  if (kind === 'rectangle' || kind === 'ellipse') seed.fills[0].color = '#d9d9d9'
   if (kind === 'arrow') { seed.name = '箭头'; seed.strokes[0].endMarker = 'arrow' }
   if (kind === 'graphic') {
     seed.name = '图形'
@@ -136,27 +137,16 @@ export function creationVisiblePaint(node: { kind: string; fills: ShapeCreationS
   return fill?.color || 'none'
 }
 
-/** Keep the filled ghost until the committed document has actually been presented.
- * Clearing it on mouseup, while the surface still shows the previous frame,
- * flashes an empty shape and then the fill. */
-/** Local polygon used only for the creation ghost. The committed node still
- * uses the kernel's authored star/polygon geometry. */
+/** Draw the ghost with the same local vertices as the authored shape. */
 export function creationPreviewPoints(node: { kind: string; width: number; height: number; points: number; innerRadius: number }): string | null {
   if (node.kind !== 'polygon' && node.kind !== 'star') return null
-  const count = Math.max(3, Math.min(60, Math.round(node.points || (node.kind === 'star' ? 5 : 3))))
-  const inner = node.kind === 'star' ? Math.max(0, Math.min(1, node.innerRadius || 0.45)) : 1
-  const coords: string[] = []
-  for (let index = 0; index < count; index++) {
-    const angle = -Math.PI / 2 + index * 2 * Math.PI / count
-    coords.push(`${node.width / 2 + Math.cos(angle) * node.width / 2},${node.height / 2 + Math.sin(angle) * node.height / 2}`)
-    if (inner < 1) {
-      const mid = angle + Math.PI / count
-      coords.push(`${node.width / 2 + Math.cos(mid) * node.width / 2 * inner},${node.height / 2 + Math.sin(mid) * node.height / 2 * inner}`)
-    }
-  }
-  return coords.join(' ')
+  const count = creationPointCount(node.points || (node.kind === 'star' ? 5 : 3), 0)
+  const inner = node.kind === 'star' ? Math.max(0, Math.min(1, node.innerRadius)) : undefined
+  return regularShapePoints(node.width, node.height, count, inner)
+    .map(point => `${point.x},${point.y}`).join(' ')
 }
 
+/* The committed fill replaces the ghost only after the renderer presents it. */
 export function creationGhostNode<T extends { id: string }>(
   preview: T | null,
   held: T | null,

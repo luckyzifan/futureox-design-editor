@@ -35,8 +35,8 @@ export function keyboardPlacementPoint(view: CanvasCamera, size: CanvasSize, sna
 /** A Return insertion uses the click-sized object, centered on the crosshair.
  * That is the same geometry as Alt-click, so the default 100×100 sits on the
  * viewport center instead of hanging off its top-left. */
-export function keyboardPlacedNode(tool: ShapeCreationKind, point: Point, snap: boolean): DesignNode {
-  const place = (useSnap: boolean) => resolveShapeCreation(createShapeSeed(tool), {
+export function keyboardPlacedNode(tool: ShapeCreationKind, point: Point, snap: boolean, seed = createShapeSeed(tool)): DesignNode {
+  const place = (useSnap: boolean) => resolveShapeCreation(seed, {
     anchor: point, pointer: point, screenDistance: 0, alt: true, snap: useSnap,
   }).node
   if (!snap) return place(false)
