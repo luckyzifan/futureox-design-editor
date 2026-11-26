@@ -69,3 +69,21 @@ FIG 二进制网络和预计算路径统一经过 Rust 解码，网页 Worker �
 转换上下文仅属于一次不可变源版本：共享 document.json，组件位置缓存最多 4 MiB，超过后回退有界查找。预算至少 2 GiB 时最多两个转换窗口同时执行，其中一个在当前长任务、另一个在作用域线程；低预算保持单窗口。合并按源顺序进行，每个窗口和累计模型仍接受原有准入。失败/取消前等待作用域线程退出，不增加 Tokio 业务通道或后台写入并发。
 
 历史实测的范围和载入开销见[全源单画布容量](SOURCE_CANVAS_CAPACITY_20261027.zh-CN.md)。大页可以逐段访问不等于整页同时渲染；普通整档 codec 的归档预算保持不变。
+
+## 同卷满盘时重开检查点（2026-11-26）
+
+原生后端重开已提交的大源检查点时，先校验原始源和新增片段，再重建索引。工作卷和临时卷均返回存储空间不足时，已校验的源可用同一种紧凑记录格式在内存中重建字段索引。整份检查点的内存记录共用上限，为 16 MiB 与可信启动文档字节预算中的较小值，并按记录缓冲的分配容量计费。超出额度仍返回 `SOURCE_STORAGE_FULL`。该上限只约束应急索引记录，正常源文件的容量仍由存储卷决定。
+
+读取内存索引可打开上一个已提交修订。新编辑仍要成功写入并原子发布磁盘检查点。释放空间后，同一会话可继续保存，结构编辑先在工作卷暂存索引记录。
+
+在 macOS 26.3 arm64、Rust 1.99.1 上以隔离的 80 MiB HFS+ 测试卷验收。将工作目录和 `TMPDIR` 放在同一卷并写至实际 ENOSPC 后，基线 `f7197b6f4` 的重开失败。修复版读取修订 1，满盘拒绝新写入且片段哈希匹配。释放空间后在原会话提交修订 2，独立后端重开读回编辑并校验原件字节。5 项实卷用例、21 项自动保存回归、5 项索引测试均通过。签名安装包 GUI 和 SQLite 恢复预留耗尽的边界仍在 [#86](https://github.com/luckyzifan/futureox-design-editor/issues/86) 跟踪。
+
+```sh
+CARGO_BUILD_JOBS=2 node scripts/run-test.mjs -- /bin/bash -c '
+  set -e
+  cargo test --locked --manifest-path design-studio/Cargo.toml -p futureox-design-desktop-backend autosave_recovery
+  cargo test --locked --manifest-path design-studio/Cargo.toml -p futureox-design-desktop-backend --lib large_document::index::stream_pipeline_tests
+  backend="${CARGO_TARGET_DIR:-$PWD/design-studio/target}/debug/futureox-design-desktop-backend"
+  CORE_DESKTOP_SIDECAR="$backend" node --test frontend/design-desktop/test/runtime/workspace-full-volume.test.mjs
+'
+```
