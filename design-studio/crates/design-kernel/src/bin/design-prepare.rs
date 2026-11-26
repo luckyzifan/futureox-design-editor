@@ -54,6 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.next().is_some() {
         return Err("Unexpected argument".into());
     }
+    let detailed_diagnostics = std::env::var("CORE_RENDER_DIAGNOSTICS").as_deref() == Ok("detail");
     let mut session = Preparation::new(&font)?;
     session.enable_local_sketch_ui();
     // The bounded reader remains available while Rust computes. A stateless
@@ -119,6 +120,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // the physical job without sending the abandoned geometry body.
             metadata = json!({"error":"PREVIEW_CANCELLED"});
             bytes.clear();
+        }
+        if detailed_diagnostics
+            && request.lane == "interaction"
+            && request.method == "compile_gpu_packet"
+            && let Some(stats) = metadata.get_mut("compileStats").and_then(Value::as_object_mut)
+        {
+            // Count the FPR1 payload after any native transport packing.
+            stats.insert("nativeWireBytes".into(), json!(bytes.len()));
         }
         metadata["id"] = json!(request.id);
         let metadata = serde_json::to_vec(&metadata)?;

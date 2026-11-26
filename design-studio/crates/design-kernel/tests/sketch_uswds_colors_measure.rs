@@ -21,6 +21,7 @@ use futureox_design_kernel::interop::import_sketch_report;
 use futureox_design_kernel::scene::Node;
 use futureox_design_kernel::{Engine, RenderOptions, View};
 use serde_json::{Value, json};
+use sha1::Digest;
 use std::collections::BTreeMap;
 use std::io::Write;
 
@@ -31,6 +32,7 @@ const PREVIEW: &[u8] = include_bytes!("uswds-50v-sketch-preview.png");
 const OLD_PREVIEW: &[u8] = include_bytes!("uswds-old-sketch-preview.png");
 const COLUMN_PREVIEW: &[u8] = include_bytes!("uswds-column-sketch-preview.png");
 const CHANGED_PREVIEW: &[u8] = include_bytes!("uswds-changed-sketch-preview.png");
+const INDIGO_PREVIEW: &[u8] = include_bytes!("uswds-indigo-30v-sketch-preview.png");
 
 fn resource(family: &str, bytes: &[u8]) -> FontResource {
     FontResource {
@@ -230,13 +232,18 @@ fn sketch_fixed_paragraphs_share_a_baseline_with_variable_heights_and_blank_line
 }
 
 fn archive(layer: Value) -> Vec<u8> {
+    archive_with_fonts(layer, Vec::new())
+}
+
+fn archive_with_fonts(layer: Value, fonts: Vec<Value>) -> Vec<u8> {
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let options = zip::write::SimpleFileOptions::default();
     for (name, value) in [
         ("meta.json", json!({"version": 136})),
         (
             "document.json",
-            json!({"_class":"document","colorSpace":1,"pages":[{"_class":"MSJSONFileReference","_ref":"pages/p"}]}),
+            json!({"_class":"document","colorSpace":1,"pages":[{"_class":"MSJSONFileReference","_ref":"pages/p"}],
+                "fontReferences": fonts}),
         ),
         (
             "pages/p.json",
@@ -247,6 +254,37 @@ fn archive(layer: Value) -> Vec<u8> {
         zip.write_all(&serde_json::to_vec(&value).unwrap()).unwrap();
     }
     zip.finish().unwrap().into_inner()
+}
+
+#[test]
+fn native_uniform_indigo_run_matches_its_quartz_quarter_pixel_mask() {
+    // Original USWDS Sketch 69.2 layer from archive SHA-256
+    // 64ae57e92d8500e003334f5cdaeab37089af5d43e1f8825e180ae34eafbfe995.
+    // The independent image is PDF page 23, rasterized once at 72 DPI.
+    let layer = serde_json::from_str(include_str!("uswds-indigo-30v-native-layer.json")).unwrap();
+    let archive = archive_with_fonts(layer, vec![json!({
+        "_class":"fontReference", "fontFamilyName":"Public Sans", "postscriptNames":["PublicSans-Bold"],
+        "fontData":{"_class":"MSJSONOriginalDataReference","_ref_class":"MSFontData",
+            "data":{"_data":base64::engine::general_purpose::STANDARD.encode(BOLD)},
+            "sha1":{"_data":base64::engine::general_purpose::STANDARD.encode(sha1::Sha1::digest(BOLD))}}
+    })]);
+    let document = import_sketch_report(&archive).unwrap().document;
+    let node = &document.nodes["6395B63A-41C0-42D1-A17B-706803E4A7A1"];
+    assert_eq!(node.text_style.as_ref().unwrap().font_id, "PublicSans-Bold");
+    assert_eq!(node.text_runs[0].color.as_deref(), Some("#2e2e2e"));
+    assert_eq!([node.width, node.height], [61., 12.]);
+    let mut engine = Engine::new();
+    engine.load_document(&serde_json::to_string(&document).unwrap()).unwrap();
+    let options = serde_json::from_value(json!({
+        "pageId": "p", "width": 61, "height": 12, "view": {"x": 0, "y": -288, "zoom": 1},
+        "rasterProfile": "analytic"
+    })).unwrap();
+    let rgba = engine.render(&options).unwrap();
+    let reference = image::load_from_memory(INDIGO_PREVIEW).unwrap().to_rgba8();
+    assert_eq!(reference.dimensions(), (61, 12));
+    let different = rgba.chunks_exact(4).zip(reference.as_raw().chunks_exact(4))
+        .filter(|(actual, expected)| actual != expected).count();
+    assert_eq!(different, 0, "source Indigo text has shifted mask pixels");
 }
 
 #[test]
