@@ -336,7 +336,16 @@ fn resized_native_symbol_reflows_its_fixed_master_child() {
     assert_eq!(fields["_class"], "symbolInstance");
     assert_eq!(fields["resizingConstraint"], 9);
     assert!(fields.get("layers").is_none());
-    let mut reopened = import_sketch_report(&export_sketch(&authored).unwrap()).unwrap().document;
+    // The real File menu exports the resolved editor snapshot.
+    let exported = export_sketch(&edited).unwrap();
+    let entries = read_zip_public(&exported).unwrap();
+    let exported_page: Value = serde_json::from_slice(entries.iter()
+        .find(|(name, _)| name.starts_with("pages/")).unwrap().1).unwrap();
+    let wire = &exported_page["layers"][0]["layers"][1];
+    assert_eq!(wire["_class"], "symbolInstance");
+    assert_eq!(wire["userInfo"]["com.futureox.design-kernel"]["originalId"], "instance");
+    assert!(wire.get("layers").is_none(), "generated child must not be written inside the symbol instance");
+    let mut reopened = import_sketch_report(&exported).unwrap().document;
     components::resolve(&mut reopened).unwrap();
     layout::resolve(&mut reopened, &font).unwrap();
     assert_box(&reopened, "instance", [5., 5., 220., 160.]);

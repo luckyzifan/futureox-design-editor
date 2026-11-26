@@ -7330,6 +7330,7 @@ fn export_layer_impl(
     layer.insert("horizontalPins".into(), json!(0));
     layer.insert("verticalPins".into(), json!(0));
     if let Some(n) = node {
+        let responsive_sketch_instance = sketch_responsive_instance(doc, n);
         layer.insert("name".into(), json!(n.name));
         layer.insert("isVisible".into(), json!(n.visible));
         layer.insert("isLocked".into(), json!(n.locked));
@@ -8557,10 +8558,12 @@ fn export_layer_impl(
                 pending_user_prototype = Some(serde_json::to_value(events).unwrap_or(Value::Null));
             }
         }
+        // A resolved responsive instance displays derived children from the
+        // master. The native instance record references that master by ID.
         let mut children: Vec<Value> = n
             .children
             .iter()
-            .filter(|_| descendants)
+            .filter(|_| descendants && !responsive_sketch_instance)
             .map(|c| export_layer(doc, c, images))
             .collect::<Result<Vec<_>>>()?;
         if class == "shapeGroup"
@@ -8631,7 +8634,7 @@ fn export_layer_impl(
         // properties) survives symbol round-trips this way.
         let mut user_info = Map::new();
         user_info.insert("originalId".into(), json!(id));
-        if sketch_responsive_instance(doc, n) {
+        if responsive_sketch_instance {
             user_info.insert("responsiveSymbolInstance".into(), json!(true));
         }
         if n.sketch_layer_style_overridden {
