@@ -57,7 +57,7 @@ test('Close Path links the two open ends as one undoable edit and refuses closed
   const branched = structuredClone(before)
   const branchId = Object.keys(branched.nodes)[0]
   branched.nodes[branchId].network!.vertices.push({ id: 'd', x: 70, y: 60 })
-  branched.nodes[branchId].network!.edges.push({ id: 'cd', from: 'c', to: 'd' })
+  branched.nodes[branchId].network!.edges.push({ id: 'bd', from: 'b', to: 'd' })
   expect(closeablePath(branched, [branchId])).toBe(false)
 })
 

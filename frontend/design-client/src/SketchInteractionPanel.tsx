@@ -166,7 +166,7 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
     <label>{durationLabel}<input type="number" aria-label={durationLabel} min={0} max={10000} step={50}
       disabled={durationDisabled} placeholder="300"
       value={action?.durationMs ?? ''}
-      onChange={change => {
+      onInput={change => {
         const raw = change.currentTarget.value
         update('修改交互动画', (_draft, event) => {
           const action = navigationAction(event)
