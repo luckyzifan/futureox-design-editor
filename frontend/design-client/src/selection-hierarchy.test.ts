@@ -42,7 +42,7 @@ test('a group takes the click until entered; a frame still selects child paint o
   editor.select([inner.id]); expect(editor.selectionHit(p)).toBe(a.id)
   editor.select([a.id]); expect(editor.hit(point(b.id))).toBe(b.id)
   editor.select([]); expect(editor.hit(p, true)).toBe(a.id)
-  expect(editor.selectDeeper(p)).toEqual({ id: a.id, changed: true })
+  expect(editor.selectDeeper(p)).toEqual({ id: inner.id, changed: true })
 })
 
 test('a boolean group takes the click and deep-select reaches its child', () => {
@@ -60,15 +60,24 @@ test('a boolean group takes the click and deep-select reaches its child', () => 
   expect(editor.canUndo).toBe(false)
 })
 
-test('double-click selects the group child; a selected frame still opens one level', () => {
-  const { editor, outer, group, a, point } = fixture()
+test('Figma double-click steps through frames and groups without changing the move tool', () => {
+  const { editor, outer, group, inner, a, point } = fixture()
   editor.select([])
-  expect(editor.selectDeeper(point(a.id))).toEqual({ id: a.id, changed: true })
+  expect(editor.selectDeeper(point(a.id))).toEqual({ id: inner.id, changed: true })
   editor.select([outer.id])
-  expect(editor.selectDeeper(point(a.id))).toEqual({ id: group.id, changed: true })
-  expect(editor.selectDeeper(point(a.id))).toEqual({ id: a.id, changed: true })
+  for (const id of [group.id, inner.id, a.id])
+    expect(editor.selectDeeper(point(a.id))).toEqual({ id, changed: true })
   expect(editor.selectDeeper(point(a.id))).toEqual({ id: a.id, changed: false })
   expect(editor.state.tool).toBe('select')
+})
+
+test('a double-click reaches a nested group before its leaf; a forced deep pick still reaches the leaf', () => {
+  const { editor, group, inner, a, point } = fixture()
+  editor.update([inner.id], { kind: 'group', clip: false }, 'nested group')
+  editor.select([group.id])
+  expect(editor.selectDeeper(point(a.id))).toEqual({ id: inner.id, changed: true })
+  expect(editor.selectDeeper(point(a.id))).toEqual({ id: a.id, changed: true })
+  expect(editor.selectionHit(point(a.id), true)).toBe(a.id)
 })
 
 test('Enter on a group selects both children and Shift+Enter returns to the group', () => {

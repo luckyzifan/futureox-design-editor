@@ -1,23 +1,24 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { Editor } from './engine'
-import { blank, node, stroke, uid, type DesignDocument } from './model'
+import { blank, node, paint, stroke, uid, type DesignDocument } from './model'
 import { allParents, multiply, translate, worldMatrix } from './geometry'
 import { canvasContextItems, canvasMenuItems, clampContextMenu, moveToPageIndex, pluginsMenuIndex, sketchSelectionCommands } from './canvas-menu-model'
 import { interfacePreference } from './interface-preference'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
 import { createClip } from './animation'
-import { VectorEngine } from './generated/design-kernel/design_kernel'
+import { VectorEngine, geometry_json } from './generated/design-kernel/design_kernel'
 import { prepareDocumentForEditing } from './kernel/picking'
 import { alignmentAvailability, alignmentCommandIds } from './alignment-availability'
 
 afterEach(() => vi.unstubAllGlobals())
 
-test('Frame selection and native unframe preserve world transforms with one undo each', async () => {
+test('Figma Frame selection and native unframe preserve world transforms with one undo each', async () => {
+  interfacePreference.set({ uiMode: 'figma' })
   const { editor, parent, a, b } = rotatedFixture(), before = editor.state.doc
   const worlds = [a.id, b.id].map(id => worldMatrix(before, id))
   await dispatchEditorCommand(editor, 'frame-selection')
   const id = editor.state.selection[0], frame = editor.state.doc.nodes[id]
-  expect(frame.kind).toBe('frame'); expect(frame.fills).toEqual([]); expect(frame.clip).toBe(false)
+  expect(frame.kind).toBe('frame'); expect(frame.fills).toEqual([]); expect(frame.clip).toBe(true)
   expect(allParents(editor.state.doc).get(id)).toBe(parent.id)
   for (const [index, child] of [a.id, b.id].entries()) worldMatrix(editor.state.doc, child).forEach((v, i) => expect(v).toBeCloseTo(worlds[index][i], 10))
   const wrapped = editor.state.doc
@@ -27,6 +28,117 @@ test('Frame selection and native unframe preserve world transforms with one undo
   editor.undo(); expect(editor.state.doc).toEqual(wrapped)
   editor.undo(); expect(editor.state.doc).toEqual(before); editor.dispose()
 })
+function canvasPixels(document: DesignDocument, points: readonly [number, number][]) {
+  const renderer = new VectorEngine()
+  try {
+    renderer.load_document(JSON.stringify(document))
+    const width = 80
+    const frame = renderer.render_rgba(JSON.stringify({
+      pageId: document.pages[0].id, width, height: 48, view: { x: 0, y: 0, zoom: 1 },
+      transparent: true, grid: false, rasterProfile: 'figma',
+    }))
+    return points.map(([x, y]) => Array.from(frame.slice(4 * (y * width + x), 4 * (y * width + x + 1))))
+  } finally { renderer.free() }
+}
+
+test.each(['figma', 'sketch'] as const)('%s Group keeps the selected children in order and places the wrapper at the expected slot', async uiMode => {
+  const previous = interfacePreference.getSnapshot()
+  interfacePreference.set({ uiMode })
+  const document = blank('group slots')
+  const a = node('rectangle', 8, 8, 20, 18), b = node('rectangle', 0, 0, 56, 40)
+  const c = node('rectangle', 34, 8, 16, 18), d = node('rectangle', 56, 8, 16, 18)
+  const layers = [a, b, c, d]
+  layers.forEach((layer, index) => { layer.fills = [paint(['#ff0000', '#0000ff', '#ff0000', '#ffff00'][index])] })
+  document.nodes = Object.fromEntries(layers.map(layer => [layer.id, layer]))
+  document.pages[0].children = layers.map(layer => layer.id)
+  const editor = new Editor(document)
+  try {
+    editor.select([c.id, a.id])
+    const before = editor.state.doc
+    const points: [number, number][] = [[12, 12], [38, 12], [60, 12]]
+    const blue = [0, 0, 255, 255], red = [255, 0, 0, 255], yellow = [255, 255, 0, 255]
+    expect(canvasPixels(before, points)).toEqual([blue, red, yellow])
+    await dispatchEditorCommand(editor, 'group')
+    const after = editor.state.doc, [group] = editor.state.selection
+    expect(after.pages[0].children).toEqual(uiMode === 'figma' ? [b.id, group, d.id] : [group, b.id, d.id])
+    expect(after.nodes[group].children).toEqual([a.id, c.id])
+    expect(after.nodes[group].clip).toBe(false)
+    for (const { id } of [a, c]) expect(worldMatrix(after, id)).toEqual(worldMatrix(before, id))
+    expect(canvasPixels(after, points)).toEqual(uiMode === 'figma' ? [red, red, yellow] : [blue, blue, yellow])
+    editor.undo()
+    expect(editor.state.doc).toEqual(before)
+    expect(editor.canUndo).toBe(false)
+    editor.redo()
+    expect(editor.state.doc).toEqual(after)
+  } finally {
+    editor.dispose()
+    interfacePreference.set(previous)
+  }
+})
+
+test.each(['figma', 'sketch'] as const)('%s Flatten matches the expected front or back slot without changing the source name', async uiMode => {
+  const previous = interfacePreference.getSnapshot()
+  interfacePreference.set({ uiMode })
+  const document = blank('flatten slots')
+  const a = node('rectangle', 8, 8, 30, 18), b = node('rectangle', 0, 0, 56, 40), c = node('rectangle', 26, 8, 24, 18)
+  a.name = 'A'; b.name = 'B'; c.name = 'C'
+  const layers = [a, b, c]
+  layers.forEach((layer, index) => { layer.fills = [paint(index === 1 ? '#0000ff' : '#ff0000')] })
+  document.nodes = Object.fromEntries(layers.map(layer => [layer.id, layer]))
+  document.pages[0].children = layers.map(layer => layer.id)
+  const editor = new Editor(document)
+  Object.assign(editor, { runGeometry: async (payload: unknown) => JSON.parse(geometry_json(JSON.stringify(payload))) })
+  try {
+    editor.select([c.id, a.id])
+    const before = editor.state.doc
+    await dispatchEditorCommand(editor, 'flatten')
+    const after = editor.state.doc, [vector] = editor.state.selection
+    expect(after.nodes[vector]).toMatchObject({ kind: 'vector', name: 'C' })
+    expect(after.pages[0].children).toEqual(uiMode === 'figma' ? [b.id, vector] : [vector, b.id])
+    expect(canvasPixels(after, [[12, 12]])).toEqual([uiMode === 'figma' ? [255, 0, 0, 255] : [0, 0, 255, 255]])
+    editor.undo()
+    expect(editor.state.doc).toEqual(before)
+    expect(editor.canUndo).toBe(false)
+    editor.redo()
+    expect(editor.state.doc).toEqual(after)
+  } finally {
+    editor.dispose()
+    interfacePreference.set(previous)
+  }
+})
+
+test.each(['figma', 'sketch'] as const)('%s Frame selection controls newly overflowing pixels after resize', async uiMode => {
+  const previous = interfacePreference.getSnapshot()
+  interfacePreference.set({ uiMode })
+  const document = blank('frame clipping')
+  const child = node('rectangle', 8, 2, 22, 8)
+  child.fills = [paint('#ff0000')]
+  document.nodes[child.id] = child
+  document.pages[0].children = [child.id]
+  const editor = new Editor(document)
+  try {
+    editor.select([child.id])
+    const before = editor.state.doc
+    await dispatchEditorCommand(editor, 'frame-selection')
+    const [frame] = editor.state.selection, wrapped = editor.state.doc
+    expect(wrapped.nodes[frame]).toMatchObject({ kind: 'frame', clip: uiMode === 'figma', blend: 'pass-through', fills: [] })
+    editor.change('Shrink frame', draft => { draft.nodes[frame].width = 16 })
+    const shrunk = editor.state.doc, red = [255, 0, 0, 255]
+    const points: [number, number][] = [[12, 6], [24, 6]]
+    expect(worldMatrix(shrunk, child.id)).toEqual(worldMatrix(before, child.id))
+    expect(canvasPixels(shrunk, points)).toEqual([red, uiMode === 'figma' ? [0, 0, 0, 0] : red])
+    editor.undo()
+    expect(editor.state.doc).toEqual(wrapped)
+    expect(canvasPixels(editor.state.doc, points)).toEqual([red, red])
+    editor.undo()
+    expect(editor.state.doc).toEqual(before)
+    expect(editor.canUndo).toBe(false)
+  } finally {
+    editor.dispose()
+    interfacePreference.set(previous)
+  }
+})
+
 test('Move to page keeps world placement, invalid targets are no-ops, and Undo restores source hierarchy', async () => {
   const { editor, a, b } = rotatedFixture(), targetPage = uid()
   editor.change('add page', d => { d.pages.push({ id: targetPage, name: 'Target', background: '#ffffff', children: [] }) })

@@ -625,6 +625,20 @@ it.each(['align', 'group', 'frame', 'section'] as const)('unified selection %s m
     expect((await f.mutate('history.redo')).isError).toBe(false); expect(f.editor.state.doc).toEqual(after)
   } finally { ui.dispose() }
 })
+it.each(['group', 'frame'] as const)('MCP node.group keeps the established back slot and unclipped %s', async kind => {
+  const doc = blank(), a = node('rectangle'), b = node('rectangle'), c = node('rectangle')
+  doc.nodes = Object.fromEntries([a, b, c].map(layer => [layer.id, layer]))
+  doc.pages[0].children = [a.id, b.id, c.id]
+  const f = await fixture(doc), before = f.editor.state.doc
+  const result = await f.mutate('node.group', { ids: [c.id, a.id], kind })
+  expect(result.isError).toBe(false)
+  const after = f.editor.state.doc, [wrapper] = f.editor.state.selection
+  expect(after.pages[0].children).toEqual([wrapper, b.id])
+  expect(after.nodes[wrapper]).toMatchObject({ kind, clip: false, fills: [], children: [a.id, c.id] })
+  expect((await f.mutate('history.undo')).isError).toBe(false)
+  expect(f.editor.state.doc).toEqual(before)
+})
+
 it('unified selection unsupported overlap is an explicit NDJSON error with no commit', async () => {
   const doc = blank(), nodes = [node('rectangle', 0, 0, 100, 20), node('rectangle', 10, 0, 20, 20), node('rectangle', 150, 0, 20, 20)]
   doc.nodes = Object.fromEntries(nodes.map(n => [n.id, n])); doc.pages[0].children = nodes.map(n => n.id)

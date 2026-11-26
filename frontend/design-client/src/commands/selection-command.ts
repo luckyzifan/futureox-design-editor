@@ -180,11 +180,6 @@ export function prepareSelectionArrangement(doc: DesignDocument, selected: reado
   const basis = frameWorld ? inverse(frameWorld) : single ? inverse(world(parent)) : identity()
   const reader = geometry(doc, index, state, basis)
   const rects = index.ids.map(reader.measure)
-  if (mode === 'distribute') {
-    const size = axis === 'x' ? 'width' : 'height', sorted = [...rects].sort((a, b) => a[axis] - b[axis])
-    for (let i = 1; i < sorted.length; i++) if (sorted[i][axis] < sorted[i - 1][axis] + sorted[i - 1][size] - 1e-9)
-      reject('unsupported_distribution_geometry', 'Overlapping or contained distribution intervals need an explicit endpoint policy')
-  }
   const reference = frame ? { x: 0, y: 0, width: frame.width, height: frame.height } :
     !single && target?.kind === 'layer' && index.ids.includes(target.id) ? reader.measure(target.id) : undefined
   const parentBounds = single ? reference ?? (parentNode.kind === 'group' ? reader.measure(parent) :
