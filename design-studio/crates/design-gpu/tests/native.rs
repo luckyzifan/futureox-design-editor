@@ -1102,8 +1102,10 @@ async fn sketch_117_partitioned_cache_repaints_after_bitmap_edit() {
 
     let source = std::env::var_os("FUTUREOX_TEST_117_SKETCH").expect("provide the original Sketch file");
     let bytes = std::fs::read(source).unwrap();
+    let fixture_digest: String = Sha256::digest(&bytes)
+        .iter().map(|byte| format!("{byte:02x}")).collect();
     assert_eq!(
-        format!("{:x}", Sha256::digest(&bytes)),
+        fixture_digest,
         "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70"
     );
     let doc = import_sketch_report(&bytes).unwrap().document;
