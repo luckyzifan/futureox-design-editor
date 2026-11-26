@@ -710,7 +710,7 @@ fn parse_fig_archive(bytes: &[u8]) -> Result<FigArchive, Error> {
 // canvas.fig (fig-kiwi v48/v106). Semantic reference:
 // frontend/design-client/src/import-fig.ts.
 
-use crate::layout::{Align, Anchor, Constraints, Flow, Layout, SizeMode, Sizing};
+use crate::layout::{Align, Anchor, Constraints, Flow, Layout, SizeMode, Sizing, StackingOrder};
 
 fn f64_of(v: Option<&Value>, key: &str) -> f64 {
     v.and_then(|v| v.get(key)).and_then(f64_value).unwrap_or(0.)
@@ -2788,6 +2788,7 @@ impl FigImporter {
                 untranslated.push("stackCounterAlignItems=BASELINE".into());
             }
             let gap = spacing(record, "stackSpacing")?;
+            let first_on_top = bool_of(record, "stackReverseZIndex").unwrap_or(false);
             node.layout = Some(Layout {
                 mode,
                 gap,
@@ -2797,11 +2798,12 @@ impl FigImporter {
                 wrap,
                 justify,
                 align,
+                stacking_order: first_on_top.then_some(StackingOrder::FirstOnTop),
                 ..Layout::default()
             });
-            if bool_of(record, "stackReverseZIndex").unwrap_or(false) {
-                // applied after tree assembly: children render (and stack)
-                // in reverse order — converter/layout.py layers.reverse()
+            if first_on_top {
+                // Tree assembly mirrors painter slots. The modeled stack
+                // order restores the original flow when the kernel resolves it.
                 node.bindings
                     .insert("figStackReverseZIndex".into(), "true".into());
             }
@@ -3310,7 +3312,7 @@ pub fn document_from_canvas(
             },
         });
     }
-    // stackReverseZIndex: reverse the authored child order after assembly
+    // Mirror back-to-front painter storage for first-on-top stacks.
     for node in nodes.values_mut() {
         if node.bindings.contains_key("figStackReverseZIndex") {
             node.children.reverse();
@@ -3442,6 +3444,9 @@ pub fn document_from_canvas(
     // Source receipts are inert metadata, never executable variable bindings.
     let mut metadata = serde_json::Map::new();
     for node in doc.nodes.values_mut() {
+        if node.layout.as_ref().is_some_and(|layout| layout.stacking_order.is_some()) {
+            version = version.max(31);
+        }
         if !node.bindings.is_empty() {
             metadata.insert(node.id.clone(), serde_json::json!({"format":"fig","bindings":std::mem::take(&mut node.bindings)}));
         }
@@ -4848,27 +4853,51 @@ mod tests {
         }
 
         #[test]
-        fn stack_reverse_z_index_reverses_children() {
-            let mut changes = canvas_only();
-            let mut frame = base_change("FRAME", 1, 2);
-            frame["stackMode"] = json!("HORIZONTAL");
-            frame["stackReverseZIndex"] = json!(true);
-            let mut a = base_change("RECTANGLE", 1, 3);
-            a["parentIndex"] = json!({"guid": guid(1, 2), "position": "!"});
-            let mut b = base_change("RECTANGLE", 1, 4);
-            b["parentIndex"] = json!({"guid": guid(1, 2), "position": "\""});
-            changes.extend([frame, a, b]);
-            let doc = doc_with(changes).unwrap();
-            let f = node_of(&doc, 1, 2);
-            assert_eq!(
-                f.children,
-                vec!["fig-1-4".to_string(), "fig-1-3".to_string()],
-                "reverse z-index flips the authored order"
-            );
-            assert_eq!(
-                source_note(&doc, f, "figStackReverseZIndex"),
-                Some("true")
-            );
+        fn stack_reverse_z_index_preserves_flow_and_changes_overlap_color() {
+            for reverse in [None, Some(false), Some(true)] {
+                let first_on_top = reverse == Some(true);
+                let mut changes = canvas_only();
+                let mut frame = base_change("FRAME", 1, 2);
+                frame["size"] = json!({"x": 200, "y": 100});
+                frame["stackMode"] = json!("HORIZONTAL");
+                frame["stackSpacing"] = json!(-30);
+                frame["stackPrimarySizing"] = json!("FIXED");
+                if let Some(reverse) = reverse {
+                    frame["stackReverseZIndex"] = json!(reverse);
+                }
+                let mut a = base_change("RECTANGLE", 1, 3);
+                a["parentIndex"] = json!({"guid": guid(1, 2), "position": "!"});
+                a["size"] = json!({"x": 50, "y": 30});
+                a["fillPaints"] = json!([{"type":"SOLID", "color":{"r":0, "g":0, "b":1, "a":1}}]);
+                let mut b = base_change("RECTANGLE", 1, 4);
+                b["parentIndex"] = json!({"guid": guid(1, 2), "position": "b"});
+                b["size"] = json!({"x": 50, "y": 30});
+                b["fillPaints"] = json!([{"type":"SOLID", "color":{"r":1, "g":0, "b":0, "a":1}}]);
+                changes.extend([frame, a, b]);
+
+                let mut doc = doc_with(changes).unwrap();
+                crate::layout::resolve(&mut doc, &crate::font::Fonts::default()).unwrap();
+                let f = node_of(&doc, 1, 2);
+                let painter = if first_on_top { ["fig-1-4", "fig-1-3"] } else { ["fig-1-3", "fig-1-4"] };
+                assert_eq!(f.children, painter);
+                assert_eq!(node_of(&doc, 1, 3).transform.0[4..6], [0., 0.]);
+                assert_eq!(node_of(&doc, 1, 4).transform.0[4..6], [20., 0.]);
+                assert_eq!(f.layout.as_ref().unwrap().stacking_order,
+                    first_on_top.then_some(StackingOrder::FirstOnTop));
+                assert_eq!(source_note(&doc, f, "figStackReverseZIndex"), first_on_top.then_some("true"));
+                if first_on_top {
+                    assert!(doc.schema_version >= 31);
+                }
+
+                let mut engine = crate::Engine::new();
+                engine.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
+                let options = engine.parse_options(json!({ "pageId": doc.pages[0].id, "width": 200, "height": 100,
+                    "view": {"x":0,"y":0,"zoom":1}, "rasterProfile": "figma" })).unwrap();
+                let pixels = engine.render(&options).unwrap();
+                let offset = (10 * 200 + 40) * 4;
+                let expected = if first_on_top { [0, 0, 255, 255] } else { [255, 0, 0, 255] };
+                assert_eq!(&pixels[offset..offset+4], &expected);
+            }
         }
 
         // ---------------- constraints ----------------

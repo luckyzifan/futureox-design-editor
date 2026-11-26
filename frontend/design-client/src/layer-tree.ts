@@ -1,4 +1,4 @@
-import { displayedLayerChildren, layerFlowOrder } from './layer-order'
+import { displayedLayerChildren, layerFlowOrder, usesFigmaLayerFlow } from './layer-order'
 import type { DesignDocument, DesignNode } from './model'
 import { layerTransition, sameLayerChildren } from './layer-row-transition'
 
@@ -26,7 +26,7 @@ export function visibleLayerBranch(doc: DesignDocument, root: string): string[] 
   return branches
 }
 
-export function layerTreeRows(doc: DesignDocument, pageId: string, expansion: LayerExpansion, search: string) {
+export function layerTreeRows(doc: DesignDocument, pageId: string, expansion: LayerExpansion, search: string, figmaFlow = usesFigmaLayerFlow(doc)) {
   const query = search.trim().toLocaleLowerCase(), matches = new Set<string>(), included = new Set<string>()
   const roots = doc.pages.find(page => page.id === pageId)?.children || []
   const scan = (id: string, ancestors: string[]) => {
@@ -41,7 +41,7 @@ export function layerTreeRows(doc: DesignDocument, pageId: string, expansion: La
   const visit = (id: string, depth: number) => {
     const n = doc.nodes[id]; if (!n || (query && !included.has(id))) return
     rows.push({ id, depth, context: !!query && !matches.has(id) })
-    if (query || layerExpanded(n, depth, expansion)) displayedLayerChildren(n, n.children).forEach(child => visit(child, depth + 1))
+    if (query || layerExpanded(n, depth, expansion)) displayedLayerChildren(n, n.children, figmaFlow).forEach(child => visit(child, depth + 1))
   }
   displayedLayerChildren(undefined, roots).forEach(id => visit(id, 0))
   return rows
@@ -54,12 +54,12 @@ export function layerTreeRows(doc: DesignDocument, pageId: string, expansion: La
  * Inputs follow the editor's immutable snapshot/Set contract.
  */
 export class LayerRowsCache {
-  private previous?: { doc: DesignDocument; page: string; expansion: LayerExpansion; query: string; rows: ReturnType<typeof layerTreeRows> }
+  private previous?: { doc: DesignDocument; page: string; expansion: LayerExpansion; query: string; figmaFlow: boolean; rows: ReturnType<typeof layerTreeRows> }
   readonly stats = { builds: 0, nodeChecks: 0, certificateHits: 0, rowAllocations: 0 }
   clear() { this.previous = undefined }
-  read(doc: DesignDocument, page: string, expansion: LayerExpansion, search: string) {
+  read(doc: DesignDocument, page: string, expansion: LayerExpansion, search: string, figmaFlow = usesFigmaLayerFlow(doc)) {
     const query = search.trim().toLocaleLowerCase(), old = this.previous
-    let reusable = !!old && old.doc.id === doc.id && old.page === page && old.query === query &&
+    let reusable = !!old && old.doc.id === doc.id && old.page === page && old.query === query && old.figmaFlow === figmaFlow &&
       (query !== '' || old.expansion === expansion)
     if (reusable && old && old.doc !== doc) {
       const roots = (d: DesignDocument) => d.pages.find(p => p.id === page)?.children || []
@@ -78,14 +78,14 @@ export class LayerRowsCache {
             if (!reusable) break
             this.stats.nodeChecks++
             const a = old.doc.nodes[id], b = doc.nodes[id]
-            reusable = !!a && (a === b || (sameLayerChildren(a.children, b.children) && layerFlowOrder(a) === layerFlowOrder(b) && (!query || a.name === b.name)))
+            reusable = !!a && (a === b || (sameLayerChildren(a.children, b.children) && layerFlowOrder(a, figmaFlow) === layerFlowOrder(b, figmaFlow) && (!query || a.name === b.name)))
           }
         }
       }
     }
-    const rows = reusable && old ? old.rows : layerTreeRows(doc, page, expansion, query)
+    const rows = reusable && old ? old.rows : layerTreeRows(doc, page, expansion, query, figmaFlow)
     if (!reusable) { this.stats.builds++; this.stats.rowAllocations += rows.length }
-    this.previous = { doc, page, expansion, query, rows }
+    this.previous = { doc, page, expansion, query, figmaFlow, rows }
     return rows
   }
 }

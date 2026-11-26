@@ -293,7 +293,7 @@ export function LayoutPanel({
                 onChange={e => updateLayout({ bordersAffectLayout: e.currentTarget.checked || undefined })} />
               {tr('边框计入布局')}
             </label>}
-          {uiMode === 'sketch' && (layout.mode === 'horizontal' || layout.mode === 'vertical') &&
+          {(layout.mode === 'horizontal' || layout.mode === 'vertical') &&
             <label className="labeled-select">{tr('重叠顺序')}
               <select aria-label={tr('重叠顺序')} value={stackOrder(layout)}
                 onChange={event => updateStackOrder(event.currentTarget.value as StackingOrder)}>

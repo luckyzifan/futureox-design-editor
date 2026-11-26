@@ -16,7 +16,7 @@ export function certifyLayerTransition(before: DesignDocument, after: DesignDocu
     if (!a || !b) { topology = true; names = true; flow = true; continue }
     topology ||= !sameLayerChildren(a.children, b.children)
     names ||= a.name !== b.name
-    flow ||= layerFlowOrder(a) !== layerFlowOrder(b)
+    flow ||= layerFlowOrder(a) !== layerFlowOrder(b) || layerFlowOrder(a, true) !== layerFlowOrder(b, true)
   }
   transitions.set(after, { before: new WeakRef(before), topology, names, flow })
 }

@@ -327,7 +327,7 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent: FigLayoutRecord
     })) {
       if (r[field] !== undefined && r[field] !== neutral) unsupported(field, r[field])
     }
-    // Figma "first on top" is authored order reversed, the same child flip the native reader applies.
+    // Painter storage flips for first-on-top. The model retains the original flow.
     if (r.stackReverseZIndex !== undefined && r.stackReverseZIndex !== false) {
       if (r.stackReverseZIndex !== true) unsupported('stackReverseZIndex', r.stackReverseZIndex)
       reverseZ.add(n.id)
@@ -363,6 +363,7 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent: FigLayoutRecord
         ? (note?.('stackCounterAlignItems=BASELINE'), 'start')
         : choice('stackCounterAlignItems', stackAlign, 'start'),
     }
+    if (r.stackReverseZIndex === true) n.layout.stackingOrder = 'first-on-top'
   }
   const sizing = defaultSizing()
   let hasSizing = hasLayout
@@ -1236,6 +1237,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     doc.schemaVersion = Math.max(15, doc.schemaVersion) as typeof doc.schemaVersion
   if (hasSchema20Features(doc)) doc.schemaVersion = Math.max(20, doc.schemaVersion) as typeof doc.schemaVersion
   if (hasGradientBlur(doc)) doc.schemaVersion = Math.max(9, doc.schemaVersion) as typeof doc.schemaVersion
+  if (reverseZ.size && doc.schemaVersion < 31) doc.schemaVersion = 31
   retainFigTextBoxes(doc)
   return { document: doc, backend: 'typescript-fig', instanceTextLayouts, ...warnings.result() }
 }

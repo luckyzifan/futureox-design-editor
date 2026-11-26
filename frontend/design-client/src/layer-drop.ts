@@ -1,5 +1,5 @@
 import { allParents, type ParentMap } from './geometry'
-import { layerFlowOrder } from './layer-order'
+import { layerFlowOrder, usesFigmaLayerFlow } from './layer-order'
 import { container, type DesignDocument } from './model'
 import { assertStructuralParent, indexSelection, SelectionCommandError } from './commands/selection-command'
 
@@ -40,7 +40,7 @@ export function pageMoveRoots(doc: DesignDocument, page: string, selected: reado
 /** Freeform rows run front-to-back. Auto-layout rows run in flow order.
  * `before` is the storage sibling the drop is inserted ahead of. */
 export function layerDropPlan(doc: DesignDocument, page: string, dragged: readonly string[], target: string | null,
-  position: LayerDropPosition, parents?: ParentMap): { parent: string; before?: string } | undefined {
+  position: LayerDropPosition, parents?: ParentMap, figmaFlow = usesFigmaLayerFlow(doc)): { parent: string; before?: string } | undefined {
   if (!dragged.length) return
   parents ??= allParents(doc)
   const selected = new Set(dragged)
@@ -50,7 +50,7 @@ export function layerDropPlan(doc: DesignDocument, page: string, dragged: readon
   for (let id: string | undefined = parent; id; id = parents.get(id))
     if (selected.has(id) || doc.nodes[id]?.locked) return
   const siblings = (doc.nodes[parent]?.children || doc.pages.find(p => p.id === parent)?.children || []).filter(id => !selected.has(id))
-  const flow = layerFlowOrder(doc.nodes[parent])
+  const flow = layerFlowOrder(doc.nodes[parent], figmaFlow)
   if (!target) return { parent, before: flow ? undefined : siblings[0] }
   if (position === 'inside') return { parent }
   const at = siblings.indexOf(target)
