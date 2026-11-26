@@ -53,7 +53,7 @@ import type {CompilationWitness} from './compilation-witness'
 import type { ColorSettings } from '../color'
 import { intersect, type BackendPreference, type Driver, type GpuScene, type Rect } from './gpu/types'
 import { guardedPixelWindow } from './gpu/effect-region'
-import { adaptiveGaussianReduction } from './gpu/gaussian-selection'
+import { gaussianReductionAdmission } from './gpu/gaussian-selection'
 import type { KernelOptions } from './client'
 import { TILE_SIDE, type RasterTile } from './tile-cache'
 import { imageCacheKey, readCachedImage, writeCachedImage } from './image-mip-cache'
@@ -1625,9 +1625,10 @@ tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillP
         import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS==='1'&&import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1')&&
         !executionPolicy.hdrCompositing&&backend==='webgpu'&&!request.png&&!request.readback&&!exportFormat&&
         !renderOptions.exportRegion&&!renderOptions.pixelPreview&&renderOptions.rasterProfile==='figmaSubpixel'
-      const gaussianReduction=adaptiveGaussianReduction(renderOptions.view.zoom,import.meta.env.VITE_DESIGN_GAUSSIAN_REDUCTION_ADAPTIVE==='1',Number(import.meta.env.VITE_DESIGN_GAUSSIAN_REDUCTION))
+      const gaussianReduction=gaussianReductionAdmission(renderOptions.gpuGaussianRegions,renderOptions.view.zoom,
+        import.meta.env.VITE_DESIGN_GAUSSIAN_REDUCTION_ADAPTIVE==='1',Number(import.meta.env.VITE_DESIGN_GAUSSIAN_REDUCTION))
       renderOptions.gpuSourceFilterFields=!!renderOptions.gpuGaussianRegions&&sourceFilterFields
-      renderOptions.gpuGaussianReduction=renderOptions.gpuGaussianRegions&&[2,4,8].includes(gaussianReduction)?gaussianReduction:0
+      renderOptions.gpuGaussianReduction=gaussianReduction
       renderOptions.gpuNeutralPageGroup=import.meta.env.VITE_DESIGN_NEUTRAL_PAGE_GROUP==='1'&&!!renderOptions.gpuRoots&&
         renderOptions.rasterProfile==='figmaSubpixel'&&backend==='webgpu'&&!executionPolicy.hdrCompositing&&!request.png&&!request.readback&&
         !exportFormat&&!renderOptions.exportRegion&&!renderOptions.pixelPreview

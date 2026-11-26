@@ -27,3 +27,13 @@ export function gaussianPrefixDemand(node:{rect:{w:number;h:number};matrix:numbe
 export function adaptiveGaussianReduction(zoom:number,adaptive:boolean,staticFactor:number):number{
   return adaptive?(zoom>=32?8:0):staticFactor
 }
+
+/** Final display admission. Complex, HDR, export and other unsupported paths
+ * arrive with regions already disabled and stay exact; only a certified 2/4/8
+ * factor may reach the kernel, which still declines ineligible sources per
+ * node. Default-off leaves the static factor untouched. */
+export function gaussianReductionAdmission(regions:boolean,zoom:number,adaptive:boolean,staticFactor:number):number{
+  if(!regions)return 0
+  const factor=adaptiveGaussianReduction(zoom,adaptive,staticFactor)
+  return factor===2||factor===4||factor===8?factor:0
+}

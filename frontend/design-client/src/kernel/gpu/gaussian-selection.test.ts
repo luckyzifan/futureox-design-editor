@@ -1,5 +1,5 @@
 import {afterEach,expect,test,vi} from 'vitest'
-import {adaptiveGaussianReduction,gaussianPrefixDemand,gaussianPrefixWorthwhile} from './gaussian-selection'
+import {adaptiveGaussianReduction,gaussianPrefixDemand,gaussianPrefixWorthwhile,gaussianReductionAdmission} from './gaussian-selection'
 import {WebGpuDriver} from './webgpu'
 import {BoxPrefix,BOX_PREFIX_BYTES,boxPrefixBandLines} from './box-prefix'
 import {parameters} from './types'
@@ -30,6 +30,23 @@ test('adaptive reduction is default-off and only engages factor 8 at high zoom',
   expect(adaptiveGaussianReduction(31.9,true,0)).toBe(0)
   expect(adaptiveGaussianReduction(8,true,0)).toBe(0)
   expect(adaptiveGaussianReduction(64,true,2)).toBe(8)
+})
+
+test('reduction admission requires an eligible Gaussian source and a certified factor',()=>{
+  // Complex/HDR/export/PNG paths disable regions upstream and stay exact.
+  expect(gaussianReductionAdmission(false,64,true,0)).toBe(0)
+  expect(gaussianReductionAdmission(false,64,false,8)).toBe(0)
+  expect(gaussianReductionAdmission(false,1,false,2)).toBe(0)
+  // Default-off: enabling regions alone keeps the static (normally zero) factor.
+  expect(gaussianReductionAdmission(true,64,false,0)).toBe(0)
+  expect(gaussianReductionAdmission(true,64,false,2)).toBe(2)
+  // Zoom ratio: the adaptive mapping only engages at zoom 32 or above.
+  expect(gaussianReductionAdmission(true,32,true,0)).toBe(8)
+  expect(gaussianReductionAdmission(true,64,true,0)).toBe(8)
+  expect(gaussianReductionAdmission(true,31.9,true,0)).toBe(0)
+  expect(gaussianReductionAdmission(true,8,true,0)).toBe(0)
+  // Uncertified static factors fall back to exact instead of reaching the kernel.
+  for(const bad of [1,3,16,-2,NaN,Infinity])expect(gaussianReductionAdmission(true,64,false,bad)).toBe(0)
 })
 
 test('pipeline preparation uses transformed Gaussian demand without treating tent or small effects as Gaussian',()=>{
