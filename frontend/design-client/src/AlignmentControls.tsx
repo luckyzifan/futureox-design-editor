@@ -91,7 +91,7 @@ export function AlignmentControls({ editor, compact = false }: { editor: Editor;
       <div>{buttons(positions.slice(6))}</div>
     </details> : <FlipControls editor={editor}/>}
     {compact && sketch && <button type="button" title={tidyLabel} aria-label={tidyLabel}
-      disabled={!canTidySelection(editor, availability.distribute)} onPointerEnter={() => previewTidy(editor)}
+      disabled={!canTidySelection(editor)} onPointerEnter={() => previewTidy(editor)}
       onPointerLeave={clearPreview} onBlur={clearPreview}
       onClick={() => tidySelection(editor)}><Grid2X2 size={16} /></button>}
   </div>

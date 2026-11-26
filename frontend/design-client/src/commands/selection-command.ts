@@ -97,7 +97,7 @@ function assertUnwrap(doc: DesignDocument, index: SelectionIndex) {
 }
 /** Cheap toolbar/Inspector availability shares admission, not a second geometry
  * implementation. Exact overlap/bounds checks still run at execution time. */
-export function selectionCommandAdmission(doc: DesignDocument, ids: readonly string[], command: 'align' | 'distribute' | 'wrap' | 'boolean-wrap' | 'unwrap', parents?: ParentMap) {
+export function selectionCommandAdmission(doc: DesignDocument, ids: readonly string[], command: 'align' | 'distribute' | 'tidy' | 'wrap' | 'boolean-wrap' | 'unwrap', parents?: ParentMap) {
   try {
     const index = indexSelection(doc, ids, false, parents)
     if (command === 'wrap' || command === 'boolean-wrap') assertWrap(doc, index, command === 'boolean-wrap')
@@ -105,7 +105,8 @@ export function selectionCommandAdmission(doc: DesignDocument, ids: readonly str
     else {
       assertPositionable(doc, index)
       if (command === 'align' && index.ids.length === 1 && !doc.nodes[index.parents.get(index.ids[0])!]) reject('invalid_parent', 'Single-node alignment requires a finite node parent')
-      if (command === 'distribute' && index.ids.length < 2) reject('invalid_params', 'Distribution requires at least two nodes')
+      if (command === 'distribute' && index.ids.length < 3) reject('invalid_params', 'Distribution requires at least three nodes')
+      if (command === 'tidy' && index.ids.length < 2) reject('invalid_params', 'Tidying requires at least two nodes')
     }
     return { ok: true as const }
   } catch (error) {

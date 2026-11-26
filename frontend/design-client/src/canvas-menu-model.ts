@@ -238,10 +238,11 @@ export function canvasContextItems(editor: Editor, context: ShortcutContext, uiM
       label: locale === 'en' ? 'Fit Selection to Pixel Bounds' : '贴合像素边界', shortcut: shortcutLabel('fit-pixel-bounds', context) })
     available.set('round-to-pixel', { command: 'round-to-pixel', group: 'geometry', disabled: disabled || !editor.topSelection().length,
       label: locale === 'en' ? 'Round to Pixel' : '四舍五入到像素', shortcut: shortcutLabel('round-to-pixel', context) })
-    const canAlign = alignmentAvailability(editor).align
+    const { align, distribute } = alignmentAvailability(editor)
     for (const command of alignmentCommandIds) {
-      const { label } = alignmentCommands[command]
-      available.set(command, { command, label: label[locale === 'en' ? 1 : 0], group: 'alignment', disabled: !canAlign,
+      const { label, mode } = alignmentCommands[command]
+      available.set(command, { command, label: label[locale === 'en' ? 1 : 0], group: 'alignment',
+        disabled: mode === 'distribute' ? !distribute : !align,
         shortcut: shortcutLabel(command, { ...context, uiMode }) })
     }
     if (selection.length) available.set('make-grid', {

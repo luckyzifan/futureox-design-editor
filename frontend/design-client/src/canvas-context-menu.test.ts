@@ -251,7 +251,8 @@ test('Sketch context alignment follows the inspector admission and dispatches on
   expect(alignmentAvailability(editor).align).toBe(true)
   for (const origin of ['canvas', 'layers'] as const) {
     expect(matching(origin).map(item => item.command)).toEqual(alignmentCommandIds)
-    expect(matching(origin).every(item => !item.disabled)).toBe(true)
+    expect(matching(origin).filter(item => !item.command.startsWith('distribute-')).every(item => !item.disabled)).toBe(true)
+    expect(matching(origin).filter(item => item.command.startsWith('distribute-')).every(item => item.disabled)).toBe(true)
     expect(matching(origin, 'figma')).toEqual([])
   }
   const before = editor.state.doc
@@ -266,6 +267,32 @@ test('Sketch context alignment follows the inspector admission and dispatches on
   const locked = editor.state.doc
   await dispatchEditorCommand(editor, 'align-left')
   expect(editor.state.doc).toBe(locked)
+  editor.dispose()
+})
+
+test('distribution requires three movable layers and uses the existing undoable arrangement', async () => {
+  const doc = blank('Distribution')
+  const layers = [node('rectangle', 0, 0, 20, 20), node('rectangle', 40, 40, 30, 20), node('rectangle', 120, 100, 20, 20)]
+  for (const layer of layers) {
+    doc.nodes[layer.id] = layer
+    doc.pages[0].children.push(layer.id)
+  }
+  const editor = new Editor(doc), keys = { profile: 'sketch-like', platform: 'mac', desktop: true } as const
+  const horizontal = () => canvasContextItems(editor, keys, 'sketch').find(item => item.command === 'distribute-horizontal')
+  editor.select(layers.slice(0, 2).map(layer => layer.id))
+  const before = editor.state.doc
+  expect(horizontal()?.disabled).toBe(true)
+  await dispatchEditorCommand(editor, 'distribute-horizontal')
+  expect(editor.state.doc).toBe(before)
+  expect(editor.canUndo).toBe(false)
+
+  editor.select(layers.map(layer => layer.id))
+  expect(horizontal()?.disabled).toBe(false)
+  await dispatchEditorCommand(editor, 'distribute-horizontal')
+  expect(layers.map(layer => editor.state.doc.nodes[layer.id].transform[4])).toEqual([0, 55, 120])
+  editor.undo()
+  expect(editor.state.doc).toEqual(before)
+  expect(editor.canUndo).toBe(false)
   editor.dispose()
 })
 
