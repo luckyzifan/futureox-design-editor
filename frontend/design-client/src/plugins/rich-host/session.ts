@@ -19,6 +19,7 @@ import { PluginApiError, PluginClosed } from './errors'
 import { PLUGIN_LIMITS } from './limits'
 import { pluginEditorType, type PluginLaunchMode } from './manifest'
 import { styledTextSegments } from './text-segments'
+import { readVectorNetwork } from './vector-network'
 import type { PluginEditorEvent } from './ui-document'
 import {
   pluginDataEmpty, pluginDataGet, pluginDataKeys, pluginDataSet, readPluginData, sharedPluginDataGet, sharedPluginDataKeys, sharedPluginDataSet,
@@ -833,6 +834,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         const working = defaults(command.kind)
         if (command.kind === 'text') command.assignments.unshift({ key: 'characters', value: '' })
         const patch = compileAssignments(working, command.assignments)
+        if (command.kind === 'vector') patch.network = { vertices: [], edges: [], fillRule: 'nonzero' }
         synthetic.set(command.id, working)
         ops.push({
           method: 'node.create',
@@ -1379,6 +1381,11 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         if (page) return { type: 'PAGE', id: page.id, name: page.name, childIds: page.childIds }
         return nodeView(id)
       }
+      if (op === 'readVectorNetwork') {
+        flush()
+        const result = execute('node.get', { id: shortText(body.id, 'id', 80) }, false) as { node: DesignNode }
+        return readVectorNetwork(result.node)
+      }
       if (op === 'children') {
         flush()
         const id = shortText(body.id, 'id', 80)
@@ -1409,7 +1416,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       }
       if (op === 'create') {
         const kind = body.kind
-        if (typeof kind !== 'string' || !KINDS.has(kind as Kind) || kind === 'vector' || kind === 'group')
+        if (typeof kind !== 'string' || !KINDS.has(kind as Kind) || kind === 'group')
           throw new PluginApiError('unsupported_api', `Cannot create ${String(kind)}`)
         ensureRoom()
         const id = crypto.randomUUID()

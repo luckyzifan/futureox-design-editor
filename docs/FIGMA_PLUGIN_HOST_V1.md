@@ -186,7 +186,8 @@ These calls still throw or are absent: vector networks, remote variable librarie
 | `figma.getImageByHash` | partial | Resolves a SHA-1 hash from this session or from an image paint already stored on a fill or stroke. getBytesAsync reads those bytes. getSizeAsync supports PNG and JPEG. |
 | `figma.createImageAsync` | partial | Fetches through the declared-domain main-script bridge and applies the same image format and 256 KiB limit as createImage. |
 | `figma.createNodeFromSvg` | partial | Imports the SVG through the editor SVG importer and returns the created root. Scripts, external URLs, and animation are rejected. |
-| `figma.createVector` | unsupported | Throws unsupported_api. Vector networks are not exposed on this host. |
+| `figma.createVector` | supported | Creates an actual empty editable vector on the current page. |
+| `VectorNode.vectorNetwork` | partial | Reads a local editable graph with vertex coordinates, cubic tangents and representable ordered fill loops. Retained render-only paths and network writes are unavailable. |
 | `figma.viewport.zoom` | partial | Get and set camera zoom from 0.02 to 256. Setting zoom keeps the world point at the top-left, not the visual center. |
 | `figma.viewport.center` | partial | Get and set the world point at the camera origin (top-left). The host does not know the canvas size, so this is not the visual center. |
 | `figma.viewport.scrollAndZoomIntoView` | partial | Asks the editor to reveal the nodes. It does not change zoom. |
