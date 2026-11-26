@@ -13,7 +13,10 @@ use std::{
 use wgpu::util::DeviceExt;
 
 const UNIFORM_BYTES: u64 = 4 * 1024 * 1024;
-const MAX_COMMANDS: usize = 262_144;
+pub(crate) const MAX_COMMANDS: usize = 262_144;
+pub(crate) const MAX_SCENE_NODES: usize = 20_000;
+pub(crate) const MAX_SCENE_CURVE_WORDS: usize = 2_000_000;
+pub(crate) const SCENE_WORK_BUDGET_ERROR: &str = "GPU scene work budget exceeded";
 const MAX_SURFACES: u64 = 256 * 1024 * 1024;
 const MAX_INSTANCES: usize = 20_000 * 20;
 // Bound native command-buffer work independently of uniform memory. Mobile
@@ -452,12 +455,20 @@ impl NativeGpu {
         &'a mut self,
         scene: &GpuScene,
     ) -> Result<(Frame<'a>, Surface, u32, u32), String> {
+        self.compose_with_command_limit(scene, MAX_COMMANDS)
+    }
+
+    pub(crate) fn compose_with_command_limit<'a>(
+        &'a mut self,
+        scene: &GpuScene,
+        command_limit: usize,
+    ) -> Result<(Frame<'a>, Surface, u32, u32), String> {
         self.check_errors()?;
         if scene.version != 7 && scene.version != 8 {
             return Err("Unsupported GPU command version".into());
         }
-        if scene.nodes.len() > 20_000 || scene.curves.len() > 2_000_000 {
-            return Err("GPU scene work budget exceeded".into());
+        if scene.nodes.len() > MAX_SCENE_NODES || scene.curves.len() > MAX_SCENE_CURVE_WORDS {
+            return Err(SCENE_WORK_BUDGET_ERROR.into());
         }
         let domain = ImageDomain {
             color: scene.color_management,
@@ -478,6 +489,7 @@ impl NativeGpu {
             scene.float_compositing,
             scene.software_raster,
         );
+        frame.command_limit = command_limit.min(MAX_COMMANDS);
         let (output, width, height) =
             crate::compositor::render(&mut frame, scene, &mut decoder, mips, atlas)?;
         Ok((frame, output, width, height))
@@ -510,6 +522,7 @@ pub(crate) struct Surface {
 /// its per-tile compositions.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct FrameStats {
+    pub commands: usize,
     pub draw_calls: usize,
     pub submissions: usize,
     pub peak_texture_bytes: u64,
@@ -536,6 +549,7 @@ pub(crate) struct Frame<'a> {
     instance_data: Vec<f32>,
     instance_uploaded: usize,
     commands: usize,
+    command_limit: usize,
     draw_calls: usize,
     submissions: usize,
     bytes: u64,
@@ -631,6 +645,7 @@ impl<'a> Frame<'a> {
             instance_data: Vec::new(),
             instance_uploaded: 0,
             commands: 0,
+            command_limit: MAX_COMMANDS,
             draw_calls: 0,
             submissions: 0,
             bytes: 0,
@@ -804,7 +819,7 @@ impl<'a> Frame<'a> {
     }
     pub fn snapshot(&mut self, source: Surface) -> Result<Surface, String> {
         self.commands += 1;
-        if self.commands > MAX_COMMANDS { return Err("Native GPU command budget exceeded".into()); }
+        if self.commands > self.command_limit { return Err("Native GPU command budget exceeded".into()); }
         let target = self.acquire_impl(source.rect, true, self.textures[source.id].floating)?;
         let image = |id: usize| wgpu::TexelCopyTextureInfo { texture: &self.textures[id].texture, mip_level: 0,
             origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All };
@@ -1126,7 +1141,7 @@ impl<'a> Frame<'a> {
             explicit_region
         };
         self.commands += 1;
-        if self.commands > MAX_COMMANDS {
+        if self.commands > self.command_limit {
             return Err("GPU command work budget exceeded".into());
         }
         if self.uniforms.len() + 1024 > UNIFORM_BYTES as usize
@@ -1256,7 +1271,7 @@ impl<'a> Frame<'a> {
         }
         let out = self.acquire(output_rect)?;
         self.commands += 1;
-        if self.commands > MAX_COMMANDS {
+        if self.commands > self.command_limit {
             self.release(&[out]);
             return Err("GPU command work budget exceeded".into());
         }
@@ -1409,6 +1424,7 @@ impl<'a> Frame<'a> {
     /// Counters for callers composing sub-frames (the tile cache).
     pub(crate) fn stats(&self) -> FrameStats {
         FrameStats {
+            commands: self.commands,
             draw_calls: self.draw_calls,
             submissions: self.submissions,
             peak_texture_bytes: self.bytes,

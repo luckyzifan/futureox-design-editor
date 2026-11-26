@@ -31,18 +31,25 @@
 //!
 //! Dirty tiles are recomposited through the kernel's cropped compiler
 //! (`compile_gpu_region`, command version 8), which preserves the camera and
-//! composed matrices bit-for-bit. Anything this module cannot serve —
-//! pixel-preview resampling, presentation crops, oversized viewports —
+//! composed matrices bit-for-bit. An analytic SDR scene whose curves overrun
+//! one native scene can also seed a cold cache through those bounded crops.
+//! Anything this module cannot serve — pixel-preview resampling, presentation
+//! crops, oversized viewports —
 //! returns an error the caller answers with the ordinary full-frame path; it
 //! never silently substitutes different pixels.
-use crate::device::{NativeGpu, RenderedFrame, present_bytes};
+use crate::device::{
+    MAX_COMMANDS, MAX_SCENE_CURVE_WORDS, MAX_SCENE_NODES, NativeGpu, RenderedFrame,
+    SCENE_WORK_BUDGET_ERROR, present_bytes,
+};
+use futureox_design_kernel::fidelity::RasterProfile;
 use futureox_design_kernel::gpu::{GpuNode, GpuScene};
-use futureox_design_kernel::math::Rect;
+use futureox_design_kernel::math::{Point, Rect};
+use futureox_design_kernel::scene::selected_backdrop;
 use futureox_design_kernel::tile_stack::TILE_SIZE;
 use futureox_design_kernel::{Engine, RenderOptions};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Instant;
 
 /// Cache upper bound: a viewport larger than this many tiles falls back to
@@ -81,7 +88,7 @@ pub struct TileCacheStats {
 
 pub struct TileCache {
     entries: HashMap<(i32, i32), CachedTile>,
-    global_key: Option<Key>,
+    global_key: Option<(Key, bool)>,
     pub stats: TileCacheStats,
 }
 
@@ -334,8 +341,159 @@ fn split_frame(
     entries
 }
 
+fn needs_partitioned_crops(scene: &GpuScene, profile: RasterProfile) -> bool {
+    profile == RasterProfile::Analytic
+        && scene.color_management.is_none()
+        && scene.float_compositing
+        && !scene.software_raster
+        && !scene.integrated_blur
+        && !scene.coherent_samples
+        && !scene.backdrop_samples
+        && scene.version == 7
+        && scene.presentation.is_none()
+        && scene.resolve.is_none()
+        && scene.nodes.len() <= MAX_SCENE_NODES
+        && scene.curves.len() > MAX_SCENE_CURVE_WORDS
+}
+
+#[derive(Clone, Copy)]
+struct BackdropRead {
+    capture: Rect,
+    reach: i32,
+}
+
+fn pointwise_shadow_source(node: &GpuNode) -> bool {
+    node.children.is_empty()
+        && !node.passthrough
+        && !node.mask
+        && node.mask_id.is_none()
+        && node.blend == "normal"
+        && node.effects.iter().all(|effect| !effect.visible)
+        && node.strokes.is_empty()
+        && node.fills.iter().all(|fill| !fill.visible || fill.kind == "solid")
+}
+
+fn partition_backdrop_reads(scene: &GpuScene) -> Result<Vec<BackdropRead>, String> {
+    if scene.dense_paint.is_some() {
+        return Err(SCENE_WORK_BUDGET_ERROR.into());
+    }
+    let mut pending: Vec<_> = scene.roots.iter().rev().collect();
+    let mut visited = HashSet::new();
+    let mut reads = Vec::new();
+    while let Some(id) = pending.pop() {
+        let Some(node) = scene.nodes.get(id) else {
+            continue;
+        };
+        if !visited.insert(id) {
+            return Err(SCENE_WORK_BUDGET_ERROR.into());
+        }
+        pending.extend(node.children.iter().rev());
+        let backdrop = selected_backdrop(&node.effects);
+        if node.sketch_layer_gaussian.is_some()
+            || node.gaussian_region.is_some()
+            || node.wide_image_gaussian.is_some()
+            || node.source_filter_field.is_some()
+            || node.capture_replay.is_some()
+            || node.texture_replay.is_some()
+        {
+            return Err(SCENE_WORK_BUDGET_ERROR.into());
+        }
+        for effect in node.effects.iter().filter(|effect| effect.visible) {
+            if backdrop.is_some_and(|selected| std::ptr::eq(selected, effect)) {
+                continue;
+            }
+            // Ordinary crops already guard these finite foreground filters.
+            // A shadow on outlined text also uses that guard: its immediate
+            // solid glyph children only contribute alpha at the same pixel.
+            let guarded_source = node.children.is_empty()
+                || (effect.kind == "shadow"
+                    && node.mask_id.is_none()
+                    && node.children.iter().all(|id| {
+                        scene.nodes.get(id).is_some_and(pointwise_shadow_source)
+                    }));
+            if !matches!(effect.kind.as_str(), "gaussian-blur" | "shadow")
+                || !guarded_source
+                || backdrop.is_some()
+                || node.passthrough
+                || effect.gradient_blur.is_some()
+                || effect.color_controls.is_some()
+                || effect.spread != 0.
+            {
+                return Err(SCENE_WORK_BUDGET_ERROR.into());
+            }
+        }
+        let Some(effect) = backdrop else {
+            continue;
+        };
+        // The scalar compositor captures a direct Sketch backdrop before
+        // the node's fills. Rotated, progressive and other optical reads
+        // need their own dependency proof before using this path.
+        if !effect.sketch_backdrop
+            || effect.kind != "background-blur"
+            || effect.gradient_blur.is_some()
+            || node.rotated_backdrop_bounds.is_some()
+            || !node.children.is_empty()
+        {
+            return Err(SCENE_WORK_BUDGET_ERROR.into());
+        }
+        let [x, y, w, h] = node.backdrop_box;
+        if w <= 0. || h <= 0. || !node.backdrop_box.iter().all(|value| value.is_finite())
+            || !(x + w).is_finite() || !(y + h).is_finite()
+        {
+            return Err(SCENE_WORK_BUDGET_ERROR.into());
+        }
+        let capture = Rect::from_points([Point::new(x, y), Point::new(x + w, y + h)].into_iter());
+        let radii = futureox_design_kernel::effects::gaussian_box_radii(
+            effect.sketch_backdrop_sigma(node.matrix.max_scale()),
+        )?;
+        // The box passes read successive neighbours. The two extra device
+        // pixels retain the fractional capture/output sample neighbours.
+        reads.push(BackdropRead { capture, reach: radii.into_iter().sum::<u32>() as i32 + 2 });
+    }
+    if reads.len() != scene.nodes.values().filter(|n| selected_backdrop(&n.effects).is_some()).count() {
+        return Err(SCENE_WORK_BUDGET_ERROR.into());
+    }
+    Ok(reads)
+}
+
+fn required_partition_crop(output: Rect, frame: Rect, reads: &[BackdropRead]) -> Rect {
+    // A lens reads what was drawn before it. Add its true input to the
+    // viewport so earlier foreground filters compute those pixels too.
+    // Earlier lenses see the new demand, without charging this lens twice.
+    let mut demand = output;
+    for read in reads.iter().rev() {
+        let affected = demand.intersect(read.capture.expand(2));
+        if !affected.empty() {
+            demand = demand.union(affected.expand(read.reach).intersect(read.capture));
+        }
+    }
+    demand.intersect(frame)
+}
+
+fn compile_partition_crop(
+    engine: &mut Engine,
+    options: &RenderOptions,
+    viewport: Rect,
+    prepare: Option<Rect>,
+) -> Result<GpuScene, String> {
+    let tile_limit = TILE_SIZE as u32 + 2;
+    if viewport.w <= tile_limit && viewport.h <= tile_limit {
+        return engine.compile_gpu_region(options, viewport, prepare);
+    }
+    // The existing native capture envelope keeps the global camera and
+    // version-8 output rect. Its kernel viewport bound and the compositor's
+    // per-scene, surface and remaining command limits still apply.
+    let mut request = serde_json::to_value(options).map_err(|error| error.to_string())?;
+    request["captureViewport"] = serde_json::json!(viewport);
+    if let Some(prepare) = prepare {
+        request["prepareViewport"] = serde_json::json!(prepare);
+    }
+    engine.compile_gpu_request(&request.to_string())
+}
+
 #[derive(Default)]
 struct FrameTotals {
+    remaining_commands: Option<usize>,
     draw_calls: usize,
     submissions: usize,
     peak_bytes: u64,
@@ -368,6 +526,33 @@ impl TileCache {
         engine: &mut Engine,
         options: &RenderOptions,
     ) -> Result<RenderedFrame, String> {
+        self.render_with_scene(gpu, engine, options, None)
+    }
+
+    /// Partition only an oversized analytic SDR scene. Serve callers already
+    /// compiled this scene and keep their ordinary render path when it fits.
+    pub fn render_oversized_scene(
+        &mut self,
+        gpu: &mut NativeGpu,
+        engine: &mut Engine,
+        options: &RenderOptions,
+        scene: &GpuScene,
+    ) -> Result<Option<RenderedFrame>, String> {
+        if !needs_partitioned_crops(scene, options.raster_profile) {
+            self.clear();
+            self.stats = TileCacheStats::default();
+            return Ok(None);
+        }
+        self.render_with_scene(gpu, engine, options, Some(scene)).map(Some)
+    }
+
+    fn render_with_scene(
+        &mut self,
+        gpu: &mut NativeGpu,
+        engine: &mut Engine,
+        options: &RenderOptions,
+        prepared: Option<&GpuScene>,
+    ) -> Result<RenderedFrame, String> {
         let started = Instant::now();
         self.stats = TileCacheStats::default();
         if options.pixel_preview.is_some() {
@@ -380,28 +565,46 @@ impl TileCache {
         self.stats.tiles_total = tiles.len();
 
         let compile_started = Instant::now();
-        let scene = engine.compile_gpu(options)?;
+        let compiled;
+        let scene = if let Some(scene) = prepared {
+            scene
+        } else {
+            compiled = engine.compile_gpu(options)?;
+            &compiled
+        };
         if scene.presentation.is_some() || scene.resolve.is_some() {
             return Err(
                 "Scene presents a resampled crop; tile cache needs a direct viewport".into(),
             );
         }
-        let global = global_key(&scene)?;
+        let partitioned = needs_partitioned_crops(scene, options.raster_profile);
+        let mut global = global_key(scene)?;
         let node_keys: BTreeMap<&str, Key> = scene
             .nodes
             .iter()
-            .map(|(id, node)| node_key(&scene, node).map(|key| (id.as_str(), key)))
+            .map(|(id, node)| node_key(scene, node).map(|key| (id.as_str(), key)))
             .collect::<Result<_, _>>()?;
         self.stats.compile_ms += compile_started.elapsed().as_secs_f64() * 1000.;
 
         let key_started = Instant::now();
-        if self.global_key.as_ref() != Some(&global) {
-            // Viewport transform or raster settings moved: every tile is
-            // stale. Counted as a full frame below, when all tiles re-compose.
-            self.entries.clear();
-            self.global_key = Some(global);
+        if partitioned {
+            // Compound backdrop dependencies can extend beyond the usual
+            // one-hop influence keys. A content change invalidates every
+            // partitioned tile; an unchanged frame can replay them all.
+            let mut whole = Sha256::new();
+            whole.update(global);
+            for key in node_keys.values() {
+                whole.update(key);
+            }
+            global = whole.finalize().into();
         }
-        let influence = influence_rects(&scene);
+        if self.global_key != Some((global, partitioned)) {
+            // Viewport, raster settings or the crop policy changed. No tile
+            // retains a key across that change.
+            self.entries.clear();
+            self.global_key = Some((global, partitioned));
+        }
+        let influence = influence_rects(scene);
         let keyed: Vec<(Tile, Key)> = tiles
             .iter()
             .map(|tile| (*tile, tile_key(&global, &influence, &node_keys, *tile)))
@@ -418,17 +621,24 @@ impl TileCache {
             .collect();
         self.stats.tiles_cached = tiles.len() - dirty.len();
 
-        let mut totals = FrameTotals::default();
+        let full_frame = dirty.len() == tiles.len() && !partitioned;
+        let mut totals = FrameTotals {
+            // Each crop keeps ordinary native scene admission. The cold
+            // partition shares the old full-frame command budget with its
+            // subsequent edits.
+            remaining_commands: partitioned.then_some(MAX_COMMANDS),
+            ..Default::default()
+        };
         let frame_rect = Rect::new(0, 0, options.width, options.height);
         let mut fresh: TileFrames = HashMap::new();
 
-        let (rgba, linear) = if dirty.len() == tiles.len() {
+        let (rgba, linear) = if full_frame {
             // Cold or globally invalidated frame: one full composition also
             // seeds every cache slot; bytes equal the ordinary path because
             // they ARE the ordinary path.
             self.stats.full_frames += 1;
             self.stats.tiles_rendered = tiles.len();
-            let raw = self.compose_and_read(gpu, &scene, frame_rect, &mut totals)?;
+            let raw = self.compose_and_read(gpu, scene, frame_rect, &mut totals)?;
             present_bytes(
                 raw,
                 scene.float_compositing,
@@ -437,16 +647,33 @@ impl TileCache {
                 false,
             )?
         } else {
-            // Partial frame: re-compose dirty tiles through cropped command
-            // scenes, then stitch with the cached presented bytes.
+            // Compose stale tiles through cropped command scenes, then
+            // stitch them with the cached presented bytes.
             self.stats.tiles_rendered = dirty.len();
+            let reads = if partitioned && !dirty.is_empty() {
+                partition_backdrop_reads(scene)?
+            } else {
+                Vec::new()
+            };
+            let compile_region = |rect: Rect| {
+                if partitioned {
+                    required_partition_crop(rect, frame_rect, &reads)
+                } else {
+                    rect
+                }
+            };
             // One prepare guard shared by every dirty tile: the engine caches
             // the flattened-geometry phase per camera for this union.
-            let prepare = (!dirty.is_empty())
-                .then(|| dirty.iter().fold(dirty[0].0.rect, |acc, (tile, _)| acc.union(tile.rect)));
+            let prepare = (!dirty.is_empty()).then(|| {
+                compile_region(dirty.iter().fold(dirty[0].0.rect, |acc, (tile, _)| acc.union(tile.rect)))
+            });
             for (tile, _) in &dirty {
                 let compile_started = Instant::now();
-                let tile_scene = engine.compile_gpu_region(options, tile.rect, prepare)?;
+                let tile_scene = if partitioned {
+                    compile_partition_crop(engine, options, compile_region(tile.rect), prepare)?
+                } else {
+                    engine.compile_gpu_region(options, tile.rect, prepare)?
+                };
                 self.stats.compile_ms += compile_started.elapsed().as_secs_f64() * 1000.;
                 let raw = self.compose_and_read(gpu, &tile_scene, tile.rect, &mut totals)?;
                 let presented = present_bytes(
@@ -482,7 +709,7 @@ impl TileCache {
             assembled
         };
 
-        if dirty.len() == tiles.len() {
+        if full_frame {
             let keys: HashMap<(i32, i32), Key> = dirty
                 .iter()
                 .map(|(tile, key)| ((tile.col, tile.row), *key))
@@ -518,7 +745,10 @@ impl TileCache {
         totals: &mut FrameTotals,
     ) -> Result<Vec<u8>, String> {
         let render_started = Instant::now();
-        let (mut frame, output, _, _) = gpu.compose(scene)?;
+        let (mut frame, output, _, _) = match totals.remaining_commands {
+            Some(remaining) => gpu.compose_with_command_limit(scene, remaining)?,
+            None => gpu.compose(scene)?,
+        };
         let encode_ms = render_started.elapsed().as_secs_f64() * 1000.;
         let wait_started = Instant::now();
         let raw = frame.read_surface_rect(output, region);
@@ -526,6 +756,9 @@ impl TileCache {
         drop(frame);
         let raw = raw?;
         gpu.check_public_errors()?;
+        if let Some(remaining) = &mut totals.remaining_commands {
+            *remaining -= stats.commands;
+        }
         totals.draw_calls += stats.draw_calls;
         totals.submissions += stats.submissions;
         totals.peak_bytes = totals.peak_bytes.max(stats.peak_texture_bytes);
@@ -614,6 +847,62 @@ mod tests {
         }))
         .unwrap();
         engine.compile_gpu(&options).unwrap()
+    }
+
+    #[test]
+    fn cold_partition_requires_an_oversized_analytic_sdr_curve_buffer() {
+        let mut scene = scene();
+        scene.float_compositing = true;
+        scene.integrated_blur = false;
+        scene.coherent_samples = false;
+        scene.backdrop_samples = false;
+        scene.curves.resize(MAX_SCENE_CURVE_WORDS, 0.);
+        assert!(!needs_partitioned_crops(&scene, RasterProfile::Analytic));
+        scene.curves.extend([0.; 4]);
+        assert!(needs_partitioned_crops(&scene, RasterProfile::Analytic));
+        assert!(!needs_partitioned_crops(&scene, RasterProfile::FigmaSubpixel));
+        scene.float_compositing = false;
+        assert!(!needs_partitioned_crops(&scene, RasterProfile::Analytic));
+        scene.float_compositing = true;
+        scene.color_management = Some(Default::default());
+        assert!(!needs_partitioned_crops(&scene, RasterProfile::Analytic));
+    }
+
+    #[test]
+    fn partition_crop_walks_touched_backdrops_back_to_front() {
+        let frame = Rect::new(0, 0, 256, 64);
+        let output = Rect::new(54, 10, 10, 10);
+        let reads = [
+            BackdropRead { capture: Rect::new(8, 6, 36, 28), reach: 20 },
+            BackdropRead { capture: Rect::new(30, 6, 72, 28), reach: 16 },
+            BackdropRead { capture: Rect::new(152, 0, 80, 64), reach: 30 },
+        ];
+        // The second backdrop reaches into the first. The unrelated third
+        // capture leaves the crop unchanged.
+        assert_eq!(
+            required_partition_crop(output, frame, &reads),
+            Rect::new(18, 6, 62, 28)
+        );
+    }
+
+    #[test]
+    fn partition_guard_allows_shadows_on_pointwise_children() {
+        let mut scene = scene();
+        scene.roots.retain(|id| id == "a");
+        let parent = scene.nodes.get_mut("a").unwrap();
+        parent.children.push("b".into());
+        parent.effects.push(
+            serde_json::from_value(json!({"kind": "shadow", "radius": 15, "color": "#000000"})).unwrap(),
+        );
+        assert!(partition_backdrop_reads(&scene).is_ok());
+
+        scene.nodes.get_mut("b").unwrap().effects.push(
+            serde_json::from_value(json!({"kind": "gaussian-blur", "radius": 4, "color": "#000000"})).unwrap(),
+        );
+        assert_eq!(
+            partition_backdrop_reads(&scene).err().as_deref(),
+            Some(SCENE_WORK_BUDGET_ERROR),
+        );
     }
 
     #[test]

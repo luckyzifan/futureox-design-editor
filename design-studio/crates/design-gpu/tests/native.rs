@@ -1091,6 +1091,58 @@ async fn native_stroke_markers_match_cpu_exactly() {
     }
 }
 
+#[cfg(target_os = "macos")]
+#[tokio::test]
+#[ignore = "requires Metal and the original FUTUREOX_TEST_117_SKETCH fixture"]
+async fn sketch_117_partitioned_cache_repaints_after_bitmap_edit() {
+    use futureox_design_gpu::TileCache;
+    use futureox_design_kernel::{editing::DocumentPatch, interop::import_sketch_report};
+    use sha2::{Digest, Sha256};
+    use std::path::Path;
+
+    let source = std::env::var_os("FUTUREOX_TEST_117_SKETCH").expect("provide the original Sketch file");
+    let bytes = std::fs::read(source).unwrap();
+    let fixture_digest: String = Sha256::digest(&bytes)
+        .iter().map(|byte| format!("{byte:02x}")).collect();
+    assert_eq!(
+        fixture_digest,
+        "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70"
+    );
+    let doc = import_sketch_report(&bytes).unwrap().document;
+    let mut engine = Engine::new();
+    engine.fonts.enable_local_sketch_ui();
+    let font = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../frontend/design-client/public/fonts/NotoSansSC.ttf");
+    engine.load_font(&std::fs::read(font).unwrap()).unwrap();
+    engine.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
+    let options = engine.parse_options(json!({
+        "pageId": doc.pages[0].id, "width": 1922, "height": 1080,
+        "view": {"x": 410, "y": -358, "zoom": 1}, "rasterProfile": "analytic"
+    })).unwrap();
+    let mut gpu = NativeGpu::new(Backends::METAL).await.unwrap();
+    let mut cache = TileCache::new();
+
+    let cold = cache.render(&mut gpu, &mut engine, &options).unwrap();
+    assert_eq!((cache.stats.full_frames, cache.stats.tiles_rendered), (0, 12));
+    let warm = cache.render(&mut gpu, &mut engine, &options).unwrap();
+    assert_eq!((cache.stats.tiles_rendered, cache.stats.tiles_cached), (0, 12));
+    assert!(cold.rgba == warm.rgba, "warm Metal frame diverged from its cold seed");
+
+    let id = "46A2E289-A22C-4F75-9CAA-9B4DBEC928B7";
+    let mut bitmap = doc.nodes[id].clone();
+    assert_eq!(bitmap.name, "image.png");
+    bitmap.opacity = 0.875;
+    engine.apply_document_patch(&DocumentPatch {
+        nodes: [(id.to_owned(), Some(bitmap))].into(),
+        fields: Default::default(),
+    }).unwrap();
+    let edited = cache.render(&mut gpu, &mut engine, &options).unwrap();
+    assert_eq!((cache.stats.tiles_rendered, cache.stats.tiles_cached), (12, 0));
+    assert!(edited.rgba != cold.rgba, "the actual bitmap edit left the old frame on screen");
+    let fresh = TileCache::new().render(&mut gpu, &mut engine, &options).unwrap();
+    assert!(edited.rgba == fresh.rgba, "the edited cache differs from a fresh Metal frame");
+}
+
 #[tokio::test]
 #[cfg_attr(
     not(feature = "hardware-tests"),

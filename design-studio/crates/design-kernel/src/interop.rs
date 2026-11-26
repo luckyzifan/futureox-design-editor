@@ -1890,6 +1890,14 @@ impl<'a> Importer<'a> {
                     json!(source_gradients).to_string(),
                 );
             }
+            if class == "shapePath"
+                && let [(part, paint)] = fills.as_slice()
+                && part.get("fillType").and_then(Value::as_u64) == Some(4)
+                && part.get("patternFillType").and_then(Value::as_i64) == Some(1)
+                && paint.kind == "image" && paint.fit == "cover"
+            {
+                node.bindings.insert("sketchSourceCoverImageFill".into(), "true".into());
+            }
             node.fills=fills.into_iter().map(|(_,paint)|paint).collect();
             let borders=self.stroke_sources(style,size,&mut import_lossy);
             let border_gradients: BTreeMap<String, Value> = borders.iter().map(|(part,stroke)|(*part,&stroke.paint))

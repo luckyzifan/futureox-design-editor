@@ -323,6 +323,15 @@ async fn serve(a: Args) -> Result<(), String> {
         .map_err(|e| e.to_string())?
 }
 
+#[derive(Default)]
+struct NativeServeTiles {
+    cache: TileCache,
+    tiles_rasterised: usize,
+    tiles_cached: usize,
+    unchanged_frames: usize,
+    full_frames: usize,
+}
+
 fn serve_loop(
     mut gpu: Option<NativeGpu>,
     font: Option<Vec<u8>>,
@@ -336,6 +345,7 @@ fn serve_loop(
     let mut out = stdout.lock();
     let mut engine: Option<Engine> = None;
     let mut host: Option<TiledFrameHost> = None;
+    let mut native_tiles = NativeServeTiles::default();
     let mut frames = 0_usize;
     let mut total_render_ms = 0_f64;
     let mut input = stdin.lock();
@@ -380,13 +390,17 @@ fn serve_loop(
         }
         let result = match message.get("cmd").and_then(|cmd| cmd.as_str()) {
             Some("load") => serve_load(&message, &font, gpu.as_mut(), cpu_tiled, &mut engine, &mut host)
-                .map(|()| Reply::control(json!({"type":"loaded"}))),
+                .map(|()| {
+                    native_tiles.cache.clear();
+                    Reply::control(json!({"type":"loaded"}))
+                }),
             Some("frame") => serve_frame(
                 &message,
                 engine.as_mut(),
                 host.as_mut(),
                 gpu.as_mut(),
                 backend.as_deref(),
+                &mut native_tiles,
                 &mut frames,
                 &mut total_render_ms,
             ),
@@ -464,6 +478,7 @@ fn serve_frame(
     mut host: Option<&mut TiledFrameHost>,
     gpu: Option<&mut NativeGpu>,
     backend: Option<&str>,
+    native_tiles: &mut NativeServeTiles,
     frames: &mut usize,
     total_render_ms: &mut f64,
 ) -> Result<Reply, String> {
@@ -488,7 +503,19 @@ fn serve_frame(
         host.render(engine, &options, damage.as_deref())?
     } else if let Some(gpu) = gpu {
         let scene = engine.compile_gpu(&options)?;
-        gpu.render(&scene)?
+        if let Ok(Some(frame)) = native_tiles.cache.render_oversized_scene(gpu, engine, &options, &scene) {
+            let tiled = &native_tiles.cache.stats;
+            native_tiles.tiles_rasterised += tiled.tiles_rendered;
+            native_tiles.tiles_cached += tiled.tiles_cached;
+            native_tiles.unchanged_frames += usize::from(tiled.tiles_rendered == 0);
+            frame
+        } else {
+            // An unsupported partition still receives the ordinary native
+            // admission error. Ordinary scenes use the same direct path.
+            let frame = gpu.render(&scene)?;
+            native_tiles.full_frames += 1;
+            frame
+        }
     } else {
         let started = Instant::now();
         let rgba = engine.render(&options)?;
@@ -526,13 +553,11 @@ fn serve_frame(
         stats["tiles_cached"] = json!(tiled.tiles_cached);
         stats["full_frames"] = json!(tiled.full_frames);
     } else {
-        // The native GPU path composites a full frame per request; tile
-        // counters stay at zero rather than pretending residency.
         stats["frames"] = json!(*frames);
-        stats["unchanged_frames"] = json!(0);
-        stats["tiles_rasterised"] = json!(0);
-        stats["tiles_cached"] = json!(0);
-        stats["full_frames"] = json!(*frames);
+        stats["unchanged_frames"] = json!(native_tiles.unchanged_frames);
+        stats["tiles_rasterised"] = json!(native_tiles.tiles_rasterised);
+        stats["tiles_cached"] = json!(native_tiles.tiles_cached);
+        stats["full_frames"] = json!(if backend.is_some() { native_tiles.full_frames } else { *frames });
     }
     Ok(Reply { metadata: json!({
         "type":"frame",

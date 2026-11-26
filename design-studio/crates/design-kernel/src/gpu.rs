@@ -733,6 +733,8 @@ pub struct GpuPaint {
     pub fixed_gradient: Option<crate::fixed_gradient::FixedGradient>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub sketch_bitmap_sampling: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub sketch_cover_fill_footprint: bool,
 }
 impl std::ops::Deref for GpuPaint {
     type Target = Paint;
@@ -778,6 +780,7 @@ impl GpuPaint {
                 paint, inverse, size, origin,
             )?,
             sketch_bitmap_sampling: false,
+            sketch_cover_fill_footprint: false,
         })
     }
 }
@@ -2437,7 +2440,12 @@ impl Compiler<'_> {
                             [n.width, n.height],
                             rect,
                             rgba8 && self.profile.is_export(),
-                        ).map(|paint| paint.with_sketch_bitmap_sampling(sketch_bitmap_sampling))
+                        ).map(|paint| {
+                            let mut paint = paint.with_sketch_bitmap_sampling(sketch_bitmap_sampling);
+                            paint.sketch_cover_fill_footprint = self.profile == crate::fidelity::RasterProfile::Analytic
+                                && crate::paint::sketch_cover_fill_footprint(self.doc, n, p);
+                            paint
+                        })
                     })
                     .collect::<Result<_, String>>()?,
                 strokes,

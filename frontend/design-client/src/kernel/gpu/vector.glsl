@@ -238,7 +238,8 @@ vec4 halfScaleStretch(vec2 p){
  vec2 origin=floor(p);
  vec2 e00=halfScaleTexel(local(origin)),e10=halfScaleTexel(local(origin+vec2(1.,0.))),e01=halfScaleTexel(local(origin+vec2(0.,1.)));
  vec2 span=abs(vec2(e10.x-e00.x,e01.y-e00.y));
- if(any(lessThan(span,vec2(1.5)))||any(greaterThanEqual(span,vec2(2.5))))return vec4(-1.);
+ float minimum=u[46].z<0.?1.3:1.5;
+ if(any(lessThan(span,vec2(minimum)))||any(greaterThanEqual(span,vec2(2.5))))return vec4(-1.);
  if(abs(e01.x-e00.x)>1e-4||abs(e10.y-e00.y)>1e-4)return vec4(-1.);
  float xLo=min(e00.x,e10.x),xHi=max(e00.x,e10.x),yLo=min(e00.y,e01.y),yHi=max(e00.y,e01.y);
  vec4 sum=vec4(0.);float weight=0.;
