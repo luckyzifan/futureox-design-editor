@@ -209,3 +209,72 @@ fn actual_sketch_frame_infers_nonstack_ratios_from_the_saved_geometry() {
     resize_parent(&mut doc, FRAME, Size { width: 3840., height: 24168. }, &fonts);
     assert_box(&doc, CHILD, [2602., 14832., 760., 1500.]);
 }
+
+fn unpinned_fixed_frame(producer: &str, vertical_pins: u64, mask: u64) -> Vec<u8> {
+    sketch_archive(
+        json!({"app": producer, "appVersion": "2026.1.2", "version": 188}),
+        json!({
+            "_class": "group", "groupBehavior": 1, "do_objectID": "frame", "name": "Frame",
+            "frame": {"x": 0, "y": 0, "width": 100, "height": 80},
+            "layers": [{
+                "_class": "rectangle", "do_objectID": "child", "name": "Child",
+                "frame": {"x": 20, "y": 30, "width": 40, "height": 10},
+                "resizingConstraint": mask,
+                "horizontalPins": 0, "verticalPins": vertical_pins,
+                "horizontalSizing": 0, "verticalSizing": 0
+            }]
+        }),
+    )
+}
+
+#[test]
+fn native_unpinned_fixed_frame_axes_keep_size_and_move_their_center() {
+    let fonts = Fonts::new();
+    let old = Size { width: 100., height: 80. };
+    let new = Size { width: 200., height: 140. };
+    for (vertical_pin, expected, expected_mask) in [
+        (0, [60., 56.25, 40., 10.], 45),
+        (4, [60., 90., 40., 10.], 37),
+    ] {
+        let bytes = unpinned_fixed_frame("com.bohemiancoding.sketch3", vertical_pin, 63);
+        let imported = import_sketch_report(&bytes).unwrap().document;
+        // Source-derived axes must survive ordinary Futureox document saves.
+        let mut doc = serde_json::from_slice(&serde_json::to_vec(&imported).unwrap()).unwrap();
+        layout::resolve(&mut doc, &fonts).unwrap();
+        assert_box(&doc, "child", [20., 30., 40., 10.]);
+        resize_parent(&mut doc, "frame", new, &fonts);
+        assert_box(&doc, "child", expected);
+
+        let fields = export_sketch_layer_fields(&doc, "child").unwrap();
+        assert_eq!(fields["horizontalSizing"], 0);
+        assert_eq!(fields["verticalSizing"], 0);
+        assert_eq!(fields["horizontalPins"], 0);
+        assert_eq!(fields["verticalPins"], vertical_pin);
+        assert_eq!(fields["resizingConstraint"], expected_mask);
+
+        let mut reopened = import_sketch_report(&export_sketch(&doc).unwrap()).unwrap().document;
+        layout::resolve(&mut reopened, &fonts).unwrap();
+        resize_parent(&mut reopened, "frame", old, &fonts);
+        assert_box(&reopened, "child", [20., 30., 40., 10.]);
+        resize_parent(&mut reopened, "frame", new, &fonts);
+        assert_box(&reopened, "child", expected);
+    }
+}
+
+#[test]
+fn default_futureox_pins_and_a_nondefault_saved_sketch_mask_keep_their_behavior() {
+    let fonts = Fonts::new();
+    let new = Size { width: 200., height: 140. };
+    for (producer, mask, expected) in [
+        ("com.futureox.design-kernel", 63, [20., 30., 40., 10.]),
+        ("", 63, [20., 30., 40., 10.]),
+        ("com.bohemiancoding.sketch3", 27, [20., 30., 90., 22.]),
+    ] {
+        let bytes = unpinned_fixed_frame(producer, 0, mask);
+        let mut doc = import_sketch_report(&bytes).unwrap().document;
+        layout::resolve(&mut doc, &fonts).unwrap();
+        resize_parent(&mut doc, "frame", new, &fonts);
+        assert_box(&doc, "child", expected);
+        assert_eq!(export_sketch_layer_fields(&doc, "child").unwrap()["resizingConstraint"], mask);
+    }
+}

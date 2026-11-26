@@ -1009,7 +1009,7 @@ fn constrain(doc: &mut Document, parent: &str) {
         let [legacy_x, legacy_y] = if flow {
             [None; 2]
         } else {
-            crate::interop::sketch_legacy_resize_axes(doc, &doc.nodes[&id])
+            crate::interop::sketch_resize_axes(doc, &doc.nodes[&id])
         };
         let n = doc.nodes.get_mut(&id).unwrap();
         let [relative_width, relative_height] = if relative_in_frame {
