@@ -35,9 +35,9 @@ export function alignOffsets(rects: Bounds[], command: AlignCommand, container?:
   return planArrangement(CORE_SELECTION_PROFILE, rects, axis, mode, container)?.offsets ?? null
 }
 
-/** Equal edge-gap distribution along one axis (Sketch MSDistribute*). The
- * outermost rects stay pinned to the union extent; negative gaps (overlap)
- * distribute the same way. Deltas follow the input order, not the sort order. */
+/** Equal edge-gap distribution along one axis. The first and last rectangles
+ * in geometric order stay fixed, and the common gap can be negative.
+ * Deltas follow the input order. */
 export function distributeOffsets(rects: Bounds[], axis: 'x' | 'y'): Point[] | null {
   return planArrangement(CORE_SELECTION_PROFILE, rects, axis, 'distribute')?.offsets ?? null
 }
