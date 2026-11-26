@@ -892,12 +892,12 @@ mod tests {
         let parent = scene.nodes.get_mut("a").unwrap();
         parent.children.push("b".into());
         parent.effects.push(
-            serde_json::from_value(json!({"kind": "shadow", "radius": 15})).unwrap(),
+            serde_json::from_value(json!({"kind": "shadow", "radius": 15, "color": "#000000"})).unwrap(),
         );
         assert!(partition_backdrop_reads(&scene).is_ok());
 
         scene.nodes.get_mut("b").unwrap().effects.push(
-            serde_json::from_value(json!({"kind": "gaussian-blur", "radius": 4})).unwrap(),
+            serde_json::from_value(json!({"kind": "gaussian-blur", "radius": 4, "color": "#000000"})).unwrap(),
         );
         assert_eq!(
             partition_backdrop_reads(&scene).err().as_deref(),
