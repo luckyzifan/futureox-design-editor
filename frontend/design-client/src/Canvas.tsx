@@ -2856,6 +2856,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           if (Math.abs(guide.to.y - guide.from.y) < 1e-9) siblings.push({ x: Math.min(guide.from.x, guide.to.x), y: guide.from.y, width: Math.abs(guide.to.x - guide.from.x), height: 0 })
         }
       }
+      // The kernel index owns gap snapping for Figma moves. align-engine's
+      // spacingSnap/withSpacingSnap are the one-off twin; running them on this
+      // result would apply the same gap correction twice.
       guideIndex.current = {
         drag: d, rulers: editor.state.rulers, ids: targetKey, spacing,
         index: createSmartGuidesIndex(parent, siblings, spacingTargets),

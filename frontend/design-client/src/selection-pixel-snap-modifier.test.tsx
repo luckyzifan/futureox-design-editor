@@ -382,3 +382,31 @@ test('pen placement keeps pixel snap at zoom 1 and lets Control skip it once the
   await act(async () => pointer('pointerdown', 160.5, 81, { ctrlKey: true }))
   expect(anchorX()).toBeCloseTo(40.125, 6)
 })
+
+test('a move repeats an existing gap through the gesture index and undoes cleanly', async () => {
+  // A 0..10, B 20..30 (gap 10). A 5-wide rect dragged from x 80 to x 37 repeats
+  // the gap at x 40; Control suspends the gap snap like every other object snap.
+  const a = node('rectangle', 0, 0, 10, 40), b = node('rectangle', 20, 0, 10, 40), moving = node('rectangle', 80, 0, 5, 40)
+  await render([a, b, moving], { snap: true, snapPixels: false })
+  await act(async () => editor.select([moving.id]))
+  const before = editor.state.doc
+  await flushFrames()
+  await act(async () => pointer('pointerdown', 82.5, 20))
+  await flushFrames()
+  await act(async () => pointer('pointermove', 39.5, 20))
+  await flushFrames()
+  const gapLines = [...mount.querySelectorAll('[data-testid="canvas-gap-snap"] [data-measure="gap"]')]
+    .map(line => [Number(line.getAttribute('x1')), Number(line.getAttribute('x2')), Number(line.getAttribute('data-distance'))])
+    .sort((p, q) => p[0] - q[0])
+  expect(gapLines).toEqual([[10, 20, 10], [30, 40, 10]])
+  expect(mount.querySelector('[data-testid="canvas-gap-pill-0"]')?.textContent).toBe('10')
+  await act(async () => pointer('pointerup', 39.5, 20))
+  expect(editor.state.doc.nodes[moving.id].transform[4]).toBeCloseTo(40, 6)
+  expect(mount.querySelector('[data-testid="canvas-gap-snap"]')).toBeNull()
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+  await act(async () => pointer('pointerdown', 82.5, 20, { ctrlKey: true }))
+  await act(async () => pointer('pointermove', 39.5, 20, { ctrlKey: true }))
+  await act(async () => pointer('pointerup', 39.5, 20, { ctrlKey: true }))
+  expect(editor.state.doc.nodes[moving.id].transform[4]).toBeCloseTo(37, 6)
+})

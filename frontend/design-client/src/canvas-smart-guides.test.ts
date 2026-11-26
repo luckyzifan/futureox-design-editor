@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { flatRects, parseSmartSnap, smartGuidesSnapWorld } from './canvas-smart-guides'
+import { createSmartGuidesIndex, flatRects, parseSmartSnap, smartGuidesSnapWorld } from './canvas-smart-guides'
 // The shared test-setup.ts already initialized the real kernel module.
 
 test('flatRects packs world rects into flat four-value rows', () => {
@@ -95,4 +95,47 @@ test('fractional world rects snap to the exact fractional target', () => {
   )
   expect(snap.dx).toBe(1.125)
   expect(snap.guides[0]?.position).toBe(111.375)
+})
+
+test('createSmartGuidesIndex: a gesture repeats an existing gap with both gap segments', () => {
+  const siblings = [{ x: 0, y: 0, width: 10, height: 40 }, { x: 20, y: 0, width: 10, height: 40 }]
+  const index = createSmartGuidesIndex(undefined, [], siblings)!
+  const snap = index.snap({ x: 37, y: 0, width: 5, height: 40 }, 5)
+  index.free()
+  // A 0..10 and B 20..30 leave a gap of 10, so x 37 commits at x 40. The gap
+  // overlay measures the reusable gap and the repeated one.
+  expect(snap.dx).toBe(3)
+  expect(snap.guides).toEqual([null, null])
+  expect(snap.gaps?.[0]).toEqual([{ start: 10, end: 20, cross: 20 }, { start: 30, end: 40, cross: 20 }])
+  expect(snap.gaps?.[1]).toBeNull()
+})
+
+test('createSmartGuidesIndex: repeated pointer updates reuse one index', () => {
+  const siblings = [{ x: 0, y: 0, width: 10, height: 40 }, { x: 20, y: 0, width: 10, height: 40 }]
+  const index = createSmartGuidesIndex(undefined, [], siblings)!
+  const positions = [37, 36.5, 38, 37]
+  const first = positions.map((x) => index.snap({ x, y: 0, width: 5, height: 40 }, 5))
+  const second = positions.map((x) => index.snap({ x, y: 0, width: 5, height: 40 }, 5))
+  index.free()
+  expect(second).toEqual(first)
+})
+
+test('createSmartGuidesIndex: no candidate and no spacing targets leave the move free', () => {
+  const siblings = [{ x: 0, y: 0, width: 10, height: 40 }, { x: 20, y: 0, width: 10, height: 40 }]
+  const spaced = createSmartGuidesIndex(undefined, [], siblings)!
+  const far = spaced.snap({ x: 100, y: 0, width: 5, height: 40 }, 5)
+  spaced.free()
+  expect(far).toEqual({ dx: 0, dy: 0, guides: [null, null], targetSpans: [null, null] })
+  // Without spacing targets the same index still snaps edges, but draws no gaps.
+  const edgeOnly = createSmartGuidesIndex(undefined, siblings)!
+  const edge = edgeOnly.snap({ x: 32, y: 0, width: 5, height: 40 }, 5)
+  edgeOnly.free()
+  expect(edge.dx).toBe(-2)
+  expect(edge.gaps).toBeUndefined()
+  // Zero-area ruler guides never contribute spacing values.
+  const ruler = createSmartGuidesIndex(undefined, [], [{ x: 90, y: 0, width: 0, height: 100 }])!
+  const noGap = ruler.snap({ x: 92, y: 0, width: 5, height: 40 }, 5)
+  ruler.free()
+  expect(noGap.guides).toEqual([null, null])
+  expect(noGap.gaps).toBeUndefined()
 })

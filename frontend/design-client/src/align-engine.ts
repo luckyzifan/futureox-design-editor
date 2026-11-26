@@ -95,56 +95,158 @@ function axisInterval(b: Bounds, axis: 'x' | 'y'): AxisInterval {
     : { start: b.y, end: b.y + b.height, crossStart: b.x, crossEnd: b.x + b.width }
 }
 
-function spacingSnapAxis(
-  moving: Bounds,
-  siblings: Bounds[],
-  axis: 'x' | 'y',
-  threshold: number,
-): { delta: number; guide: SmartGuideSegment } | null {
+/** One axis of a gesture's spacing targets, sorted by start once. Targets do
+ * not change while a gesture owns its guide index, so a query never sorts. */
+type SpacingAxisIndex = { start: Float64Array; end: Float64Array; crossStart: Float64Array; crossEnd: Float64Array }
+export type SpacingIndex = { x: SpacingAxisIndex; y: SpacingAxisIndex }
+
+function buildSpacingAxis(siblings: Bounds[], axis: 'x' | 'y'): SpacingAxisIndex {
+  const horizontal = axis === 'x'
+  // Target i occupies [4i, 4i + 4) of `columns`; zero-area rects are skipped.
+  const columns = new Float64Array(siblings.length * 4)
+  const order: number[] = []
+  for (let i = 0; i < siblings.length; i++) {
+    const s = siblings[i]!
+    if (!(s.width > 0 && s.height > 0)) continue
+    order.push(i)
+    const base = i * 4
+    columns[base] = horizontal ? s.x : s.y
+    columns[base + 1] = columns[base]! + (horizontal ? s.width : s.height)
+    columns[base + 2] = horizontal ? s.y : s.x
+    columns[base + 3] = columns[base + 2]! + (horizontal ? s.height : s.width)
+  }
+  // Array.prototype.sort is stable, so equal starts keep document order.
+  order.sort((a, b) => columns[a * 4]! - columns[b * 4]!)
+  const startColumn = new Float64Array(order.length), endColumn = new Float64Array(order.length),
+    crossStartColumn = new Float64Array(order.length), crossEndColumn = new Float64Array(order.length)
+  for (let i = 0; i < order.length; i++) {
+    const base = order[i]! * 4
+    startColumn[i] = columns[base]!
+    endColumn[i] = columns[base + 1]!
+    crossStartColumn[i] = columns[base + 2]!
+    crossEndColumn[i] = columns[base + 3]!
+  }
+  return { start: startColumn, end: endColumn, crossStart: crossStartColumn, crossEnd: crossEndColumn }
+}
+
+/** Spacing targets of one gesture. Ruler guides (zero-area rects) never
+ * contribute spacing values. */
+export function createSpacingIndex(siblings: Bounds[]): SpacingIndex {
+  return { x: buildSpacingAxis(siblings, 'x'), y: buildSpacingAxis(siblings, 'y') }
+}
+
+/** First position whose value is not below `value`, inside `[low, high)`. */
+function lowerBound(values: ArrayLike<number>, value: number, low = 0, high = values.length) {
+  while (low < high) {
+    const middle = (low + high) >>> 1
+    if (values[middle]! < value) low = middle + 1
+    else high = middle
+  }
+  return low
+}
+
+type SpacingCandidate = { delta: number; position: number; start: number; crossEnd: number }
+
+/** One axis of a spacing query. Targets are visited in start order and every
+ * candidate is found with a binary search, so a query never compares each
+ * target with each gap or with every later target. */
+function spacingSnapIndexedAxis(index: SpacingAxisIndex, moving: Bounds, axis: 'x' | 'y', threshold: number):
+  { delta: number; guide: SmartGuideSegment } | null {
   const m = axisInterval(moving, axis),
     size = m.end - m.start
-  const near = (a: AxisInterval, b: AxisInterval) =>
-    a.crossStart <= b.crossEnd + threshold && b.crossStart <= a.crossEnd + threshold
-  const list = siblings
-    .map((s) => axisInterval(s, axis))
-    .filter((s) => near(s, m))
-    .sort((a, b) => a.start - b.start)
-  // Spacing values come from adjacent sibling pairs (Sketch SpacingSnapTargetProvider).
-  const gaps: number[] = []
-  for (let i = 1; i < list.length; i++) {
-    if (!near(list[i - 1], list[i])) continue
-    const g = list[i].start - list[i - 1].end
-    if (g >= 0 && !gaps.some((v) => Math.abs(v - g) < 1e-6)) gaps.push(g)
+  const { start, end, crossStart, crossEnd } = index
+  // Targets near the moving rect on the cross axis, in start order.
+  const near: number[] = []
+  for (let i = 0; i < start.length; i++)
+    if (crossStart[i]! <= m.crossEnd + threshold && m.crossStart <= crossEnd[i]! + threshold) near.push(i)
+  const meets = (a: number, b: number) => crossStart[a]! <= crossEnd[b]! + threshold && crossStart[b]! <= crossEnd[a]! + threshold
+  // Spacing values come from adjacent sibling pairs (Sketch SpacingSnapTargetProvider),
+  // in discovery order. A value within 1e-6 of an earlier one is the same gap.
+  const found: { gap: number; order: number }[] = []
+  for (let k = 1; k < near.length; k++) {
+    const p = near[k - 1]!, q = near[k]!
+    if (!meets(p, q)) continue
+    const gap = start[q]! - end[p]!
+    if (gap >= 0) found.push({ gap, order: found.length })
   }
-  // The holder keeps callback assignments visible to TypeScript's control-flow
-  // analysis; a captured nullable local is otherwise narrowed to `never` here.
-  const candidate: { best?: { delta: number; position: number; start: number; end: number } } = {}
-  const consider = (delta: number, position: number, others: AxisInterval[]) => {
-    if (!Number.isFinite(delta) || Math.abs(delta) < EPS || Math.abs(delta) >= threshold) return
-    if (candidate.best && Math.abs(delta) >= Math.abs(candidate.best.delta)) return
-    candidate.best = {
-      delta,
-      position,
-      start: Math.min(m.crossStart, ...others.map((o) => o.crossStart)),
-      end: Math.max(m.crossEnd, ...others.map((o) => o.crossEnd)),
+  // Sorting by value groups equal gaps, and the stable order keeps the first
+  // of them. Each value is compared with the last kept one only: in sorted
+  // order that is the nearest earlier value.
+  found.sort((a, b) => a.gap - b.gap)
+  const gaps: number[] = [], orders: number[] = []
+  for (const item of found)
+    if (!gaps.length || item.gap - gaps[gaps.length - 1]! >= 1e-6) { gaps.push(item.gap); orders.push(item.order) }
+  let best: SpacingCandidate | undefined
+  // The first candidate of the smallest correction wins; an equal one never replaces it.
+  const consider = (delta: number, position: number, from: number, to: number) => {
+    const magnitude = Math.abs(delta)
+    if (!(magnitude >= EPS && magnitude < threshold)) return
+    if (best && magnitude >= Math.abs(best.delta)) return
+    best = {
+      delta, position,
+      start: Math.min(m.crossStart, crossStart[from]!, crossStart[to]!),
+      crossEnd: Math.max(m.crossEnd, crossEnd[from]!, crossEnd[to]!),
     }
   }
-  for (const s of list)
-    for (const g of gaps) {
-      consider(s.end + g - m.start, s.end, [s])
-      consider(s.start - g - size - m.start, s.start, [s])
+  // Repeat an existing gap before or after one target. Only the gap nearest
+  // to the requested one on each side can be that target's best candidate.
+  for (const i of near) {
+    let chosen: { delta: number; position: number; order: number; side: number } | undefined
+    for (let side = 0; side < 2; side++) {
+      const target = side === 0 ? m.start - end[i]! : start[i]! - size - m.start
+      // Nearest gap on each side, skipping a gap that would not move the rect.
+      const at = lowerBound(gaps, target)
+      let left = at - 1
+      while (left >= 0 && target - gaps[left]! < EPS) left--
+      let right = at
+      while (right < gaps.length && gaps[right]! - target < EPS) right++
+      for (const k of [left, right]) {
+        if (k < 0 || k >= gaps.length) continue
+        const delta = side === 0 ? end[i]! + gaps[k]! - m.start : start[i]! - gaps[k]! - size - m.start
+        const magnitude = Math.abs(delta)
+        if (!(magnitude >= EPS && magnitude < threshold)) continue
+        // The same target compares by gap discovery order, then by side.
+        if (chosen && (magnitude > Math.abs(chosen.delta) ||
+            magnitude === Math.abs(chosen.delta) && (orders[k]! > chosen.order || orders[k]! === chosen.order && side >= chosen.side))) continue
+        chosen = { delta, position: side === 0 ? end[i]! : start[i]!, order: orders[k]!, side }
+      }
     }
-  // Bracketed pair: equalize the gap on both sides of the moving rect.
-  for (let i = 0; i < list.length; i++)
-    for (let j = i + 1; j < list.length; j++) {
-      const a = list[i],
-        b = list[j],
-        span = b.start - a.end
-      if (span < size - EPS || m.start < a.end - EPS || m.end > b.start + EPS) continue
-      consider(a.end + (span - size) / 2 - m.start, a.end, [a, b])
+    if (chosen) consider(chosen.delta, chosen.position, i, i)
+  }
+  // Bracketed pair: equalize the gap on both sides of the moving rect. The
+  // correction grows with the second target's start, so for each first target
+  // only the starts nearest to the equalizing one can be the best candidate.
+  const seek = (from: number, value: number) => {
+    let low = from, high = near.length
+    while (low < high) {
+      const middle = (low + high) >>> 1
+      if (start[near[middle]!]! < value) low = middle + 1
+      else high = middle
     }
-  const best = candidate.best
-  return best ? { delta: best.delta, guide: { axis, position: best.position, start: best.start, end: best.end } } : null
+    return low
+  }
+  for (let k = 0; k < near.length; k++) {
+    const a = near[k]!
+    if (m.start < end[a]! - EPS) continue
+    const first = Math.max(m.end - EPS, end[a]! + size - EPS), equal = 2 * m.start + size - end[a]!
+    const lowest = seek(k + 1, first)
+    if (lowest >= near.length) continue
+    const at = seek(lowest, equal - 2 * EPS), above = seek(lowest, equal + 2 * EPS)
+    // Several targets can share one start; the first of them is visited first.
+    const below = at > lowest ? seek(lowest, start[near[at - 1]!]!) : -1
+    let chosen: { delta: number; b: number } | undefined
+    // Later targets are visited in start order, so an equal correction keeps the earlier one.
+    for (const b of [below, at, above]) {
+      if (b < lowest || b >= near.length) continue
+      const delta = end[a]! + (start[near[b]!]! - end[a]! - size) / 2 - m.start
+      const magnitude = Math.abs(delta)
+      if (!(magnitude >= EPS && magnitude < threshold)) continue
+      if (chosen && magnitude >= Math.abs(chosen.delta)) continue
+      chosen = { delta, b: near[b]! }
+    }
+    if (chosen) consider(chosen.delta, end[a]!, a, chosen.b)
+  }
+  return best ? { delta: best.delta, guide: { axis, position: best.position, start: best.start, end: best.crossEnd } } : null
 }
 
 const NO_SNAP: SmartSnapResult = { dx: 0, dy: 0, guides: [null, null] }
@@ -153,13 +255,44 @@ const NO_SNAP: SmartSnapResult = { dx: 0, dy: 0, guides: [null, null] }
  * existing sibling gap, or sits centered with equal gaps inside a sibling pair.
  * The returned guide line marks the stationary sibling edge and spans every
  * participating rect on the cross axis. Zero-area rects (ruler guides) never
- * contribute spacing values. */
+ * contribute spacing values. Builds the index for this call only; a gesture
+ * that repeats the query keeps its own `createSpacingIndex` result. */
 export function spacingSnap(moving: Bounds, siblings: Bounds[], threshold: number): SmartSnapResult {
+  return spacingSnapIndexed(createSpacingIndex(siblings), moving, threshold)
+}
+
+/** The same spacing rules against targets indexed once by `createSpacingIndex`. */
+export function spacingSnapIndexed(index: SpacingIndex, moving: Bounds, threshold: number): SmartSnapResult {
   if (!Number.isFinite(threshold) || threshold <= 0) return NO_SNAP
-  const solid = siblings.filter((s) => s.width > 0 && s.height > 0)
-  const x = spacingSnapAxis(moving, solid, 'x', threshold),
-    y = spacingSnapAxis(moving, solid, 'y', threshold)
+  const x = spacingSnapIndexedAxis(index.x, moving, 'x', threshold),
+    y = spacingSnapIndexedAxis(index.y, moving, 'y', threshold)
   return { dx: x?.delta ?? 0, dy: y?.delta ?? 0, guides: [x?.guide ?? null, y?.guide ?? null] }
+}
+
+/** Add spacing snapping to an edge/centre-only result. The smaller correction
+ * wins per axis. An edge target span is kept only while its own guide is the
+ * one chosen, so that guide keeps its extent. Canvas moves use the kernel
+ * spacing index instead and must not pass its result here. */
+export function withSpacingSnap(
+  edge: SmartSnapResult,
+  moving: Bounds,
+  siblings: Bounds[],
+  threshold: number,
+): SmartSnapResult {
+  const spaced = spacingSnap(moving, siblings, threshold)
+  const pick = (slot: 0 | 1): [number, SmartGuideSegment | null] => {
+    const edgeGuide = edge.guides[slot], spaceGuide = spaced.guides[slot]
+    const edgeDelta = slot === 0 ? edge.dx : edge.dy, spaceDelta = slot === 0 ? spaced.dx : spaced.dy
+    if (edgeGuide && spaceGuide) return Math.abs(spaceDelta) < Math.abs(edgeDelta) ? [spaceDelta, spaceGuide] : [edgeDelta, edgeGuide]
+    if (spaceGuide) return [spaceDelta, spaceGuide]
+    return [edgeGuide ? edgeDelta : 0, edgeGuide]
+  }
+  const [dx, gx] = pick(0), [dy, gy] = pick(1)
+  const spans = edge.targetSpans
+  return {
+    dx, dy, guides: [gx, gy],
+    ...(spans ? { targetSpans: [gx === edge.guides[0] ? spans[0] : null, gy === edge.guides[1] ? spans[1] : null] } : {}),
+  }
 }
 
 /** Full drag snap: kernel edge/center snapping plus spacing snapping, picking
@@ -172,24 +305,7 @@ export function dragSnap(
   threshold: number,
   edgeSnap: typeof smartGuidesSnapWorld = smartGuidesSnapWorld,
 ): SmartSnapResult {
-  const edge = edgeSnap(moving, parent, siblings, threshold),
-    spaced = spacingSnap(moving, siblings, threshold)
-  const pick = (
-    edgeDelta: number,
-    edgeGuide: SmartGuideSegment | null,
-    spaceDelta: number,
-    spaceGuide: SmartGuideSegment | null,
-  ): [number, SmartGuideSegment | null] => {
-    if (edgeGuide && spaceGuide)
-      return Math.abs(spaceDelta) < Math.abs(edgeDelta)
-        ? [spaceDelta, spaceGuide]
-        : [edgeDelta, edgeGuide]
-    if (spaceGuide) return [spaceDelta, spaceGuide]
-    return [edgeGuide ? edgeDelta : 0, edgeGuide]
-  }
-  const [dx, gx] = pick(edge.dx, edge.guides[0], spaced.dx, spaced.guides[0]),
-    [dy, gy] = pick(edge.dy, edge.guides[1], spaced.dy, spaced.guides[1])
-  return { dx, dy, guides: [gx, gy] }
+  return withSpacingSnap(edgeSnap(moving, parent, siblings, threshold), moving, siblings, threshold)
 }
 
 /** One-off edge and spacing snap. Interactive Canvas moves use a gesture-owned
