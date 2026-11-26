@@ -458,6 +458,8 @@ impl LegacyConstraintReceipt {
 }
 
 const SKETCH_FIXED_UNPINNED_AXES: &str = "sketchFixedUnpinnedAxes";
+const SKETCH_RESPONSIVE_MASTER: &str = "sketchResponsiveSymbolMaster";
+const SKETCH_RESPONSIVE_INSTANCE: &str = "sketchResponsiveSymbolInstance";
 
 fn has_standard_sketch_resize_geometry(node: &Node) -> bool {
     !node.constrain_proportions && node.transform.0[..4] == [1., 0., 0., 1.]
@@ -479,17 +481,22 @@ fn sketch_fixed_unpinned_axes(doc: &Document, node: &Node) -> [bool; 2] {
 
 /// Select a bounded Sketch resize rule only for an unchanged source axis.
 /// A modern field takes precedence even when its value has to stay opaque.
-pub(crate) fn sketch_resize_axes(doc: &Document, node: &Node) -> [Option<u8>; 2] {
+pub(crate) fn sketch_resize_axes(doc: &Document, node: &Node, use_master_source: bool) -> [Option<u8>; 2] {
     let Some(constraints) = node.constraints.as_ref().filter(|_| has_standard_sketch_resize_geometry(node)) else {
         return [None; 2];
     };
     let [fixed_x, fixed_y] = sketch_fixed_unpinned_axes(doc, node);
-    let [horizontal, vertical] = LegacyConstraintReceipt::from_node(doc, node)
+    let source = if use_master_source {
+        node.instance_origin.as_ref().and_then(|origin| doc.nodes.get(&origin.source))
+    } else {
+        None
+    }.unwrap_or(node);
+    let [horizontal, vertical] = LegacyConstraintReceipt::from_node(doc, source)
         .map_or([None; 2], |receipt| receipt.retained_axes(constraints));
     if !fixed_x && !fixed_y && horizontal.is_none() && vertical.is_none() {
         return [None; 2];
     }
-    let modern = sketch_binding(doc, node, "sketchModernLayout")
+    let modern = sketch_binding(doc, source, "sketchModernLayout")
         .and_then(|raw| serde_json::from_str::<Map<String, Value>>(raw).ok());
     [
         (fixed_x, horizontal, "horizontalPins", "horizontalSizing"),
@@ -509,6 +516,15 @@ pub(crate) fn sketch_resize_axes(doc: &Document, node: &Node) -> [Option<u8>; 2]
         }
         bits.filter(|bits| matches!(bits, 3 | 5 | 6)).map(|bits| bits as u8)
     })
+}
+
+pub(crate) fn sketch_responsive_instance(doc: &Document, node: &Node) -> bool {
+    if node.kind != "frame" || node.instance.is_none() {
+        return false;
+    }
+    let source = node.instance_origin.as_ref()
+        .and_then(|origin| doc.nodes.get(&origin.source)).unwrap_or(node);
+    sketch_binding(doc, source, SKETCH_RESPONSIVE_INSTANCE) == Some("true")
 }
 
 fn bool_at(v: &Value, key: &str) -> bool {
@@ -2807,6 +2823,14 @@ impl<'a> Importer<'a> {
                 }
             }
             "symbolMaster" => {
+                if (self.native_archive || self.futureox_archive)
+                    && sketch_bool(layer.get("resizesContent")) == Some(true)
+                    && layer.get("groupLayout").is_none_or(|layout| {
+                        layout.get("_class").and_then(Value::as_str) == Some("MSImmutableFreeformGroupLayout")
+                    })
+                {
+                    node.bindings.insert(SKETCH_RESPONSIVE_MASTER.into(), "true".into());
+                }
                 if let Some(symbol_id) = layer.get("symbolID").and_then(Value::as_str) {
                     node.bindings.insert("symbolID".into(), symbol_id.into());
                 }
@@ -2843,6 +2867,12 @@ impl<'a> Importer<'a> {
             "symbolInstance" => {
                 if let Some(symbol_id) = layer.get("symbolID").and_then(Value::as_str) {
                     node.bindings.insert("instanceOf".into(), symbol_id.into());
+                    if layer.get("scale").and_then(Value::as_f64) == Some(1.)
+                        && (self.native_archive || self.futureox_archive
+                            && user_ns.get("responsiveSymbolInstance").and_then(Value::as_bool) == Some(true))
+                    {
+                        node.bindings.insert(SKETCH_RESPONSIVE_INSTANCE.into(), "true".into());
+                    }
                     // override values: "ancestorID/layerID_field" → Overrides BTreeMap
                     let mut overrides = crate::components::Overrides::new();
                     if let Some(values) = layer.get("overrideValues").and_then(Value::as_array) {
@@ -4949,6 +4979,27 @@ fn admit_sketch_symbols(document: &mut Document) -> Result<()> {
         .filter(|node| node.instance.is_some())
         .map(|node| (node.id.clone(), node_location_in(document, &parents, &node.id)))
         .collect::<BTreeMap<_, _>>();
+    let responsive_masters: BTreeSet<_> = document.nodes.values()
+        .filter(|master| sketch_binding(document, master, SKETCH_RESPONSIVE_MASTER) == Some("true")
+            && !master.graphic && has_standard_sketch_resize_geometry(master)
+            && master.layout.as_ref().is_none_or(|layout| layout.mode == crate::layout::Flow::None)
+            && !master.children.is_empty()
+            && master.children.iter().all(|id| {
+                let Some(child) = document.nodes.get(id) else { return false };
+                if !matches!(child.kind.as_str(), "rect" | "ellipse" | "path" | "polygon" | "star" | "image")
+                    || !child.children.is_empty() || child.instance.is_some()
+                    || !has_standard_sketch_resize_geometry(child)
+                    || sketch_binding(document, child, "sketchModernLayout").is_some()
+                {
+                    return false;
+                }
+                let Some(receipt) = LegacyConstraintReceipt::from_node(document, child) else { return false };
+                let x = (receipt.mask & 7) as u8;
+                let y = ((receipt.mask >> 3) & 7) as u8;
+                crate::sketch::resize_legacy_axis(child.transform.0[4], child.width, master.width, master.width, x).is_ok()
+                    && crate::sketch::resize_legacy_axis(child.transform.0[5], child.height, master.height, master.height, y).is_ok()
+            }))
+        .map(|master| master.id.clone()).collect();
     for node in document.nodes.values_mut() {
         if let Some(instance) = &mut node.instance {
             let symbol = instance.component_id.clone();
@@ -4968,6 +5019,15 @@ fn admit_sketch_symbols(document: &mut Document) -> Result<()> {
                     clip_id(&symbol), clip_id(&name), clip_id(&id), located, library_context, repair
                 ))
             })?;
+            if node.bindings.contains_key(SKETCH_RESPONSIVE_INSTANCE) {
+                if responsive_masters.contains(&instance.component_id) {
+                    // Dimension edits to an ordinary group scale its
+                    // transform; a freeform Sketch instance has a real box.
+                    node.kind = "frame".into();
+                } else {
+                    node.bindings.remove(SKETCH_RESPONSIVE_INSTANCE);
+                }
+            }
         }
         // Stable keys must survive the host's fresh node-ID assignment.
         if !symbols.is_empty() {
@@ -8571,6 +8631,9 @@ fn export_layer_impl(
         // properties) survives symbol round-trips this way.
         let mut user_info = Map::new();
         user_info.insert("originalId".into(), json!(id));
+        if sketch_responsive_instance(doc, n) {
+            user_info.insert("responsiveSymbolInstance".into(), json!(true));
+        }
         if n.sketch_layer_style_overridden {
             user_info.insert("sketchLayerStyleOverridden".into(), json!(true));
         }

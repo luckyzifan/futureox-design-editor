@@ -1,4 +1,5 @@
 use futureox_design_kernel::{
+    components,
     font::Fonts,
     interop::{export_sketch, export_sketch_layer_fields, import_sketch_report, read_zip_public},
     layout,
@@ -277,4 +278,133 @@ fn default_futureox_pins_and_a_nondefault_saved_sketch_mask_keep_their_behavior(
         assert_box(&doc, "child", expected);
         assert_eq!(export_sketch_layer_fields(&doc, "child").unwrap()["resizingConstraint"], mask);
     }
+}
+
+#[test]
+fn resized_native_symbol_reflows_its_fixed_master_child() {
+    let native_meta = json!({"app": "com.bohemiancoding.sketch3", "appVersion": "69.2", "version": 134});
+    let source = json!({
+            "_class": "artboard", "do_objectID": "page-content", "name": "Content",
+            "frame": {"x": 0, "y": 0, "width": 500, "height": 280},
+            "layers": [{
+                "_class": "symbolMaster", "do_objectID": "master", "name": "Master",
+                "frame": {"x": 240, "y": 20, "width": 100, "height": 80}, "symbolID": "symbol",
+                "groupLayout": {"_class": "MSImmutableFreeformGroupLayout"}, "resizesContent": true, "clippingBehavior": 1,
+                "layers": [{
+                    "_class": "rectangle", "do_objectID": "child", "name": "Child",
+                    "frame": {"x": 20, "y": 30, "width": 40, "height": 10},
+                    "resizingConstraint": 45
+                }]
+            }, {
+                "_class": "symbolInstance", "do_objectID": "instance", "name": "Instance",
+                "frame": {"x": 5, "y": 5, "width": 200, "height": 140}, "symbolID": "symbol",
+                "resizingConstraint": 9, "scale": 1,
+                "overrideValues": [{"_class": "overrideValue", "overrideName": "child_isVisible", "value": false}]
+            }]
+        });
+    let archive = sketch_archive(native_meta.clone(), source.clone());
+    let font = Fonts::new();
+    let decoded = import_sketch_report(&archive).unwrap().document;
+    assert_box(&decoded, "instance", [5., 5., 200., 140.]);
+    let mut resolved = decoded.clone();
+    components::resolve(&mut resolved).unwrap();
+    layout::resolve(&mut resolved, &font).unwrap();
+    assert_box(&resolved, "instance", [5., 5., 200., 140.]);
+    assert_eq!(resolved.nodes["instance"].name, "Instance");
+    assert!(resolved.nodes["instance"].clip);
+    let child = resolved.nodes["instance"].children[0].clone();
+    assert_box(&resolved, &child, [60., 56.25, 40., 10.]);
+    assert!(!resolved.nodes[&child].visible);
+    assert_eq!(resolved.nodes[&child].instance_origin.as_ref().unwrap().source, "child");
+    assert_box(&resolved, "child", [20., 30., 40., 10.]);
+    assert!(resolved.nodes["child"].visible);
+
+    resize_parent(&mut resolved, "page-content", Size { width: 700., height: 440. }, &font);
+    assert_box(&resolved, "instance", [5., 5., 200., 140.]);
+    assert_box(&resolved, &child, [60., 56.25, 40., 10.]);
+
+    let mut authored = decoded.clone();
+    let placement = authored.nodes.get_mut("instance").unwrap();
+    placement.width = 220.;
+    placement.height = 160.;
+    let mut edited = authored.clone();
+    components::resolve(&mut edited).unwrap();
+    layout::resolve(&mut edited, &font).unwrap();
+    assert_box(&edited, "instance", [5., 5., 220., 160.]);
+    assert_box(&edited, &edited.nodes["instance"].children[0], [68., 65., 40., 10.]);
+    let fields = export_sketch_layer_fields(&authored, "instance").unwrap();
+    assert_eq!(fields["_class"], "symbolInstance");
+    assert_eq!(fields["resizingConstraint"], 9);
+    assert!(fields.get("layers").is_none());
+    let mut reopened = import_sketch_report(&export_sketch(&authored).unwrap()).unwrap().document;
+    components::resolve(&mut reopened).unwrap();
+    layout::resolve(&mut reopened, &font).unwrap();
+    assert_box(&reopened, "instance", [5., 5., 220., 160.]);
+    let reopened_child = &reopened.nodes["instance"].children[0];
+    assert_box(&reopened, reopened_child, [68., 65., 40., 10.]);
+    assert!(!reopened.nodes[reopened_child].visible);
+    assert!(reopened.nodes["instance"].clip);
+
+    let mut relative_source = source.clone();
+    relative_source["_class"] = json!("group");
+    relative_source["groupBehavior"] = json!(1);
+    relative_source["layers"][1]["horizontalSizing"] = json!(3);
+    relative_source["layers"][1]["horizontalPins"] = json!(1);
+    let relative = sketch_archive(native_meta.clone(), relative_source.clone());
+    let mut responsive = import_sketch_report(&relative).unwrap().document;
+    components::resolve(&mut responsive).unwrap();
+    layout::resolve(&mut responsive, &font).unwrap();
+    assert_eq!(responsive.nodes["instance"].sizing_value().width_ratio, Some(0.4));
+    resize_parent(&mut responsive, "page-content", Size { width: 700., height: 280. }, &font);
+    assert_box(&responsive, "instance", [5., 5., 280., 140.]);
+    assert_box(&responsive, &responsive.nodes["instance"].children[0], [92., 56.25, 40., 10.]);
+
+    relative_source["layers"][1]["rotation"] = json!(17.);
+    let rotated = sketch_archive(native_meta.clone(), relative_source);
+    let mut rotated = import_sketch_report(&rotated).unwrap().document;
+    let placement = rotated.nodes["instance"].transform;
+    assert_ne!(placement.0[1], 0.);
+    components::resolve(&mut rotated).unwrap();
+    assert_eq!(rotated.nodes["instance"].transform, placement);
+
+    let mut futureox_meta = native_meta.clone();
+    futureox_meta["app"] = json!("com.futureox.design-kernel");
+    let mut scaled = source.clone();
+    scaled["layers"][1]["scale"] = json!(2);
+    for archive in [sketch_archive(futureox_meta, source), sketch_archive(native_meta, scaled)] {
+        let mut other = import_sketch_report(&archive).unwrap().document;
+        assert_eq!(other.nodes["instance"].kind, "group");
+        components::resolve(&mut other).unwrap();
+        layout::resolve(&mut other, &font).unwrap();
+        assert_box(&other, "instance", [5., 5., 100., 80.]);
+    }
+}
+
+#[test]
+fn real_sketch_bootstrap_symbol_keeps_its_archived_instance_dimensions() {
+    const SOURCE_PAGE: &str = "pages/C5F7C269-590D-4C81-A68D-E24C81A4D69E.json";
+    const MASTER: &str = "53B9221E-E14E-44F7-BC18-610E2B17E57D";
+    const INSTANCE: &str = "6D2F8F8A-9AF1-457B-84DE-71ED87480C51";
+    const CHILD: &str = "5B699FD4-C955-4CAB-BC5E-0D29C76A1712";
+    let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let fixture = project.join("testing/fixtures/sketch-public-20261105/free-sketch-bootstrap-ui-kit/free-sketch-bootstrap5-ui-kit.sketch");
+    let files = read_zip_public(&std::fs::read(fixture).unwrap()).unwrap();
+    let meta: Value = serde_json::from_slice(&files["meta.json"]).unwrap();
+    let page: Value = serde_json::from_slice(&files[SOURCE_PAGE]).unwrap();
+    let master = find_source_layer(&page, MASTER).unwrap();
+    let instance = find_source_layer(&page, INSTANCE).unwrap();
+    let archive = sketch_archive(meta, json!({
+        "_class": "group", "do_objectID": "witness", "name": "Source layers",
+        "frame": {"width": 2000, "height": 2000}, "layers": [master, instance]
+    }));
+    let native = SketchDocument::from_sketch(&archive).unwrap();
+    let reduced = native.layer(CHILD).unwrap().frame_for_parent_resize(
+        Size { width: 190., height: 90. }, Size { width: 97., height: 38. }).unwrap();
+    assert_eq!([reduced.x, reduced.y, reduced.width, reduced.height], [0., 0., 97., 38.]);
+    let mut resolved = import_sketch_report(&archive).unwrap().document;
+    components::resolve(&mut resolved).unwrap();
+    layout::resolve(&mut resolved, &Fonts::new()).unwrap();
+    assert_box(&resolved, INSTANCE, [0., 0., 97., 38.]);
+    assert_box(&resolved, &resolved.nodes[INSTANCE].children[0], [0., 0., 97., 38.]);
+    assert_box(&resolved, CHILD, [0., 0., 190., 90.]);
 }

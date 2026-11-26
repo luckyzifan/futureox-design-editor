@@ -711,6 +711,8 @@ impl Builder<'_> {
             .nodes
             .get(&spec.component_id)
             .ok_or("Missing main component")?;
+        let responsive_sketch = crate::interop::sketch_responsive_instance(self.source, placement)
+            && !template.graphic && template.layout.as_ref().is_none_or(|layout| layout.mode == layout::Flow::None);
         let component = template
             .component
             .as_ref()
@@ -761,9 +763,15 @@ impl Builder<'_> {
             .get(&qualify(prefix, "$root"))
             .and_then(|f| f.get("name"))
             .and_then(Value::as_str)
-            .unwrap_or(&template.name)
+            .unwrap_or(if responsive_sketch { &placement.name } else { &template.name })
             .into();
         n.transform = placement.transform;
+        if responsive_sketch {
+            n.width = placement.width;
+            n.height = placement.height;
+            n.sizing = placement.sizing.clone();
+            n.constrain_proportions = placement.constrain_proportions;
+        }
         let mut visible_placement = placement.clone();
         crate::design_system::resolve_node(
             self.source.design_system.as_ref(),
@@ -798,8 +806,14 @@ impl Builder<'_> {
         n.children.clear();
         self.stack.push(spec.component_id.clone());
         for id in &template.children {
-            n.children
-                .push(self.layer(id, prefix, &overrides, depth + 1, &modes)?)
+            let child = self.layer(id, prefix, &overrides, depth + 1, &modes)?;
+            if responsive_sketch
+                && let Some(constraints) = self.output.get_mut(&child).and_then(|node| node.constraints.as_mut())
+            {
+                constraints.reference_width.get_or_insert(template.width);
+                constraints.reference_height.get_or_insert(template.height);
+            }
+            n.children.push(child);
         }
         self.stack.pop();
         self.insert(n)
