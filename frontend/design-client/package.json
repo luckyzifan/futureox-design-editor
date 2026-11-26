@@ -30,6 +30,7 @@
     "test:figma-view-tools": "bun scripts/check-figma-view-tools.ts",
     "test:sketch-toolbar-hits-electron": "bun scripts/check-sketch-toolbar-hits-electron.ts",
     "test:figma-software": "bun scripts/check-figma-software.ts",
+    "test:figma-roots": "vitest run src/figma-root-reference-gate.test.ts",
     "test:tile-frame": "bun scripts/check-tile-frame.ts",
     "test:kernel-adapters": "bun scripts/check-kernel-adapters.ts",
     "test:bake-session": "bun scripts/check-bake-session.ts",

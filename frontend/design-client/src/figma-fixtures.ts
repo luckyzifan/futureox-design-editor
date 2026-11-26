@@ -1,28 +1,30 @@
 import { blank, node, paint, effect, type DesignDocument, type Matrix } from './model'
 import { around, rotate } from './geometry'
 import { largeReference } from './large-reference'
-export type ReferenceCase =
-  | 'mask-half-overlap'
-  | 'mask-overlap'
-  | 'mask-outside'
-  | 'rectangle'
-  | 'curve'
-  | 'rotated-curve'
-  | 'alpha-curve'
-  | 'shadow'
-  | 'layer-blur'
-  | 'blur-radii'
-  | 'coverage-overlap'
-  | 'coverage-overlap-2x'
-  | 'group-blur'
-  | 'group-shadow'
-  | 'group-inner-shadow'
-  | 'backdrop-blur'
-  | 'pass-through'
-  | 'pass-through-opacity'
-  | 'isolated-opacity'
-  | 'pass-through-blur'
-  | 'large-nested'
+export const referenceCases = [
+  'mask-half-overlap',
+  'mask-overlap',
+  'mask-outside',
+  'rectangle',
+  'curve',
+  'rotated-curve',
+  'alpha-curve',
+  'shadow',
+  'layer-blur',
+  'blur-radii',
+  'coverage-overlap',
+  'coverage-overlap-2x',
+  'group-blur',
+  'group-shadow',
+  'group-inner-shadow',
+  'backdrop-blur',
+  'pass-through',
+  'pass-through-opacity',
+  'isolated-opacity',
+  'pass-through-blur',
+  'large-nested',
+] as const
+export type ReferenceCase = (typeof referenceCases)[number]
 export const referenceScale = (kind: ReferenceCase) => (kind === 'coverage-overlap-2x' ? 2 : 1)
 export const referenceSize = (kind: ReferenceCase) => ({
   width:

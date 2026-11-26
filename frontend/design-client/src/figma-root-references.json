@@ -1,0 +1,125 @@
+{
+  "note": "Pinned SHA-256 and dimensions of the 20 root Figma CPU references; regenerate only with a reviewed reference change (#1266).",
+  "references": {
+    "alpha-curve": {
+      "file": "alpha-curve.png",
+      "sha256": "152c5790a1ef53763bee22c87c961700d527b48bb0b18d191acd820dfcc41b8e",
+      "width": 128,
+      "height": 128
+    },
+    "backdrop-blur": {
+      "file": "backdrop-blur.png",
+      "sha256": "1a957889f9e36d8410e01c4c6314d1ba487e43cd68fd12bb24ff4ea0f4eab72e",
+      "width": 128,
+      "height": 128
+    },
+    "blur-radii": {
+      "file": "blur-radii.png",
+      "sha256": "1c9b48593e5c04053386619640c7adaba5fae24ed78b17e5ac8578375dfdb9d1",
+      "width": 512,
+      "height": 128
+    },
+    "coverage-overlap-2x": {
+      "file": "coverage-overlap-2x.png",
+      "sha256": "b45ec5b8d583f310b490a2fd0f9c76e468f8fe18de88145c46e3b40c87744742",
+      "width": 768,
+      "height": 256
+    },
+    "coverage-overlap": {
+      "file": "coverage-overlap.png",
+      "sha256": "991af4e1f403b59b38a234bea8fe776ec860a3786f1d83fb551efe19a1a185c8",
+      "width": 384,
+      "height": 128
+    },
+    "curve": {
+      "file": "curve.png",
+      "sha256": "b52b3d2c975dc59113abe29e6c930a5bd635ab866d74973239bea14d0fb556e0",
+      "width": 128,
+      "height": 128
+    },
+    "group-blur": {
+      "file": "group-blur.png",
+      "sha256": "d283f2529f49a94628bd03db89c49153d77c2df908731c9b9019f5ecdac8dd37",
+      "width": 128,
+      "height": 128
+    },
+    "group-inner-shadow": {
+      "file": "group-inner-shadow.png",
+      "sha256": "99009e13d09b2630378460b2f1cfe3c07b80999ed61e02c641fefa8c05184e92",
+      "width": 128,
+      "height": 128
+    },
+    "group-shadow": {
+      "file": "group-shadow.png",
+      "sha256": "498dd9938ff542f6365ffe6ce58b4fa5e87988470df71bb269a37b0ad205ac2c",
+      "width": 128,
+      "height": 128
+    },
+    "isolated-opacity": {
+      "file": "isolated-opacity.png",
+      "sha256": "f5c67c3921f43f90616d39e89e8ad157abcfc20dd288d8a4add7344137390935",
+      "width": 128,
+      "height": 128
+    },
+    "large-nested": {
+      "file": "large-nested.png",
+      "sha256": "b2d88ddb3045f91f17beac22fa2b7f50726ac5a20ab87e741e08d294434cafc2",
+      "width": 1024,
+      "height": 768
+    },
+    "layer-blur": {
+      "file": "layer-blur.png",
+      "sha256": "cb58bf174ad8f0d17366ef3ea4074cbd8e9def0ea17e59dbc473366cfc17a60e",
+      "width": 128,
+      "height": 128
+    },
+    "mask-outside": {
+      "file": "mask-outside.png",
+      "sha256": "244164c468425702d07d39808331ce13297c9f8a5cc2a5dce946cac7a9fa62ff",
+      "width": 128,
+      "height": 128
+    },
+    "mask-overlap": {
+      "file": "mask-overlap.png",
+      "sha256": "3e4a83ec0df131ed5e0c6535e5d9faf017c8c816cb689b9844717d81ce930690",
+      "width": 128,
+      "height": 128
+    },
+    "pass-through-blur": {
+      "file": "pass-through-blur.png",
+      "sha256": "243e28c28288d349f799b08a01509d9f5bf0c0b7791a0a9d823bb97c51ee1435",
+      "width": 128,
+      "height": 128
+    },
+    "pass-through-opacity": {
+      "file": "pass-through-opacity.png",
+      "sha256": "c7ca14b8fb35f1d77d2721d5091380be6189a9ff1c717998fe9ffbda48e0602a",
+      "width": 128,
+      "height": 128
+    },
+    "pass-through": {
+      "file": "pass-through.png",
+      "sha256": "a0ea432c3ad966287e6a3adf74a9737d85fa23c3db2939debaba5039c848ad7b",
+      "width": 128,
+      "height": 128
+    },
+    "rectangle": {
+      "file": "rectangle.png",
+      "sha256": "49efb66d57948dc00e45eacc3902e3bcc6005b1783d3e6eb6229f38ccf4e7831",
+      "width": 128,
+      "height": 128
+    },
+    "rotated-curve": {
+      "file": "rotated-curve.png",
+      "sha256": "9991f106808da73a9ce35148b946e327c20b879d6fce770f64d3dea24d2dd065",
+      "width": 128,
+      "height": 128
+    },
+    "shadow": {
+      "file": "shadow.png",
+      "sha256": "40ba48ba82e2796732fb201e8609de3071879df1613a8d5cf58a24db139c22f9",
+      "width": 128,
+      "height": 128
+    }
+  }
+}

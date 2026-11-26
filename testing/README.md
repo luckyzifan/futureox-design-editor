@@ -94,4 +94,14 @@ node scripts/run-test.mjs -- sh -c '
 
 为 `test:figma-software` 加 `--prepare-only` 可检查清单、尺寸和哈希。像素验收需要原始 Figma 导出图和相应的渲染后端。
 
+### Figma 根参考 CPU 像素门
+
+仓库内的 20 个根参考由提交的 CPU 门禁直接覆盖，不依赖外部 `DESIGN_FIGMA_REFERENCES`：
+
+```sh
+(cd frontend/design-client && bun run test:figma-roots)
+```
+
+门禁枚举 `public/fidelity` 的根 PNG 和 pack，按 `src/figma-root-references.json` 校验 SHA-256 与尺寸，再用生产 WASM 的 CPU `figma` profile（`figmaFixture`、`referenceScale`、仅 `alpha-curve` 透明）逐像素比较。缺失根参考、manifest 外的根 PNG、pack 内缺失或哈希变化的参考都会失败；`text-2026-10-09` 等没有参考图的 pack 条目会打印 skipped（#872），不会静默通过。非零差异逐例写成显式预算并标注票据（#1265、#282、#284、#179），其余用例必须为 0 差。
+
 将需要长期引用的实际结论写成 Markdown。可复跑的断言、脚本、必要金图和小型固定夹具保留在代码与夹具目录。复核完成后删除本轮临时日志、截图、profile、数据库副本与构建副本。结论格式和已有记录见[验证结论](../docs/verification/README.md)。
