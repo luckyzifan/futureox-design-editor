@@ -38,16 +38,18 @@
 //! returns an error the caller answers with the ordinary full-frame path; it
 //! never silently substitutes different pixels.
 use crate::device::{
-    MAX_COMMANDS, MAX_SCENE_CURVE_WORDS, MAX_SCENE_NODES, NativeGpu, RenderedFrame, present_bytes,
+    MAX_COMMANDS, MAX_SCENE_CURVE_WORDS, MAX_SCENE_NODES, NativeGpu, RenderedFrame,
+    SCENE_WORK_BUDGET_ERROR, present_bytes,
 };
 use futureox_design_kernel::fidelity::RasterProfile;
 use futureox_design_kernel::gpu::{GpuNode, GpuScene};
-use futureox_design_kernel::math::Rect;
+use futureox_design_kernel::math::{Point, Rect};
+use futureox_design_kernel::scene::selected_backdrop;
 use futureox_design_kernel::tile_stack::TILE_SIZE;
 use futureox_design_kernel::{Engine, RenderOptions};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Instant;
 
 /// Cache upper bound: a viewport larger than this many tiles falls back to
@@ -346,6 +348,93 @@ fn needs_partitioned_crops(scene: &GpuScene, profile: RasterProfile) -> bool {
         && scene.curves.len() > MAX_SCENE_CURVE_WORDS
 }
 
+#[derive(Clone, Copy)]
+struct BackdropRead {
+    capture: Rect,
+    reach: i32,
+}
+
+fn partition_backdrop_reads(scene: &GpuScene) -> Result<Vec<BackdropRead>, String> {
+    let mut pending: Vec<_> = scene.roots.iter().rev().collect();
+    let mut visited = HashSet::new();
+    let mut reads = Vec::new();
+    while let Some(id) = pending.pop() {
+        let Some(node) = scene.nodes.get(id) else {
+            continue;
+        };
+        if !visited.insert(id) {
+            return Err(SCENE_WORK_BUDGET_ERROR.into());
+        }
+        pending.extend(node.children.iter().rev());
+        let Some(effect) = selected_backdrop(&node.effects) else {
+            continue;
+        };
+        // The scalar compositor captures a direct Sketch backdrop before
+        // the node's fills. Rotated, progressive and other optical reads
+        // need their own dependency proof before using this path.
+        if !effect.sketch_backdrop
+            || effect.kind != "background-blur"
+            || effect.gradient_blur.is_some()
+            || node.rotated_backdrop_bounds.is_some()
+            || !node.children.is_empty()
+        {
+            return Err(SCENE_WORK_BUDGET_ERROR.into());
+        }
+        let [x, y, w, h] = node.backdrop_box;
+        if w <= 0. || h <= 0. || !node.backdrop_box.iter().all(|value| value.is_finite())
+            || !(x + w).is_finite() || !(y + h).is_finite()
+        {
+            return Err(SCENE_WORK_BUDGET_ERROR.into());
+        }
+        let capture = Rect::from_points([Point::new(x, y), Point::new(x + w, y + h)].into_iter());
+        let radii = futureox_design_kernel::effects::gaussian_box_radii(
+            effect.sketch_backdrop_sigma(node.matrix.max_scale()),
+        )?;
+        // The box passes read successive neighbours. The two extra device
+        // pixels retain the fractional capture/output sample neighbours.
+        reads.push(BackdropRead { capture, reach: radii.into_iter().sum::<u32>() as i32 + 2 });
+    }
+    if reads.len() != scene.nodes.values().filter(|n| selected_backdrop(&n.effects).is_some()).count() {
+        return Err(SCENE_WORK_BUDGET_ERROR.into());
+    }
+    Ok(reads)
+}
+
+fn required_partition_crop(output: Rect, frame: Rect, reads: &[BackdropRead]) -> Rect {
+    // A lens reads what was drawn before it. Add its true input to the
+    // viewport so earlier foreground filters compute those pixels too.
+    // Earlier lenses see the new demand, without charging this lens twice.
+    let mut demand = output;
+    for read in reads.iter().rev() {
+        let affected = demand.intersect(read.capture.expand(2));
+        if !affected.empty() {
+            demand = demand.union(affected.expand(read.reach).intersect(read.capture));
+        }
+    }
+    demand.intersect(frame)
+}
+
+fn compile_partition_crop(
+    engine: &mut Engine,
+    options: &RenderOptions,
+    viewport: Rect,
+    prepare: Option<Rect>,
+) -> Result<GpuScene, String> {
+    let tile_limit = TILE_SIZE as u32 + 2;
+    if viewport.w <= tile_limit && viewport.h <= tile_limit {
+        return engine.compile_gpu_region(options, viewport, prepare);
+    }
+    // The existing native capture envelope keeps the global camera and
+    // version-8 output rect. Its kernel viewport bound and the compositor's
+    // per-scene, surface and remaining command limits still apply.
+    let mut request = serde_json::to_value(options).map_err(|error| error.to_string())?;
+    request["captureViewport"] = serde_json::json!(viewport);
+    if let Some(prepare) = prepare {
+        request["prepareViewport"] = serde_json::json!(prepare);
+    }
+    engine.compile_gpu_request(&request.to_string())
+}
+
 #[derive(Default)]
 struct FrameTotals {
     remaining_commands: Option<usize>,
@@ -400,7 +489,7 @@ impl TileCache {
             );
         }
         let partitioned = needs_partitioned_crops(&scene, options.raster_profile);
-        let global = global_key(&scene)?;
+        let mut global = global_key(&scene)?;
         let node_keys: BTreeMap<&str, Key> = scene
             .nodes
             .iter()
@@ -409,6 +498,17 @@ impl TileCache {
         self.stats.compile_ms += compile_started.elapsed().as_secs_f64() * 1000.;
 
         let key_started = Instant::now();
+        if partitioned {
+            // Compound backdrop dependencies can extend beyond the usual
+            // one-hop influence keys. A content change invalidates every
+            // partitioned tile; an unchanged frame can replay them all.
+            let mut whole = Sha256::new();
+            whole.update(global);
+            for key in node_keys.values() {
+                whole.update(key);
+            }
+            global = whole.finalize().into();
+        }
         if self.global_key != Some((global, partitioned)) {
             // Viewport, raster settings or the crop policy changed. No tile
             // retains a key across that change.
@@ -461,22 +561,30 @@ impl TileCache {
             // Compose stale tiles through cropped command scenes, then
             // stitch them with the cached presented bytes.
             self.stats.tiles_rendered = dirty.len();
+            let reads = if partitioned && !dirty.is_empty() {
+                partition_backdrop_reads(&scene)?
+            } else {
+                Vec::new()
+            };
             let compile_region = |rect: Rect| {
                 if partitioned {
-                    rect.expand(1).intersect(frame_rect)
+                    required_partition_crop(rect, frame_rect, &reads)
                 } else {
                     rect
                 }
             };
             // One prepare guard shared by every dirty tile: the engine caches
-            // the flattened-geometry phase per camera for this union. The
-            // shader gets its normal one-pixel gutter; readback stays on-grid.
+            // the flattened-geometry phase per camera for this union.
             let prepare = (!dirty.is_empty()).then(|| {
                 compile_region(dirty.iter().fold(dirty[0].0.rect, |acc, (tile, _)| acc.union(tile.rect)))
             });
             for (tile, _) in &dirty {
                 let compile_started = Instant::now();
-                let tile_scene = engine.compile_gpu_region(options, compile_region(tile.rect), prepare)?;
+                let tile_scene = if partitioned {
+                    compile_partition_crop(engine, options, compile_region(tile.rect), prepare)?
+                } else {
+                    engine.compile_gpu_region(options, tile.rect, prepare)?
+                };
                 self.stats.compile_ms += compile_started.elapsed().as_secs_f64() * 1000.;
                 let raw = self.compose_and_read(gpu, &tile_scene, tile.rect, &mut totals)?;
                 let presented = present_bytes(
@@ -662,6 +770,23 @@ mod tests {
         assert!(!needs_partitioned_crops(&scene, RasterProfile::FigmaSubpixel));
         scene.color_management = Some(Default::default());
         assert!(!needs_partitioned_crops(&scene, RasterProfile::Analytic));
+    }
+
+    #[test]
+    fn partition_crop_walks_touched_backdrops_back_to_front() {
+        let frame = Rect::new(0, 0, 256, 64);
+        let output = Rect::new(54, 10, 10, 10);
+        let reads = [
+            BackdropRead { capture: Rect::new(8, 6, 36, 28), reach: 20 },
+            BackdropRead { capture: Rect::new(30, 6, 72, 28), reach: 16 },
+            BackdropRead { capture: Rect::new(152, 0, 80, 64), reach: 30 },
+        ];
+        // The second backdrop reaches into the first. The unrelated third
+        // capture leaves the crop unchanged.
+        assert_eq!(
+            required_partition_crop(output, frame, &reads),
+            Rect::new(18, 6, 62, 28)
+        );
     }
 
     #[test]

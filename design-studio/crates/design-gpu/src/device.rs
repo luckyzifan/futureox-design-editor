@@ -16,6 +16,7 @@ const UNIFORM_BYTES: u64 = 4 * 1024 * 1024;
 pub(crate) const MAX_COMMANDS: usize = 262_144;
 pub(crate) const MAX_SCENE_NODES: usize = 20_000;
 pub(crate) const MAX_SCENE_CURVE_WORDS: usize = 2_000_000;
+pub(crate) const SCENE_WORK_BUDGET_ERROR: &str = "GPU scene work budget exceeded";
 const MAX_SURFACES: u64 = 256 * 1024 * 1024;
 const MAX_INSTANCES: usize = 20_000 * 20;
 // Bound native command-buffer work independently of uniform memory. Mobile
@@ -467,7 +468,7 @@ impl NativeGpu {
             return Err("Unsupported GPU command version".into());
         }
         if scene.nodes.len() > MAX_SCENE_NODES || scene.curves.len() > MAX_SCENE_CURVE_WORDS {
-            return Err("GPU scene work budget exceeded".into());
+            return Err(SCENE_WORK_BUDGET_ERROR.into());
         }
         let domain = ImageDomain {
             color: scene.color_management,
