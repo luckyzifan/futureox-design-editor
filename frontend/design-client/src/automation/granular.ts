@@ -34,7 +34,7 @@ const textStyle = partial({ fontId: id, weight: number(1, 1000), lineHeight: num
 export const nodePatchSchema = partial({ name: { type: 'string', maxLength: 200 }, width: number(.01), height: number(.01),
   visible: bool, locked: bool, opacity: number(0, 1), blend: enumeration(...blendModes, 'pass-through'), clip: bool, mask: bool,
   maskType: enumeration('alpha', 'luminance', 'outline', 'shape'), smoothing: number(0, 1), cornerRadius: number(0), constrainProportions: bool,
-  points: { type: 'integer', minimum: 3, maximum: 128 }, innerRadius: number(.01, 1), fontSize: number(1, 4096),
+  points: { type: 'integer', minimum: 3, maximum: 128 }, innerRadius: number(0, 1), fontSize: number(1, 4096),
   transform, radii: corners, layout, sizing, constraints, textStyle })
 const layoutPatch = partial({ layout, sizing, constraints })
 const ids = { type: 'array', items: id, minItems: 1, maxItems: 1000, uniqueItems: true }

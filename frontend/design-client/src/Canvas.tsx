@@ -902,6 +902,30 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const [pencilPreview, setPencilPreview] = useState<DesignNode | null>(null)
   const [shapePreview, setShapePreview] = useState<DesignNode | null>(null)
   const [heldCreation, setHeldCreation] = useState<DesignNode | null>(null)
+  const lastPrimitive = useRef<{ session: number; polygon?: Pick<DesignNode, 'id' | 'points' | 'innerRadius'>;
+    star?: Pick<DesignNode, 'id' | 'points' | 'innerRadius'> } | null>(null)
+  const rememberCreatedPrimitive = (created: DesignNode) => {
+    if (interfacePreference.getSnapshot().uiMode !== 'figma' || (created.kind !== 'polygon' && created.kind !== 'star')) return
+    const session = editor.sessionGeneration
+    if (lastPrimitive.current?.session !== session) lastPrimitive.current = { session }
+    const { id, points, innerRadius } = created
+    lastPrimitive.current[created.kind] = { id, points, innerRadius }
+  }
+  const seedForTool = (kind: ShapeCreationKind | 'graphic') => {
+    const seed = createShapeSeed(kind)
+    const remembered = lastPrimitive.current
+    if (interfacePreference.getSnapshot().uiMode === 'figma' && remembered?.session === editor.sessionGeneration &&
+        (kind === 'polygon' || kind === 'star')) {
+      const previous = remembered[kind]
+      if (previous) {
+        const node = editor.state.doc.nodes[previous.id]
+        const settings = node?.kind === kind ? node : previous
+        seed.points = settings.points
+        if (kind === 'star') seed.innerRadius = settings.innerRadius
+      }
+    }
+    return seed
+  }
   const drawingPreview = pencilPreview || shapePreview
   useEffect(() => {
     if (heldCreation && !state.doc.nodes[heldCreation.id]) setHeldCreation(null)
@@ -1378,7 +1402,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   // live document, so the user can keep working while tiles re-render.
   // Handles mount with the selection under Move/Scale. A missing display
   // snapshot must not hide them; starting a gesture still waits for that snapshot.
-  const canTransform = capturedTransform || (['select','multiselect','scale'].includes(state.tool) && !spaceHeld && !textEdit &&
+  const justCreatedPrimitive = uiMode === 'figma' && !ownedDrag && selected.length === 1 &&
+    (state.tool === 'polygon' || state.tool === 'star') &&
+    lastPrimitive.current?.session === editor.sessionGeneration &&
+    lastPrimitive.current[state.tool]?.id === selected[0].id
+  const canTransform = capturedTransform || ((['select','multiselect','scale'].includes(state.tool) || justCreatedPrimitive) && !spaceHeld && !textEdit &&
     !selectionFeedback.readOnly && state.selection.length > 0)
   const editingBlur = blurEffectIndex !== undefined
   const zoomFocusTarget = focusEffect?.zoomBlur && (zoomFocusCanvas || !editor.interactionActive)
@@ -1441,6 +1469,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }, [marqueePreview, entries, zoom, state.doc])
   const creationGhost = creationGhostNode(shapePreview, heldCreation && state.doc.nodes[heldCreation.id] ? heldCreation : null,
     id => !!state.doc.nodes[id] && presented?.document === state.doc)
+  const creationPolygonPoints = creationGhost && creationPreviewPoints(creationGhost)
   const gpuOverlay = canvasGpuOverlayOwnsUi(presented,overlay,presentationScopeMatches)
   // Angle, size and other chrome can change before the new pixels arrive.
   // Keep the acknowledged outline with its pixels while its selection and
@@ -2024,12 +2053,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           if (width > 0 && height > 0) {
             const point = keyboardPlacementPoint(displayViewRef.current, { width, height },
               geometryReadyRef.current && (editor.state.snapPixels || placeTool === 'frame' || placeTool === 'section'))
-            const placed = keyboardPlacedNode(placeTool, point, false)
+            const placed = keyboardPlacedNode(placeTool, point, false, seedForTool(placeTool))
             const pageId = editor.state.page
             const result = editor.change(`创建${placed.name}`, document => {
               insertKeyboardPlacedNode(document, pageId, placed)
             }, [placed.id])
             if (result?.status === 'committed') {
+              rememberCreatedPrimitive(placed)
               if (placed.kind === 'frame') rememberFigmaFrameSize(editor, placed.id)
               if (placed.kind === 'text') setTextEdit(placed.id)
               if (!creationToolStaysArmed(placeTool)) editor.set({ tool: 'select' })
@@ -2716,7 +2746,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       } : {}),
       ...(dragKind === 'marquee' ? { pickIndex: getDisplayedIndex() ?? undefined } : {}),
       ...(dragKind === 'create' ? {
-        creationSeed: createShapeSeed(s.tool === 'hotspot' ? 'rectangle' : s.tool as ShapeCreationKind | 'graphic'),
+        creationSeed: seedForTool(s.tool === 'hotspot' ? 'rectangle' : s.tool as ShapeCreationKind | 'graphic'),
         creationTool:s.tool, pointer: p, hotspotBounds,
         screenDistance: 0, modifiers: { shift: e.shiftKey, alt: e.altKey },
       } : {}),
@@ -3201,7 +3231,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         const local = apply(inverse(d.matrices[d.node.id]), p)
         const dx = (local.x - d.node.width / 2) / (d.node.width / 2)
         const dy = (local.y - d.node.height / 2) / (d.node.height / 2)
-        editor.preview({ [d.node.id]: { innerRadius: Math.max(0.01, Math.min(0.99, Math.hypot(dx, dy))) } })
+        editor.preview({ [d.node.id]: { innerRadius: Math.max(0, Math.min(1, Math.hypot(dx, dy))) } })
       }
       return
     }
@@ -3656,7 +3686,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           }
         }
       }, [n.id])
-      if (created.status === 'committed' && d.creationTool === 'frame') rememberFigmaFrameSize(editor, n.id)
+      if (created.status === 'committed') {
+        rememberCreatedPrimitive(n)
+        if (d.creationTool === 'frame') rememberFigmaFrameSize(editor, n.id)
+      }
       if (n.kind === 'text') setTextEdit(n.id)
       // Hold the filled ghost until this document is the presented frame.
       if (d.creationTool !== 'hotspot') setHeldCreation(n)
@@ -4926,7 +4959,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           <g data-testid="creation-fill" data-fill={creationVisiblePaint(creationGhost)} transform={matrixString(creationGhost.transform)}>
             {creationGhost.kind === 'ellipse' ? <ellipse cx={creationGhost.width / 2} cy={creationGhost.height / 2} rx={Math.max(creationGhost.width, 0.01) / 2} ry={Math.max(creationGhost.height, 0.01) / 2} fill={creationVisiblePaint(creationGhost)} stroke="#0d99ff" strokeWidth={1 / zoom} />
               : creationGhost.kind === 'line' && creationGhost.network?.vertices.length === 2 ? <line x1={creationGhost.network.vertices[0].x} y1={creationGhost.network.vertices[0].y} x2={creationGhost.network.vertices[1].x} y2={creationGhost.network.vertices[1].y} stroke={creationVisiblePaint(creationGhost)} strokeWidth={Math.max(creationGhost.strokes[0]?.width || 1, 1)} strokeLinecap="round" />
-              : creationPreviewPoints(creationGhost) ? <polygon points={creationPreviewPoints(creationGhost)!} fill={creationVisiblePaint(creationGhost)} stroke="#0d99ff" strokeWidth={1 / zoom} />
+              : creationPolygonPoints ? <polygon points={creationPolygonPoints} fill={creationVisiblePaint(creationGhost)}
+                stroke={uiMode === 'sketch' ? '#0d99ff' : undefined} strokeWidth={uiMode === 'sketch' ? 1 / zoom : undefined} />
               : <rect width={creationGhost.width} height={creationGhost.height} rx={creationGhost.radii?.[0] || 0} fill={creationVisiblePaint(creationGhost)} stroke="#0d99ff" strokeWidth={1 / zoom} />}
           </g>
         </g>}

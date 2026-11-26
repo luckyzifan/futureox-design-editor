@@ -193,6 +193,15 @@ export function networkD(g: Network, fill = false): string {
         )
         .join(' ')
 }
+export function regularShapePoints(width: number, height: number, points: number, innerRadius?: number): Point[] {
+  const vertexCount = innerRadius === undefined ? points : points * 2
+  return Array.from({ length: vertexCount }, (_, index) => {
+    const radius = index % 2 ? innerRadius ?? 1 : 1
+    const angle = index * Math.PI * 2 / vertexCount - Math.PI / 2
+    return { x: width / 2 + Math.cos(angle) * width / 2 * radius,
+      y: height / 2 + Math.sin(angle) * height / 2 * radius }
+  })
+}
 export function primitivePoints(n: DesignNode): Point[] {
   const w = n.width,
     h = n.height
@@ -202,12 +211,7 @@ export function primitivePoints(n: DesignNode): Point[] {
       y: h / 2 + (Math.sin((i * Math.PI) / 48) * h) / 2,
     }))
   if (n.kind === 'polygon' || n.kind === 'star') {
-    const count = n.points * (n.kind === 'star' ? 2 : 1)
-    return Array.from({ length: count }, (_, i) => {
-      const r = n.kind === 'star' && i % 2 ? n.innerRadius : 1
-      const a = (i * Math.PI * 2) / count - Math.PI / 2
-      return { x: w / 2 + ((Math.cos(a) * w) / 2) * r, y: h / 2 + ((Math.sin(a) * h) / 2) * r }
-    })
+    return regularShapePoints(w, h, n.points, n.kind === 'star' ? n.innerRadius : undefined)
   }
   if (n.kind === 'line')
     return [
