@@ -205,6 +205,52 @@ fn analytic_source_projection_preserves_sketch_bitmap_sampling() {
 }
 
 #[test]
+fn analytic_source_projection_preserves_sketch_cover_fill_footprint() {
+    let mut d = document();
+    d.color_management = None;
+    d.nodes.insert("a".into(), serde_json::from_value(json!({
+        "id": "a", "kind": "vector", "width": 100, "height": 100, "transform": [1,0,0,1,500,500],
+        "network": {
+            "fillRule": "nonzero",
+            "vertices": [
+                {"id":"v0","x":0,"y":0}, {"id":"v1","x":100,"y":0},
+                {"id":"v2","x":100,"y":100}, {"id":"v3","x":0,"y":100}
+            ],
+            "edges": [
+                {"id":"e0","from":"v0","to":"v1"}, {"id":"e1","from":"v1","to":"v2"},
+                {"id":"e2","from":"v2","to":"v3"}, {"id":"e3","from":"v3","to":"v0"}
+            ]
+        },
+        "fills": [{
+            "kind": "image", "fit": "cover", "color": "#ffffff",
+            "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+        }]
+    })).unwrap());
+    d.design_system = serde_json::from_value(json!({
+        "sketchContainers": {"nodeMetadata": {"a": {"bindings": {"sketchSourceCoverImageFill": "true"}}}}
+    })).unwrap();
+    let desc = descriptor(&d);
+    let mut actual = owner(d.clone(), "sketch-cover-demand");
+    let mut expected = owner(d, "sketch-cover-complete");
+    let mut runtime = Runtime::default();
+    let mut r = request(-240.25, -240.375, 0.5);
+    r["rasterProfile"] = json!("analytic");
+    let r = r.to_string();
+    let (projected, complete) = crate::capacity::with_source_storage_scope(true, || {
+        (
+            runtime.compile(&mut actual, &desc, "stage", "page", &r).unwrap(),
+            expected.compile_gpu_packet_request(&r).unwrap(),
+        )
+    });
+    assert_eq!(runtime.stats["mode"], "demand");
+    for packet in [&complete, &projected] {
+        assert_eq!(wire::scene(packet)["nodes"]["a"]["fills"][0]["sketchCoverFillFootprint"], true,
+            "an imported Sketch cover fill must carry its sampling mode in both compiler paths");
+    }
+    assert_projection_equivalent(&projected, &complete);
+}
+
+#[test]
 fn maximum_ui_zoom_compiles_at_native_dpr_without_relaxing_pixel_budgets() {
     let d=document();let desc=descriptor(&d);
     let mut actual=owner(d.clone(),"high-zoom");let mut expected=owner(d,"high-zoom-reference");

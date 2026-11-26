@@ -837,8 +837,10 @@ impl Engine {
         for node in nodes.values() {
             crate::render_cancellation::checkpoint()?;
             let mut bindings = serde_json::Map::new();
-            if crate::interop::sketch_binding(source, node, "sketchSourceBitmap") == Some("true") {
-                bindings.insert("sketchSourceBitmap".into(), serde_json::json!("true"));
+            for key in ["sketchSourceBitmap", "sketchSourceCoverImageFill"] {
+                if crate::interop::sketch_binding(source, node, key) == Some("true") {
+                    bindings.insert(key.into(), serde_json::json!("true"));
+                }
             }
             if node.backdrop_effect().is_some() && crate::interop::sketch_binding(source, node, "sketchSourceBlur").is_some() {
                 // The painter checks presence only. The raw archive payload
