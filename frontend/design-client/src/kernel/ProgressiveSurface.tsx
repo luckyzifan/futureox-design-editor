@@ -599,21 +599,28 @@ export function ProgressiveSurfaceImpl(
     grid: !!props.grid, checkerboard: !!props.checkerboard, pixelPreview: props.pixelPreview || 0,
     rasterProfile, displayCapability, hdrCompositing })
   const filteredContent = useMemo(() => pageHasFilteredContent(doc, pageId), [doc.nodes, doc.pages, pageId])
+  const dpr = useDevicePixelRatio()
   const clippedBoardSetting = import.meta.env.VITE_DESIGN_CLIPPED_BOARD_DRAG
   const poseTransportSetting = import.meta.env.VITE_DESIGN_CLIPPED_POSE_CURVE_RESOURCES
+  const defaultAt125Percent = clippedBoardSetting === undefined && view.zoom === 1.25 && dpr === 2
   const defaultClippedBoardDrag = clippedBoardSetting === undefined &&
     (poseTransportSetting === undefined || poseTransportSetting === '1') &&
     navigator.platform?.startsWith('Mac') === true && backend === 'webgpu' && rasterProfile === 'analytic' &&
-    view.zoom < 1 && !allowsReducedSampling(view.zoom) &&
+    (view.zoom < 1 || defaultAt125Percent) && !allowsReducedSampling(view.zoom) &&
     usesDesktopDisplay(renderExecutionPolicy, { renderIntent: 'canvas', rasterProfile })
-  const clippedBoardId = (clippedBoardSetting === '1' || defaultClippedBoardDrag) &&
+  const candidateBoardId = (clippedBoardSetting === '1' || defaultClippedBoardDrag) &&
     import.meta.env.VITE_DESIGN_RETAINED_TRANSLATION !== '0' && residentDisplay &&
     renderExecutionPolicy.desktopDisplay && !cameraDependent && !hdrCompositing &&
     !props.grid && !props.checkerboard && !props.pixelPreview && !props.animation &&
     props.interaction?.figmaBoardPreview && props.interaction.selection.length === 1
     ? props.interaction.selection[0] : undefined
-  const clippedBoard = useMemo(() => clippedBoardId ? isolatedSrgbBoard(doc, pageId, clippedBoardId) : undefined,
-    [doc, pageId, clippedBoardId])
+  const candidateBoard = useMemo(() => candidateBoardId ? isolatedSrgbBoard(doc, pageId, candidateBoardId) : undefined,
+    [doc, pageId, candidateBoardId])
+  // At 125%, use the exact crop handoff only if the isolated board is clipped.
+  const useClippedBoard = !defaultAt125Percent || !!candidateBoard &&
+    !!clippedBoardSource(candidateBoard, { view, width, height, dpr })
+  const clippedBoardId = useClippedBoard ? candidateBoardId : undefined
+  const clippedBoard = useClippedBoard ? candidateBoard : undefined
   const sharpNavigation = import.meta.env.VITE_DESIGN_SHARP_ZOOM === '1' && usesSharpZoom(renderExecutionPolicy,
     { resident: residentDisplay, pixelPreview: props.pixelPreview, grid: props.grid, checkerboard: props.checkerboard }) &&
     rasterProfile !== 'figmaSoftware'
@@ -668,7 +675,6 @@ export function ProgressiveSurfaceImpl(
   useLayoutEffect(() => {
     lodSnapshots.beginRevision(contract.revision)
   }, [contract.revision, lodSnapshots])
-  const dpr = useDevicePixelRatio()
   const detailLevel = view.zoom * dpr
   const requestedView = props.requestedView || view
   const backing = nativePageBacking.current
