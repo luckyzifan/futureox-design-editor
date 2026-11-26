@@ -187,7 +187,8 @@ These calls still throw or are absent: vector networks, remote variable librarie
 | `figma.createImageAsync` | partial | Fetches through the declared-domain main-script bridge and applies the same image format and 256 KiB limit as createImage. |
 | `figma.createNodeFromSvg` | partial | Imports the SVG through the editor SVG importer and returns the created root. Scripts, external URLs, and animation are rejected. |
 | `figma.createVector` | supported | Creates an actual empty editable vector on the current page. |
-| `VectorNode.vectorNetwork` | partial | Reads a local editable graph with vertex coordinates, cubic tangents and representable ordered fill loops. Retained render-only paths and network writes are unavailable. |
+| `VectorNode.vectorNetwork` | partial | Reads a local editable graph with vertex coordinates, cubic tangents and representable ordered fill loops. Use the async setter to replace the graph. |
+| `VectorNode.setVectorNetworkAsync` | partial | Replaces the editable graph with up to 2048 vertices and 2048 segments and uses editor Undo. Coordinates are local and the editor refits the layer to the actual curves. Supports straight or cubic segments, acyclic graphs and one explicit, branch-free closed fill loop with the node's paints. Multiple fill loops, implicit closed fill, per-region paints, style IDs and per-vertex decorations are rejected. |
 | `figma.viewport.zoom` | partial | Get and set camera zoom from 0.02 to 256. Setting zoom keeps the world point at the top-left, not the visual center. |
 | `figma.viewport.center` | partial | Get and set the world point at the camera origin (top-left). The host does not know the canvas size, so this is not the visual center. |
 | `figma.viewport.scrollAndZoomIntoView` | partial | Asks the editor to reveal the nodes. It does not change zoom. |
