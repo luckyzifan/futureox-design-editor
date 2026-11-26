@@ -11,6 +11,8 @@ export const alignmentCommands = {
   'align-top': { axis: 'y', mode: 'start', label: ['顶部对齐', 'Align Top'] },
   'align-vertical-center': { axis: 'y', mode: 'center', label: ['垂直居中', 'Align Vertical Center'] },
   'align-bottom': { axis: 'y', mode: 'end', label: ['底部对齐', 'Align Bottom'] },
+  'distribute-horizontal': { axis: 'x', mode: 'distribute', label: ['水平分布', 'Distribute Horizontally'] },
+  'distribute-vertical': { axis: 'y', mode: 'distribute', label: ['垂直分布', 'Distribute Vertically'] },
 } as const
 export type AlignmentCommand = keyof typeof alignmentCommands
 export const alignmentCommandIds = Object.keys(alignmentCommands) as AlignmentCommand[]
@@ -34,10 +36,11 @@ export function alignSelection(editor: Editor, axis: 'x' | 'y', mode: 'start' | 
   editor.align(axis, mode, toTopLevelFrame)
 }
 
-export function canTidySelection(editor: Editor, distribute = alignmentAvailability(editor).distribute) {
-  const { doc, page, selection } = editor.state
+export function canTidySelection(editor: Editor) {
+  const { doc, page, selection, busy } = editor.state
+  if (busy || editor.interactionActive) return false
   const parents = editor.parentMap(doc)
-  return distribute && selection.every(id => !doc.nodes[id]?.instanceOrigin &&
+  return selectionCommandAdmission(doc, selection, 'tidy', parents).ok && selection.every(id => !doc.nodes[id]?.instanceOrigin &&
     interactivePath(doc, page, id, false, parents).length > 0)
 }
 

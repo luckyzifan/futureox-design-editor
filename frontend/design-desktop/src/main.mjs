@@ -1543,6 +1543,18 @@ async function buildWindow() {
       { label: 'Object', submenu: [
         { label: 'Group', accelerator: 'CmdOrCtrl+G', click: () => sendCommand('group') },
         { label: 'Ungroup', accelerator: 'CmdOrCtrl+Shift+G', click: () => sendCommand('ungroup') },
+        ...(process.platform === 'darwin' && interfaceMode === 'sketch' ? [
+          { type: 'separator' },
+          { label: 'Align Left', accelerator: 'Control+Command+Left', click: () => sendCommand('align-left') },
+          { label: 'Align Horizontal Center', accelerator: 'Control+Command+H', click: () => sendCommand('align-horizontal-center') },
+          { label: 'Align Right', accelerator: 'Control+Command+Right', click: () => sendCommand('align-right') },
+          { label: 'Align Top', accelerator: 'Control+Command+Up', click: () => sendCommand('align-top') },
+          { label: 'Align Vertical Center', accelerator: 'Control+Command+V', click: () => sendCommand('align-vertical-center') },
+          { label: 'Align Bottom', accelerator: 'Control+Command+Down', click: () => sendCommand('align-bottom') },
+          { type: 'separator' },
+          { label: 'Distribute Horizontally', click: () => sendCommand('distribute-horizontal') },
+          { label: 'Distribute Vertically', click: () => sendCommand('distribute-vertical') },
+        ] : []),
       ] },
       { label: 'Plugins', submenu: [
         { label: 'Open plugin host…', click: () => sendCommand('plugins') },

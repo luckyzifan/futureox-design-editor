@@ -199,7 +199,8 @@ test('command subscription strips IPC event, rejects invalid payloads and remove
   const observed = []
   const event = { sender: { dangerous: 'never expose' } }
   const unsubscribe = api.onCommand((...args) => observed.push(args))
-  const commands = ['plugins', 'copy-properties','paste-properties','select-matching','select-inverse','new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection']
+  const commands = ['plugins', 'copy-properties','paste-properties','select-matching','select-inverse','new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection',
+    'align-left', 'align-horizontal-center', 'align-right', 'align-top', 'align-vertical-center', 'align-bottom', 'distribute-horizontal', 'distribute-vertical']
   for (const command of commands) {
     events.emit('design-desktop:command', event, command)
   }

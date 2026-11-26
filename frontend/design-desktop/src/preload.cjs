@@ -270,7 +270,8 @@ contextBridge.exposeInMainWorld(
       ),
     onCommand: (callback) =>
       subscribe('design-desktop:command', callback, (value) =>
-        ['settings', 'automation-settings', 'plugins', 'new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'duplicate-document', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection'].includes(value),
+        ['settings', 'automation-settings', 'plugins', 'new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'duplicate-document', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection',
+          'align-left', 'align-horizontal-center', 'align-right', 'align-top', 'align-vertical-center', 'align-bottom', 'distribute-horizontal', 'distribute-vertical'].includes(value),
       ),
   }),
 )

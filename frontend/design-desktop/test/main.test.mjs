@@ -1561,11 +1561,34 @@ for (const platform of ['darwin', 'win32', 'linux']) {
       assert.equal(exportCopy.accelerator, 'CmdOrCtrl+Alt+Shift+S')
       state.sent = []; manualSave.click(); duplicateDocument.click(); exportCopy.click()
       assert.deepEqual(state.sent, ['save', 'duplicate-document', 'saveAs'].map(command => ['design-desktop:command', command]))
+      const sketchObjects = state.menu.find(item => item.label === 'Object').submenu
+      const alignment = [
+        ['Align Left', 'Control+Command+Left', 'align-left'],
+        ['Align Horizontal Center', 'Control+Command+H', 'align-horizontal-center'],
+        ['Align Right', 'Control+Command+Right', 'align-right'],
+        ['Align Top', 'Control+Command+Up', 'align-top'],
+        ['Align Vertical Center', 'Control+Command+V', 'align-vertical-center'],
+        ['Align Bottom', 'Control+Command+Down', 'align-bottom'],
+        ['Distribute Horizontally', undefined, 'distribute-horizontal'],
+        ['Distribute Vertically', undefined, 'distribute-vertical'],
+      ]
+      state.sent = []
+      for (const [label, accelerator, command] of alignment) {
+        const item = sketchObjects.find(item => item.label === label)
+        if (platform === 'darwin') {
+          assert.ok(item)
+          assert.equal(item.accelerator, accelerator)
+          item.click()
+          assert.deepEqual(state.sent.pop(), ['design-desktop:command', command])
+        } else assert.equal(item, undefined)
+      }
       const sketchMenu = state.menu
       assert.equal((await state.invoke('set-interface-mode', 'other')).status, 'error')
       assert.equal(state.menu, sketchMenu)
       assert.deepEqual(await state.invoke('set-interface-mode', 'figma'), { status: 'ok' })
       const figmaFile = state.menu.find(item => item.label === 'File').submenu
+      const figmaObjects = state.menu.find(item => item.label === 'Object').submenu
+      assert.ok(alignment.every(([label]) => !figmaObjects.some(item => item.label === label)))
       assert.equal(figmaFile.some(item => item.label === 'Save' || item.label === 'Duplicate document'), false)
       assert.equal(figmaFile.find(item => item.label === 'Export copy…').accelerator, 'CmdOrCtrl+Shift+S')
       assert.equal(state.requests.length, beforeRequests, 'Locale and menu dispatch do not create sidecar document mutations')
