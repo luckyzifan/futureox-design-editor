@@ -80,8 +80,8 @@ export function AlignmentControls({ editor, compact = false }: { editor: Editor;
     }}><Icon size={16}/>
       {showLabels && <span className="property-control-caption" aria-hidden="true">{tr(title)}</span>}</button>)
   return <div className={`alignment-controls${compact ? ' compact-alignment' : ''}`} role="group" data-property-labels={showLabels || undefined} aria-label={tr(compact ? "对齐" : "对齐与翻转")}>
-    {buttons(compact ? positions.slice(0, 6) : positions)}
-    {compact ? <details className="alignment-more" onKeyDown={event => {
+    {buttons(compact && !sketch ? positions.slice(0, 6) : positions)}
+    {compact && !sketch && <details className="alignment-more" onKeyDown={event => {
       if (event.key !== 'Escape' || !event.currentTarget.open) return
       clearPreview?.()
       event.stopPropagation(); event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus()
@@ -89,7 +89,8 @@ export function AlignmentControls({ editor, compact = false }: { editor: Editor;
       <summary aria-label={tr("更多对齐选项")} title={tr("更多对齐选项")}><MoreHorizontal size={16}/>
         {showLabels && <span className="property-control-caption" aria-hidden="true">{tr("更多对齐选项")}</span>}</summary>
       <div>{buttons(positions.slice(6))}</div>
-    </details> : <FlipControls editor={editor}/>}
+    </details>}
+    {!compact && <FlipControls editor={editor}/>}
     {compact && sketch && <button type="button" title={tidyLabel} aria-label={tidyLabel}
       disabled={!canTidySelection(editor)} onPointerEnter={() => previewTidy(editor)}
       onPointerLeave={clearPreview} onBlur={clearPreview}
