@@ -382,7 +382,26 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
           editor.createComponent()
         break
       case 'detach-instance': if (editor.state.selection.length === 1 && editor.state.doc.nodes[editor.state.selection[0]]?.instance) editor.detachInstance(); break
-      case 'mask-selection': editor.group(true); break
+      case 'mask-selection': {
+        const { selection } = editor.state
+        if (interfacePreference.getSnapshot().uiMode !== 'figma' || selection.length !== 1) {
+          editor.group(true)
+          break
+        }
+        const target = before.nodes[selection[0]]
+        if (!target || target.instanceOrigin || (!target.visible && !target.mask) || lockedSelectionIds(editor).length) break
+        editor.updateProperties([target.id], (node, doc) => {
+          node.mask = !node.mask
+          if (node.mask) {
+            node.maskType ??= 'alpha'
+            node.maskChain = 'start'
+            if (doc.schemaVersion < 4) doc.schemaVersion = 4
+          } else if (node.maskChain === 'start') {
+            delete node.maskChain
+          }
+        }, target.mask ? '移除蒙版' : '用作蒙版')
+        break
+      }
       case 'convert-section': editor.update(editor.topSelection(), n => {
         if (n.kind !== 'frame' || n.instance || n.component || n.componentSet) return
         n.kind = 'section'

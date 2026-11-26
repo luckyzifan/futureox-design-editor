@@ -3045,36 +3045,66 @@ pub(super) fn fig_collection_modes(record: &Value) -> FigCollectionModes {
     }
 }
 
-/// Assemble a kernel [`Document`] from a decoded kiwi canvas tree.
-fn normalize_mask_suffixes(doc:&mut Document)->Result<(),Error>{
-    let parents:Vec<_>=doc.nodes.keys().map(|id|(id.clone(),false))
-        .chain(doc.pages.iter().map(|p|(p.id.clone(),true))).collect();
-    for (id,page) in parents{
-        let children=if page{doc.pages.iter().find(|p|p.id==id).unwrap().children.clone()}
-            else{doc.nodes[&id].children.clone()};
-        let flags:Vec<u8>=children.iter().map(|id|u8::from(doc.nodes.get(id).is_some_and(|n|n.mask&&n.visible))).collect();
-        let indices=crate::fig_geometry::mask_suffixes(&flags).map_err(Error::Malformed)?;
-        if indices.is_empty()||!page&&indices.len()==1&&indices[0]==0{continue;}
-        if !page&&(doc.nodes[&id].boolean_operation.is_some()||doc.nodes[&id].layout.as_ref().is_some_and(|l|l.mode!=Flow::None)){
-            let parent=doc.nodes.get_mut(&id).unwrap();
-            let mut notes:Vec<String>=parent.bindings.get("figUntranslated").and_then(|s|serde_json::from_str(s).ok()).unwrap_or_default();
+fn normalize_mask_runs(doc: &mut Document) -> Result<(), Error> {
+    let parents: Vec<_> = doc.nodes.keys().map(|id| (id.clone(), false))
+        .chain(doc.pages.iter().map(|page| (page.id.clone(), true))).collect();
+    for (id, page) in parents {
+        let children = if page {
+            doc.pages.iter().find(|page| page.id == id).unwrap().children.clone()
+        } else {
+            doc.nodes[&id].children.clone()
+        };
+        let flags: Vec<u8> = children.iter()
+            .map(|id| u8::from(doc.nodes.get(id).is_some_and(|node| node.mask && node.visible)))
+            .collect();
+        let indices = crate::fig_geometry::mask_suffixes(&flags).map_err(Error::Malformed)?;
+        let Some(first) = indices.last().map(|index| *index as usize) else { continue };
+        if !page && indices.len() == 1 && first == 0 {
+            continue;
+        }
+        if !page && (doc.nodes[&id].boolean_operation.is_some()
+            || doc.nodes[&id].layout.as_ref().is_some_and(|layout| layout.mode != Flow::None)) {
+            let parent = doc.nodes.get_mut(&id).unwrap();
+            let mut notes: Vec<String> = parent.bindings.get("figUntranslated")
+                .and_then(|notes| serde_json::from_str(notes).ok()).unwrap_or_default();
             notes.push("mask suffix in automatic layout/boolean requires source semantics".into());
-            parent.bindings.insert("figUntranslated".into(),serde_json::to_string(&notes).unwrap());continue;
+            parent.bindings.insert("figUntranslated".into(), serde_json::to_string(&notes).unwrap());
+            continue;
         }
-        let (width,height)=if page{(1.,1.)}else{(doc.nodes[&id].width,doc.nodes[&id].height)};
-        let mut children=children;
-        for at in indices{
-            let at=at as usize;if !page&&at==0{continue;}
-            let base=format!("fig-mask-scope-{}",children[at]);let mut key=base.clone();let mut nonce=0;
-            while doc.nodes.contains_key(&key)||doc.pages.iter().any(|p|p.id==key){nonce+=1;key=format!("{base}-{nonce}");}
-            let mut group=crate::facet::sample_node(&key,"group");
-            group.name="Mask group".into();group.width=width;group.height=height;
-            group.transform=Transform::default();group.fills.clear();group.strokes.clear();group.effects.clear();
-            group.clip=false;group.blend="pass-through".into();group.children=children.split_off(at);
-            children.push(key.clone());doc.nodes.insert(key,group);
+        let (width, height) = if page { (1., 1.) } else { (doc.nodes[&id].width, doc.nodes[&id].height) };
+        let length = children.len();
+        let mut source = children.into_iter();
+        let mut scoped: Vec<_> = source.by_ref().take(first).collect();
+        let mut masks = indices.into_iter().rev().map(|index| index as usize).peekable();
+        while let Some(start) = masks.next() {
+            let end = masks.peek().copied().unwrap_or(length);
+            let run: Vec<_> = source.by_ref().take(end - start).collect();
+            let base = format!("fig-mask-scope-{}", run[0]);
+            let mut key = base.clone();
+            let mut nonce = 0;
+            while doc.nodes.contains_key(&key) || doc.pages.iter().any(|page| page.id == key) {
+                nonce += 1;
+                key = format!("{base}-{nonce}");
+            }
+            let mut group = crate::facet::sample_node(&key, "group");
+            group.name = "Mask group".into();
+            group.width = width;
+            group.height = height;
+            group.transform = Transform::default();
+            group.fills.clear();
+            group.strokes.clear();
+            group.effects.clear();
+            group.clip = false;
+            group.blend = "pass-through".into();
+            group.children = run;
+            scoped.push(key.clone());
+            doc.nodes.insert(key, group);
         }
-        if page{doc.pages.iter_mut().find(|p|p.id==id).unwrap().children=children;}
-        else{doc.nodes.get_mut(&id).unwrap().children=children;}
+        if page {
+            doc.pages.iter_mut().find(|page| page.id == id).unwrap().children = scoped;
+        } else {
+            doc.nodes.get_mut(&id).unwrap().children = scoped;
+        }
     }
     Ok(())
 }
@@ -3363,7 +3393,7 @@ pub fn document_from_canvas(
     let mut document_notes = Vec::new();
     document::import_styles(&mut doc, &records, &importer, &mut document_notes)?;
     components::import(&mut doc, &records, &importer, &mut document_notes)?;
-    normalize_mask_suffixes(&mut doc)?;
+    normalize_mask_runs(&mut doc)?;
     document::apply_component_sets(&mut doc, &records, &mut document_notes)?;
     // honest serialization version: bindings/booleans/text styles need 4,
     // stroke markers 8, slices 10 (scene.rs validate gates)
@@ -4897,6 +4927,63 @@ mod tests {
                 let offset = (10 * 200 + 40) * 4;
                 let expected = if first_on_top { [0, 0, 255, 255] } else { [255, 0, 0, 255] };
                 assert_eq!(&pixels[offset..offset+4], &expected);
+            }
+        }
+
+        #[test]
+        fn native_fig_alpha_runs_stop_at_next_visible_mask() {
+            for (page, hide_second) in [(true, false), (false, false), (false, true)] {
+                let mut changes = canvas_only();
+                let parent = if page { guid(0, 1) } else { guid(1, 2) };
+                if !page {
+                    let mut frame = base_change("FRAME", 1, 2);
+                    frame["size"] = json!({"x": 28, "y": 16});
+                    frame["fillPaints"] = json!([]);
+                    frame["frameMaskDisabled"] = json!(true);
+                    changes.push(frame);
+                }
+                let rectangle = |id, position, color: [u8; 3]| {
+                    let mut layer = base_change("RECTANGLE", 1, id);
+                    layer["parentIndex"] = json!({"guid": parent, "position": position});
+                    layer["size"] = json!({"x": 28, "y": 16});
+                    let [r, g, b] = color;
+                    layer["fillPaints"] = json!([{"type":"SOLID", "color":{"r":r,"g":g,"b":b,"a":1}}]);
+                    layer
+                };
+                let mask = |id, position, x, visible| {
+                    let mut layer = rectangle(id, position, [1, 1, 1]);
+                    layer["size"] = json!({"x": 8, "y": 8});
+                    layer["transform"] = json!({"m00":1,"m01":0,"m02":x,"m10":0,"m11":1,"m12":4});
+                    layer["mask"] = json!(true);
+                    layer["maskType"] = json!("ALPHA");
+                    layer["visible"] = json!(visible);
+                    layer
+                };
+                changes.extend([
+                    rectangle(3, "a", [1, 0, 0]),
+                    mask(4, "b", 8, true),
+                    rectangle(5, "c", [0, 1, 0]),
+                    mask(6, "d", 16, !hide_second),
+                    rectangle(7, "e", [0, 0, 1]),
+                ]);
+                let doc = doc_with(changes).unwrap();
+                let mut engine = crate::Engine::new();
+                engine.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
+                let options = engine.parse_options(json!({
+                    "pageId": doc.pages[0].id, "width": 28, "height": 16, "transparent": true,
+                    "view": {"x":0,"y":0,"zoom":1}, "rasterProfile": "figma",
+                })).unwrap();
+                let pixels = engine.render(&options).unwrap();
+                let sample = |x: usize| {
+                    let at = (8 * 28 + x) * 4;
+                    &pixels[at..at + 4]
+                };
+                let red = [255, 0, 0, 255];
+                let green = [0, 255, 0, 255];
+                let blue = [0, 0, 255, 255];
+                assert_eq!(sample(2), &red);
+                assert_eq!(sample(12), if hide_second { &blue } else { &green });
+                assert_eq!(sample(20), if hide_second { &red } else { &blue });
             }
         }
 

@@ -10,6 +10,7 @@ import type { UiMode } from './interface-preference'
 import { DraftInput } from './DraftInput'
 import type { Editor } from './engine'
 import {
+  type DesignDocument,
   type DesignNode,
   type AutoLayout,
   type Sizing,
@@ -34,6 +35,24 @@ const alignments = [
 
 function isUnstackedFrame(node: DesignNode | undefined): node is DesignNode {
   return node?.kind === 'frame' && !node.graphic && (node.layout?.mode ?? 'none') === 'none'
+}
+
+function readSketchSmartLayout(document: DesignDocument, node: DesignNode) {
+  const metadata = document.designSystem?.sketchContainers?.nodeMetadata as
+    Record<string, { bindings?: Record<string, unknown> }> | undefined
+  const raw = node.bindings?.sketchInferredGroupLayout ?? metadata?.[node.id]?.bindings?.sketchInferredGroupLayout
+  if (typeof raw !== 'string') return
+  try {
+    const fields: { _class?: unknown; axis?: unknown; layoutAnchor?: unknown } | null = JSON.parse(raw)
+    if (fields?._class !== 'MSImmutableInferredGroupLayout' ||
+        (fields.axis !== 0 && fields.axis !== 1) ||
+        (fields.layoutAnchor !== 0 && fields.layoutAnchor !== 1 && fields.layoutAnchor !== 2)) return
+    const horizontal = fields.axis === 0
+    const anchors = horizontal ? ['左侧', '居中', '右侧'] : ['顶部', '居中', '底部']
+    return { direction: horizontal ? '横向' : '纵向', anchor: anchors[fields.layoutAnchor] }
+  } catch {
+    return undefined
+  }
 }
 
 export function LayoutPanel({
@@ -63,6 +82,8 @@ export function LayoutPanel({
     layout = n.layout || defaultLayout(),
     active = !!n.layout && n.layout.mode !== 'none',
     sizing = { ...defaultSizing(), ...n.sizing }
+  const legacySmartLayout = uiMode === 'sketch' && ids.length === 1 && n.layout == null && !n.graphic
+    ? readSketchSmartLayout(editor.state.doc, n) : undefined
   const existingGridInSketch = !allowsGrid && layout.mode === 'grid'
   const frameRelativeItem = uiMode === 'sketch' && isUnstackedFrame(parent)
   const relativeItem = frameRelativeItem || (!sizing.absolute &&
@@ -209,7 +230,7 @@ export function LayoutPanel({
   const Heading = embedded ? 'h4' : 'h3'
   return (
     <Tag className="layout-panel">
-      {!compact && !n.graphic && <Heading>{tr("自动布局")}{' '}
+      {!compact && !n.graphic && <Heading>{tr(legacySmartLayout ? "智能布局（旧版）" : "自动布局")}{' '}
         {!active && (
           <button title={tr("添加自动布局 Shift+A")} onClick={() => setLayoutMode()}>
             ＋
@@ -224,9 +245,12 @@ export function LayoutPanel({
       {!compact && suggestions}
       {suggestionError && <p role="alert">{layoutSuggestionError(suggestionError, locale)}</p>}
       {compact && <div className="layout-field-label">{tr('流向')}</div>}
+      {legacySmartLayout && <div className="layout-field-label" data-testid="sketch-legacy-smart-layout">
+        {tr(legacySmartLayout.direction)} · {tr("布局锚点")} {tr(legacySmartLayout.anchor)}
+      </div>}
       {container(n) && <div className="layout-flow" role="radiogroup" aria-label={tr("布局方向")}>
         {([['none','自由布局',LayoutDashboard],['vertical','纵向布局',Rows3],['horizontal','横向布局',Columns3],['grid','网格布局',Grid2X2]] as const)
-          .filter(([mode]) => allowsGrid || mode !== 'grid').map(([mode,label,Icon]) =>
+          .filter(([mode]) => (allowsGrid || mode !== 'grid') && (!legacySmartLayout || mode !== 'none')).map(([mode,label,Icon]) =>
           <button key={mode} type="button" role="radio" aria-label={tr(label)} title={tr(label)} aria-checked={(active ? layout.mode : 'none') === mode}
             onClick={() => { if ((active ? layout.mode : 'none') !== mode) setLayoutMode(mode) }}><Icon size={16} /></button>)}
       </div>}

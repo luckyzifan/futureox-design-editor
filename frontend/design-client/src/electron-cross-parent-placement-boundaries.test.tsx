@@ -15,6 +15,7 @@ import { PendingEditContext } from './pending-edit-context'
 import { interfacePreference } from './interface-preference'
 import { nudgePreference } from './nudge-preference'
 import { encodeDocumentBinary, decodeDocumentBinary } from './kernel/binfmt'
+import { VectorEngine } from './generated/design-kernel/design_kernel'
 
 // React must detect DOM input event support before its module is evaluated.
 // Match the existing real-text integration harness without suppressing errors.
@@ -245,6 +246,52 @@ test('placement ownership: same-ID session replacement cannot be polluted by old
  expect(editor.state.doc).toBe(accepted);expect(editor.state.doc.name).toBe('Replacement owner');expect(editor.canUndo).toBe(false)
 })
 async function flushCapturedFrame(){await act(async()=>{const batch=[...frames.values()];frames.clear();for(const callback of batch)callback(performance.now())})}
+function fixedPixels() {
+  const kernel = new VectorEngine()
+  try {
+    kernel.load_document(JSON.stringify(editor.state.doc))
+    const width = 720
+    const rgba = kernel.render_rgba(JSON.stringify({ pageId: editor.state.page, width, height: 340,
+      view: { x: 0, y: 0, zoom: 1 }, transparent: true, grid: false, rasterProfile: 'figma' }))
+    return [525, 630].map(x => Array.from(rgba.slice(4 * (225 * width + x), 4 * (225 * width + x + 1))))
+  } finally { kernel.free() }
+}
+
+test.each([
+  { uiMode: 'figma', clip: true },
+  { uiMode: 'figma', clip: false },
+  { uiMode: 'sketch', clip: true },
+] as const)('$uiMode normal oversized canvas drop preserves held and terminal placement with clip=$clip', async ({ uiMode, clip }) => {
+  interfacePreference.set({ uiMode })
+  const target = node('frame', 440, 150, 160, 100)
+  target.clip = clip
+  target.fills = []
+  const moving = node('rectangle', 40, 65, 280, 160)
+  moving.fills = [paint('#0000ff')]
+  await render([target, moving])
+  await act(async () => editor.select([moving.id]))
+  const before = editor.state.doc, page = editor.state.page
+  const baselineRevision = editor.state.version
+  const { to } = await stagedDrag(moving.id, 345, 55)
+  await flushCapturedFrame()
+  const expectedParent = uiMode === 'figma' ? target.id : page
+  const blue = [0, 0, 255, 255], blankPixel = [0, 0, 0, 0]
+  const expectedPixels = [blue, uiMode === 'figma' && clip ? blankPixel : blue]
+  expect(parent(moving.id), 'held drag').toBe(expectedParent)
+  expect(editor.state.version).toBe(baselineRevision)
+  if (uiMode === 'figma') {
+    delta(before, moving.id, 345, 55)
+    expect(fixedPixels()).toEqual(expectedPixels)
+  }
+  await act(async () => pointer('pointerup', to[0], to[1]))
+  expect(parent(moving.id), 'terminal drop').toBe(expectedParent)
+  expect(editor.state.version).toBe(baselineRevision + 1)
+  expect(editor.state.doc.nodes[target.id].clip).toBe(clip)
+  delta(before, moving.id, 345, 55)
+  expect(fixedPixels()).toEqual(expectedPixels)
+  await oneHistory(before)
+})
+
 test('placement return: leave original frames with visible reparent then return restores original parent map before commit',async()=>{
  const {p,q,a,b}=await freeFixture(),before=editor.state.doc,{from,to}=await stagedDrag(a.id,0,400)
  await flushCapturedFrame()

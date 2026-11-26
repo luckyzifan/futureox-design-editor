@@ -3441,7 +3441,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       actionTrace.sample(d.actionToken, { proposalChanged: compareActionGeometry(d.actionBefore, d.actionProposal) === 2 })
     }
     const placement = d.kind==='move'&&!d.cropFrame?{ids:d.ids,point:d.movePlacementPoint ?? p,
-      force:!d.moveFromAnywhere&&deepSelectChord(e,shortcutPlatform()),preserveParent:space.current}:undefined
+      force:!d.moveFromAnywhere&&deepSelectChord(e,shortcutPlatform()),preserveParent:space.current,
+      allowOversize:uiMode==='figma'&&!d.duplicating}:undefined
     const movePreview=placement?editor.canvasMovePreview(patches,placement,uiMode==='figma'):undefined
     const retainsParents = !placement || movePreview!.retainsParents
     // Independent complete boards can follow the pointer on the compositor.
@@ -3754,7 +3755,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const releaseWorld = screenToWorld(d.view, release)
       if (d.kind === 'move' && d.duplicating) editor.finishMoveDuplication(releaseWorld)
       const notice = d.kind === 'move' ? editor.finishCanvasMove(d.movePlacementPoint ?? releaseWorld,
-        !d.moveFromAnywhere && deepSelectChord(e, shortcutPlatform()), shortcutPlatform() === 'mac' && e.ctrlKey, space.current) : undefined
+        !d.moveFromAnywhere && deepSelectChord(e, shortcutPlatform()), shortcutPlatform() === 'mac' && e.ctrlKey, space.current,
+        uiMode === 'figma' && !d.duplicating) : undefined
       const commitResult = editor.commit()
       gestureFollow.current?.waitFor(editor.state.doc)
       if (uiMode === 'sketch' && d.parameter === 'gradientStop' && d.node && d.materialFill !== undefined && d.materialStop !== undefined) {

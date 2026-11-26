@@ -1169,24 +1169,32 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
   }
   if (!doc.pages.length) throw new Error('FIG 文件没有可导入页面')
   const instanceTextLayouts = importFigComponents(doc, records, ids, toPaint, strokesOf, warnings, receipts, effectsOf)
-  // The shared model's direct mask owns its whole container. Native FIG masks
-  // only following siblings. Explicit identity groups keep all original node
-  // IDs, local coordinates, order and component override keys intact.
-  for(const parent of [...Object.values(doc.nodes),...doc.pages]){
-    const indices=fig_mask_suffixes(Uint8Array.from(parent.children,id=>Number(!!doc.nodes[id]?.mask&&doc.nodes[id].visible)))
-    const page=!('kind' in parent)
-    if(!indices.length||!page&&indices.length===1&&indices[0]===0)continue
-    if('kind' in parent&&(parent.booleanOperation||parent.layout&&parent.layout.mode!=='none')){
-      warnings.add('FIG 自动布局或布尔结构中的非首位或多重蒙版尚需核对，原始顺序已保留');continue
+  // A FIG mask owns its following siblings through the next visible mask.
+  // Identity groups preserve the imported IDs and local coordinates.
+  for (const parent of [...Object.values(doc.nodes), ...doc.pages]) {
+    const children = parent.children
+    const masks = fig_mask_suffixes(Uint8Array.from(children, id => Number(!!doc.nodes[id]?.mask && doc.nodes[id].visible)))
+    const page = !('kind' in parent)
+    if (!masks.length || !page && masks.length === 1 && masks[0] === 0) continue
+    if ('kind' in parent && (parent.booleanOperation || parent.layout && parent.layout.mode !== 'none')) {
+      warnings.add('FIG 自动布局或布尔结构中的非首位或多重蒙版尚需核对，原始顺序已保留')
+      continue
     }
-    for(const at of indices){
-      if(!page&&at===0)continue
-      const group=node('group',0,0,'width' in parent?parent.width:1,'height' in parent?parent.height:1)
-      group.name='Mask group';group.blend='pass-through';group.fills=[];group.strokes=[];group.effects=[];group.clip=false
-      group.children=parent.children.slice(at)
-      doc.nodes[group.id]=group
-      parent.children=[...parent.children.slice(0,at),group.id]
+    const scopedChildren = children.slice(0, masks[masks.length - 1])
+    for (let index = masks.length - 1; index >= 0; index--) {
+      const end = masks[index - 1] ?? children.length
+      const group = node('group', 0, 0, 'width' in parent ? parent.width : 1, 'height' in parent ? parent.height : 1)
+      group.name = 'Mask group'
+      group.blend = 'pass-through'
+      group.fills = []
+      group.strokes = []
+      group.effects = []
+      group.clip = false
+      group.children = children.slice(masks[index], end)
+      doc.nodes[group.id] = group
+      scopedChildren.push(group.id)
     }
+    parent.children = scopedChildren
   }
   assertFigStructure(doc)
   importFigPrototype(records, ids, doc, receipts)
