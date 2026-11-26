@@ -137,11 +137,11 @@ fn partial_opacity_linear_gradient_matches_frozen_chrome_png() {
                 .all(|(_, pixels, max)| *pixels == 0 && *max == 0),
         "linear-gradient {linear:?}"
     );
-    // False export halves on five layer-blur rows move closer to the frozen
-    // PNGs. Every other strict row, including glass, shadow, and backdrop,
-    // stays put, and both linear gradients stay exact.
+    // Saturated layer-blur dither in #1255 changes both manifest aliases of
+    // BlurThreshold-0p125-4x from 234 to 74 differing pixels at max error 1.
+    // All other strict rows retain their previous counts.
     assert_eq!(
-        others_sha, "e8fec43408f0835085f722feecca363367fbd2345022059f6e7c8b18bb107724",
+        others_sha, "a997515ce6ca82db295f2a1f90f571dcb37446b0da21b0967c645a5414e0eaff",
         "other frozen figma references moved"
     );
 }
