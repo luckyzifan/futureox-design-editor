@@ -68,10 +68,11 @@ import { isDisplayBudgetError } from './gpu/display-budget'
 import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../document-patch'
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
-import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame, stickyPresentedAffines, type RenderedRootPose } from './gpu/resident-affine-pose'
+import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame, stickyPresentedAffines, residentContentAffines, type RenderedRootPose } from './gpu/resident-affine-pose'
 import { ClippedPhaseReplay } from './gpu/clipped-phase-replay'
 import { expandBitmapRotationPatch, interactionPatchTransforms, isBitmapPoseLayer, isBitmapTranslationPatch, isInnerShadowFill, isInnerShadowPosePatch, isProgressiveBlurEditPatch } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
+import { MotionAffineQuietWindow, motionAffineEligible } from './motion-affine-preview'
 import { tilePrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
 import { compiledFilterColumnSupport, FilterTileOrder, validTileFillPriorities } from './filter-tile-order'
 import { GPU_PRIORITY_BURST, RenderWorkQueue } from './render-work-queue'
@@ -410,15 +411,41 @@ function yieldPreviewTask() {
   })
 }
 const queue = new RenderWorkQueue()
-type ResidentPose={terminal?:boolean;committed?:boolean;slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
+type ResidentPose={terminal?:boolean;committed?:boolean;forceExact?:boolean;slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
 type CapturedClippedRelease = {
   slot:number; texture:object; driver:Driver; frame:NonNullable<typeof displayFrame>;
   document:DesignDocument; contract:string;
 }
 type PoseSession={pageId:string;capturedRelease?:CapturedClippedRelease;phasePixels?:ClippedPhaseReplay;phaseStarted?:boolean;phaseInputClosed?:boolean;phaseAnchorsDisabled?:boolean;phaseCommit?:{ transform: Matrix; texture: object };renderedRoot?:RenderedRootPose;canvasOwner?:object;baseFill?:{x:number;y:number;width:number;height:number};softEffectPreview?: boolean;bitmapPreviewOnly?:boolean;reuse?:ResidentPoseReuse;nativePosePending?:boolean;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
   origins:ReadonlyMap<string,readonly[number,number]>;
-  patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;clippedBoard?:boolean;window:import('./gpu/types').Rect;options:string;terminalOptions?:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
+  patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;clippedBoard?:boolean;window:import('./gpu/types').Rect;options:string;terminalOptions?:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number};
+  /** Transforms of the last motion-affine-preview pose. While set, incoming
+   * main-thread display frames are reprojected with the same content affine so
+   * a React repaint cannot snap the cached texture back to its base pose. */
+  affinePreview?:Record<string,Matrix>}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
+/** Motion-time affine content preview (default off). During a rotate/scale
+ * gesture the cached native pose texture is reprojection-transformed on the GPU
+ * instead of re-rasterized per pointer sample; a quiet window then renders the
+ * exact frame. The terminal/release pose always renders exact immediately. */
+const MOTION_AFFINE_PREVIEW = import.meta.env.VITE_DESIGN_MOTION_AFFINE_PREVIEW === '1'
+const MOTION_AFFINE_QUIET_MS = 80
+const affinePreviewQuiet = new MotionAffineQuietWindow<PoseSession, ResidentPose>(MOTION_AFFINE_QUIET_MS,
+  (session, pose) => {
+    if (poseSession !== session || session.stopped || session.controller.signal.aborted) return
+    // Re-queue the latest previewed pose forcing the exact native render. A
+    // newer pending pose (if any) supersedes it through the normal queue; a
+    // terminal pending pose already owns the exact path and must not be replaced.
+    if (!pendingPose || pendingPose.slot !== session.slot ||
+        (!pendingPose.terminal && (pendingPose.input?.sequence ?? 0) <= (pose.input?.sequence ?? 0))) {
+      pendingPose = { ...pose, forceExact: true }
+    }
+    schedulePose()
+  })
+function affinePreviewEligible(session: PoseSession, pose: ResidentPose, coversDisplay: boolean) {
+  return motionAffineEligible({ enabled: MOTION_AFFINE_PREVIEW, terminal: pose.terminal, forceExact: pose.forceExact,
+    coversDisplay, transforms: pose.transforms, session, scene: session.scene })
+}
 type BitmapCommit = {
   id: number; transforms: Record<string, Matrix>; view: KernelOptions['view']; width: number; height: number
   source: SynchronizedAuthoredProof; baseRevision: number; wire: string; patch: DocumentPatch
@@ -536,6 +563,7 @@ function displayedOverlayAffines(frame:import('./gpu/resident-presenter').Reside
 }
 function rebasePose(pose:ResidentPose,expandCapture=false){
   if (bitmapRelease?.session.slot === pose.slot) bitmapRelease = undefined
+  if (affinePreviewQuiet.session?.slot === pose.slot) affinePreviewQuiet.cancel()
   if(poseSession?.slot===pose.slot){
     poseSession.stopped=true;poseSession.controller.abort()
     if(gpu)frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene,poseSession.renderedRoot)
@@ -545,11 +573,13 @@ function rebasePose(pose:ResidentPose,expandCapture=false){
 }
 function presentSampledPose(session:PoseSession,pose:ResidentPose,bounds:{x:number;y:number;width:number;height:number}) {
   if (bitmapRelease?.session === session && pose.input.sequence >= bitmapRelease.input.sequence) bitmapRelease = undefined
+  // An exact native pose replaces the cached texture; retire the motion preview.
+  session.affinePreview=undefined
   session.input=pose.input;session.bounds=bounds
   if(displayFrame&&displayFrame.items.some(item=>item.active&&item.tile.gpuTile===session.slot)){
     const view=displayFrame.view
-    displayFrame={...displayFrame,interaction:true,input:pose.input,items:displayFrame.items.map(item=>item.tile.gpuTile===session.slot
-      ?{...item,clip:{left:bounds.x*view.zoom+view.x,top:bounds.y*view.zoom+view.y,width:bounds.width*view.zoom,height:bounds.height*view.zoom}}:item)}
+    displayFrame={...displayFrame,interaction:true,affinePreview:undefined,input:pose.input,items:displayFrame.items.map(item=>item.tile.gpuTile===session.slot
+      ?{...item,affine:undefined,clip:{left:bounds.x*view.zoom+view.x,top:bounds.y*view.zoom+view.y,width:bounds.width*view.zoom,height:bounds.height*view.zoom}}:item)}
     displayCoverageVersion={};displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
     const commit = pendingBitmapCommit, driver = gpu?.driver
     const { width, height, dpr } = displayFrame
@@ -621,6 +651,48 @@ function retireCapturedClippedRelease(session:PoseSession) {
   if(capture)capture.driver.releasePresented?.([capture.slot])
 }
 
+/** Reproject a display frame's cached resident slot onto the session's last
+ * motion-preview pose. Chrome is authored at the current pose, so the overlay
+ * affine correction is cleared. Returns undefined when no affine applies. */
+function affinePreviewFrame(frame: import('./gpu/resident-presenter').ResidentFrame, session: PoseSession) {
+  const transforms = session.affinePreview
+  if (!transforms || !frame.interaction || session.stopped) return undefined
+  if (!frame.items.some(item => item.active && item.tile.gpuTile === session.slot)) return undefined
+  const content = residentContentAffines(session.scene, transforms)
+  const ids = Object.keys(transforms)
+  if (ids.length !== 1 || !content[ids[0]]) return undefined
+  const affine = content[ids[0]]
+  const bounds = session.bounds ?? { x: (session.window.x - session.scene.view.x) / session.scene.view.zoom,
+    y: (session.window.y - session.scene.view.y) / session.scene.view.zoom,
+    width: session.window.w / session.scene.view.zoom, height: session.window.h / session.scene.view.zoom }
+  const view = frame.view
+  return { ...frame, affinePreview: true, overlayAffines: undefined, overlayPoseSlot: undefined,
+    items: frame.items.map(item => item.tile.gpuTile === session.slot
+      ? { ...item, affine, clip: { left: bounds.x * view.zoom + view.x, top: bounds.y * view.zoom + view.y,
+          width: bounds.width * view.zoom, height: bounds.height * view.zoom } }
+      : item) }
+}
+/** Present the cached native pose texture with a GPU content affine instead of
+ * re-rasterizing. The compiled session scene stays at the base pose; the affine
+ * maps it onto the authored current pose. This is a transient preview frame
+ * (affinePreview), never an exact/terminal certificate. */
+function presentAffinePreview(session: PoseSession, pose: ResidentPose) {
+  const driver = gpu?.driver
+  if (!driver?.presentFrame || !displayFrame || session.stopped || session.controller.signal.aborted) return false
+  session.affinePreview = pose.transforms
+  const next = affinePreviewFrame(displayFrame, session)
+  if (!next) { session.affinePreview = undefined; return false }
+  session.input = pose.input
+  displayFrame = { ...next, interaction: true, input: pose.input }
+  displayCoverageVersion = {}
+  heldBitmapViewport = undefined
+  if (!obsoleteBitmapFrame(displayFrame)) driver.presentFrame(displayFrame)
+  reportPoseSample(session, { residentSample: { slot: session.slot, ...pose.input, bounds: session.bounds,
+    total: 0, nativePose: true, affinePreview: true, compileMs: 0, graphMs: 0, finishMs: 0, posePrepareMs: 0,
+    translationMs: 0, sceneUpdateBytes: 0, geometryUploadBytes: 0, fieldUploadBytes: 0,
+    signature: residentFrameSignature(displayFrame) } })
+  return true
+}
 // While an old pose prepares or uses the GPU, the release input can revoke
 // obsolete preparation or use the idle CPU lane to prepare one fresh packet.
 let prioritizeTerminalPose: ((next: ResidentPose) => void) | undefined
@@ -764,6 +836,18 @@ function schedulePose(){
           right=Math.min(right,displayRight);bottom=Math.min(bottom,displayBottom)
         }
         if(right<=x||bottom<=y){rebasePose(pose);break}
+        // Motion-time affine content preview: reproject the cached native pose
+        // on the GPU instead of recompiling/re-rasterizing per pointer sample.
+        // The quiet window and the terminal/release pose still render exact.
+        if (affine && affinePreviewEligible(session, pose, coversDisplay)) {
+          if (presentAffinePreview(session, pose)) {
+            affinePreviewQuiet.arm(session, pose)
+            continue
+          }
+        }
+        // An exact native render (terminal, quiet-window, or ineligible pose)
+        // supersedes any armed preview quiet window for this session.
+        if (affinePreviewQuiet.session === session) affinePreviewQuiet.cancel()
         const ownsSelection = ids.length===session.origins.size&&ids.every(id=>session.origins.has(id))
 const fullNativeViewport = session.native === true && coversDisplay && ownsSelection && !session.scene.interactionLocalFootprint
         const fullNativePose = fullNativeViewport
@@ -1308,6 +1392,12 @@ self.onmessage = (e) => {
     if(displayFrame&&poseSession?.input&&poseSession.bounds)
       displayFrame=withResidentPose(displayFrame,{slot:poseSession.slot,input:poseSession.input,bounds:poseSession.bounds})
     if(displayFrame)displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
+    // A React repaint during a motion affine preview must keep the cached pose
+    // reprojected; otherwise the slot would snap back to its base texture pose.
+    if(displayFrame&&poseSession?.affinePreview){
+      const reprojected=affinePreviewFrame(displayFrame,poseSession)
+      if(reprojected)displayFrame=reprojected
+    }
     if (bitmapRelease && (!displayFrame || !sameDisplayViewport(displayFrame,bitmapRelease.viewport) || !displayFrame.interaction))
       bitmapRelease = undefined
     if (displayFrame && obsoleteBitmapFrame(displayFrame)) return
@@ -1359,6 +1449,9 @@ if (poseSession && (poseSession.native || poseSession.scene.interactionFixedMask
     if(Number.isSafeInteger(request.sequence)&&poseSession&&!poseSession.stopped&&poseSession.slot===request.slot&&
       pendingPose&&pendingPose.slot===request.slot&&pendingPose.input.sequence===request.sequence&&pendingPose.input.owner===request.owner){
       poseSession.phaseInputClosed=true
+      // Settle promotes an in-flight preview into the terminal exact render;
+      // retire the quiet window so it cannot re-queue the older nonterminal pose.
+      if (affinePreviewQuiet.session === poseSession) affinePreviewQuiet.cancel()
       pendingPose.terminal=true;prioritizeTerminalPose?.(pendingPose);schedulePose()
       checkPreparedPoseDisplay?.()
     }
@@ -1368,7 +1461,10 @@ if (poseSession && (poseSession.native || poseSession.scene.interactionFixedMask
     if(!request.input||!Number.isSafeInteger(request.input.sequence)||!Number.isFinite(request.input.at)||
         !request.transforms||typeof request.transforms!=='object')return
     if(poseSession&&poseSession.slot===request.slot&&!poseSession.stopped){
-const driver = gpu?.driver
+      const driver = gpu?.driver
+      // A terminal/release pose renders exact immediately; retire any armed
+      // motion-preview quiet window so it cannot re-queue an older pose.
+      if (request.terminal && affinePreviewQuiet.session === poseSession) affinePreviewQuiet.cancel()
       if (request.terminal && atomicDisplay && driver && poseSession.native && poseSession.affine &&
           poseSession.scene.interactionFixedMask && displayFrame?.interaction &&
           displayFrame.input?.owner === request.input.owner && displayFrame.items.some(item=>item.active && item.tile.gpuTile===request.slot)) {
@@ -1407,6 +1503,7 @@ const driver = gpu?.driver
   }
   if(request.command==='interaction-pose-stop'){
     if (bitmapRelease?.session.slot === request.slot) bitmapRelease = undefined
+    if (affinePreviewQuiet.session?.slot === request.slot) affinePreviewQuiet.cancel()
     if (heldBitmapViewport?.session.slot === request.slot) resumeBitmapViewport()
     if(poseSession&&poseSession.slot===request.slot){
       poseSession.stopped=true;poseSession.controller.abort()
@@ -1417,6 +1514,7 @@ const driver = gpu?.driver
   }
   if (request.command === 'display-release') {
     if (bitmapRelease && request.ids.includes(bitmapRelease.session.slot)) bitmapRelease = undefined
+    if (affinePreviewQuiet.session && request.ids.includes(affinePreviewQuiet.session.slot)) affinePreviewQuiet.cancel()
     if (heldBitmapViewport && request.ids.includes(heldBitmapViewport.session.slot)) heldBitmapViewport = undefined
     frozenOverlayPoses.release(request.ids)
     if(poseSession&&request.ids.includes(poseSession.slot)){poseSession?.controller.abort();poseSession=undefined;pendingPose=undefined}
