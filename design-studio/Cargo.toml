@@ -57,3 +57,4 @@ incremental = true
 moxcms = { path = "../vendor/moxcms" }
 
 flo_curves = { path = "../vendor/flo_curves" }
+ttf-parser = { path = "../vendor/ttf-parser" }
