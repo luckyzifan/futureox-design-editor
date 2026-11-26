@@ -1430,7 +1430,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const sketchDocuments = uiMode === 'sketch' && desktopSession?.supportsWorkspace
     ? <WorkspaceTabs session={desktopSession} activeId={s.doc.id} sidebar /> : undefined
   const figmaNameInSidebar = inlineFigmaTabs && showLayers && !uiMinimized
-  const figmaZoomDocked = uiMode === 'figma' && (uiMinimized ? !!s.selection.length : showInspector)
+  const figmaViewsFloat = uiMode === 'figma' && !uiMinimized
+  const figmaZoomDocked = uiMode === 'figma' && uiMinimized && !!s.selection.length
+  const figmaPreviewDocked = uiMode === 'figma' && (uiMinimized ? !!s.selection.length : showInspector)
   const documentNameField = <input
             aria-label={menuText.documentName}
             value={source?.name === '正在打开文件' ? translateProfessional(source.name, locale) : (source?.name || s.doc.name)}
@@ -1445,9 +1447,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           />
   const previewPrototype = uiMode === 'figma' && <button type="button" className="prototype-preview-button" aria-label={locale === 'en' ? 'Preview prototype' : '预览原型'} title={locale === 'en' ? 'Preview prototype' : '预览原型'}
             disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
-  const figmaZoom = <div ref={setFigmaZoomHost} className="properties-zoom" data-testid="figma-view-tools"
+  const figmaZoom = <div ref={setFigmaZoomHost} className={figmaViewsFloat ? 'figma-view-zoom' : 'properties-zoom'}
+    data-testid={figmaViewsFloat ? undefined : 'figma-view-tools'}
     onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}
     onKeyDown={event => event.stopPropagation()} />
+  const handToolLabel = localizedToolLabel('hand', locale, '平移')
   const propertyHost = {
     panelRef: rightPanel, label: menuText.propertiesWorkspace,
     resize: <PanelResizeHandle side="right" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />,
@@ -1557,6 +1561,14 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               setFigmaDraw(next)
               return true
             }} />
+            {figmaViewsFloat && <div className="figma-view-tools" data-testid="figma-view-tools" role="group"
+              aria-label={locale === 'en' ? 'Canvas navigation' : '画布导航'}>
+              <button type="button" aria-label={handToolLabel} aria-pressed={s.tool === 'hand'}
+                title={handToolLabel} disabled={toolbarDisabled} onClick={() => chooseTool('hand')}>
+                <toolGlyph.hand size={16} aria-hidden="true" />
+              </button>
+              {figmaZoom}
+            </div>}
             {figmaDraw && s.tool === 'pencil' && !toolbarDisabled && <DrawPencilToolbar editor={editor} />}
     </DesignToolbar>
   )
@@ -1764,8 +1776,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </label>
           <DesignAgentLauncher editor={editor} desktop={desktop} disabled={!ready || switching || s.busy} onImport={(file, mode) => void importDesignFile(file, mode)} />
           {uiMode === 'sketch' && <div ref={setSketchZoomHost} className="sketch-window-zoom" />}
-          {uiMode === 'figma' && !figmaZoomDocked && figmaZoom}
-          {!figmaZoomDocked && previewPrototype}
+          {uiMode === 'figma' && !figmaViewsFloat && !figmaZoomDocked && figmaZoom}
+          {!figmaPreviewDocked && previewPrototype}
           <button
             className="primary"
             aria-label={locale === 'en' ? 'Export' : '导出'}
@@ -2059,7 +2071,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         </div>
         {uiMode === 'figma'
           ? <FigmaPropertiesWorkspace {...propertyHost} tab={propertiesTab} onTab={setPropertiesTab}
-              titles={panelText} zoom={figmaZoomDocked && figmaZoom} preview={figmaZoomDocked && previewPrototype}>
+              titles={panelText} zoom={figmaZoomDocked && figmaZoom} preview={figmaPreviewDocked && previewPrototype}>
               {inspectorContent}
             </FigmaPropertiesWorkspace>
           : <SketchPropertiesWorkspace {...propertyHost}>{inspectorContent}</SketchPropertiesWorkspace>}

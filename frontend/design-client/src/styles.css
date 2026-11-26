@@ -2846,9 +2846,47 @@ html[data-reduced-motion=true] .animation-modal * {
   pointer-events: auto;
   bottom: max(78px, var(--floating-toolbar-status-clearance, 78px));
 }
-/* The group is taken out of the pill's flow so the pill stays bottom-center.
-   8px keeps it against the pill without sharing the pill's border box. The
-   menu opens upward so a short window cannot clip it on the bottom edge. */
+/* Keep the auxiliary navigation out of the toolbelt's measured width. */
+.editor-shell[data-ui-mode="figma"] .figma-view-tools {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 8px;
+  background: var(--workspace-panel);
+  box-shadow: var(--workspace-shadow);
+}
+.editor-shell[data-ui-mode="figma"] .figma-view-tools > button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+.editor-shell[data-ui-mode="figma"] .figma-view-tools > button[aria-pressed="true"] {
+  background: var(--workspace-selected);
+  color: var(--workspace-selected-ink);
+}
+.figma-view-zoom .canvas-controls {
+  position: static;
+  display: flex;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.editor-shell .figma-view-zoom .view-menu-body {
+  top: auto;
+  bottom: calc(100% + 8px);
+  max-height: min(520px, calc(100dvh - 172px));
+}
+.editor-shell[data-ui-mode="figma"] .floating-toolbar:has(.draw-pencil-tools) .figma-view-tools {
+  bottom: calc(100% + 54px);
+}
 .editor-shell[data-ui-mode="figma"] .floating-toolbar .creation-tool-hint {
   bottom: calc(100% + 56px);
 }

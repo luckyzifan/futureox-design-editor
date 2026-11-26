@@ -44,7 +44,8 @@ export function DesignToolbar({ children, disabled = false, className = '' }: { 
     }
   }, [])
   const buttons = () => [...(host.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') || [])]
-    .filter(button => button.getClientRects().length || !button.closest('.sketch-secondary-tool'))
+    .filter(button => !button.closest('.figma-view-zoom') &&
+      (button.getClientRects().length || !button.closest('.sketch-secondary-tool')))
   const show = (button: HTMLButtonElement, immediate: boolean) => {
     if (!host.current?.contains(button) || !button.dataset.tooltip || button.getAttribute('aria-expanded') === 'true') return
     if (candidate.current === button && !immediate) return
