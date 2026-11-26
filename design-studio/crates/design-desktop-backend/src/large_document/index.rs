@@ -48,7 +48,7 @@ pub(super) struct DiskIndex {
     #[serde(skip)]
     navigation: Arc<Navigation>,
     #[serde(skip)]
-    temporary_directory: Option<Arc<TemporaryIndexDirectory>>,
+    backing: RecordBacking,
     pub bytes: u64,
     pub entries: Vec<Row>,
     locations: Vec<Span>,
@@ -57,12 +57,58 @@ pub(super) struct DiskIndex {
     data: String,
 }
 
+#[derive(Clone, Default)]
+enum RecordBacking {
+    #[default]
+    Workspace,
+    Temporary(Arc<TemporaryIndexDirectory>),
+    RecoveryMemory(Arc<Vec<u8>>),
+}
+
 struct TemporaryIndexDirectory(PathBuf);
+
+impl TemporaryIndexDirectory {
+    fn create(root: &Path) -> Result<Arc<Self>> {
+        let path = root.join(format!("futureox-source-index-{}", crate::unique_id()));
+        let mut builder = fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        builder.create(&path).map_err(save_io)?;
+        Ok(Arc::new(Self(path)))
+    }
+}
 
 impl Drop for TemporaryIndexDirectory {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
+}
+
+struct RecoveryRecordBuffer {
+    bytes: Vec<u8>,
+    limit: usize,
+}
+
+impl Write for RecoveryRecordBuffer {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let full = || io::Error::new(io::ErrorKind::StorageFull, "Source recovery index exceeds its memory allowance");
+        let end = self.bytes.len().checked_add(bytes.len()).filter(|end| *end <= self.limit).ok_or_else(full)?;
+        if end > self.bytes.capacity() {
+            let requested = end.next_power_of_two().min(self.limit);
+            self.bytes.try_reserve_exact(requested - self.bytes.len())
+                .map_err(|error| io::Error::new(io::ErrorKind::StorageFull, error))?;
+            if self.bytes.capacity() > self.limit {
+                return Err(full());
+            }
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
 }
 
 struct UnpublishedRecords(Option<PathBuf>);
@@ -180,11 +226,21 @@ pub(super) struct ChunkReader {
     current: std::io::Cursor<Vec<u8>>,
 }
 
-/// One immutable index owner and its open record file. A layout pass borrows
+enum RecordReader<'a> {
+    File(File),
+    Memory(io::Cursor<&'a [u8]>),
+}
+
+/// One immutable index owner and its record reader. A layout pass borrows
 /// this rather than opening the same index once for every scalar field.
-pub(super) struct Records<'a> { index: &'a DiskIndex, file: File }
+pub(super) struct Records<'a> { index: &'a DiskIndex, reader: RecordReader<'a> }
 impl Records<'_> {
-    pub fn entry(&mut self, n: usize) -> Result<Entry> { self.index.entry_from(n, &mut self.file) }
+    pub fn entry(&mut self, n: usize) -> Result<Entry> {
+        match &mut self.reader {
+            RecordReader::File(file) => self.index.entry_from(n, file),
+            RecordReader::Memory(cursor) => self.index.entry_from(n, cursor),
+        }
+    }
 }
 impl Read for ChunkReader {
     fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
@@ -252,6 +308,16 @@ impl DiskIndex {
                 .map_err(save_io)?,
         );
         unpublished.0 = Some(path);
+        let mut result = Self::scan_records(reader, limit, &mut writer)?;
+        writer.flush().map_err(save_io)?;
+        writer.get_ref().sync_all().map_err(save_io)?;
+        result.data = data;
+        result.refresh_navigation();
+        unpublished.0 = None;
+        Ok(result)
+    }
+
+    fn scan_records(reader: impl Read, limit: u64, writer: &mut impl Write) -> Result<Self> {
         let mut entries = Vec::new();
         let mut locations = Vec::new();
         let mut at = 0;
@@ -273,43 +339,44 @@ impl DiskIndex {
             Ok(())
         })
         .map_err(save_io)?;
-        writer.flush().map_err(save_io)?;
-        writer.get_ref().sync_all().map_err(save_io)?;
-        let mut result = Self {
+        Ok(Self {
             navigation: Arc::default(),
-            temporary_directory: None,
+            backing: RecordBacking::Workspace,
             bytes: summary.bytes,
             generations: vec![0; entries.len()],
             entries,
             locations,
             edits: Vec::new(),
-            data,
-        };
-        result.refresh_navigation();
-        unpublished.0 = None;
-        Ok(result)
+            data: String::new(),
+        })
     }
 
     /// Only recovery uses a disposable index on a writable volume. The
     /// retained source, revisions and journal still belong to the workspace.
     pub(super) fn build_temporary(rebuild: impl FnOnce(&Path) -> Result<Self>) -> Result<Self> {
         let root = std::env::temp_dir().canonicalize().map_err(save_io)?;
-        let path = root.join(format!("futureox-source-index-{}", crate::unique_id()));
-        let mut builder = fs::DirBuilder::new();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
-        }
-        builder.create(&path).map_err(save_io)?;
-        let directory = Arc::new(TemporaryIndexDirectory(path));
+        let directory = TemporaryIndexDirectory::create(&root)?;
         let mut index = rebuild(&directory.0)?;
-        index.temporary_directory = Some(directory);
+        index.backing = RecordBacking::Temporary(directory);
+        Ok(index)
+    }
+
+    /// Rebuild verified checkpoint field tables when neither volume can host
+    /// a disposable file. Charge all in-memory parts to one recovery allowance.
+    pub(super) fn build_in_memory(reader: impl Read, limit: u64, remaining: &mut usize) -> Result<Self> {
+        let mut writer = RecoveryRecordBuffer { bytes: Vec::new(), limit: *remaining };
+        let mut index = Self::scan_records(reader, limit, &mut writer)?;
+        *remaining -= writer.bytes.capacity();
+        index.backing = RecordBacking::RecoveryMemory(Arc::new(writer.bytes));
+        index.refresh_navigation();
         Ok(index)
     }
 
     fn records_path(&self, directory: &Path) -> PathBuf {
-        let directory = self.temporary_directory.as_deref().map_or(directory, |temp| &temp.0);
+        let directory = match &self.backing {
+            RecordBacking::Temporary(temporary) => &temporary.0,
+            _ => directory,
+        };
         directory.join(&self.data)
     }
     pub fn refresh_navigation(&mut self) {
@@ -374,14 +441,18 @@ impl DiskIndex {
         self.records(directory)?.entry(n)
     }
     pub fn records(&self, directory: &Path) -> Result<Records<'_>> {
-        Ok(Records { index: self, file: File::open(self.records_path(directory)).map_err(issue)? })
+        let reader = match &self.backing {
+            RecordBacking::RecoveryMemory(bytes) => RecordReader::Memory(io::Cursor::new(bytes.as_slice())),
+            _ => RecordReader::File(File::open(self.records_path(directory)).map_err(issue)?),
+        };
+        Ok(Records { index: self, reader })
     }
-    fn entry_from(&self, n: usize, file: &mut File) -> Result<Entry> {
+    fn entry_from(&self, n: usize, reader: &mut (impl Read + Seek)) -> Result<Entry> {
         let row = self
             .entries
             .get(n)
             .ok_or_else(|| issue("Unknown source object"))?;
-        let bytes = large_json::read_fragment(file, self.locations[n]).map_err(issue)?;
+        let bytes = large_json::read_fragment(reader, self.locations[n]).map_err(issue)?;
         let mut entry = decode_stored_entry(&bytes).map_err(issue)?;
         for edit in self.edits.iter().skip(self.generations[n]) {
             for field in &mut entry.fields {
@@ -446,10 +517,19 @@ impl DiskIndex {
         let mut rows = Vec::new();
         let mut locations = Vec::new();
         let mut generations = Vec::new();
-        let mut file = OpenOptions::new()
-            .append(true)
-            .open(self.records_path(directory))
-            .map_err(issue)?;
+        let mut file = if let RecordBacking::RecoveryMemory(bytes) = &self.backing {
+            // Structural edits still stage records on disk. If publication
+            // fails, the candidate's owned directory is removed on drop.
+            let temporary = TemporaryIndexDirectory::create(directory)?;
+            result.data = "records".into();
+            let mut file = OpenOptions::new().create_new(true).append(true)
+                .open(temporary.0.join(&result.data)).map_err(save_io)?;
+            file.write_all(bytes).map_err(save_io)?;
+            result.backing = RecordBacking::Temporary(temporary);
+            file
+        } else {
+            OpenOptions::new().append(true).open(self.records_path(directory)).map_err(issue)?
+        };
         let mut at = file.metadata().map_err(issue)?.len();
         for (j, mut e) in local.entries.into_iter().enumerate() {
             e.parent = if j == 0 {
@@ -520,6 +600,32 @@ mod stream_pipeline_tests {
         fs::create_dir(&p).unwrap();Self(p)
     }}
     impl Drop for Directory {fn drop(&mut self){let _=fs::remove_dir_all(&self.0);}}
+    #[test]
+    fn recovery_records_charge_their_allocation_and_stage_structure_edits_on_disk() {
+        let d = Directory::new();
+        let source = br#"{"_class":"page","do_objectID":"p","layers":[{"_class":"rectangle","do_objectID":"r","name":"Before"}]}"#;
+        let edited = br#"{"_class":"rectangle","do_objectID":"r","name":"After"}"#;
+        let mut remaining = 4096;
+        let index = DiskIndex::build_in_memory(source.as_slice(), 4096, &mut remaining).unwrap();
+        let RecordBacking::RecoveryMemory(bytes) = &index.backing else {
+            panic!("the recovery index must have an in-memory record owner");
+        };
+        assert_eq!(remaining, 4096 - bytes.capacity());
+        let mut short = bytes.len() - 1;
+        let shortage = DiskIndex::build_in_memory(source.as_slice(), 4096, &mut short).err().unwrap();
+        assert_eq!(shortage.code, "SOURCE_STORAGE_FULL");
+        assert_eq!(short, bytes.len() - 1);
+        assert_eq!(fs::read_dir(&d.0).unwrap().count(), 0);
+
+        let changed = index.replace_branch(1, edited, &d.0).unwrap();
+        assert_eq!(index.entry(1, &d.0).unwrap().name, "Before");
+        assert_eq!(changed.entry(1, &d.0).unwrap().name, "After");
+        let staged_records = changed.records_path(&d.0);
+        assert!(staged_records.is_file());
+        drop(changed);
+        assert!(!staged_records.exists());
+    }
+
     #[test] fn compact_records_keep_identity_fields_and_reject_trailing_bytes() {
         let d=Directory::new();
         let source=json!({"_class":"page","do_objectID":"page","name":"页 🙂","layers":[

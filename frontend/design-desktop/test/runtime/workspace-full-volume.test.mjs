@@ -62,11 +62,16 @@ async function fullVolumeFixture(t) {
     device = volume['dev-entry']
     assert.notEqual((await stat(mount)).dev, (await stat(scope)).dev)
 
-    function start(config) {
+    function start(config, temporaryRoot) {
       let process
       const child = new Sidecar(backend, config.recoveryDir, {
         ...config, timeoutMs: 15_000,
-        spawnProcess(...args) { process = spawn(...args); return process },
+        spawnProcess(executable, args, options) {
+          process = spawn(executable, args, temporaryRoot
+            ? { ...options, env: { ...options.env, TMPDIR: temporaryRoot } }
+            : options)
+          return process
+        },
       })
       children.add(child)
       return { child, process }
@@ -157,11 +162,12 @@ for (const exitKind of ['clean', 'abrupt']) {
   })
 }
 
-test('a large source reopens its edited checkpoint when the working volume cannot write an index',
-  volumeTestOptions, async t => {
+async function verifySourceRecoveryOnFullVolume(t, temporarySharesVolume) {
   const { scope, mount, start, stop } = await fullVolumeFixture(t)
   const source = path.join(scope, 'source.json')
   const config = { recoveryDir: path.join(mount, 'recovery'), catalogDb: path.join(scope, 'catalog.sqlite3') }
+  const temporaryRoot = temporarySharesVolume ? path.join(mount, 'temporary-indexes') : undefined
+  if (temporaryRoot) await mkdir(temporaryRoot)
   const sourceBytes = JSON.stringify({ name: 'Original source', fields: Array.from({ length: 4000 }, (_, n) => n) })
   await writeFile(source, sourceBytes, { mode: 0o400 })
   const openSource = (child, sessionEpoch) =>
@@ -172,7 +178,7 @@ test('a large source reopens its edited checkpoint when the working volume canno
     child.request('large.apply', { owner: open.owner, expectedRevision: open.revision, key: '0:0',
       json: JSON.stringify({ ...JSON.parse(before.json), name }), expectedHash: before.hash, requestId: randomUUID() })
 
-  const original = start(config).child
+  const original = start(config, temporaryRoot).child
   const opened = await openSource(original, 1)
   const first = await readRoot(original, opened)
   const edited = await changeName(original, opened, first, 'Saved working copy')
@@ -180,14 +186,15 @@ test('a large source reopens its edited checkpoint when the working volume canno
   await stop(original)
 
   await fillVolume(mount)
-  const temporaryIndexes = async () => (await readdir(tmpdir())).filter(name => name.startsWith('futureox-source-index-')).sort()
+  const temporaryIndexes = async () => (await readdir(temporaryRoot ?? tmpdir()))
+    .filter(name => name.startsWith('futureox-source-index-')).sort()
   const previous = await temporaryIndexes()
-  const restored = start(config).child
+  const restored = start(config, temporaryRoot).child
   const recovered = await openSource(restored, 2)
   assert.equal(recovered.revision, 1)
   const before = await readRoot(restored, recovered)
   assert.equal(JSON.parse(before.json).name, 'Saved working copy')
-  assert.equal((await temporaryIndexes()).length, previous.length + 1)
+  assert.equal((await temporaryIndexes()).length, previous.length + (temporarySharesVolume ? 0 : 1))
   assert.equal(await availableBytes(mount), 0)
   await assert.rejects(changeName(restored, recovered, before, 'Uncommitted while full'), error => error.code === 'SOURCE_STORAGE_FULL')
   assert.equal((await readRoot(restored, recovered)).hash, before.hash)
@@ -199,14 +206,20 @@ test('a large source reopens its edited checkpoint when the working volume canno
   assert.deepEqual(await temporaryIndexes(), previous)
   await stop(restored)
 
-  const after = start(config).child
+  const after = start(config, temporaryRoot).child
   const reopened = await openSource(after, 3)
   assert.equal(reopened.revision, 2)
   assert.equal(JSON.parse((await readRoot(after, reopened)).json).name, 'Saved after freeing space')
   await stop(after)
   assert.equal(await readFile(source, 'utf8'), sourceBytes)
-  console.log('SOURCE_FULL_VOLUME readRevision=1 writeFailed=SOURCE_STORAGE_FULL nextRevision=2 temporaryIndexRemoved=true')
-})
+  console.log(`SOURCE_FULL_VOLUME sameTemporaryVolume=${temporarySharesVolume} readRevision=1 writeFailed=SOURCE_STORAGE_FULL nextRevision=2 temporaryIndexRemoved=true`)
+}
+
+test('a large source reopens its edited checkpoint when the working volume cannot write an index',
+  volumeTestOptions, t => verifySourceRecoveryOnFullVolume(t, false))
+
+test('a large source reopens its edited checkpoint with TMPDIR on the same full volume',
+  volumeTestOptions, t => verifySourceRecoveryOnFullVolume(t, true))
 
 test('a full-volume v5 upgrade preserves its asset and retries the migration after space is freed',
   volumeTestOptions, async t => {

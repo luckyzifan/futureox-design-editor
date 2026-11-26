@@ -1514,6 +1514,9 @@ fn load_checkpoint(
         {
             return Err(issue("Retained original source integrity check failed"));
         }
+        use futureox_design_kernel::capacity::{REPRESENTATION_RESERVE, memory_budget_bytes};
+        let mut recovery_index_bytes = MAX_CHECKPOINT_BYTES
+            .min(memory_budget_bytes() / REPRESENTATION_RESERVE) as usize;
         let mut names = HashSet::new();
         for (p, part) in parts.iter_mut().enumerate() {
             if !safe_member(&part.name) || !names.insert(part.name.clone()) {
@@ -1549,12 +1552,15 @@ fn load_checkpoint(
                     return Err(issue("Retained JSON addition integrity check failed"));
                 }
             }
-            let rebuild = |index_directory: &Path| {
-                let mut reader = CheckedReader {
+            let open_part = || -> Result<_> {
+                Ok(CheckedReader {
                     inner: File::open(&file).map_err(issue)?,
                     cancel,
                     progress: None,
-                };
+                })
+            };
+            let rebuild = |index_directory: &Path| {
+                let mut reader = open_part()?;
                 DiskIndex::build(
                     checkpoint.state.changes[p]
                         .reader(&mut reader, part.base_bytes)
@@ -1563,8 +1569,18 @@ fn load_checkpoint(
                     index_directory,
                 )
             };
-            part.index = match rebuild(directory) {
-                Err(error) if error.code == "SOURCE_STORAGE_FULL" => DiskIndex::build_temporary(rebuild)?,
+            let disk_index = match rebuild(directory) {
+                Err(error) if error.code == "SOURCE_STORAGE_FULL" => DiskIndex::build_temporary(rebuild),
+                result => result,
+            };
+            part.index = match disk_index {
+                Err(error) if error.code == "SOURCE_STORAGE_FULL" => {
+                    let mut part_reader = open_part()?;
+                    let reader = checkpoint.state.changes[p]
+                        .reader(&mut part_reader, part.base_bytes)
+                        .map_err(issue)?;
+                    DiskIndex::build_in_memory(reader, source_limit, &mut recovery_index_bytes)?
+                }
                 result => result?,
             };
         }
