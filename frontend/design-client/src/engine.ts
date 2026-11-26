@@ -8,7 +8,8 @@ import { applyDuplication, prepareDuplication, canContinueDuplication, duplicati
 import { prepareLayoutAdd, applyLayoutAdd, prepareLayoutRemove, applyLayoutRemove, layoutCommandAdmission } from './commands/layout-command'
 import { reportPostcommitSubscriberError } from './postcommit-subscriber-error'
 import { SelectionCommandError, prepareSelectionArrangement, prepareSelectionWrap, configureSelectionWrapper,
-  applySelectionWrap, prepareSelectionUnwrap, applySelectionUnwrap } from './commands/selection-command'
+  applySelectionWrap, prepareSelectionUnwrap, applySelectionUnwrap, type SelectionArrangement } from './commands/selection-command'
+import type { SketchDistributionRequest } from './sketch-distribution'
 import { applyTransformPlan } from './commands/apply-plan'
 import { canvasActions } from './canvas-action-diagnostics'
 import { validColor } from './color'
@@ -3054,7 +3055,7 @@ export class Editor {
       }
     })
   }
-  selectionAlignmentPlan(axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute', toTopLevelFrame = false) {
+  selectionAlignmentPlan(axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute', toTopLevelFrame = false, fitPixels = false) {
     const { doc, selection, alignmentReference } = this.state
     const { uiMode, locale } = interfacePreference.getSnapshot()
     if (uiMode === 'sketch' && toTopLevelFrame && mode !== 'distribute') {
@@ -3064,20 +3065,45 @@ export class Editor {
       return prepareSelectionArrangement(doc, selection, axis, mode, { fresh: true }, { kind: 'frame', id: frame })
     }
     const target = uiMode === 'sketch' && alignmentReference ? { kind: 'layer' as const, id: alignmentReference } : undefined
-    return prepareSelectionArrangement(doc, selection, axis, mode, { fresh: true }, target)
+    return prepareSelectionArrangement(doc, selection, axis, mode, { fresh: true }, target, fitPixels)
   }
-  align(axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute', toTopLevelFrame = false) {
+  align(axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute', toTopLevelFrame = false,
+    prompt?: (request: SketchDistributionRequest) => void) {
     if (this.state.busy || this.interactionActive || !commitPendingEdits(this)) return
     if (!this.state.selection.length) return
     try {
-      const base = this.state.doc, session = this.sessionGeneration, revision = this.state.version
-      const plan = this.selectionAlignmentPlan(axis, mode, toTopLevelFrame)
-      if (!plan.patches.length) return { status: 'unchanged' as const, revision }
-      return this.change(mode === 'distribute' ? '等距分布' : '对齐图层', draft => {
-        if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)
-          throw new SelectionCommandError('superseded', 'Selection owner changed before alignment')
-        applyTransformPlan(draft, plan.patches)
-      })
+      const { doc: base, version: revision, page, selection } = this.state
+      const session = this.sessionGeneration
+      const sketchPixelFitting = () => this.state.snapPixels && interfacePreference.getSnapshot().uiMode === 'sketch'
+      const fitPixels = mode === 'distribute' && !!prompt && sketchPixelFitting()
+      const plan = this.selectionAlignmentPlan(axis, mode, toTopLevelFrame, fitPixels)
+      const ownsDocument = () => this.state.doc === base && this.sessionGeneration === session && this.state.version === revision
+      const commit = (patches: SelectionArrangement['patches'], current = ownsDocument) => {
+        if (!patches.length) return { status: 'unchanged' as const, revision }
+        return this.change(mode === 'distribute' ? '等距分布' : '对齐图层', draft => {
+          if (!current()) throw new SelectionCommandError('superseded', 'Selection owner changed before alignment')
+          applyTransformPlan(draft, patches)
+        })
+      }
+      const pixels = plan.pixelPatches
+      if (prompt && pixels) {
+        const ids = [...selection]
+        const current = () => !this.disposed && ownsDocument() && !this.state.busy && !this.interactionActive &&
+          this.state.page === page && this.state.selection.length === ids.length &&
+          this.state.selection.every((id, index) => id === ids[index]) && sketchPixelFitting()
+        let settled = false
+        prompt({
+          isCurrent: () => !settled && current(),
+          apply: choice => {
+            if (settled || !current()) return
+            settled = true
+            commit(choice === 'pixels' ? pixels : plan.patches, current)
+          },
+          cancel: () => { settled = true },
+        })
+        return
+      }
+      return commit(plan.patches)
     } catch (error) {
       if (error instanceof SelectionCommandError) { this.notify(error.message); return { status: 'rejected' as const, code: error.code, revision: this.state.version } }
       throw error

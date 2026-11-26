@@ -7,6 +7,7 @@ import { FramePresetPanel } from './FramePresetPanel'
 import { SketchInsertionDialog, type SketchInsertionAnchor } from './SketchInsertionDialog'
 import { SketchSymbolDialog, type SketchSymbolTarget } from './SketchSymbolDialog'
 import { SketchMakeGridDialog } from './SketchMakeGridDialog'
+import { SketchDistributionDialog } from './SketchDistributionDialog'
 import { ShortcutReference } from './ShortcutReference'
 import { closeShortcutReference } from './shortcut-reference-session'
 import { bindSketchSymbolDialog, sketchSymbolSelection } from './sketch-symbol'
@@ -2082,6 +2083,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       </main>}
       <BatchRenameDialog editor={editor} />
       <SketchMakeGridDialog editor={editor} />
+      {uiMode === 'sketch' && <SketchDistributionDialog editor={editor} />}
       <CommandSearch editor={editor} />
       {uiMode === 'figma' && !showHome && <ShortcutReference />}
       {showShapeBuilder && <ShapeBuilderDialog editor={editor} onClose={() => setShowShapeBuilder(false)} />}

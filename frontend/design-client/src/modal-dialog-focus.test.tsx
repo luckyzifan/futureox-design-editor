@@ -138,3 +138,45 @@ test('history and prototype preview take initial focus and Escape closes them', 
   expect(document.activeElement).toBe(trigger)
   expect(background.hasAttribute('inert')).toBe(false)
 })
+
+test('the Sketch Inspector defers fractional distribution and restores focus on cancel or commit', async () => {
+  const { Editor } = await import('./engine')
+  const { AlignmentControls } = await import('./AlignmentControls')
+  const { SketchDistributionDialog } = await import('./SketchDistributionDialog')
+  interfacePreference.set({ uiMode: 'sketch', locale: 'en' })
+  const d = blank(), layers = [0, 15, 31].map(x => node('rectangle', x, 0, 10, 10))
+  d.nodes = Object.fromEntries(layers.map(layer => [layer.id, layer]))
+  d.pages[0].children = layers.map(layer => layer.id)
+  const editor = new Editor(d)
+  editor.select(d.pages[0].children)
+  const before = editor.state.doc
+  try {
+    await act(async () => root.render(<><AlignmentControls editor={editor} /><SketchDistributionDialog editor={editor} /></>))
+    const open = [...document.querySelectorAll<HTMLButtonElement>('.alignment-controls button')]
+      .find(button => /distribute.*horizontal|horizontal.*distribut/i.test(button.getAttribute('aria-label') || ''))!
+    expect(open).toBeDefined()
+    open.focus()
+    await act(async () => open.click())
+    let dialog = document.querySelector<HTMLElement>('[aria-label="Distribution placement"]')!
+    expect(dialog?.getAttribute('aria-modal')).toBe('true')
+    expect(dialog?.contains(document.activeElement)).toBe(true)
+    expect(background.closest('[inert]')).toBeTruthy()
+    expect(editor.state.doc).toBe(before)
+    await act(async () => press(document.activeElement!, 'Escape'))
+    expect(document.querySelector('[aria-label="Distribution placement"]')).toBeNull()
+    expect(document.activeElement).toBe(open)
+    expect(editor.canUndo).toBe(false)
+    await act(async () => open.click())
+    dialog = document.querySelector<HTMLElement>('[aria-label="Distribution placement"]')!
+    const uneven = enabledButtons(dialog).find(button => button.textContent === 'Distribute Unevenly')!
+    await act(async () => uneven.click())
+    expect(editor.state.doc.nodes[layers[1].id].transform[4]).toBe(16)
+    expect(document.querySelector('[aria-label="Distribution placement"]')).toBeNull()
+    await act(async () => editor.undo())
+    expect(editor.state.doc).toEqual(before)
+    expect(editor.canUndo).toBe(false)
+  } finally {
+    await act(async () => root.render(null))
+    editor.dispose()
+  }
+})
