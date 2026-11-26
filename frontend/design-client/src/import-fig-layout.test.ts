@@ -5,6 +5,8 @@ import { compileSchema, decodeBinarySchema, type Schema } from 'kiwi-schema'
 import { deflateSync, inflateSync, zipSync } from 'fflate'
 import { decodeFig, figArchive, importFig } from './import-fig'
 import { validateDocument } from './model'
+import { VectorEngine } from './generated/design-kernel/design_kernel'
+import { kernelLayout } from './kernel/picking'
 
 // Use the schema shipped in an actual Figma local export. These are generated
 // regression scenes encoded with that schema, not an external layout/pixel oracle.
@@ -332,24 +334,38 @@ test.each([
   expect(warnings).toEqual([])
 })
 
-test('stackReverseZIndex flips authored child order and keeps an inert receipt', () => {
-  const { document } = importFig(
-    fixture({ stackMode: 'VERTICAL', stackReverseZIndex: true }, {}, [
-      {
-        guid: guid(4),
-        type: 'RECTANGLE',
-        name: 'Earlier',
-        parentIndex: { guid: guid(2), position: '!' },
-        size: { x: 20, y: 10 },
-      },
-    ]),
-  )
-  const frame = required(Object.values(document.nodes).find((n) => n.name === 'Layout'), 'Layout')
-  expect(frame.children.map((id) => document.nodes[id].name)).toEqual(['Child', 'Earlier'])
-  const metadata = document.designSystem?.sketchContainers?.nodeMetadata as Record<string, { bindings?: Record<string, string> }>
-  expect(metadata[frame.id].bindings?.figStackReverseZIndex).toBe('true')
+test.each([true, false, undefined])('FIG stacking keeps both flow positions and overlap color (source %s)', reverse => {
+  const solid = (red: number, blue: number) => [{ type: 'SOLID', color: { r: red, g: 0, b: blue, a: 1 } }]
+  const { document } = importFig(fixture(
+    { stackMode: 'HORIZONTAL', stackSpacing: -30, ...(reverse === undefined ? {} : { stackReverseZIndex: reverse }) },
+    { name: 'A', size: { x: 50, y: 30 }, fillPaints: solid(0, 1) },
+    [{ guid: guid(4), type: 'RECTANGLE', name: 'B', parentIndex: { guid: guid(2), position: 'b' },
+      size: { x: 50, y: 30 }, fillPaints: solid(1, 0) }],
+  ))
+  const frame = required(Object.values(document.nodes).find(n => n.name === 'Layout'), 'Layout')
+  expect(frame.children.map(id => document.nodes[id].name)).toEqual(reverse ? ['B', 'A'] : ['A', 'B'])
+  const metadata = document.designSystem?.sketchContainers?.nodeMetadata as
+    Record<string, { bindings?: Record<string, string> }> | undefined
+  expect(metadata?.[frame.id]?.bindings?.figStackReverseZIndex).toBe(reverse ? 'true' : undefined)
   expect(frame.bindings).toBeUndefined()
   expect(() => validateDocument(JSON.parse(JSON.stringify(document)))).not.toThrow()
+  const resolved = kernelLayout(document)
+  const positions = ['A', 'B'].map(name => required(Object.values(resolved.nodes).find(node => node.name === name), name).transform.slice(4))
+  expect(positions).toEqual([[0, 0], [20, 0]])
+  expect(frame.layout?.stackingOrder).toBe(reverse ? 'first-on-top' : undefined)
+  if (reverse) expect(document.schemaVersion).toBeGreaterThanOrEqual(31)
+
+  const engine = new VectorEngine()
+  try {
+    engine.load_document(JSON.stringify(resolved))
+    const width = 200, height = 100
+    const pixels = engine.render_rgba(JSON.stringify({ pageId: resolved.pages[0].id, width, height,
+      view: { x: 0, y: 0, zoom: 1 }, rasterProfile: 'figma' }))
+    const offset = (10 * width + 40) * 4
+    expect(Array.from(pixels.slice(offset, offset + 4))).toEqual(reverse ? [0, 0, 255, 255] : [255, 0, 0, 255])
+  } finally {
+    engine.free()
+  }
 })
 
 test('stackReverseZIndex false leaves authored order and writes no receipt', () => {

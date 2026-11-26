@@ -86,7 +86,7 @@ export function layerFindResults(doc: DesignDocument, options: LayerFindOptions)
       if (nodeMatches(node, match) && (options.types.size === 0 || options.types.has(type))) {
         results.push({ id, pageId: page.id, pageName: page.name, name: node.name, type })
       }
-      if (node.children.length) frames.push({ ids: displayedLayerChildren(node, node.children), index: 0 })
+      if (node.children.length) frames.push({ ids: displayedLayerChildren(node, node.children, true), index: 0 })
     }
   }
   return results

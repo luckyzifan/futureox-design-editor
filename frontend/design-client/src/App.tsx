@@ -396,7 +396,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       download(`${request.document.name}.sketch`, new Blob([new Uint8Array(bytes).buffer], { type: 'application/zip' }))
       trace.result(ActionOutcome.observed)
       desktopPet.event('export')
-      editor.notify('Sketch 兼容文件已生成；完整编辑信息请同时保留 .fd 文件', { key: 'sketchExportReadyCompatibility' })
+      if (Object.values(request.document.nodes).some(node => node.layout?.mode === 'grid')) {
+        editor.notify('Sketch 兼容文件已生成。网格以当前位置导出，请保留 .fd 文件以继续编辑网格。', { key: 'sketchExportReadyStaticGrid' })
+      } else {
+        editor.notify('Sketch 兼容文件已生成；完整编辑信息请同时保留 .fd 文件', { key: 'sketchExportReadyCompatibility' })
+      }
     } catch (error) { trace.result(ActionOutcome.rejected, ActionReason.validation); if (request.isCurrent()) { desktopPet.event('error'); editor.notify(String(error)) } }
     finally { exports.finish(request) }
     } finally { trace.finish() }

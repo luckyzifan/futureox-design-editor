@@ -49,6 +49,28 @@ test('auto-layout rows follow flow order and above inserts earlier in that order
   expect(layerTreeRows(free.doc, free.page, new Set(), '').slice(1).map(row => row.id)).toEqual([free.c.id, free.b.id, free.a.id])
 })
 
+test.each(['first-on-top', 'last-on-top'] as const)('Figma panel drop follows visible flow for %s', stackingOrder => {
+  const f = fixture()
+  f.doc.schemaVersion = 31
+  f.frame.layout = { ...defaultLayout(), mode: 'horizontal', stackingOrder }
+  const flow = [f.a.id, f.b.id, f.c.id]
+  f.frame.children = stackingOrder === 'first-on-top' ? [...flow].reverse() : flow
+  f.doc.pages[0].children = [f.frame.id]
+  const editor = new Editor(f.doc)
+  try {
+    const rows = () => layerTreeRows(editor.state.doc, f.page, new Set(), '', true).slice(1).map(row => row.id)
+    expect(rows()).toEqual(flow)
+    const plan = layerDropPlan(editor.state.doc, f.page, [f.c.id], f.a.id, 'above', editor.parentMap(), true)!
+    editor.reparentMany([f.c.id], plan.parent, plan.before)
+    expect(rows()).toEqual([f.c.id, f.a.id, f.b.id])
+    expect(editor.state.doc.nodes[f.c.id].transform[4]).toBeLessThan(editor.state.doc.nodes[f.a.id].transform[4])
+    editor.undo()
+    expect(rows()).toEqual(flow)
+  } finally {
+    editor.dispose()
+  }
+})
+
 test('Sketch reverse flow uses the visual order for canvas and layer drops', () => {
   const f = fixture()
   f.doc.schemaVersion = 22

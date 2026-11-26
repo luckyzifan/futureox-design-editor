@@ -106,6 +106,26 @@ test('auto layout lists children in flow order and a mode change rebuilds the ro
   expect(cache.stats.builds).toBe(2)
 })
 
+test('Figma panel keeps the flow order through both stacking choices and caches by interface', () => {
+  const source = fixture(3), page = source.pages[0].id, expansion = new Set<string>()
+  const cache = new LayerRowsCache()
+  const flow = ['n0', 'n1', 'n2']
+  const display = (doc: DesignDocument, figma: boolean) =>
+    cache.read(doc, page, expansion, '', figma).slice(1).map(row => row.id)
+  const implicit = edit(source, 'frame', { layout: { ...defaultLayout(), mode: 'horizontal' } })
+  const first = edit(implicit, 'frame', { children: [...flow].reverse(),
+    layout: { ...defaultLayout(), mode: 'horizontal', stackingOrder: 'first-on-top' } })
+  const last = edit(first, 'frame', { children: flow,
+    layout: { ...defaultLayout(), mode: 'horizontal', stackingOrder: 'last-on-top' } })
+  documentPatch(implicit, first)
+  documentPatch(first, last)
+  expect(display(implicit, true)).toEqual(flow)
+  expect(display(first, true)).toEqual(flow)
+  expect(display(last, true)).toEqual(flow)
+  expect(display(last, false)).toEqual([...flow].reverse())
+  expect(display(last, true)).toEqual(flow)
+})
+
 test('real editor commit, undo and redo preserve certified rows; clear releases cached snapshot', () => {
   const document = blank(), text = node('text', 0, 0, 100, 100)
   document.nodes[text.id] = text; document.pages[0].children = [text.id]

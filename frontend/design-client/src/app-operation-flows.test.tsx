@@ -1557,10 +1557,21 @@ test('Sketch stack border option reflows rendered stroke extents and undoes the 
   expect(boxes([clean.id, plain.id])).toEqual(noStrokeBoxes)
 })
 
-test('Sketch overlap order publishes painter order to the layer tree without reversing flow', async () => {
-  applyInterfaceLayout('sketch')
+test.each([
+  { source: 'Sketch', figma: false, mode: 'sketch' },
+  { source: 'FIG', figma: true, mode: 'sketch' },
+  { source: 'FIG', figma: true, mode: 'figma' },
+] as const)('stacking controls preserve authored flow for $source in $mode mode', async ({ figma, mode }) => {
+  applyInterfaceLayout(mode)
   await render()
   const doc = blank('Stacking order QA')
+  if (figma) {
+    doc.schemaVersion = 4
+    doc.designSystem = {
+      collections: {}, variables: {}, activeModes: {}, styles: {}, libraries: {},
+      sketchContainers: { figDocument: { source: 'figma' } },
+    }
+  }
   const frame = node('frame', 50, 60, 300, 200)
   const first = node('rectangle', 0, 0, 60, 70)
   const last = node('rectangle', 0, 0, 70, 60)
@@ -1596,7 +1607,9 @@ test('Sketch overlap order publishes painter order to the layer tree without rev
   for (const item of [first, last, absolute]) expect(authored().nodes[item.id]).toEqual(initial.nodes[item.id])
   const firstOnTop = authored()
   await order('last-on-top')
-  expect(layerNames()).toEqual(['Last item', 'Absolute item', 'First item'])
+  expect(layerNames()).toEqual(figma
+    ? ['First item', 'Absolute item', 'Last item']
+    : ['Last item', 'Absolute item', 'First item'])
   for (const item of [first, last, absolute]) expect(authored().nodes[item.id]).toEqual(initial.nodes[item.id])
   expect(JSON.parse(forma_decode_json(forma_encode_json(JSON.stringify(authored()))))).toEqual(authored())
   await act(async () => editor!.undo())

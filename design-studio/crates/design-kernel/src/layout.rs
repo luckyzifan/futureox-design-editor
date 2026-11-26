@@ -992,6 +992,7 @@ fn constrain(doc: &mut Document, parent: &str) {
     let graphic = p.graphic;
     let flow = p.layout.as_ref().is_some_and(|l| l.mode != Flow::None);
     let relative_in_frame = p.kind == "frame" && !flow;
+    let use_master_source = crate::interop::sketch_responsive_instance(doc, p);
     let children = p.children.clone();
     for id in children {
         if graphic {
@@ -1009,7 +1010,7 @@ fn constrain(doc: &mut Document, parent: &str) {
         let [legacy_x, legacy_y] = if flow {
             [None; 2]
         } else {
-            crate::interop::sketch_resize_axes(doc, &doc.nodes[&id])
+            crate::interop::sketch_resize_axes(doc, &doc.nodes[&id], use_master_source)
         };
         let n = doc.nodes.get_mut(&id).unwrap();
         let [relative_width, relative_height] = if relative_in_frame {

@@ -3,6 +3,7 @@ import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { sketchLayerFindOwnsChord } from './interface-layout'
 import { getShortcutProfile } from './shortcut-preference'
 import { layerExpanded, LayerRowsCache, visibleLayerBranch } from './layer-tree'
+import { usesFigmaLayerFlow } from './layer-order'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { PageList } from './PageList'
 import { AssetsPanel } from './AssetsPanel'
@@ -78,6 +79,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
   const text = useInterfaceText()
   const { uiMode, locale } = useInterfacePreferences()
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
+  const figmaFlow = usesFigmaLayerFlow(s.doc, uiMode === 'figma')
   const renderSession = editor.sessionGeneration
   const [localTab, setLocalTab] = useState<WorkspaceSection>('layers')
   const tab = section || localTab, tabId = useId()
@@ -161,7 +163,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
     const target = row && host.contains(row) ? row.dataset.layerId! : null
     const rect = row?.getBoundingClientRect(), node = target ? editor.state.doc.nodes[target] : undefined
     const position = node && rect ? layerDropPosition(container(node), (event.clientY - rect.top) / rect.height) : 'below'
-    active.plan = layerDropPlan(editor.state.doc, editor.state.page, payload.ids, target, position, editor.parentMap())
+    active.plan = layerDropPlan(editor.state.doc, editor.state.page, payload.ids, target, position, editor.parentMap(), figmaFlow)
     setDrop(active.plan ? { id: target, position } : null)
   }
   const endLayerPointer = (event: React.PointerEvent) => {
@@ -312,7 +314,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
   const rowCache = useMemo(() => new LayerRowsCache(), [editor, renderSession])
   const layerQuery = uiMode === 'sketch' ? search : ''
   const filterRelated = uiMode === 'sketch' && relatedOnly && s.selection.length > 0
-  const allRows = useMemo(() => rowCache.read(s.doc, s.page, expansion, layerQuery), [rowCache, s.doc, s.page, expansion, layerQuery])
+  const allRows = useMemo(() => rowCache.read(s.doc, s.page, expansion, layerQuery, figmaFlow), [rowCache, s.doc, s.page, expansion, layerQuery, figmaFlow])
   const rows = useMemo(() => {
     if (!filterRelated) return allRows
     const parents = editor.parentMap(s.doc), related = new Set<string>()
@@ -378,7 +380,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
   function dropPlan(id: string | null, position: LayerDropPosition) {
     const payload = dragged.current
     if (!payload || payload.session !== editor.sessionGeneration || payload.page !== editor.state.page || payload.document !== editor.state.doc.id) return
-    return layerDropPlan(editor.state.doc, editor.state.page, payload.ids, id, position, editor.parentMap())
+    return layerDropPlan(editor.state.doc, editor.state.page, payload.ids, id, position, editor.parentMap(), figmaFlow)
   }
   const layerSearch = <label className="layer-search">
     <Search size={13} />
