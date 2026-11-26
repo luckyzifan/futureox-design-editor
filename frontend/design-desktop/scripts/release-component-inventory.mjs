@@ -16,6 +16,7 @@ import { assessColorFixtures, inventoryFromPackageBytes, locateElectronPackage, 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repo = path.resolve(desktop, '../..')
 const NOTICE_ROOT = 'frontend/design-desktop/third-party-notices/cargo'
+const UI_LICENSE_INVENTORY = 'frontend/design-client/public/licenses/inventory.json'
 
 const SHIPPED_CRATES = [
   'futureox-design-desktop-backend',
@@ -383,7 +384,7 @@ function buildJavaScript(root) {
   const production = lockClosure(clientLock, imported.packages, false)
   const clientDev = lockClosure(clientLock, Object.keys(clientLock.workspaces?.['']?.devDependencies ?? {}), true)
   const desktopDev = lockClosure(desktopLock, Object.keys(desktopLock.workspaces?.['']?.devDependencies ?? {}), true)
-  const inventory = JSON.parse(readFileSync(path.join(root, 'frontend/design-client/public/licenses/inventory.json'), 'utf8'))
+  const inventory = JSON.parse(readFileSync(path.join(root, UI_LICENSE_INVENTORY), 'utf8'))
   const notices = new Map(inventory.packages.map(item => [item.package, item]))
   const distributed = [...production].sort().map(name => {
     const identity = lockIdentity(clientLock, name)
@@ -788,7 +789,7 @@ export function buildComponentInventory({
 } = {}) {
   if (installerPath && !releaseVerification) throw new Error('--installer requires --release-verification')
   const nativeTargets = releaseVerification ? publishedNativeTargets(root, releaseVerification) : null
-  const licenseInventory = JSON.parse(readFileSync(path.join(root, 'frontend/design-client/public/licenses/inventory.json'), 'utf8'))
+  const licenseInventory = JSON.parse(readFileSync(path.join(root, UI_LICENSE_INVENTORY), 'utf8'))
   const notices = licenseInventory.packages.map(item => {
     const file = path.join(root, 'frontend/design-client/public/licenses', item.file)
     const present = existsSync(file)
@@ -849,6 +850,9 @@ export function buildComponentInventory({
       javascript,
       declaredElectronVersion: electronVersion,
       nativeTargets,
+      supplementalLicenses: releaseVerification && root !== repo
+        ? JSON.parse(readFileSync(path.join(repo, UI_LICENSE_INVENTORY), 'utf8')).packages
+        : [],
     })
     : located?.rejected
       ? {
