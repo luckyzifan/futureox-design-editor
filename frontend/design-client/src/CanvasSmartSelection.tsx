@@ -1,13 +1,17 @@
 import { utilityAction, CanvasAction, ActionReason, type UtilityAction } from './canvas-utility-action'
 import {useEffect,useMemo,useRef,useState} from 'react'
-import type {SceneEntry} from './geometry'
+import { unionBounds, type SceneEntry } from './geometry'
+import { useInterfacePreferences } from './interface-preference'
 import type {Editor} from './engine'
 import type {DesignDocument,Point} from './model'
 import type {CanvasCamera,CanvasSize} from './canvas-camera'
 import {screenToWorld} from './canvas-camera'
 import {smartSelection,smartSpacing,smartReorder,type SmartSelection} from './smart-selection'
 
+const gapHandleSize = 12
+
 export function CanvasSmartSelection({editor,view,size,entries,visible}:{editor:Editor;view:CanvasCamera;size:CanvasSize;entries?:readonly SceneEntry[];visible:boolean}){
+  const { uiMode } = useInterfacePreferences()
   const host=useRef<HTMLDivElement>(null),[marked,setMarked]=useState<string[]>([]),[label,setLabel]=useState<{point:Point;text:string}|null>(null)
   const active=useRef<{action:UtilityAction;pointer:number;session:number;page:string;doc:DesignDocument;model:SmartSelection;view:CanvasCamera;start:Point;axis?:'x'|'y';marked:string[];moved:boolean}|null>(null)
   const selectionKey=editor.state.selection.join('\n'),page=editor.state.page,session=editor.sessionGeneration
@@ -23,6 +27,10 @@ export function CanvasSmartSelection({editor,view,size,entries,visible}:{editor:
     smartSelection(doc,page,editor.topSelection(),entries), [editor,doc,page,selection,entries])
   const model = selectionModel || active.current?.model
   if(!model||editor.state.tool!=='select')return null
+  if (uiMode === 'sketch' && !active.current) {
+    const { width, height } = unionBounds(model.ids.map(id => model.boxes[id]))
+    if (Math.max(width, height) * view.zoom < gapHandleSize) return null
+  }
   const point=(e:{clientX:number;clientY:number},camera=view)=>{const b=host.current!.getBoundingClientRect();return screenToWorld(camera,{x:e.clientX-b.left,y:e.clientY-b.top})}
   const begin=(e:React.PointerEvent,axis?:'x'|'y',id?:string)=>{
     e.stopPropagation();const action=utilityAction(editor,CanvasAction.smartSelection);if(e.button!==0||editor.interactionActive||editor.state.busy){action.block(ActionReason.busy);return}
@@ -58,7 +66,7 @@ export function CanvasSmartSelection({editor,view,size,entries,visible}:{editor:
         const across=axis==='x'?Math.max(prev.y,b.y)+Math.min(prev.height,b.height)/2:Math.max(prev.x,b.x)+Math.min(prev.width,b.width)/2
         const mid=(prev[axis]+prev[length]+b[axis])/2,p=screen(axis==='x'?{x:mid,y:across}:{x:across,y:mid})
         return <g key={axis+i} data-testid={`smart-gap-${axis}`} onPointerDown={e=>begin(e,axis)} style={{cursor:axis==='x'?'ew-resize':'ns-resize'}} pointerEvents="all">
-          <rect x={p.x-6} y={p.y-6} width={12} height={12} fill="transparent"/>
+          <rect x={p.x-gapHandleSize/2} y={p.y-gapHandleSize/2} width={gapHandleSize} height={gapHandleSize} fill="transparent"/>
           <line x1={p.x-(axis==='y'?5:0)} y1={p.y-(axis==='x'?5:0)} x2={p.x+(axis==='y'?5:0)} y2={p.y+(axis==='x'?5:0)} stroke="#f24eaa" strokeWidth={2.5}/>
         </g>
       }))}
