@@ -7,7 +7,7 @@ const fonts = readFileSync(new URL('./font-management.ts', import.meta.url), 'ut
 // Explicit producer allowlist. These checks are wiring contracts, not twenty
 // independently mounted workflows or twenty claimed Electron GUI operations.
 const sources: Record<OperationStatus['key'], string> = {
- exportPreviewGenerating: app, exportFileReady: app, sketchExportGenerating: app, sketchExportReadyCompatibility: app,
+ exportPreviewGenerating: app, exportFileReady: app, sketchExportGenerating: app, sketchExportReadyCompatibility: app, sketchExportReadyStaticGrid: app,
  openBlockedActiveOperation: app, imageImportBlockedActiveOperation: app, singleDesignFileRequired: app, importedGroupsAppended: app, designImportComplete: app,
  imageImportFailed: app, saveFailedCanvasRetained: app, kernelStartupFailed: app, recoveryFailedAutosavePaused: app, closeFailedDocumentRetained: app, workspaceSwitchFailedDocumentRetained: app,
  operationFailedCanvasRetained: readFileSync(new URL('./desktop-session.ts', import.meta.url), 'utf8'),

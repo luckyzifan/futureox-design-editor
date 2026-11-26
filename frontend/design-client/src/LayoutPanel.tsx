@@ -54,12 +54,16 @@ export function LayoutPanel({
   const { tr, locale } = usePropertyText()
   const [suggestion, setSuggestion] = useState<LayoutSuggestionPreview | null>(null)
   const [suggestionError, setSuggestionError] = useState('')
+  const allowsGrid = uiMode !== 'sketch'
+  const visibleSuggestions = suggestion?.suggestions.filter(candidate =>
+    allowsGrid || candidate.changes.every(change => change.layout.mode !== 'grid')) ?? []
   const parents = editor.parentMap(), units = propertyUnits(editor.state.doc, n.id, parents)
   const parent = editor.state.doc.nodes[parents.get(n.id) || ''],
     flow = !!parent?.layout && parent.layout.mode !== 'none',
     layout = n.layout || defaultLayout(),
     active = !!n.layout && n.layout.mode !== 'none',
     sizing = { ...defaultSizing(), ...n.sizing }
+  const existingGridInSketch = !allowsGrid && layout.mode === 'grid'
   const frameRelativeItem = uiMode === 'sketch' && isUnstackedFrame(parent)
   const relativeItem = frameRelativeItem || (!sizing.absolute &&
     (parent?.layout?.mode === 'horizontal' || parent?.layout?.mode === 'vertical'))
@@ -111,6 +115,7 @@ export function LayoutPanel({
       '修改约束',
     )
   const setLayoutMode = (mode?: AutoLayout['mode']) => {
+    if (mode === 'grid' && !allowsGrid) return
     try { editor.autoLayout(mode, ids); setSuggestionError('') }
     catch (error) { setSuggestionError(error instanceof Error ? error.message : String(error)) }
   }
@@ -122,15 +127,19 @@ export function LayoutPanel({
         }}>{tr("建议自动布局…")}</button>
         {suggestion && suggestion.frameId === n.id && <div role="region" aria-label={tr("建议布局预览")}>
           <p>{tr("预览不会改变设计。请选择方案后应用。")}</p>
-          {suggestion.suggestions.map(candidate => <div key={candidate.id}>
+          {visibleSuggestions.map(candidate => <div key={candidate.id}>
             <strong>{layoutSuggestionText(candidate.display?.label, candidate.label, locale)} · {Math.round(candidate.confidence * 100)}%</strong>
-            {candidate.explanation.map((line, index) => <p key={index}>{layoutSuggestionText(candidate.display?.explanation[index], line, locale)}</p>)}
+            {candidate.explanation.map((line, index) => {
+              const display = candidate.display?.explanation[index]
+              return !allowsGrid && display?.key === 'grid-versus-wrap'
+                ? null : <p key={index}>{layoutSuggestionText(display, line, locale)}</p>
+            })}
             <button type="button" onClick={() => {
               try { editor.applySuggestedLayout(suggestion, candidate.id); setSuggestion(null); setSuggestionError('') }
               catch (error) { setSuggestionError(String(error)) }
             }}>{tr("应用此方案")}</button>
           </div>)}
-          {!suggestion.suggestions.length && <p>{tr("没有可安全应用的规则布局。")}</p>}
+          {!visibleSuggestions.length && <p>{tr("没有可安全应用的规则布局。")}</p>}
           {suggestion.warnings.map((warning, index) => <p key={index}>{layoutSuggestionText(suggestion.warningDisplay?.[index], warning, locale)}</p>)}
           <button type="button" onClick={() => { setSuggestion(null); setSuggestionError('') }}>{tr("取消")}</button>
         </div>}
@@ -216,7 +225,8 @@ export function LayoutPanel({
       {suggestionError && <p role="alert">{layoutSuggestionError(suggestionError, locale)}</p>}
       {compact && <div className="layout-field-label">{tr('流向')}</div>}
       {container(n) && <div className="layout-flow" role="radiogroup" aria-label={tr("布局方向")}>
-        {([['none','自由布局',LayoutDashboard],['vertical','纵向布局',Rows3],['horizontal','横向布局',Columns3],['grid','网格布局',Grid2X2]] as const).map(([mode,label,Icon]) =>
+        {([['none','自由布局',LayoutDashboard],['vertical','纵向布局',Rows3],['horizontal','横向布局',Columns3],['grid','网格布局',Grid2X2]] as const)
+          .filter(([mode]) => allowsGrid || mode !== 'grid').map(([mode,label,Icon]) =>
           <button key={mode} type="button" role="radio" aria-label={tr(label)} title={tr(label)} aria-checked={(active ? layout.mode : 'none') === mode}
             onClick={() => { if ((active ? layout.mode : 'none') !== mode) setLayoutMode(mode) }}><Icon size={16} /></button>)}
       </div>}
@@ -235,16 +245,17 @@ export function LayoutPanel({
       </div>}
       {active && (
         <>
-          <label className="labeled-select">{tr("排列方式")}<select
+          {existingGridInSketch && <p>{tr("Sketch 兼容导出时，网格以当前位置导出。")}</p>}
+          {!existingGridInSketch && <label className="labeled-select">{tr("排列方式")}<select
               aria-label={tr("排列方式")}
               value={layout.mode}
               onChange={(e) => setLayoutMode(e.target.value as AutoLayout['mode'])}
             >
               <option value="horizontal">{tr("横向")}</option>
               <option value="vertical">{tr("纵向")}</option>
-              <option value="grid">{tr("网格")}</option>
+              {allowsGrid && <option value="grid">{tr("网格")}</option>}
             </select>
-          </label>
+          </label>}
           <div className="field-grid">
             <UnitNumberField historyLabel={layout.mode === 'grid' ? '列间距' : '项目间距'} unit="length" diagnosticFamily={2} unitScale={layout.mode === 'vertical' ? units.y : units.x}
               label={tr(layout.mode === 'grid' ? '列间距' : '项目间距')}
