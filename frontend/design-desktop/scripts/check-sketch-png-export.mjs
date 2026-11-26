@@ -51,6 +51,7 @@ try {
   await page.getByTestId('layer-ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3').click({ timeout: 60000 })
   const notice = page.getByRole('button', { name: '关闭导入提示', exact: true })
   if (await notice.isVisible()) await notice.click()
+  await expect(page.locator('.save-status-label')).toHaveText('已自动保存到工作副本', { timeout: 45000 })
   const panel = page.getByRole('region', { name: '图层导出设置', exact: true })
   const remove = panel.getByRole('button', { name: /^删除导出设置/ })
   while (await remove.count()) await remove.first().click()

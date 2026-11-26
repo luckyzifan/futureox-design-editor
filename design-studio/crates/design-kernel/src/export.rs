@@ -12,6 +12,12 @@ pub(crate) enum ExportPadding {
 pub const MAX_SIDE: u32 = 16384;
 pub const MAX_PIXELS: u64 = 64_000_000;
 
+fn analytic_png_tile_shape(output_width: u32) -> (u32, u32) {
+    // Share overlapping filter input across a wider tile while keeping
+    // the full-width PNG row band within eight MiB.
+    (1024, 256.min(8 * 1024 * 1024 / (output_width * 4)))
+}
+
 /// Document-space raster region. The origin is never snapped to a device grid.
 /// The right/bottom extent rounds outwards to whole output pixels; this does not
 /// stretch the content. DPR, editor pan/zoom and page padding are not inputs.
@@ -203,9 +209,7 @@ impl Engine {
                     let coherent = options.raster_profile != RasterProfile::Analytic
                         && region_correlated_samples(doc, page_index, options.raster_profile, request.bounds, plan.view.zoom);
                     let (tile_width, rows) = if options.raster_profile == RasterProfile::Analytic {
-                        // Share overlapping filter input across a wider tile
-                        // while keeping the PNG row band within eight MiB.
-                        (1024, 256.min(8 * 1024 * 1024 / (options.width * 4)))
+                        analytic_png_tile_shape(options.width)
                     } else if options.raster_profile == RasterProfile::Figma
                         && options.width <= 1024 && options.height <= 1024
                         && crate::renderer::clipped_opaque_frame(doc, &doc.pages[page_index].children)
@@ -1265,7 +1269,12 @@ pub(crate) fn render_png(engine: &mut Engine, options: &RenderOptions) -> Result
         let bytes = engine.render_exact(options)?;
         return encode_rgba(options.width, options.height, &bytes);
     }
-    render_tiled(engine, options, 512, 128)
+    let (tile_width, rows) = if options.raster_profile == RasterProfile::Analytic {
+        analytic_png_tile_shape(options.width)
+    } else {
+        (512, 128)
+    };
+    render_tiled(engine, options, tile_width, rows)
 }
 fn render_tiled(
     engine: &mut Engine,
