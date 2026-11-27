@@ -54,7 +54,7 @@ import { progressiveTileLayer } from './progressive-quality'
 import { hasRetainedOverview, completeViewportBacking } from './overview-coverage'
 import { allowsReducedSampling } from './render-quality'
 import { sharpZoomScale, usesSharpZoom } from './gpu/sharp-zoom-policy'
-import { CoverageRetention, hasNativeViewportSamples } from './coverage-retention'
+import { CoverageRetention } from './coverage-retention'
 import { visibleCompositeContributors, touchCompositeContributors, type CompositeCacheFrame, type CompositeCacheOwner } from './composite-cache-use'
 import { isTileAdmissionBudgetError, planTileAdmission, retireRejectedTile, HandledTileDeliveryError,
   replacementTileBudget, tileAdmissionDiagnostic, type TileAdmissionDiagnostic } from './tile-admission'
@@ -567,8 +567,8 @@ export function ProgressiveSurfaceImpl(
         bounds: { x: -plan.view.x / plan.view.zoom, y: -plan.view.y / plan.view.zoom,
           width: plan.width / plan.view.zoom, height: plan.height / plan.view.zoom },
         keys: plan.ids, bytes: estimatedTileResidencyBytes(residents.values()),
-        native: residentDisplay && hasNativeViewportSamples(plan, [...residents.values()],
-          progressiveNativeRepair && filteredContent && !cameraDependent && !props.animation)
+        native: residentDisplay && plan.samplingMode === 'native' &&
+          plan.rasterScale === plan.view.zoom * plan.dpr && [...residents.values()].every(tile => !tile.viewportPreview)
           ? { view: plan.view, width: plan.width, height: plan.height, dpr: plan.dpr } : undefined,
       }, budget)
       const used = estimatedTileResidencyBytes(tileRef.current.values()) > budget ? compositeCacheUse() : new Set<PaintedTile>()
