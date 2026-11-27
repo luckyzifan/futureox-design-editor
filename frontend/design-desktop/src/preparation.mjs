@@ -124,8 +124,8 @@ export function poseReplyTransfers(reply) {
 
 /** Exact-buffer transport plan. A pool-exposed subview is copied once so the
  * owned pool can stay with its sender; everything else moves its own buffer.
- * The copied bytes are still transferable, so a capable port moves them and
- * an incapable one clones them — the send side never keeps the packet. */
+ * A capable port detaches the moved bytes; an incapable one clones them, and
+ * the copied packet is still only held by the sender until that clone. */
 export function poseReplyPlan(reply) {
   const value = reply?.value
   if (!(value instanceof Uint8Array || value instanceof Float32Array)) return { reply, transfers: [] }
