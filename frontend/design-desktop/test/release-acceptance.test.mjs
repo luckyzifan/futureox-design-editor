@@ -606,7 +606,10 @@ test('component inventory maps packaged inputs and keeps the lockfile out of the
     assert.equal(withheld.get(relative).sha256, createHash('sha256').update(readFileSync(path.join(repoRoot, relative))).digest('hex'))
     assert.equal(withheld.get(relative).traceable, false)
   }
-  assert.equal(report.fidelityFilesExcluded, 349)
+  const fidelityRoot = path.join(repoRoot, 'frontend/design-client/public/fidelity')
+  const fidelityFiles = readdirSync(fidelityRoot, { recursive: true, withFileTypes: true }).filter(entry => entry.isFile()).length
+  assert.equal(report.fidelityFilesExcluded, fidelityFiles)
+  assert.ok(report.fidelityFilesExcluded > 0)
   assert.ok(report.measurement.traceableThirdPartyComponents > 200)
   const moxcms08 = report.rust.crates.find(crate => crate.id === 'moxcms@0.8.1')
   const moxcms09 = report.rust.crates.find(crate => crate.id === 'moxcms@0.9.1')
