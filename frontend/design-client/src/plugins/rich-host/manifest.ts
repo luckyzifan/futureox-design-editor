@@ -2,13 +2,19 @@ import { PluginApiError } from './errors'
 import { PLUGIN_LIMITS } from './limits'
 
 export type PluginCommand = { name: string; command: string }
-export type PluginLaunchMode = 'default' | 'inspect'
+/** Figma launch contexts this host can provide. `codegen` renders the code section. */
+export type PluginLaunchMode = 'default' | 'inspect' | 'codegen'
+export type PluginEditorType = 'figma' | 'figjam' | 'dev' | 'slides' | 'buzz'
 
-export function pluginEditorType(mode: PluginLaunchMode) {
-  return mode === 'inspect' ? 'dev' : 'figma'
+const EDITOR_TYPES: readonly PluginEditorType[] = ['figma', 'figjam', 'dev', 'slides', 'buzz']
+const CAPABILITIES = new Set(['textreview', 'codegen', 'inspect', 'vscode'])
+
+export function pluginEditorType(mode: PluginLaunchMode): PluginEditorType {
+  return mode === 'inspect' || mode === 'codegen' ? 'dev' : 'figma'
 }
 const LOCAL_FOLDER_ID_PREFIX = 'futureox.local.folder:'
 
+export type PluginCodegenLanguage = { label: string; value: string }
 export type PluginManifest = {
   name: string
   id: string
@@ -16,7 +22,11 @@ export type PluginManifest = {
   main: string
   ui: string | null
   uiFiles?: Readonly<Record<string, string>>
-  editorType: string[]
+  editorType: PluginEditorType[]
+  /** Capabilities from the manifest. `codegen` and `inspect` choose the Dev context. */
+  capabilities: string[]
+  /** Codegen languages from the manifest. The first value is the event language. */
+  codegenLanguages: PluginCodegenLanguage[]
   commands: PluginCommand[]
   /** True when the manifest asked for domains other than none. Fetch is limited to these origins. */
   networkIgnored: boolean
@@ -79,6 +89,49 @@ function menuCommands(value: unknown, into: PluginCommand[], depth: number) {
   }
 }
 
+function editorTypeList(value: unknown): PluginEditorType[] {
+  if (!Array.isArray(value) || value.length === 0 || value.some(item => typeof item !== 'string'))
+    throw new PluginApiError('invalid_manifest', 'editorType must be a non-empty array of strings')
+  for (const item of value) {
+    if (!EDITOR_TYPES.includes(item as PluginEditorType))
+      throw new PluginApiError('invalid_manifest', `editorType ${item} is not one of ${EDITOR_TYPES.join(', ')}`)
+  }
+  if (value.includes('figjam') && value.includes('dev'))
+    throw new PluginApiError('invalid_manifest', 'Figma does not support a manifest that lists editorType figjam and dev together')
+  return [...value] as PluginEditorType[]
+}
+
+function capabilityList(value: unknown): string[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > 8 || value.some(item => typeof item !== 'string'))
+    throw new PluginApiError('invalid_manifest', 'capabilities must be an array of strings')
+  for (const item of value) {
+    if (!CAPABILITIES.has(item)) throw new PluginApiError('invalid_manifest', `capability ${item} is not a Figma capability`)
+  }
+  return [...value] as string[]
+}
+
+function codegenLanguageList(value: unknown, capabilities: string[]): PluginCodegenLanguage[] {
+  if (value === undefined) {
+    if (capabilities.includes('codegen'))
+      throw new PluginApiError('invalid_manifest', 'A codegen plugin must declare codegenLanguages')
+    return []
+  }
+  if (!Array.isArray(value) || value.length === 0 || value.length > 16)
+    throw new PluginApiError('invalid_manifest', `codegenLanguages must list 1–16 languages`)
+  const seen = new Set<string>()
+  return value.map(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item))
+      throw new PluginApiError('invalid_manifest', 'codegenLanguages entries must be objects')
+    const entry = item as Record<string, unknown>
+    const label = text(entry.label, 'codegen language label', 80)
+    const code = text(entry.value, 'codegen language value', 80)
+    if (seen.has(code)) throw new PluginApiError('invalid_manifest', 'codegenLanguages must not repeat a value')
+    seen.add(code)
+    return { label, value: code }
+  })
+}
+
 function namedUiFiles(value: unknown) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const entries = Object.entries(value)
@@ -104,14 +157,9 @@ export function parsePluginManifest(value: unknown, { desktopFolder = false } = 
   const main = pluginRelativePath(record.main, '.js')
   const uiFiles = namedUiFiles(record.ui)
   const ui = uiFiles ? uiFiles.main ?? null : record.ui === undefined ? null : pluginRelativePath(record.ui, '.html')
-  let editorType = ['figma']
-  if (record.editorType !== undefined) {
-    if (!Array.isArray(record.editorType) || record.editorType.some(item => typeof item !== 'string'))
-      throw new PluginApiError('invalid_manifest', 'editorType must be an array of strings')
-    editorType = record.editorType
-    if (!editorType.includes('figma') && !editorType.includes('dev'))
-      throw new PluginApiError('invalid_manifest', 'Futureox Design supports Figma design and Dev inspection plugins')
-  }
+  const editorType = record.editorType === undefined ? ['figma'] as PluginEditorType[] : editorTypeList(record.editorType)
+  const capabilities = capabilityList(record.capabilities)
+  const codegenLanguages = codegenLanguageList(record.codegenLanguages, capabilities)
   if (record.documentAccess !== undefined && typeof record.documentAccess !== 'string')
     throw new PluginApiError('invalid_manifest', 'documentAccess must be a string. The open document is already local.')
   let networkDomains: string[] = []
@@ -137,9 +185,42 @@ export function parsePluginManifest(value: unknown, { desktopFolder = false } = 
   const commands: PluginCommand[] = []
   menuCommands(record.menu, commands, 0)
   return {
-    name, id, api: '1.0.0', main, ui, ...(uiFiles ? { uiFiles } : {}), editorType, commands, networkIgnored, networkDomains, permissionsIgnored,
+    name, id, api: '1.0.0', main, ui, ...(uiFiles ? { uiFiles } : {}), editorType, capabilities, codegenLanguages, commands,
+    networkIgnored, networkDomains, permissionsIgnored,
     ...(uiNetworkDomains.length ? { uiNetworkDomains } : {}),
   }
+}
+
+export type PluginLaunchContext = { editorType: PluginEditorType; mode: PluginLaunchMode }
+
+/**
+ * Pick the Figma context for a launch. The editor's current context wins when the
+ * manifest declares it; a design launch falls back to a Dev-only plugin's
+ * inspection or codegen context. FigJam, Slides, and Buzz have no editor here,
+ * so those manifests load but report a documented launch error.
+ */
+export function pluginLaunchContext(manifest: PluginManifest, preferred: PluginLaunchMode): PluginLaunchContext {
+  if (preferred === 'codegen' && !manifest.capabilities.includes('codegen'))
+    throw new PluginApiError('unsupported_codegen', 'This plugin does not declare the codegen capability')
+  const wanted = pluginEditorType(preferred)
+  if (manifest.editorType.includes(wanted)) {
+    if (wanted === 'dev' && preferred === 'inspect' && !manifest.capabilities.includes('inspect') && manifest.capabilities.includes('codegen'))
+      return { editorType: 'dev', mode: 'codegen' }
+    return { editorType: wanted, mode: preferred }
+  }
+  if (wanted === 'dev')
+    throw new PluginApiError('editor_type_unavailable', 'This plugin does not declare the Dev editor type')
+  if (manifest.editorType.includes('figma')) return { editorType: 'figma', mode: 'default' }
+  if (manifest.editorType.includes('dev')) {
+    const mode = manifest.capabilities.includes('inspect') ? 'inspect'
+      : manifest.capabilities.includes('codegen') ? 'codegen' : 'inspect'
+    return { editorType: 'dev', mode }
+  }
+  const missing = manifest.editorType.filter(type => type !== 'figma' && type !== 'dev')
+  throw new PluginApiError(
+    'editor_type_unavailable',
+    `This plugin declares editorType ${JSON.stringify(manifest.editorType)}. Futureox Design does not provide a ${missing.join(' or ')} editor.`,
+  )
 }
 
 export function assertPluginSource(source: string, label: string, maxBytes: number) {

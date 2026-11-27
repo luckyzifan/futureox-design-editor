@@ -263,7 +263,7 @@ describe('Figma plugin host', () => {
       if (!figma.viewport || typeof figma.viewport.zoom !== 'number') throw new Error('viewport missing')
       if (figma.currentUser !== null) throw new Error('user leaked')
       figma.createGridStyle()
-    `))).rejects.toMatchObject({ code: 'unsupported_api' })
+    `))).rejects.toMatchObject({ code: 'grid_style_unavailable' })
     expect(current.state.version).toBe(version + 1)
   })
 
@@ -778,8 +778,9 @@ describe('Figma plugin host', () => {
       `,
       ui: null,
     }
-    await expect(openPlugin(current, plugin)).rejects.toMatchObject({ code: 'unsupported_editor_type' })
-    const run = await openPlugin(current, plugin, { mode: 'inspect' })
+    // A design-context launch of a Dev-only manifest falls back to inspection.
+    const run = await openPlugin(current, plugin)
+    expect(run.mode).toBe('inspect')
     expect(run.closeMessage).toBe('yes')
     expect(nodes(current).map(node => node.name)).toEqual(['Inspected'])
     run.close()
@@ -1638,6 +1639,171 @@ describe('Raster export admission', () => {
       })()
     `))
     expect(run.closeMessage).toBe('validated')
+    run.close()
+  })
+})
+
+describe('Figma Plugin API surface', () => {
+  it('exposes the Dev and library members a real plugin reads', async () => {
+    const current = editor()
+    const run = await openPlugin(current, {
+      manifest: parsePluginManifest({ name: 'Surface probe', id: 'surface.probe', api: '1.0.0', main: 'code.js', editorType: ['figma'] }),
+      main: `
+        ;(async function () {
+          const rect = figma.createRectangle()
+          const text = figma.createText()
+          const frame = figma.createFrame()
+          const report = {
+            editorType: figma.editorType,
+            mode: figma.mode,
+            teamLibrary: typeof figma.teamLibrary,
+            teamLibraryList: typeof (figma.teamLibrary || {}).getAvailableLibraryVariableCollectionsAsync,
+            teamLibraryVariables: typeof (figma.teamLibrary || {}).getVariablesInLibraryCollectionAsync,
+            parameters: typeof figma.parameters,
+            parameterHandlers: [figma.parameters && typeof figma.parameters.on, figma.parameters && typeof figma.parameters.once, figma.parameters && typeof figma.parameters.off],
+            codegen: typeof figma.codegen,
+            codegenHandlers: [figma.codegen && typeof figma.codegen.on, figma.codegen && typeof figma.codegen.once, figma.codegen && typeof figma.codegen.off, figma.codegen && typeof figma.codegen.refresh],
+            codegenUnit: figma.codegen && figma.codegen.preferences.unit,
+            annotations: typeof figma.annotations,
+            annotationHandlers: [figma.annotations && typeof figma.annotations.getAnnotationCategoriesAsync, figma.annotations && typeof figma.annotations.getAnnotationCategoryByIdAsync, figma.annotations && typeof figma.annotations.addAnnotationCategoryAsync],
+            currentUser: figma.currentUser,
+            fileKey: figma.fileKey,
+            createVector: typeof figma.createVector,
+            createGridStyle: typeof figma.createGridStyle,
+            createImageAsync: typeof figma.createImageAsync,
+            importStyleByKeyAsync: typeof figma.importStyleByKeyAsync,
+            importComponentByKeyAsync: typeof figma.importComponentByKeyAsync,
+            getVariableByIdAsync: typeof figma.variables.getVariableByIdAsync,
+            numberOfFixedChildren: frame.numberOfFixedChildren,
+            setRelaunchData: typeof rect.setRelaunchData,
+            styledSegments: typeof text.getStyledTextSegments,
+            reactions: Array.isArray(rect.reactions) ? 'array' : typeof rect.reactions,
+            nodeAnnotations: Array.isArray(rect.annotations) ? 'array' : typeof rect.annotations,
+            annotationCategories: await figma.annotations.getAnnotationCategoriesAsync(),
+            missingCategory: await figma.annotations.getAnnotationCategoryByIdAsync('missing'),
+          }
+          console.log('report')
+          const reportJson = JSON.stringify(report)
+          for (let index = 0; index < reportJson.length; index += 200) console.log(reportJson.slice(index, index + 200))
+          const codes = {}
+          const code = async function (label, call) {
+            try { await call(); codes[label] = 'resolved' }
+            catch (error) { codes[label] = String(error && error.message || error).split(':')[0] }
+          }
+          await code('gridStyle', function () { return figma.createGridStyle() })
+          await code('importStyle', function () { return figma.importStyleByKeyAsync('abc') })
+          await code('importComponent', function () { return figma.importComponentByKeyAsync('abc') })
+          await code('relaunch', function () { return rect.setRelaunchData({ edit: 'Edit' }) })
+          await code('annotate', function () { return figma.annotations.addAnnotationCategoryAsync({ label: 'A', color: 'RED' }) })
+          await code('teamLibrary', function () { return figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync() })
+          console.log('codes')
+          const codesJson = JSON.stringify(codes)
+          for (let index = 0; index < codesJson.length; index += 200) console.log(codesJson.slice(index, index + 200))
+          figma.closePlugin('surface')
+        })()
+      `,
+      ui: null,
+    })
+    expect(run.closeMessage).toBe('surface')
+    const marker = run.logs.indexOf('codes')
+    const report = JSON.parse(run.logs.slice(1, marker).join(''))
+    expect(report).toMatchObject({
+      editorType: 'figma', mode: 'default',
+      teamLibrary: 'object', teamLibraryList: 'function', teamLibraryVariables: 'function',
+      parameters: 'object', parameterHandlers: ['function', 'function', 'function'],
+      codegen: 'object', codegenHandlers: ['function', 'function', 'function', 'function'], codegenUnit: 'PIXEL',
+      annotations: 'object', annotationHandlers: ['function', 'function', 'function'],
+      currentUser: null, fileKey: null,
+      createVector: 'function', createGridStyle: 'function', createImageAsync: 'function',
+      importStyleByKeyAsync: 'function', importComponentByKeyAsync: 'function', getVariableByIdAsync: 'function',
+      numberOfFixedChildren: 0, setRelaunchData: 'function', styledSegments: 'function',
+      reactions: 'array', nodeAnnotations: 'array', annotationCategories: [], missingCategory: null,
+    })
+    const codes = JSON.parse(run.logs.slice(marker + 1).join(''))
+    expect(codes).toEqual({
+      gridStyle: 'grid_style_unavailable', importStyle: 'library_unavailable', importComponent: 'library_unavailable',
+      relaunch: 'relaunch_unavailable', annotate: 'annotations_unavailable', teamLibrary: 'permission_denied',
+    })
+    run.close()
+  })
+
+  it('runs a codegen Dev plugin in codegen mode and reports its sections for the selection', async () => {
+    const current = editor()
+    current.change('Seed codegen node', doc => {
+      const card = node('rectangle', 0, 0, 120, 80)
+      card.name = 'Card'
+      doc.nodes[card.id] = card
+      doc.pages[0].children.push(card.id)
+    })
+    const card = named(current, 'Card')!
+    current.select([card.id])
+    const outputs: unknown[] = []
+    const run = await openPlugin(current, {
+      manifest: parsePluginManifest({
+        name: 'Codegen probe', id: 'codegen.probe', api: '1.0.0', main: 'code.js', editorType: ['dev'],
+        capabilities: ['codegen'], codegenLanguages: [{ label: 'CSS', value: 'css' }],
+      }),
+      main: `
+        if (figma.editorType !== 'dev' || figma.mode !== 'codegen') throw new Error('wrong context')
+        let denied = false
+        try { figma.createRectangle() } catch (error) { denied = String(error).includes('permission_denied') }
+        if (!denied) throw new Error('codegen edits were accepted')
+        figma.codegen.on('generate', function (event) {
+          return [{ language: event.language, code: 'width: ' + event.node.width + 'px', title: event.node.name }]
+        })
+      `,
+      ui: null,
+    }, { onCodegen: output => { outputs.push(output) } })
+    expect(run.mode).toBe('codegen')
+    expect(run.editorType).toBe('dev')
+    await run.requestCodegen()
+    expect(outputs).toEqual([{ sections: [{ language: 'css', code: 'width: 120px', title: 'Card' }] }])
+    expect(run.codegen).toEqual([{ sections: [{ language: 'css', code: 'width: 120px', title: 'Card' }] }])
+    run.close()
+  })
+
+  it('accepts FigJam and Slides manifests and explains that this editor cannot run them', async () => {
+    const current = editor()
+    expect(() => parsePluginManifest({ name: 'Board', id: 'board.plugin', api: '1.0.0', main: 'code.js', editorType: ['figjam'] })).not.toThrow()
+    expect(() => parsePluginManifest({ name: 'Deck', id: 'deck.plugin', api: '1.0.0', main: 'code.js', editorType: ['slides'] })).not.toThrow()
+    expect(() => parsePluginManifest({ name: 'Mixed', id: 'mixed.plugin', api: '1.0.0', main: 'code.js', editorType: ['figjam', 'dev'] })).toThrow(/figjam.*dev|dev.*figjam/i)
+    const failure = await openPlugin(current, {
+      manifest: parsePluginManifest({ name: 'Board', id: 'board.plugin', api: '1.0.0', main: 'code.js', editorType: ['figjam'] }),
+      main: 'figma.closePlugin("board")', ui: null,
+    }).then(() => null, (error: unknown) => error)
+    expect(failure).toBeInstanceOf(PluginApiError)
+    expect((failure as PluginApiError).code).toBe('editor_type_unavailable')
+    expect((failure as PluginApiError).message).toMatch(/figjam/i)
+  })
+
+  it('runs a Dev-only plugin in inspection when the design context launches it', async () => {
+    const current = editor()
+    const run = await openPlugin(current, {
+      manifest: parsePluginManifest({ name: 'Inspect only', id: 'inspect.only', api: '1.0.0', main: 'code.js', editorType: ['dev'], capabilities: ['inspect'] }),
+      main: 'if (figma.editorType !== "dev" || figma.mode !== "inspect") throw new Error("wrong context"); figma.closePlugin("inspected")',
+      ui: null,
+    })
+    expect(run.closeMessage).toBe('inspected')
+    expect(run.mode).toBe('inspect')
+    run.close()
+  })
+
+  it('fires figma.on("run") with the menu command and no parameter values', async () => {
+    const current = editor()
+    const run = await openPlugin(current, {
+      manifest: parsePluginManifest({
+        name: 'Run event', id: 'run.event', api: '1.0.0', main: 'code.js', editorType: ['figma'],
+        menu: [{ name: 'Resize', command: 'resize' }],
+      }),
+      main: `
+        figma.parameters.on('input', function () { throw new Error('no parameter UI is open') })
+        figma.on('run', function (event) {
+          figma.closePlugin(JSON.stringify({ command: event.command, parameters: event.parameters === undefined ? 'undefined' : 'value' }))
+        })
+      `,
+      ui: null,
+    }, { command: 'resize' })
+    expect(JSON.parse(run.closeMessage!)).toEqual({ command: 'resize', parameters: 'undefined' })
     run.close()
   })
 })

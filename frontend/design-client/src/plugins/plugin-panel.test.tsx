@@ -43,7 +43,10 @@ test('declared plugin records keep the manifest identity and drop paths', () => 
     { grant: 'not-a-grant', manifestText },
     { grant: '00000000-0000-4000-8000-000000000002', manifestText: '{"name":"Bad","id":"bad","api":"1","main":"../code.js"}' },
   ])
-  expect(accepted).toEqual([{ grant, id: 'local.declared', name: 'Declared', displayName: 'Declared', manifestText }])
+  expect(accepted).toEqual([{
+    grant, id: 'local.declared', name: 'Declared', displayName: 'Declared', manifestText,
+    editorType: ['figma'], capabilities: [],
+  }])
   const many = Array.from({ length: 40 }, (_, index) => ({
     grant: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
     manifestText: JSON.stringify({ name: `N${index}`, id: `local.n${index}`, api: '1.0.0', main: 'code.js' }),
@@ -53,6 +56,10 @@ test('declared plugin records keep the manifest identity and drop paths', () => 
   const onlyDev = JSON.stringify({ ...JSON.parse(manifestText), editorType: ['dev'] })
   expect(acceptedDeclaredPlugins([{ grant, manifestText: onlyDev }])).toEqual([])
   expect(acceptedDeclaredPlugins([{ grant, manifestText: onlyDev }], 'dev')).toHaveLength(1)
+  const figjam = JSON.stringify({ ...JSON.parse(manifestText), editorType: ['figjam'] })
+  expect(acceptedDeclaredPlugins([{ grant, manifestText: figjam }])).toEqual([])
+  expect(acceptedDeclaredPlugins([{ grant, manifestText: figjam }], ['figma', 'figjam'])).toHaveLength(1)
+  expect(acceptedDeclaredPlugins([{ grant, manifestText: figjam }], ['figma', 'figjam', 'dev', 'slides', 'buzz'])).toHaveLength(1)
 })
 
 test('the live Dev toggle changes the plugin catalog and launches its inspection context', async () => {
@@ -85,6 +92,25 @@ test('the live Dev toggle changes the plugin catalog and launches its inspection
     await act(async () => { setFigmaDevMode(false) })
     expect(document.body.textContent).not.toContain('Only Dev')
   } finally { current.dispose() }
+})
+
+test('a FigJam-only declaration stays enabled and explains the missing editor on launch', async () => {
+  interfacePreference.set({ locale: 'en' })
+  const board = JSON.stringify({ ...JSON.parse(manifestText), name: 'Board', editorType: ['figjam'] })
+  const desktop = {
+    plugins: {
+      list: async () => ({ status: 'ok' as const, plugins: [{ grant, manifestText: board }] }),
+      read: async () => ({ status: 'ok' as const, files: { 'code.js': 'figma.closePlugin()', 'ui.html': '' } }),
+      closeUi: async () => ({ status: 'ok' as const }),
+      openUi: async () => ({ status: 'ok' as const }),
+      onUiMessage: () => () => {},
+      onUiClosed: () => () => {},
+    },
+  } as unknown as DesktopBridge
+  await act(async () => { root.render(<PluginPanel editor={editor} desktop={desktop} launch={{ grant, token: 2 }} onClose={() => {}} />) })
+  await vi.waitFor(() => expect(document.querySelector('[role="alert"]')?.textContent).toContain('figjam'))
+  expect(document.body.textContent).not.toContain('That local plugin is unavailable in this editor mode.')
+  expect(document.querySelector('.plugin-local-list')).toBeNull()
 })
 
 test('plugin host lists startup plugins and runs only the declared files', async () => {

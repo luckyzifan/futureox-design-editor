@@ -27,8 +27,9 @@ For a desktop folder or archive with a missing `main.js` entry, the loader can s
 
 Manifest rules:
 
-- `api` must be `1.0.0`. The plugin panel filters manifests by `editorType`. Design supports `figma` and the Dev toggle supports inspection plugins declaring `dev`.
-- Dev inspection plugins can read the design, open a sandboxed UI and update their own plugin metadata. Design edits are denied.
+- `api` must be `1.0.0`. `editorType` accepts `figma`, `figjam`, `dev`, `slides`, and `buzz`; `figjam` and `dev` cannot be listed together. The panel lists `figma` manifests in design and `dev` manifests in the Dev toggle. A Dev-only manifest opened from the menu runs in inspection, or in code generation when it declares `capabilities: ["codegen"]` and no `inspect`. A FigJam, Slides, or Buzz manifest is accepted and reports `editor_type_unavailable` when launched.
+- `capabilities` may list `textreview`, `codegen`, `inspect`, and `vscode`. A `codegen` capability must declare `codegenLanguages`, and the first value is the language of a generate event.
+- Dev inspection and code generation plugins can read the design, open a sandboxed UI and update their own plugin metadata. Design edits are denied.
 - `documentAccess` is ignored. The open document is already local.
 - `networkAccess` may name domains. Main-script `fetch` uses those origins. Desktop UI `fetch` accepts public IPv4 CORS GET and HEAD for declared HTTPS origins and wildcard subdomains. Each window allows 32 requests, up to four at a time and 1 MiB per response. UI path patterns and development domains do not grant access. UI requests carry no credentials and redirects are refused.
 - `permissions` may be non-empty. They are not granted.
@@ -42,7 +43,7 @@ Desktop content security policy still has no `unsafe-eval`. The plugin UI window
 
 Desktop `figma.clientStorage` persists across launches of the same profile. Its promises wait for the local SQLite sidecar. Installed folders use the authorized folder and manifest ID as their identity. Archives use the digest of the loaded archive, so changing the archive creates a new storage identity. The browser keeps its existing client storage adapter. Old browser-only blobs are preserved and stay outside the desktop database because their originating package identity was never recorded.
 
-Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host calls, and 2,000 nodes in one `findAll`. Timers allow delays up to five seconds and share 64 pending slots. A turn can run up to 128 one-shot callbacks. Repeating timers have a 10 ms minimum period and allow up to 2,000 callbacks per plugin run. Stopping the plugin cancels pending timers.
+Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host calls, and 2,000 nodes in one `findAll`. A codegen result carries at most 20 sections of 200,000 characters, and one request re-runs generate at most 8 times. Timers allow delays up to five seconds and share 64 pending slots. A turn can run up to 128 one-shot callbacks. Repeating timers have a 10 ms minimum period and allow up to 2,000 callbacks per plugin run. Stopping the plugin cancels pending timers.
 
 ## What a real .zip or .figma plugin can do
 
@@ -67,7 +68,7 @@ Behavior follows the [Figma Plugin API](https://www.figma.com/plugin-docs/api/ap
 
 ## Still blocked
 
-These calls still throw or are absent: vector networks, remote variable libraries, `importStyleByKeyAsync`, payment transactions, parameters, codegen, annotations, styled text range writes, reactions, relaunch buttons, and `strokeStyleId`. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
+The members that exist but cannot complete here report a named error instead of `unsupported_api`: `figma.teamLibrary` rejects with `permission_denied` because the `teamlibrary` permission is never granted, `figma.importStyleByKeyAsync` and `figma.importComponentByKeyAsync` reject with `library_unavailable`, `figma.createGridStyle` throws `grid_style_unavailable`, and `SceneNode.setRelaunchData` throws `relaunch_unavailable`. `figma.parameters` registers input handlers but no parameter UI is opened, so `input` never fires and the `run` event carries no `parameters`. `figma.annotations` reads an empty category list and rejects a new category with `annotations_unavailable`. `figma.currentUser` is null. Styled text range writes and `strokeStyleId` are still absent. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
 
 ## API coverage
 
@@ -106,8 +107,8 @@ These calls still throw or are absent: vector networks, remote variable librarie
 | `figma.ui.hide` | supported | Hides the iframe. The plugin keeps running. |
 | `figma.ui.close` | partial | Hides the iframe. The plugin keeps running until closePlugin. show() can open it again. |
 | `figma.commitUndo` | supported | Flushes the current turn as its own undo entry. Later edits in the same run are a new undo step. |
-| `figma.editorType` | partial | "figma" in design and "dev" in the editor’s Dev inspection mode. |
-| `figma.mode` | partial | "default" in design and "inspect" in Dev. Code generation and FigJam are unavailable. |
+| `figma.editorType` | partial | "figma" in design and "dev" in the Dev inspection or codegen context. A FigJam, Slides, or Buzz manifest parses but reports that this editor has no such surface. |
+| `figma.mode` | partial | "default" in design, "inspect" from the Dev toggle, and "codegen" for a Dev codegen launch. A FigJam, Slides, or Buzz launch is refused. |
 | `figma.pluginId` | partial | The manifest id. It is not a published Figma plugin id. |
 | `figma.command` | partial | The menu command the host launched, or undefined when the manifest has no menu. |
 | `figma.fileKey` | partial | Always null. Local documents have no Figma file key. |
@@ -196,11 +197,11 @@ These calls still throw or are absent: vector networks, remote variable librarie
 | `figma.clientStorage` | supported | getAsync, setAsync, keysAsync, and deleteAsync. JSON values, undefined, and Uint8Array. 5 MB per plugin by the official size rule, with a host ceiling of 10000 keys. Stored in this client and not undone with the canvas. |
 | `figma.variables` | partial | Local collections and COLOR, FLOAT, STRING, and BOOLEAN variables, synchronous and asynchronous lookups, and typed local aliases. Mode ids are mode names. setBoundVariable supports width, height, opacity, characters, visible, fontSize, and itemSpacing. Remote libraries are unavailable. |
 | `figma.variables.getVariableByIdAsync` | partial | Looks up authored variables in the open document. Invalid or absent local IDs resolve to `null`. |
-| `figma.teamLibrary` | unsupported | Absent. There is no team library or cloud account. |
+| `figma.teamLibrary` | partial | Both calls reject with `permission_denied`. This host never grants the `teamlibrary` permission and has no cloud library. |
 | `figma.payments` | partial | Read-only status is NOT_SUPPORTED. Commerce is unavailable. |
-| `figma.parameters` | unsupported | Absent. Parameter UI is not collected. |
-| `figma.codegen` | unsupported | Absent. |
-| `figma.annotations` | unsupported | Absent. |
+| `figma.parameters` | partial | on, once, and off register input handlers. No parameter UI is opened, so `input` never fires; the `run` event carries no `parameters` property. |
+| `figma.codegen` | partial | A Dev codegen launch delivers `generate` for the selected node with the first manifest `codegenLanguages` value and PIXEL preferences. `refresh` re-runs generate; `preferenceschange` is not delivered. |
+| `figma.annotations` | partial | `getAnnotationCategoriesAsync` resolves an empty list and `getAnnotationCategoryByIdAsync` resolves null. `addAnnotationCategoryAsync` rejects with `annotations_unavailable`. |
 | `figma.currentUser` | partial | Always null. There is no account user. Optional chaining works; reading an id does not. |
 | `figma.util.rgb` | supported | Returns {r, g, b} with channels from 0 to 1. |
 | `figma.util.solidPaint` | supported | SOLID paint from #RGB, #RRGGBB, #RRGGBBAA, or an {r, g, b} object. |
@@ -217,18 +218,19 @@ These calls still throw or are absent: vector networks, remote variable librarie
 | `figma.getLocalTextStylesAsync` | supported | Async form of `getLocalTextStyles`. |
 | `figma.getLocalEffectStylesAsync` | supported | Async form of `getLocalEffectStyles`. |
 | `figma.createSlice` | supported | Creates a slice node on the current page. |
-| `figma.importComponentByKeyAsync` | unsupported | Throws unsupported_api. Remote component keys are not imported. |
+| `figma.importComponentByKeyAsync` | unsupported | Throws `library_unavailable`. Remote component keys need a published Figma library and this host has no cloud library. |
+| `figma.importStyleByKeyAsync` | unsupported | Throws `library_unavailable`. Remote style keys need a published Figma library and this host has no cloud library. |
 | `figma.createPaintStyle` | partial | Creates a local paint style. name and paints can be set. No cloud library or style key. |
 | `figma.createTextStyle` | partial | Creates a local text style. fontName, lineHeight, letterSpacing, textCase, and paragraph spacing can be set. fontSize and textDecoration are kept on the node, not the style. |
 | `figma.createEffectStyle` | partial | Creates a local effect style. name and effects can be set. No cloud library. |
-| `figma.createGridStyle` | unsupported | Throws unsupported_api. |
+| `figma.createGridStyle` | unsupported | Throws `grid_style_unavailable`. The local document has no layout-grid style kind. |
 | `SceneNode.exportAsync` | partial | SVG markup bytes resolve inline. PNG, JPG, and bitmap PDF use the product CPU renderer at scales 0.1–4, with a 500,000-character base64 transport cap. |
 | `SceneNode.getPluginData` | supported | String values for this manifest id. A missing key returns "". Pages and the document root use the same methods. Stored in the fdCompatibility extension design.futureox/plugin-data and undone with the edit. |
 | `SceneNode.setPluginData` | supported | Up to 50 keys and 10000 characters. An empty string deletes the key. The same limits apply to pages and figma.root. |
 | `SceneNode.getSharedPluginData` | supported | Reads a namespace another plugin on this file could also read. Missing keys return "". |
 | `SceneNode.setSharedPluginData` | supported | Writes a namespaced string on the node, page, or root. An empty string deletes the key. |
-| `SceneNode.setRelaunchData` | unsupported | Throws unsupported_api. Relaunch buttons are not shown. |
-| `SceneNode.reactions` | unsupported | Absent. Prototype reactions are not edited from this host. |
+| `SceneNode.setRelaunchData` | unsupported | Throws `relaunch_unavailable`. Relaunch buttons have no local surface. |
+| `SceneNode.reactions` | partial | Reads complete authored navigation reactions with supported transitions. Conditions, other actions, imported inert receipts, and writes are outside this projection. |
 | `SceneNode.boundVariables` | partial | Reads bindings written by setBoundVariable. Fields are width, height, opacity, characters, visible, fontSize, and itemSpacing. |
 | `TextNode.getStyledTextSegments` | partial | Reads UTF-16 ranges and groups equal adjacent styles. Supports fontSize, fontWeight, fontStyle, textDecoration, textCase, lineHeight, letterSpacing, paragraphSpacing, and paragraphIndent. |
 | `figma.currentPage.findAllWithCriteria` | partial | Filters by types only, up to 2000 nodes. pluginData criteria throws. |

@@ -4,12 +4,15 @@ import { desktopBridge, type DesktopBridge, type PluginStorageOrigin } from '../
 import { interfacePreference, useInterfacePreferences } from '../interface-preference'
 import { figmaDevMode, useFigmaDevMode } from '../figma-dev-mode'
 import { modalKeyDown, useModalOwnership } from '../modal-keyboard'
-import { acceptedDeclaredPlugins, type DeclaredPlugin } from './catalog'
-import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, pluginEditorEvents, PluginApiError, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
+import { acceptedDeclaredPlugins, PLUGIN_HOST_EDITOR_TYPES, type DeclaredPlugin } from './catalog'
+import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, pluginEditorEvents, PluginApiError, PLUGIN_API_COVERAGE, type PluginBundle, type PluginCodegenOutput, type PluginController } from './rich-host'
 import type { PluginStorageRequest } from './rich-host/client-storage'
 import { pluginDocumentChanges } from './rich-host/document-changes'
 import { PLUGIN_LIMITS } from './rich-host/limits'
-import { assertPluginSource, missingPluginSource, pluginBundleFromSources, pluginEditorType, pluginUiPaths, type PluginLaunchMode } from './rich-host/manifest'
+import {
+  assertPluginSource, missingPluginSource, pluginBundleFromSources, pluginEditorType, pluginLaunchContext, pluginUiPaths,
+  type PluginEditorType, type PluginLaunchMode,
+} from './rich-host/manifest'
 import { samplePlugin } from './sample-plugin'
 import './plugin-panel.css'
 
@@ -28,6 +31,9 @@ const copy = {
     path: '示例文件夹：frontend/design-client/plugins/labeled-rectangles',
     enabled: '本机插件',
     run: '运行',
+    generate: '生成代码',
+    codegen: '生成的代码',
+    codegenEmpty: '选中一个图层后生成代码。',
     commands: '选择要运行的命令',
     none: '未找到本机插件。放入插件文件夹后重新打开此面板。',
     missing: '当前编辑模式无法运行这个本机插件。',
@@ -46,6 +52,9 @@ const copy = {
     path: 'Sample folder: frontend/design-client/plugins/labeled-rectangles',
     enabled: 'Local plugins',
     run: 'Run',
+    generate: 'Generate code',
+    codegen: 'Generated code',
+    codegenEmpty: 'Select a layer to generate code.',
     commands: 'Choose a command',
     none: 'No local plugins found. Add a plugin folder and reopen this panel.',
     missing: 'That local plugin is unavailable in this editor mode.',
@@ -62,7 +71,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   const { locale, uiMode } = useInterfacePreferences()
   const devMode = useFigmaDevMode()
   const mode: PluginLaunchMode = uiMode === 'figma' && devMode ? 'inspect' : 'default'
-  const editorType = pluginEditorType(mode)
+  const editorType: PluginEditorType = pluginEditorType(mode)
   const text = copy[locale]
   const counts = {
     supported: PLUGIN_API_COVERAGE.filter(entry => entry.status === 'supported').length,
@@ -73,8 +82,13 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   const [error, setError] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
   const [running, setRunning] = useState(false)
-  const [pending, setPending] = useState<{ bundle: PluginBundle; source?: PluginStorageOrigin } | null>(null)
+  const [pending, setPending] = useState<{ bundle: PluginBundle; source?: PluginStorageOrigin; launch?: PluginLaunchMode } | null>(null)
+  const [codegen, setCodegen] = useState<PluginCodegenOutput[]>([])
   const [enabled, setEnabled] = useState<DeclaredPlugin[] | null>(null)
+  // The panel lists the plugins this editor context can launch. Every granted
+  // declaration stays in the catalog so a menu launch can still explain a
+  // FigJam, Slides, or Buzz manifest.
+  const visible = enabled?.filter(plugin => plugin.editorType.includes(editorType)) ?? null
   const controller = useRef<PluginController | null>(null)
   const runAbort = useRef<AbortController | null>(null)
   const endStorage = useRef<(() => void) | null>(null)
@@ -102,6 +116,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     unlisten.current?.()
     unlisten.current = null
     void desktop?.plugins?.closeUi()
+    setCodegen([])
     setRunning(false)
   }
 
@@ -151,6 +166,13 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
           if (delivered) void delivered.catch(failed)
         } catch (failure) { failed(failure) }
       }
+      if (active.mode === 'codegen' && next.selection !== previous.selection) {
+        try {
+          void active.requestCodegen().then(requested => {
+            if (controller.current === active && !requested) setCodegen([{ sections: [] }])
+          }).catch(failed)
+        } catch (failure) { failed(failure) }
+      }
     })
   }, [editor])
 
@@ -160,7 +182,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     let live = true
     void list().then(result => {
       if (!live) return
-      if (result.status === 'ok') setEnabled(acceptedDeclaredPlugins(result.plugins, editorType))
+      if (result.status === 'ok') setEnabled(acceptedDeclaredPlugins(result.plugins, PLUGIN_HOST_EDITOR_TYPES))
       else if (result.status === 'error' || result.status === 'conflict') { setEnabled([]); setError(result.message) }
       else setEnabled([])
     }).catch(cause => {
@@ -179,15 +201,16 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     }
   }
 
-  async function runBundle(bundle: PluginBundle, notes: string[], source?: PluginStorageOrigin, command?: string) {
+  async function runBundle(bundle: PluginBundle, notes: string[], source?: PluginStorageOrigin, command?: string, launch: PluginLaunchMode = mode) {
     stop()
     const token = generation.current
     setError('')
     setWarnings(notes)
-    if (!bundle.manifest.editorType.includes(editorType)) { setError(text.missing); return }
+    try { pluginLaunchContext(bundle.manifest, launch) }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); return }
     // A manifest menu is a choice. Loading the file must not run commands[0].
     if (command === undefined && bundle.manifest.commands.length > 0) {
-      setPending({ bundle, source })
+      setPending({ bundle, source, launch })
       setStatus('')
       setRunning(false)
       return
@@ -223,8 +246,9 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
       }
       const next = await openPlugin(editor, bundle, {
         command,
-        mode,
+        mode: launch,
         isModeCurrent: () => mode === (interfacePreference.getSnapshot().uiMode === 'figma' && figmaDevMode() ? 'inspect' : 'default'),
+        onCodegen: output => { if (token === generation.current) setCodegen([output]) },
         signal: abort.signal,
         onError: failed,
         storageRequest,
@@ -267,6 +291,9 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
       if (token !== generation.current) { next.close(); return }
       controller.current = next
       setStatus(manifest.name)
+      if (next.mode === 'codegen') void next.requestCodegen().then(requested => {
+        if (token === generation.current && !requested) setCodegen([{ sections: [] }])
+      }).catch(failed)
       if (desktop?.plugins) {
         const offMessage = desktop.plugins.onUiMessage(message => {
           if (token !== generation.current) return
@@ -285,7 +312,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     await run(samplePlugin.manifestText, samplePlugin.mainSource, samplePlugin.uiHtml, [], 'run')
   }
 
-  async function runManifest(grant: string, manifestText: string) {
+  async function runManifest(grant: string, manifestText: string, launch: PluginLaunchMode = mode) {
     const plugins = desktop?.plugins
     if (!plugins) return
     const manifest = parseRichManifest(JSON.parse(manifestText), { desktopFolder: true })
@@ -304,11 +331,11 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
         files.set(path, content)
       }
     }
-    await runBundle(pluginBundleFromSources(manifest, files), [], { folderGrant: grant })
+    await runBundle(pluginBundleFromSources(manifest, files), [], { folderGrant: grant }, undefined, launch)
   }
 
-  async function runListed(plugin: DeclaredPlugin) {
-    try { await runManifest(plugin.grant, plugin.manifestText) }
+  async function runListed(plugin: DeclaredPlugin, launch: PluginLaunchMode = mode) {
+    try { await runManifest(plugin.grant, plugin.manifestText, launch) }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); stop() }
   }
   runListedRef.current = runListed
@@ -366,24 +393,38 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
             <h3>{text.commands}</h3>
             <ul className="plugin-local-list" aria-label={text.commands}>
               {pending.bundle.manifest.commands.map((item, index) => <li key={`${index}:${item.command}`}>
-                <button type="button" disabled={running} onClick={() => void runBundle(pending.bundle, warnings, pending.source, item.command)}>{item.name}</button>
+                <button type="button" disabled={running} onClick={() => void runBundle(pending.bundle, warnings, pending.source, item.command, pending.launch)}>{item.name}</button>
               </li>)}
             </ul>
           </div>}
-          {enabled && enabled.length > 0 ? (
+          {visible && visible.length > 0 ? (
             <div>
               <h3>{text.enabled}</h3>
               <ul className="plugin-local-list" aria-label={text.enabled}>
-                {enabled.map(plugin => (
+                {visible.map(plugin => (
                   <li key={plugin.grant}>
                     <span>{plugin.name}</span>
                     <button type="button" disabled={running} onClick={() => void runListed(plugin)}>{text.run}</button>
+                    {mode !== 'default' && plugin.capabilities.includes('codegen')
+                      ? <button type="button" disabled={running} onClick={() => void runListed(plugin, 'codegen')}>{text.generate}</button>
+                      : null}
                   </li>
                 ))}
               </ul>
             </div>
-          ) : enabled ? <p>{text.none}</p> : null}
+          ) : visible ? <p>{text.none}</p> : null}
           {warnings.map(warning => <p key={warning}>{warning}</p>)}
+          {codegen.length ? <section className="plugin-codegen" aria-label={text.codegen}>
+            <h3>{text.codegen}</h3>
+            {codegen.map((output, index) => <div key={index}>
+              {output.error ? <p role="alert">{output.error}</p> : null}
+              {output.sections.map((section, sectionIndex) => <div key={sectionIndex}>
+                <strong>{section.title || section.language}</strong>
+                <pre><code>{section.code}</code></pre>
+              </div>)}
+            </div>)}
+            {codegen.every(output => !output.error && !output.sections.length) ? <p>{text.codegenEmpty}</p> : null}
+          </section> : null}
           {status ? <p role="status">{status}</p> : null}
           {error ? <p role="alert">{error}</p> : null}
           <details>

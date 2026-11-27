@@ -1,4 +1,4 @@
-import { parsePluginManifest, type PluginManifest } from './rich-host/manifest'
+import { parsePluginManifest, type PluginEditorType, type PluginManifest } from './rich-host/manifest'
 
 export type DeclaredPlugin = {
   grant: string
@@ -6,12 +6,22 @@ export type DeclaredPlugin = {
   displayName: string
   id: string
   name: string
+  editorType: PluginEditorType[]
+  capabilities: string[]
 }
 
 const grantPattern = /^[0-9a-f-]{36}$/
 
-/** Keep the plugins the desktop grants. Derive their names and identities from the manifest. */
-export function acceptedDeclaredPlugins(value: unknown, editorType: 'figma' | 'dev' = 'figma'): DeclaredPlugin[] {
+/** Editor types this host can enable. */
+export const PLUGIN_HOST_EDITOR_TYPES: readonly PluginEditorType[] = ['figma', 'figjam', 'dev', 'slides', 'buzz']
+
+/** Keep the plugins the desktop grants. Derive their names and identities from the manifest.
+ * Pass one or more editor types to filter; omitted keeps design manifests only. */
+export function acceptedDeclaredPlugins(
+  value: unknown,
+  editorType: PluginEditorType | readonly PluginEditorType[] = 'figma',
+): DeclaredPlugin[] {
+  const wanted = typeof editorType === 'string' ? [editorType] : editorType
   if (!Array.isArray(value)) return []
   const plugins: DeclaredPlugin[] = []
   const seen = new Set<string>()
@@ -25,7 +35,7 @@ export function acceptedDeclaredPlugins(value: unknown, editorType: 'figma' | 'd
     if (typeof manifestText !== 'string' || new TextEncoder().encode(manifestText).byteLength > 64 * 1024) continue
     let manifest: PluginManifest
     try { manifest = parsePluginManifest(JSON.parse(manifestText), { desktopFolder: true }) } catch { continue }
-    if (!manifest.editorType.includes(editorType)) continue
+    if (!manifest.editorType.some(type => wanted.includes(type))) continue
     seen.add(grant)
     plugins.push({
       grant,
@@ -33,6 +43,8 @@ export function acceptedDeclaredPlugins(value: unknown, editorType: 'figma' | 'd
       name: manifest.name,
       displayName: manifest.name,
       manifestText,
+      editorType: manifest.editorType,
+      capabilities: manifest.capabilities,
     })
   }
   return plugins
