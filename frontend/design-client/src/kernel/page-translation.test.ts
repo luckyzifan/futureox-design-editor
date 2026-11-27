@@ -610,3 +610,78 @@ test('a released clipped board never starts native drag repair from a late cover
   expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(false)
   expect(rebase).not.toHaveBeenCalled()
 })
+
+test('a certified clipped board does not start page fills while its crop covers the pose', () => {
+  const doc = blank(), board = node('frame', -400, 0, 800, 90), neighbor = node('frame', 900, 0, 100, 90)
+  for (const root of [board, neighbor]) { root.blend = 'normal'; root.clip = true; doc.nodes[root.id] = root }
+  const paint = board.fills[0]
+  if (paint.kind !== 'solid') throw Error('Missing opaque paint')
+  paint.color = 'color(srgb 0.8 0.9 1 / 1)'
+  const page = doc.pages[0]
+  page.children = [board.id, neighbor.id]
+  const props: InteractionProps = { document: doc, selection: [board.id], active: true, epoch: 1,
+    figmaBoardPreview: true, control: { current: null }, onReady() {} }
+  const camera = { view: { x: 0, y: 0, zoom: 1 }, width: 100, height: 90, dpr: 1 }
+  const source = clippedBoardSource({ x: -400, y: 0, width: 800, height: 90 }, camera)!
+  const visible = { key: 'viewport', serial: 1, gpuTile: 7, bytes: new Uint8Array(),
+    x: 0, y: 0, width: 100, height: 90, zoom: 1 }
+  const available = { key: 'crop', serial: 2, gpuTile: 8, bytes: new Uint8Array(),
+    x: Math.floor(source.x) - 1, y: Math.floor(source.y) - 1,
+    width: Math.ceil(source.width) + 2, height: Math.ceil(source.height) + 2, zoom: 1, gutter: 1 }
+  const fill = vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[3]>>(() => true)
+  const rebase = vi.fn(() => null)
+  const movement = new PageTranslation(vi.fn(), rebase, undefined, fill)
+  expect(movement.prepare(props, page.id, doc, [{ tile: visible, active: true, layer: 0 }], doc,
+    true, false, camera, [{ tile: available, active: true, layer: 0 }])).toBe(true)
+  expect(movement.mode).toBe('retained-clipped-board')
+  for (let offset = 1; offset <= 40; offset++)
+    expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, -400 + offset, 0] } }))
+      .toEqual({ x: offset, y: 0 })
+  // Forty in-crop samples used to ask the page budget for the full 800px board.
+  expect(fill).not.toHaveBeenCalled()
+  expect(rebase).not.toHaveBeenCalled()
+  expect(movement.items(camera.view)).not.toBeNull()
+  // A cropped pose refuses stale receipts twice before the live scene owns it.
+  const sequence = movement.control.inputSequence!()
+  expect(movement.repairMissingCoverage(sequence)).toBe(false)
+  expect(movement.repairMissingCoverage(sequence)).toBe(false)
+  expect(movement.repairMissingCoverage(sequence)).toBe(true)
+  expect(rebase).toHaveBeenCalledOnce()
+  expect(fill).not.toHaveBeenCalled()
+})
+
+test('125% Retina clipped boards keep whole physical axes resident and hand fractional axes to native', () => {
+  const doc = blank(), board = node('frame', 20, 30, 1440, 1030), other = node('frame', 1600, 30, 40, 40)
+  for (const root of [board, other]) { root.blend = 'normal'; root.clip = true; doc.nodes[root.id] = root }
+  const paint = board.fills[0]
+  if (paint.kind !== 'solid') throw Error('Missing opaque paint')
+  paint.color = 'color(srgb 0.86 0.91 0.94 / 1)'
+  doc.pages[0].children = [board.id, other.id]
+  const pageId = doc.pages[0].id
+  const view = { x: 0, y: 0, zoom: 1.25 }
+  const camera = { view, width: 1143, height: 800, dpr: 2 }
+  const source = clippedBoardSource({ x: 20, y: 30, width: 1440, height: 1030 }, camera)!
+  const tile = { key: 'crop', serial: 1, gpuTile: 9, bytes: new Uint8Array(),
+    x: Math.floor(source.x * 2.5) - 1, y: Math.floor(source.y * 2.5) - 1,
+    width: Math.ceil((source.x + source.width) * 2.5) - Math.floor(source.x * 2.5) + 2,
+    height: Math.ceil((source.y + source.height) * 2.5) - Math.floor(source.y * 2.5) + 2,
+    zoom: 2.5, gutter: 1 }
+  const props: InteractionProps = { document: doc, selection: [board.id], active: true, epoch: 1,
+    figmaBoardPreview: true, control: { current: null }, onReady() {} }
+  const native = vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[1]>>(() => ({ x: .2, y: 0 }))
+  const movement = new PageTranslation(vi.fn(), native)
+  expect(movement.prepare(props, pageId, doc, [], doc, true, true, camera,
+    [{ tile, active: true, layer: 0 }])).toBe(true)
+  expect(movement.mode).toBe('retained-clipped-board')
+  // 0.4 and 0.8 document units are exactly 1 and 2 physical pixels at 250%.
+  const whole = movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 20.4, 30.8] } })!
+  expect(whole.x).toBeCloseTo(.4, 9)
+  expect(whole.y).toBeCloseTo(.8, 9)
+  expect(native).not.toHaveBeenCalled()
+  expect(movement.items(view)).not.toBeNull()
+  // 0.2 units is half a physical pixel; only the native renderer can carry it.
+  const fractional: typeof board.transform = [1, 0, 0, 1, 20.2, 30]
+  expect(movement.control.apply(doc, { [board.id]: { transform: fractional } })).toEqual({ x: .2, y: 0 })
+  expect(native).toHaveBeenCalledWith(doc, { [board.id]: { transform: fractional } }, doc, undefined)
+  expect(movement.handingOff).toBe(true)
+})
