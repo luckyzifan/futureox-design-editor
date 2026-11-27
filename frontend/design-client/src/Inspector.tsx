@@ -639,6 +639,8 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
     slice: '切片', frame: '画板', section: '分区', group: '编组', rectangle: '矩形', ellipse: '椭圆',
     polygon: '多边形', star: '星形', line: '直线', vector: '矢量', text: '文字',
   }[n.kind])
+  const hasAutoLayout = n.layout !== undefined && n.layout.mode !== 'none'
+  const autoLayoutLabel = tr(hasAutoLayout ? '移除自动布局' : '添加自动布局')
   const parents = editor.parentMap(s.doc)
   const presetGate = frameSizePresetGate(s.doc, s.page, ids, parents)
   const showFramePreset = presetGate === 'ready' || presetGate === 'locked' || presetGate === 'instance'
@@ -970,11 +972,18 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
           </div>)}
         </section>
         <section data-property-section="layout">
-          <h3 className={uiMode === 'figma' ? 'layout-section-heading' : undefined}>{tr("布局")}
-            {uiMode === 'figma' && n.kind === 'frame' && ids.length === 1 &&
-              <button type="button" aria-label={tr('调整尺寸以适应内容')} title={tr('调整尺寸以适应内容')}
+          <h3 className={uiMode === 'figma' ? 'layout-section-heading' : undefined}>
+            {tr(uiMode === 'figma' && hasAutoLayout ? '自动布局' : '布局')}
+            {uiMode === 'figma' && <div className="layout-heading-actions">
+              {n.kind === 'frame' && <button type="button" aria-label={tr('调整尺寸以适应内容')} title={tr('调整尺寸以适应内容')}
                 disabled={n.locked || !canFitFrameContents(s.doc, n)}
                 onClick={() => void dispatchEditorCommand(editor, 'fit-frame-content')}><Minimize2 size={15} /></button>}
+              {n.kind !== 'slice' && !n.graphic && <button type="button" aria-label={autoLayoutLabel} title={autoLayoutLabel}
+                disabled={n.locked || s.busy || editor.interactionActive} onClick={() => void dispatchEditorCommand(editor,
+                  hasAutoLayout ? 'remove-auto-layout' : 'auto-layout')}>
+                {hasAutoLayout ? <Minus size={15} aria-hidden="true" /> : <Plus size={15} aria-hidden="true" />}
+              </button>}
+            </div>}
           </h3>
           {uiMode === 'figma' && framePresetButton}
           {n.kind==='slice' && uiMode === 'figma' && dimensions}
@@ -1002,7 +1011,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
         {n.kind!=='slice' && <section data-property-section="appearance">
           <h3>{tr("外观")}</h3>
           {uiMode === 'sketch' && ids.length === 1 && <SketchLayerStyle key={n.id} editor={editor} node={n} />}
-          <div className={uiMode === 'sketch' ? 'sketch-appearance-opacity' : 'field-grid'}>
+          <div className={uiMode === 'sketch' ? 'sketch-appearance-opacity' : 'layer-opacity-field'}>
             <NumberField historyLabel="透明度 %" diagnosticFamily={10} unit="percent"
               label={tr("透明度 %")}
               sliderLabel={uiMode === 'sketch' ? '图层不透明度滑块' : undefined}

@@ -231,7 +231,7 @@ export function LayoutPanel({
   const Heading = embedded ? 'h4' : 'h3'
   return (
     <Tag className="layout-panel">
-      {!compact && !n.graphic && <Heading>{tr(legacySmartLayout ? "智能布局（旧版）" : "自动布局")}{' '}
+      {!(embedded && uiMode === 'figma') && !compact && !n.graphic && <Heading>{tr(legacySmartLayout ? "智能布局（旧版）" : "自动布局")}{' '}
         {!active && (
           <button title={tr("添加自动布局 Shift+A")} onClick={() => setLayoutMode()}>
             ＋

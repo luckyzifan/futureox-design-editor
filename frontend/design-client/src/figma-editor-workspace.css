@@ -264,6 +264,8 @@
   font-size: 12px;
 }
 .editor-shell[data-ui-mode="figma"] .page-inspector-action h3 { margin-bottom: 0; }
+.layout-heading-actions { display: flex; align-items: center; gap: 3px; }
+.layer-opacity-field { margin-bottom: 5px; }
 .editor-shell[data-ui-mode="figma"] .inspector h3 button {
   display: grid;
   place-items: center;
