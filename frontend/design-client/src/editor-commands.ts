@@ -417,12 +417,19 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       case 'detach-instance': if (editor.state.selection.length === 1 && editor.state.doc.nodes[editor.state.selection[0]]?.instance) editor.detachInstance(); break
       case 'mask-selection': {
         const { selection } = editor.state
-        if (interfacePreference.getSnapshot().uiMode !== 'figma' || selection.length !== 1) {
+        if (interfacePreference.getSnapshot().uiMode !== 'figma') {
           editor.group(true)
           break
         }
-        const target = before.nodes[selection[0]]
-        if (!target || target.instanceOrigin || (!target.visible && !target.mask) || lockedSelectionIds(editor).length) break
+        const roots = editor.topSelection()
+        if (!selection.length || (selection.length > 1 && roots.length < 2) || lockedSelectionIds(editor).length) break
+        const parents = editor.parentMap(), parent = parents.get(roots[0])
+        if (roots.some(id => parents.get(id) !== parent)) break
+        const siblings = parent ? before.nodes[parent]?.children ?? before.pages.find(page => page.id === parent)?.children : undefined
+        const chosen = new Set(roots)
+        const targetId = selection.length === 1 ? selection[0] : siblings?.find(id => chosen.has(id))
+        const target = targetId ? before.nodes[targetId] : undefined
+        if (!target || target.instanceOrigin || (!target.visible && !target.mask)) break
         editor.updateProperties([target.id], (node, doc) => {
           node.mask = !node.mask
           if (node.mask) {
