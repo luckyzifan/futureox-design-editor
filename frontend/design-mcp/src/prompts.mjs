@@ -18,7 +18,7 @@ export function getDesignPrompt(name, args = {}) {
     const text = [
       'Draft a Markdown design-system rules reference for the coding agent that will implement this project.',
       'Use the user’s confirmed tech stack, component paths and project conventions. If a local design is connected, discover the available read tools before collecting evidence.',
-      'In the Figma-compatible catalog, use get_selection, get_variable_defs and get_design_context for a bounded selection or relevant local node. In the full Design catalog, read design_collection_list, design_variable_list, design_style_list, design_component_list and design_context_get where available.',
+      'In the Figma-compatible catalog, use get_variable_defs and get_design_context for a bounded selection or relevant local node; get_selection is a Futureox extension advertised only when extensions are enabled. In the full Design catalog, read design_collection_list, design_variable_list, design_style_list, design_component_list and design_context_get where available.',
       'Record observed token names, aliases, modes, units, styles and component or variant identifiers. Base layout and asset guidance on observed design context. Mark unknown mappings as questions for the project owner.',
       'Return the Markdown draft for review. Save it to a project rules or instructions path only when the user requests that change.',
     ].join(' ')

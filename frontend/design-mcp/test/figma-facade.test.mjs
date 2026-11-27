@@ -7,7 +7,7 @@ import { FIGMA_MCP_GAPS, FIGMA_MCP_INSTRUCTIONS, FIGMA_MCP_TOOLS, FigmaFacade, m
 
 const METHODS = ['document.get', 'page.list', 'node.find', 'node.get', 'selection.get', 'context.get', 'code.export', 'preview.capture', 'variable.list', 'style.list', 'vector.export', 'batch.apply', 'workspace.open']
 
-function facade(handlers, { scope = 'write', pluginBridge, methods = METHODS } = {}) {
+function facade(handlers, { scope = 'write', pluginBridge, methods = METHODS, extensions = false } = {}) {
   const calls = []
   const execute = async request => {
     calls.push(request)
@@ -19,7 +19,7 @@ function facade(handlers, { scope = 'write', pluginBridge, methods = METHODS } =
   return {
     calls,
     api: new FigmaFacade({
-      execute, scope, pluginBridge,
+      execute, scope, pluginBridge, extensions,
       methods: methods.map(name => ({ name, description: name, inputSchema: { type: 'object' }, mutates: name === 'batch.apply' || name === 'workspace.open' })),
       target: { documentId: 'doc-1', session: 3 },
     }),
@@ -29,10 +29,45 @@ function facade(handlers, { scope = 'write', pluginBridge, methods = METHODS } =
 const ok = response => { assert.equal(response.ok, true, JSON.stringify(response.error)); return response }
 
 test('advertised tools match the Figma-shaped subset and do not invent registry aliases', () => {
-  assert.deepEqual(FIGMA_MCP_TOOLS.map(tool => tool.name), ['get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets', 'use_figma', 'open_document'])
+  const names = FIGMA_MCP_TOOLS.map(tool => tool.name)
+  for (const name of ['get_metadata', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets', 'use_figma']) assert.ok(names.includes(name), name)
+  assert.equal(FIGMA_MCP_TOOLS.find(tool => tool.name === 'use_figma').inputSchema.required.join(','), 'description')
   assert.ok(FIGMA_MCP_GAPS.some(gap => gap.id === 'whoami' && gap.status === 'absent'))
-  assert.ok(FIGMA_MCP_GAPS.some(gap => gap.id === 'use_figma_plugin_javascript'))
+  assert.ok(FIGMA_MCP_GAPS.some(gap => gap.id === 'use_figma_plugin_javascript' && /unsupported_remote_capability/.test(gap.detail)))
   assert.equal(validateFigmaOperation({ op: 'create', kind: 'button' }), 'create kind must be one of slice, frame, section, group, rectangle, ellipse, polygon, star, line, vector, text')
+})
+
+test('get_selection and open_document are Futureox extension tools hidden by default', async () => {
+  const handlers = {
+    'selection.get': () => ({ pageId: 'page-1', ids: [] }),
+    'document.get': () => ({ revision: 4 }),
+    'workspace.open': () => ({ handle: 'saved', revision: 4 }),
+  }
+  const { api } = facade(handlers)
+  assert.equal(api.listTools().some(tool => tool.name === 'get_selection'), false)
+  assert.equal(api.listTools().some(tool => tool.name === 'open_document'), false)
+  assert.equal((await api.callTool('get_selection', {}, {})).error.code, 'unknown_tool')
+  const extended = facade(handlers, { extensions: true }).api
+  assert.equal(extended.listTools().some(tool => tool.name === 'get_selection'), true)
+  assert.equal(extended.listTools().some(tool => tool.name === 'open_document'), true)
+  ok(await extended.callTool('get_selection', {}, {}))
+})
+
+test('desktop Code Connect, FigJam and shader tools are visible with a documented typed error', async () => {
+  const { api, calls } = facade({})
+  const names = api.listTools().map(tool => tool.name)
+  for (const name of ['get_code_connect_map', 'get_code_connect_suggestions', 'get_figjam', 'get_motion_context', 'get_shader', 'list_shaders', 'add_code_connect_map', 'send_code_connect_mappings']) assert.ok(names.includes(name), name)
+  const read = await api.callTool('get_code_connect_map', { fileKey: 'figma-file' }, {})
+  assert.equal(read.error.code, 'unsupported_remote_capability')
+  assert.equal((await api.callTool('get_figjam', { fileKey: 'figma-file' }, {})).error.code, 'unsupported_remote_capability')
+  assert.equal((await api.callTool('get_shader', { id: 'shader-1' }, {})).error.code, 'unsupported_remote_capability')
+  assert.equal((await api.callTool('list_shaders', {}, {})).error.code, 'unsupported_remote_capability')
+  const added = await api.callTool('add_code_connect_map', { nodeId: 'node-1', fileKey: 'figma-file', source: 'src/Button.tsx', componentName: 'Button', label: 'React' }, {})
+  assert.equal(added.error.code, 'unsupported_remote_capability')
+  assert.deepEqual(calls, [])
+  const readOnly = facade({}, { scope: 'read' }).api
+  assert.equal(readOnly.listTools().some(tool => tool.name === 'add_code_connect_map'), false)
+  assert.equal((await readOnly.callTool('add_code_connect_map', { nodeId: 'n', fileKey: 'f', source: 's', componentName: 'c', label: 'l' }, {})).error.code, 'read_only')
 })
 
 test('metadata XML escapes names and nests by parent', () => {
@@ -81,20 +116,83 @@ test('get_metadata continues the native query with the same nodeId and fresh rea
   assert.equal(calls.at(-1).method, 'page.list')
 })
 
+test('get_metadata returns the page list for a Figma cloud node id instead of forwarding it', async () => {
+  const { api, calls } = facade({
+    'page.list': () => ({ pages: [{ id: 'page-1', name: 'Cover' }] }),
+  })
+  const result = ok(await api.callTool('get_metadata', { nodeId: '1:2', fileKey: 'figma-file' }, {}))
+  assert.equal(result.result.scope, 'pages')
+  assert.equal(result.result.nodeIdIgnored, true)
+  assert.deepEqual(result.result.pages, [{ id: 'page-1', name: 'Cover' }])
+  assert.match(result.result.modelText, /<page id="page-1"/)
+  assert.equal(calls.some(call => call.method === 'node.find'), false)
+})
+
+test('Fig-related node tools reject Figma cloud node ids with a typed error', async () => {
+  const { api } = facade({
+    'selection.get': () => ({ pageId: 'page-1', ids: [] }),
+    'node.find': () => ({ nodes: [] }),
+  })
+  for (const [tool, args] of [
+    ['get_design_context', { nodeId: '1:2', fileKey: 'figma-file' }],
+    ['get_screenshot', { nodeId: '1:2', fileKey: 'figma-file' }],
+    ['get_variable_defs', { nodeId: '1:2', fileKey: 'figma-file' }],
+    ['download_assets', { nodeIds: ['1:2'], fileKey: 'figma-file' }],
+  ]) {
+    const response = await api.callTool(tool, args, {})
+    assert.equal(response.error.code, 'unsupported_figma_node_id', tool)
+  }
+})
+
+test('get_design_context accepts the Figma optional switches and reports local fidelity', async () => {
+  const { api } = facade({
+    'selection.get': () => ({ pageId: 'page-1', ids: ['card'] }),
+    'context.get': () => ({ nodes: [{ id: 'card', name: 'Card', kind: 'frame' }] }),
+    'code.export': () => ({ html: '<main></main>', css: '.card{}', fidelity: 'approximate', warnings: [] }),
+  })
+  const response = ok(await api.callTool('get_design_context', {
+    nodeId: 'card', fileKey: 'figma-file', disableCodeConnect: true, excludeScreenshot: true, forceCode: true, clientFrameworks: ['react'],
+  }, {}))
+  assert.equal(response.result.format, 'futureox.design-code.v1')
+  assert.equal(response.result.framework, 'futureox-html-css')
+  assert.equal(response.result.react, false)
+  assert.equal(response.result.tailwind, false)
+  assert.equal(response.result.codeConnect, false)
+  assert.equal(response.result.screenshot, false)
+  assert.equal(response.result.disableCodeConnect, true)
+  assert.equal(response.result.excludeScreenshot, true)
+  assert.equal(response.result.forceCode, true)
+  for (const key of ['disableCodeConnect', 'excludeScreenshot', 'forceCode']) {
+    const invalid = await api.callTool('get_design_context', { nodeId: 'card', [key]: 'yes' }, {})
+    assert.equal(invalid.error.code, 'invalid_params', key)
+  }
+})
+
+test('use_figma uses the connected Figma limits and documents unsupported plugin runtime', async () => {
+  const { api, calls } = facade({ 'document.get': () => ({ revision: 8 }) })
+  const longDescription = await api.callTool('use_figma', { description: 'x'.repeat(2001), operations: [{ op: 'select', nodeIds: [] }] }, {})
+  assert.equal(longDescription.error.code, 'invalid_params')
+  const longCode = await api.callTool('use_figma', { description: 'Run', code: 'x'.repeat(50001) }, {})
+  assert.equal(longCode.error.code, 'invalid_params')
+  const plugin = await api.callTool('use_figma', { description: 'Run', code: 'figma.currentPage.selection' }, {})
+  assert.equal(plugin.error.code, 'unsupported_remote_capability')
+  assert.equal(calls.length, 0)
+})
+
 test('get_selection reads ids and summarizes at most the requested nodes', async () => {
   const { api, calls } = facade({
     'selection.get': () => ({ pageId: 'page-1', ids: ['a', 'b'] }),
     'node.get': request => ({ id: request.params.id, name: request.params.id, kind: 'rectangle', width: 12, height: 8, node: { id: request.params.id } }),
-  })
+  }, { extensions: true })
   const selected = ok(await api.callTool('get_selection', {}, {}))
   assert.deepEqual(selected.result.ids, ['a', 'b'])
   assert.deepEqual(selected.result.nodes.map(node => node.id), ['a', 'b'])
   assert.deepEqual(calls.map(call => call.method), ['selection.get', 'node.get', 'node.get'])
 })
 
-test('a packaged stdio session assertion must match the authenticated grant', async () => {
+test('a Figma cloud sessionId is ignored while a foreign local transport session is rejected', async () => {
   const calls = []
-  const api = new FigmaFacade({ scope: 'read', localSessionId: 'desktop-grant-id', methods: [{ name: 'selection.get' }],
+  const api = new FigmaFacade({ scope: 'read', localSessionId: 'desktop-grant-id', methods: [{ name: 'selection.get' }], extensions: true,
     execute: async request => {
       calls.push(request)
       return { ok: true, method: request.method, documentId: 'doc-1', session: 3, revision: 4,
@@ -102,10 +200,13 @@ test('a packaged stdio session assertion must match the authenticated grant', as
     },
   })
   assert.equal((await api.callTool('get_selection', { sessionId: 'another-grant' })).error.code, 'invalid_local_session')
-  assert.equal((await api.callTool('get_selection', { sessionId: 3 })).error.code, 'invalid_local_session')
+  assert.equal((await api.callTool('get_selection', { sessionId: 3 })).error.code, 'invalid_params')
   assert.deepEqual(calls, [])
   ok(await api.callTool('get_selection', { sessionId: 'desktop-grant-id' }))
-  assert.deepEqual(calls.map(request => request.params), [{}])
+  ok(await api.callTool('get_selection', { sessionId: '00000000-0000-4000-8000-000000000000' }))
+  assert.deepEqual(calls.map(request => request.params), [{}, {}])
+  const other = await api.callTool('get_selection', { sessionId: '11111111-1111-4111-8111-111111111111' }, { localSessionIds: () => ['11111111-1111-4111-8111-111111111111'] })
+  assert.equal(other.error.code, 'invalid_local_session')
 })
 
 test('get_design_context asks for context and HTML/CSS without claiming React output', async () => {
@@ -147,6 +248,20 @@ test('get_screenshot and single-node download call the CPU export', async () => 
   assert.deepEqual(calls.at(-1).params, { format: 'pdf', nodeIds: ['icon'] })
   ok(await api.callTool('download_assets', { nodeId: 'icon', defaultFormat: 'svg' }, {}))
   assert.equal(calls.at(-1).method, 'vector.export')
+})
+
+test('download_assets rawImagesOnly reads original embedded fills instead of re-rendering', async () => {
+  const { api, calls } = facade({
+    'document.get': () => ({}),
+    'raster.sourceAssets': () => ({ assets: [{ nodeId: 'photo', mimeType: 'image/png', dataUrl: 'data:image/png;base64,AA==' }] }),
+  }, { methods: [...METHODS, 'raster.sourceAssets'] })
+  const raw = ok(await api.callTool('download_assets', { nodeId: 'photo', rawImagesOnly: true }, {}))
+  assert.equal(raw.result.delivery, 'mcp-resources')
+  assert.equal(raw.result.temporaryUrls, false)
+  assert.deepEqual(calls.map(call => call.method), ['document.get', 'raster.sourceAssets'])
+  assert.deepEqual(calls.at(-1).params, { nodeIds: ['photo'] })
+  const conflict = await api.callTool('download_assets', { nodeId: 'photo', rawImagesOnly: true, defaultFormat: 'png' }, {})
+  assert.equal(conflict.error.code, 'invalid_params')
 })
 
 test('download_assets batches individual exports against one revision', async () => {
@@ -235,7 +350,7 @@ test('use_figma compiles structured writes into one batch and refuses plugin sou
   assert.equal(batch.params.operations[3].method, 'selection.set')
   calls.length = 0
   const blocked = await api.callTool('use_figma', { description: 'Run plugin', code: 'FIGMA_PLUGIN_SOURCE_SENTINEL' }, {})
-  assert.equal(blocked.error.code, 'plugin_host_unavailable')
+  assert.equal(blocked.error.code, 'unsupported_remote_capability')
   assert.equal(calls.length, 0)
   assert.equal(JSON.stringify(blocked).includes('FIGMA_PLUGIN_SOURCE_SENTINEL'), false)
 })
@@ -255,16 +370,18 @@ test('registered plugin bridge receives source and the facade does not eval it',
 
 test('read-only scope rejects writes before calling the Design API', async () => {
   const { api, calls } = facade({}, { scope: 'read' })
-  assert.deepEqual(api.listTools().map(tool => tool.name), ['get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets'])
+  const names = api.listTools().map(tool => tool.name)
+  for (const name of ['get_metadata', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets', 'get_motion_context']) assert.ok(names.includes(name), name)
+  for (const name of ['get_selection', 'use_figma', 'open_document', 'add_code_connect_map', 'send_code_connect_mappings']) assert.equal(names.includes(name), false, name)
   const write = await api.callTool('use_figma', { description: 'Edit', operations: [{ op: 'delete', nodeId: 'a' }] }, {})
   const open = await api.callTool('open_document', { rootHandle: 'root', documentHandle: 'doc', mutationId: 'open-1' }, {})
   assert.equal(write.error.code, 'read_only')
-  assert.equal(open.error.code, 'read_only')
+  assert.equal(open.error.code, 'unknown_tool')
   assert.equal(calls.length, 0)
 })
 
 test('open_document reports a missing workspace grant and otherwise forwards handles', async () => {
-  const missing = facade({ 'document.get': () => ({}) }, { methods: METHODS.filter(name => name !== 'workspace.open') })
+  const missing = facade({ 'document.get': () => ({}) }, { methods: METHODS.filter(name => name !== 'workspace.open'), extensions: true })
   assert.equal(missing.api.listTools().some(tool => tool.name === 'use_figma'), true)
   assert.equal(missing.api.listTools().some(tool => tool.name === 'open_document'), false)
   const unavailable = await missing.api.callTool('open_document', { rootHandle: 'root', documentHandle: 'saved', mutationId: 'open-1' }, {})
@@ -273,7 +390,7 @@ test('open_document reports a missing workspace grant and otherwise forwards han
   const present = facade({
     'document.get': () => ({ revision: 5 }),
     'workspace.open': request => ({ handle: request.params.documentHandle, revision: 5 }),
-  })
+  }, { extensions: true })
   assert.equal(present.api.listTools().some(tool => tool.name === 'open_document'), true)
   const opened = ok(await present.api.callTool('open_document', { rootHandle: 'root', documentHandle: 'saved', mutationId: 'open-1' }, {}))
   assert.equal(opened.result.handle, 'saved')
@@ -293,7 +410,7 @@ test('stdio tool text for get_metadata is the XML outline', async t => {
   const wait = async count => { const end = Date.now() + 1000; while (messages.length < count) { if (Date.now() > end) throw new Error(`expected ${count}`); await delay(2) }; return messages.at(-1) }
   send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'figma-client', version: '1' } } })
   const initialized = await wait(1)
-  assert.match(initialized.result.instructions, /plugin_host_unavailable/)
+  assert.match(initialized.result.instructions, /unsupported_remote_capability/)
   send({ jsonrpc: '2.0', method: 'notifications/initialized' })
   send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_metadata', arguments: {} } })
   const call = await wait(2)
