@@ -35,7 +35,7 @@ import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
 import { inFlightPreviewCancelRatio, navigationPreviewDensity, zoomDetailInsteadOfViewportPreview } from './navigation-zoom'
 import { focusTileDuringZoom } from './zoom-underlay'
-import { captureMostlyOffscreen, liveNavigationCapture, navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, type NavigationCoverageFlight } from './navigation-coverage'
+import { captureMostlyOffscreen, deferCoveredOutwardPreview, liveNavigationCapture, navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, ZOOM_OUT_DETAIL_MIN_ZOOM, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
 import { panPrefetch } from './pan-prefetch'
@@ -1131,7 +1131,7 @@ export function ProgressiveSurfaceImpl(
     // same-revision residents. Give exact tiles the raster turn instead of
     // starting a large filter graph for each intermediate viewport.
     const coveredHighZoomOut = movingDetailAvailable && zoomOutCoverage && filteredContent &&
-      requestedView.zoom >= 8 && hasContinuityBacking()
+      requestedView.zoom >= ZOOM_OUT_DETAIL_MIN_ZOOM && hasContinuityBacking()
     const detailInsteadOfPreview = coveredHighZoomOut || movingDetailAvailable && zoomDetailInsteadOfViewportPreview({
       navigating: true, displayedZoom: displayed?.view.zoom, requestedZoom: requestedView.zoom,
     }) && hasContinuityBacking()
@@ -2028,6 +2028,12 @@ focus?: SurfaceProps['overview'],
             // same camera, repeatedly starving detail during continuous zoom.
             if (previewAdmission.current.key !== 'covered-navigation') navigationIntentOwner.reset(c)
             previewAdmission.current = { contract, key: 'covered-navigation', active: true }
+            void navigationRefinement.request()
+            return
+          }
+          if (movingDetailAvailable && !cameraDependent && !props.panGestureActive &&
+              requestedView.x === view.x && requestedView.y === view.y && requestedView.zoom === view.zoom &&
+              deferCoveredOutwardPreview(retained, captureView.zoom, requestedView, width, height, navigationZoom.zoomingOut)) {
             void navigationRefinement.request()
             return
           }

@@ -123,6 +123,24 @@ test.each([false, true])('same-scale wheel translation clears inward motion with
   expect(owner.isZoomingIn(panned)).toBe(false)
 })
 
+test.each([false, true])('outward preview deferral ends on pan and reversal with pan preview=%s', includeTranslation => {
+  const owner = new NavigationZoom(camera(10.014159084591377), { includeTranslation })
+  const outward = camera(7.508231860198289, -3740.789870899356, -6351.392210458063)
+  expect(owner.isZoomingOut(outward)).toBe(true)
+  owner.update(outward, 0)
+  expect(owner.isZoomingOut(outward)).toBe(true)
+
+  const panned = { ...outward, x: outward.x - 25 }
+  expect(owner.isZoomingOut(panned)).toBe(false)
+  owner.update(panned, 20)
+  expect(owner.isZoomingOut(panned)).toBe(false)
+
+  const inward = { ...panned, zoom: 9 }
+  expect(owner.isZoomingOut(inward)).toBe(false)
+  owner.update(inward, 40)
+  expect(owner.isZoomingOut(inward)).toBe(false)
+})
+
 test('fixed-scale pans never enter the temporary zoom tier', () => {
   const owner = new NavigationZoom(camera(32)), original = owner.sample
   for (let index = 1; index <= 240; index++) {
