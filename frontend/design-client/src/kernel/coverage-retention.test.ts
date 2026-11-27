@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { CoverageRetention } from './coverage-retention'
+import { CoverageRetention, hasNativeViewportSamples } from './coverage-retention'
 
 const frame = (key: string, width: number, revision = 1, bytes = 20) => ({
   revision, bytes, keys: new Set([key]), bounds: { x: 0, y: 0, width, height: width },
@@ -48,6 +48,29 @@ test('only the retained native camera, revision and physical viewport can skip t
   expect(coverage.nativeKeys(1, view, 854, 928, 2)).toBeUndefined()
   coverage.clear()
   expect(coverage.nativeKeys(1, view, 855, 928, 2)).toBeUndefined()
+})
+
+test('an accepted density-cache plan can be recalled at its exact native camera', () => {
+  const coverage = new CoverageRetention()
+  const view = { x: -151.5, y: -507, zoom: 1 }
+  const plan = { view, width: 256, height: 256, dpr: 2, rasterScale: 2, samplingMode: 'density-cache' as const }
+  const tile = { key: 'exact', x: 302, y: 1013, width: 514, height: 514, zoom: 2 }
+  expect(hasNativeViewportSamples(plan, [tile], true)).toBe(true)
+  coverage.retain({ ...frame(tile.key, 256), native: plan }, 120)
+  expect(coverage.nativeKeys(1, view, plan.width, plan.height, 2)).toEqual(new Set([tile.key]))
+  expect(coverage.nativeKeys(1, { ...view, x: view.x + 0.25 }, plan.width, plan.height, 2)).toBeUndefined()
+})
+
+test('cached sampling needs the exact cohort and rejects preview and phase or density mismatches', () => {
+  const plan = { view: { x: -151.5, y: -507, zoom: 1 }, dpr: 2, rasterScale: 2, samplingMode: 'density-cache' as const }
+  const tile = { key: 'exact', x: 511, y: 1023, width: 514, height: 514, zoom: 2 }
+  expect(hasNativeViewportSamples(plan, [tile], false)).toBe(false)
+  expect(hasNativeViewportSamples({ ...plan, rasterScale: 1 }, [tile], true)).toBe(false)
+  expect(hasNativeViewportSamples(plan, [tile, { ...tile, phaseX: 0.25 }], true)).toBe(false)
+  expect(hasNativeViewportSamples(plan, [tile, { ...tile, zoom: 1 }], true)).toBe(false)
+  expect(hasNativeViewportSamples(plan, [{ ...tile, viewportPreview: true }], true)).toBe(false)
+  expect(hasNativeViewportSamples(plan, [], true)).toBe(false)
+  expect(hasNativeViewportSamples({ ...plan, samplingMode: 'native' }, [tile], false)).toBe(true)
 })
 
 test('a recent native frame can be recalled without pinning any more tiles', () => {

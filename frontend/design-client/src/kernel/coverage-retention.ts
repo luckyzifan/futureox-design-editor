@@ -1,8 +1,23 @@
 import type { Bounds } from '../model'
 import type { CanvasCamera } from '../canvas-camera'
+import type { RasterTile } from './tile-cache'
+import { tileHasNativePhase } from './tile-preview'
 
 type Viewport = { view: CanvasCamera; width: number; height: number; dpr: number }
 type Frame = { revision: number; bounds: Bounds; keys: ReadonlySet<string>; bytes: number; native?: Viewport }
+type ViewportSamples = Pick<Viewport, 'view' | 'dpr'> & {
+  rasterScale: number
+  samplingMode: 'native' | 'density-cache'
+}
+
+/** A completed density-cache plan can already own the exact screen lattice. */
+export function hasNativeViewportSamples(plan: ViewportSamples,
+  tiles: readonly (RasterTile & { viewportPreview?: boolean })[], allowExactDensityCache: boolean) {
+  if (!tiles.length || plan.rasterScale !== plan.view.zoom * plan.dpr || tiles.some(tile => tile.viewportPreview)) return false
+  if (plan.samplingMode === 'native') return true
+  return allowExactDensityCache && tiles.every(tile => tileHasNativePhase(tile, plan.view, plan.dpr))
+}
+
 const sameViewport = (a: Viewport | undefined, view: CanvasCamera, width: number, height: number, dpr: number) =>
   a?.width === width && a.height === height && a.dpr === dpr &&
   a.view.x === view.x && a.view.y === view.y && a.view.zoom === view.zoom

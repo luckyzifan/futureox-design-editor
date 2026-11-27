@@ -91,6 +91,16 @@ export function navigationHasCoverage(tiles: Iterable<RasterTile>, view: CanvasC
   return tilesCoverBounds([...tiles], navigationCoverageBounds(view, width, height), density)
 }
 
+export const ZOOM_OUT_DETAIL_MIN_ZOOM = 8
+
+/** A stale, narrower high-zoom sample cannot fill the wider live view.
+ * Continue with the resident coverage while bounded live detail is prepared. */
+export function deferCoveredOutwardPreview(tiles: Iterable<RasterTile>, captureZoom: number,
+  view: CanvasCamera, width: number, height: number, zoomingOut: boolean) {
+  return zoomingOut && Number.isFinite(captureZoom) && captureZoom >= ZOOM_OUT_DETAIL_MIN_ZOOM &&
+    view.zoom >= 1 && view.zoom < ZOOM_OUT_DETAIL_MIN_ZOOM && navigationHasCoverage(tiles, view, width, height)
+}
+
 /** Density a bounded continuity preview would sample. A coarser resident may
  * stay on screen, but it is not finished coverage and must not cancel the
  * preview that fills the rest of the viewport. */
