@@ -2189,7 +2189,7 @@ mod tests {
 
         let doc = json!({
             "schemaVersion": 7, "id": "d", "name": "Rounded rectangle",
-            "pages": [{"id": "p", "name": "Page", "children": ["r", "outside"]}],
+            "pages": [{"id": "p", "name": "Page", "background": "#F5F5F5", "children": ["r", "outside"]}],
             "nodes": {
                 "r": {"id": "r", "kind": "rectangle", "width": 184, "height": 96,
                     "transform": [1, 0, 0, 1, 100, 80], "radii": [12, 12, 12, 12],
