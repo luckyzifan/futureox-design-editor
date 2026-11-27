@@ -974,7 +974,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
         <section data-property-section="layout">
           <h3 className={uiMode === 'figma' ? 'layout-section-heading' : undefined}>
             {tr(uiMode === 'figma' && hasAutoLayout ? '自动布局' : '布局')}
-            {uiMode === 'figma' && <div className="layout-heading-actions">
+            {uiMode === 'figma' && <span className="layout-heading-actions">
               {n.kind === 'frame' && <button type="button" aria-label={tr('调整尺寸以适应内容')} title={tr('调整尺寸以适应内容')}
                 disabled={n.locked || !canFitFrameContents(s.doc, n)}
                 onClick={() => void dispatchEditorCommand(editor, 'fit-frame-content')}><Minimize2 size={15} /></button>}
@@ -983,7 +983,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
                   hasAutoLayout ? 'remove-auto-layout' : 'auto-layout')}>
                 {hasAutoLayout ? <Minus size={15} aria-hidden="true" /> : <Plus size={15} aria-hidden="true" />}
               </button>}
-            </div>}
+            </span>}
           </h3>
           {uiMode === 'figma' && framePresetButton}
           {n.kind==='slice' && uiMode === 'figma' && dimensions}

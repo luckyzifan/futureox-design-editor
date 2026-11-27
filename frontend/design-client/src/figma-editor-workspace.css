@@ -125,7 +125,8 @@
   border-radius: 7px;
   background: var(--workspace-field);
 }
-.workspace-tool-search label:focus-within { border-color: var(--workspace-accent); }
+.workspace-tool-search label:focus-within { border-color: var(--workspace-accent); box-shadow: 0 0 0 1px var(--workspace-accent); }
+.editor-shell[data-ui-mode="figma"] .workspace-tool-search input:focus-visible { outline: 0; }
 .workspace-tool-search input {
   width: 100%;
   min-width: 0;
@@ -305,11 +306,20 @@
   background: var(--rail-heading);
 }
 .editor-shell[data-ui-mode="figma"] .figma-workspace-tools.floating-toolbar {
+  flex-wrap: wrap;
+  justify-content: center;
+  height: auto;
   gap: 5px;
   border-radius: 10px;
   background: #f5f4eb;
   border-color: var(--workspace-border);
   box-shadow: var(--workspace-shadow);
+}
+.editor-shell[data-ui-mode="figma"] .figma-workspace-tools > .tool-group {
+  flex-wrap: wrap;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
 }
 .editor-shell[data-ui-mode="figma"] .canvas-workspace > .figma-workspace-tools .figma-toolbelt-mode {
   background: var(--workspace-field);

@@ -284,6 +284,7 @@ export function LayoutPanel({
           <div className="field-grid">
             <UnitNumberField historyLabel={layout.mode === 'grid' ? '列间距' : '项目间距'} unit="length" diagnosticFamily={2} unitScale={layout.mode === 'vertical' ? units.y : units.x}
               label={tr(layout.mode === 'grid' ? '列间距' : '项目间距')}
+              caption={uiMode === 'figma' && layout.mode !== 'grid' ? tr('间距') : undefined}
               value={layout.gap}
               min={gapMin}
               max={LAYOUT_GAP_LIMIT}
@@ -292,6 +293,7 @@ export function LayoutPanel({
             />
             <UnitNumberField historyLabel={layout.mode === 'grid' ? '行间距' : '换行间距'} unit="length" diagnosticFamily={2} unitScale={layout.mode === 'vertical' ? units.x : units.y}
               label={tr(layout.mode === 'grid' ? '行间距' : '换行间距')}
+              caption={uiMode === 'figma' && layout.mode !== 'grid' ? (locale === 'en' ? 'Wrap gap' : '换行间距') : undefined}
               value={layout.lineGap}
               min={lineGapMin}
               max={LAYOUT_GAP_LIMIT}
