@@ -11,14 +11,15 @@ import { download } from './persistence'
 import { usePropertyText } from './property-interface-messages'
 
 type Preview = { name: string; url: string; pdf: boolean; pdfVector: boolean; tiff: boolean; heic: boolean }
-export function NodeExportPanel({editor,node,scopePageRoots=false}:{editor:Editor;node:DesignNode;scopePageRoots?:boolean}) {
+export function NodeExportPanel({editor,node,figmaMode=false}:{editor:Editor;node:DesignNode;figmaMode?:boolean}) {
   const { locale, tr } = usePropertyText()
   const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[previews,setPreviews]=useState<Preview[]>([])
   const managed=!!editor.state.doc.colorManagement
   const explicit=managed && subtreeNeedsExplicitColorEncoding(editor.state.doc, node.id)
   const [encoding,setEncoding]=useState<'srgb' | 'display-p3' | ''>('')
   const [pngSampling,setPngSampling]=useState<'figma' | 'document' | null>(null)
-  const supportsNativePng = !managed && !!node.vectorGeometry?.cornerSource
+  const supportsNativePng = supportsFigmaRoundedPng(editor.state.doc, node, figmaMode) ||
+    !managed && !!node.vectorGeometry?.cornerSource
   const savedProfile = editor.state.doc.rasterProfile
   const selectedSampling = pngSampling ?? (savedProfile && savedProfile !== 'analytic' ? 'document' : 'figma')
   const selected=encoding==='srgb'||encoding==='display-p3'?encoding:(explicit?'':'srgb')
@@ -27,8 +28,8 @@ export function NodeExportPanel({editor,node,scopePageRoots=false}:{editor:Edito
   // the true-vector writer's v1 scope; otherwise the bitmap PDF remains.
   const hasSettings = !!node.exportSettings?.length
   const vectorIssues=useMemo(
-    ()=>hasSettings ? pdfVectorIssues(editor.state.doc,editor.state.page,{kind:'selection',nodeIds:[node.id]},scopePageRoots) : [],
-    [editor.state.doc,editor.state.page,node.id,hasSettings,scopePageRoots])
+    ()=>hasSettings ? pdfVectorIssues(editor.state.doc,editor.state.page,{kind:'selection',nodeIds:[node.id]},figmaMode) : [],
+    [editor.state.doc,editor.state.page,node.id,hasSettings,figmaMode])
   const release=()=>{for(const url of urls.current)URL.revokeObjectURL(url);urls.current=[]}
   useEffect(()=>{mounted.current=true;const manager=owner.current;manager.activate(editor);return()=>{mounted.current=false;manager.dispose();release()}},[editor,node.id])
   useEffect(()=>{setEncoding(explicit?'':'srgb')},[node.id,explicit])
@@ -71,10 +72,19 @@ export function NodeExportPanel({editor,node,scopePageRoots=false}:{editor:Edito
       const next:Preview[]=[]
       for(const setting of settings) {
         const format=(setting.format==='jpg'?'jpeg':setting.format) as 'png'|'svg'|'jpeg'|'webp'|'pdf'|'pdf-vector'|'tiff'|'heic'
-        const document = format === 'png' && selectedSampling === 'figma' && !request.document.colorManagement &&
-          request.document.nodes[node.id].vectorGeometry?.cornerSource
-          ? { ...request.document, rasterProfile: 'figma' as const }
-          : request.document
+        const { document: source } = request
+        const layer = source.nodes[node.id]
+        let document = source
+        if (format === 'png' && selectedSampling === 'figma' && !source.colorManagement) {
+          if (layer.vectorGeometry?.cornerSource) document = { ...source, rasterProfile: 'figma' }
+          else if (supportsFigmaRoundedPng(source, layer, figmaMode)) {
+            const width = Math.ceil(pngBounds.width * setting.scale)
+            const height = Math.ceil(pngBounds.height * setting.scale)
+            // Larger exports retain the document's sampler and its full size range.
+            if (setting.scale <= 64 && width <= 8192 && height <= 8192 && width * height <= 8_388_608)
+              document = { ...source, rasterProfile: 'figmaSoftware' }
+          }
+        }
         const asset=await exportImage(document,request.page,format,setting.scale,colorOutput,request.signal,target)
         if(!request.isCurrent())throw new Error('导出已取消：图层或文档已变化')
         const name=filename(request.document.nodes[node.id].name+(setting.suffix || (setting.scale===1?'':`@${setting.scale}x`)))+'.'+(setting.format==='jpeg'?'jpg':setting.format==='pdf-vector'?'pdf':setting.format)
@@ -123,4 +133,16 @@ export function NodeExportPanel({editor,node,scopePageRoots=false}:{editor:Edito
     {node.exportSettings?.some(s=>s.format==='heic')&&<p className="muted">{locale === 'en' ? 'HEIC is lossless HEVC (I_PCM, 4:4:4) with straight transparency and the sRGB or Display P3 profile. 16-bit samples are quantized to 8-bit.' : 'HEIC 是无损 HEVC（I_PCM，4:4:4），保留直线透明度以及 sRGB 或 Display P3 配置。16 位样本会量化为 8 位。'}</p>}
     {previews.map((p,i)=><div key={p.url} className="node-export-preview">{p.pdf?<span>{p.pdfVector?tr('PDF · 矢量'):tr('PDF · 精确位图')}</span>:p.tiff?<span>{locale === 'en' ? 'TIFF · 8-bit uncompressed' : 'TIFF · 8 位未压缩'}</span>:p.heic?<span>{locale === 'en' ? 'HEIC · lossless 4:4:4' : 'HEIC · 无损 4:4:4'}</span>:<img src={p.url} alt={indexed('图层导出预览', 'Layer export preview', i)}/>}<a href={p.url} download={p.name}>{p.name}</a></div>)}
   </section>
+}
+
+function supportsFigmaRoundedPng(document: import('./model').DesignDocument, node: DesignNode, figmaMode: boolean) {
+  if (!figmaMode || document.colorManagement || document.designSystem?.sketchContainers ||
+      node.kind !== 'rectangle' || node.spatial || node.repeat || node.mask || node.maskChain ||
+      node.children.length || node.opacity !== 1 || node.blend !== 'normal' ||
+      node.smoothing !== 0 || !node.radii.some(radius => radius > 0) ||
+      node.strokes.some(stroke => stroke.visible && stroke.width > 0) ||
+      node.effects.some(effect => effect.visible)) return false
+  const fills = node.fills.filter(fill => fill.visible && fill.opacity > 0)
+  return fills.length === 1 && fills[0].kind === 'solid' && fills[0].opacity === 1 &&
+    (fills[0].blend ?? 'normal') === 'normal' && /^#[\da-f]{6}$/i.test(fills[0].color)
 }

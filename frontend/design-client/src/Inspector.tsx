@@ -1509,7 +1509,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
         {uiMode === 'figma' && n.kind === 'frame' &&
           <LayoutGuidePanel key={`${editor.sessionGeneration}:${n.id}`} editor={editor} frame={n} ids={ids} compact />}
         </>}
-        <NodeExportPanel key={n.id} editor={editor} node={n} scopePageRoots={uiMode === 'figma'} />
+        <NodeExportPanel key={n.id} editor={editor} node={n} figmaMode={uiMode === 'figma'} />
         {uiMode === 'figma' && n.kind !== 'slice' && extraLayerControls}
       </div>
       {context && <CanvasContextMenu editor={editor} x={context.x} y={context.y} origin="inspector" worldPoint={editor.selectionBounds()} onClose={() => setContext(null)} />}

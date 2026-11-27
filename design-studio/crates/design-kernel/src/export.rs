@@ -389,17 +389,34 @@ fn region_correlated_samples(doc: &crate::scene::Document, page_index: usize, pr
         supported
     }
     let (mut count, mut backdrop, mut progressive_backdrop) = (0, false, false);
-    let supported = doc.pages[page_index]
-        .children
+    let roots = &doc.pages[page_index].children;
+    let supported = roots
         .iter()
         .fold(true, |supported, id| {
             visit(doc, id, &mut count, &mut backdrop, &mut progressive_backdrop, crate::math::Transform::default(), export, scale) && supported
         });
-    // The hardware profile must preserve its accumulated edge coverage for
-    // an isolated paint too. The software export keeps its established
-    // single-paint resolve. A progressive backdrop needs the four planes
-    // even when the same export contains spatial blur effects.
-    progressive_backdrop || supported && (backdrop || count > 1 || count == 1 && profile == RasterProfile::Figma)
+    // A transparent circular corner uses the same ordered byte accumulation
+    // in the software region renderer as in a full PNG. Other software
+    // single-paint exports keep their existing resolve.
+    let correlated_single = count == 1 && (profile == RasterProfile::Figma
+        || profile == RasterProfile::FigmaSoftware
+            && matches!(roots.as_slice(), [id] if opaque_rounded_rectangle(&doc.nodes[id])));
+    progressive_backdrop || supported && (backdrop || count > 1 || correlated_single)
+}
+
+fn opaque_rounded_rectangle(node: &crate::scene::Node) -> bool {
+    if node.kind != "rectangle" || node.mask || node.mask_chain.is_some() || !node.children.is_empty()
+        || node.opacity != 1. || node.blend != "normal" || node.smoothing != 0.
+        || !node.radii.iter().any(|&radius| radius > 0.)
+        || node.effects.iter().any(|effect| effect.visible)
+        || node.strokes.iter().any(|stroke| stroke.visible && stroke.width > 0.)
+    {
+        return false;
+    }
+    node.fills.iter().find(|fill| fill.visible && fill.opacity > 0.).is_some_and(|fill| {
+        fill.kind == "solid" && fill.opacity == 1. && fill.blend == "normal"
+            && crate::color::unmanaged_straight(&fill.color).is_ok_and(|rgba| rgba[3] == 1.)
+    })
 }
 
 #[derive(serde::Serialize)]
@@ -2164,5 +2181,38 @@ mod tests {
             );
         }
         assert_eq!(doc.to_string(), saved);
+    }
+
+    #[test]
+    fn figma_software_region_matches_the_transparent_rounded_rectangle_export() {
+        use sha2::{Digest, Sha256};
+
+        let doc = json!({
+            "schemaVersion": 7, "id": "d", "name": "Rounded rectangle",
+            "pages": [{"id": "p", "name": "Page", "children": ["r", "outside"]}],
+            "nodes": {
+                "r": {"id": "r", "kind": "rectangle", "width": 184, "height": 96,
+                    "transform": [1, 0, 0, 1, 100, 80], "radii": [12, 12, 12, 12],
+                    "fills": [{"kind": "solid", "color": "#D9D9D9"}]},
+                "outside": {"id": "outside", "kind": "rectangle", "width": 184, "height": 96,
+                    "transform": [1, 0, 0, 1, 100, 80],
+                    "fills": [{"kind": "solid", "color": "#FFFFFF"}]}
+            }
+        });
+        let mut engine = Engine::new();
+        engine.load_document(&doc.to_string()).unwrap();
+        let png = engine.render_region_png(&RegionRequest {
+            page_id: "p".into(),
+            scale: 1.,
+            node_ids: Some(vec!["r".into()]),
+            color_output: None,
+            raster_profile: Some(RasterProfile::FigmaSoftware),
+            bounds: ExportBounds { x: 100., y: 80., width: 184., height: 96. },
+        }).unwrap();
+        let image = image::load_from_memory(&png).unwrap().into_rgba8();
+        assert_eq!(image.dimensions(), (184, 96));
+        // Decoded RGBA8 of the opaque fill on a transparent Figma layer export.
+        assert_eq!(format!("{:x}", Sha256::digest(image.as_raw())),
+            "5df57cd348ab7b4b2c3888c296c9b9a5af6a61987e721a6a2543a98a44c121e2");
     }
 }
