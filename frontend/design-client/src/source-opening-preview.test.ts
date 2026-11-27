@@ -79,6 +79,26 @@ test('a large catalogue only vouches for loaded artwork within its mounted windo
  }finally{await act(()=>root.unmount());vi.unstubAllGlobals()}
 })
 
+test('decoded thumbnail coverage can be bounded by its world sampling scale',async()=>{
+ const host=document.createElement('div'),root=createRoot(host)
+ const coverage:SourceThumbnailCoverage={current:undefined}
+ const item={...items[0],placed:{x:0,y:0,width:80,height:40}}
+ const header=Buffer.alloc(24)
+ header.set(Buffer.from('89504e470d0a1a0a0000000d49484452','hex'))
+ header.writeUInt32BE(16,16)
+ header.writeUInt32BE(20,20)
+ const view={x:0,y:0,zoom:1}
+ const catalogue={...source,items:[item],images:new Map([[0,'data:image/png;base64,'+header.toString('base64')]])}
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
+ try{
+   await act(()=>root.render(createElement(SourceOpeningSurface,{source:catalogue,view,width:100,height:100,coverage})))
+   expect(coverage.current?.(view,100,100,'all',1)).toBe(false)
+   await act(()=>host.querySelector('image')!.dispatchEvent(new Event('load')))
+   expect(coverage.current?.(view,100,100,'all',0.49)).toBe(false)
+   expect(coverage.current?.(view,100,100,'all',0.5)).toBe(true)
+ }finally{await act(()=>root.unmount());vi.unstubAllGlobals()}
+})
+
 test('the first decoded board paints before the rest of a large catalogue arrives',async()=>{
   const host=document.createElement('div'),root=createRoot(host)
   vi.useFakeTimers();vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)

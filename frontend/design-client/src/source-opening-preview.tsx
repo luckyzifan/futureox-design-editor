@@ -1,5 +1,6 @@
 import {MATERIAL_MARGIN} from './kernel/source-overview-window'
 import {sourceErrorKind} from './source-error-text'
+import {thumbnailScale} from './source-material-scope'
 import {PASTEBOARD_COVERAGE} from './kernel/cpu-tile-frame'
 import {memo,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type RefObject} from 'react'
 import type {CanvasCamera} from './canvas-camera'
@@ -137,7 +138,7 @@ export function visibleMaterialDetail(source: OpeningView, view: CanvasCamera, w
   }
   return visible.filter(v=>focused!==undefined||!pageFits||v.missing).sort((a,b)=>b.area-a.area).slice(0,16).map(v=>v.index).sort((a,b)=>a-b)
 }
-export type SourceThumbnailCoverage=RefObject<((view:CanvasCamera,width:number,height:number,requirement?:'all'|'any')=>boolean)|undefined>
+export type SourceThumbnailCoverage=RefObject<((view:CanvasCamera,width:number,height:number,requirement?:'all'|'any',maximumScale?:number)=>boolean)|undefined>
 const Thumbnail=memo(function Thumbnail({item,index,src,loaded}:{item:SourceCanvasItem;index:number;src:string;loaded:Map<number,string>}){
   useLayoutEffect(()=>()=>{if(loaded.get(index)===src)loaded.delete(index)},[index,src,loaded])
   const b=item.placed
@@ -163,15 +164,22 @@ export function SourceOpeningSurface({source,view,width,height,pageId,focused,on
   }),[windowRows,source.images,loaded])
   useLayoutEffect(()=>{
     if(!coverage)return
-    coverage.current=(camera,w,h,requirement='all')=>{
+    coverage.current=(camera,w,h,requirement='all',maximumScale)=>{
       if(requirement==='all'&&sx&&sy&&(-camera.x/camera.zoom<(cx-1)*sx || -camera.y/camera.zoom<(cy-1)*sy ||
         (w-camera.x)/camera.zoom>(cx+2)*sx || (h-camera.y)/camera.zoom>(cy+2)*sy))return false
       for(const {item,index} of windowRows){
         const b=item.placed,x=b.x*camera.zoom+camera.x,y=b.y*camera.zoom+camera.y
         if(x>=w||y>=h||x+b.width*camera.zoom<=0||y+b.height*camera.zoom<=0)continue
-        const decoded=loaded.has(index)&&loaded.get(index)===source.images.get(index)
+        const src=source.images.get(index)
+        const decoded=loaded.has(index)&&loaded.get(index)===src
         if(requirement==='any'&&decoded)return true
-        if(requirement==='all'&&!decoded)return false
+        if(requirement==='all'){
+          if(!decoded)return false
+          if(maximumScale!==undefined){
+            const scale=thumbnailScale(src,b)
+            if(scale===undefined||scale>maximumScale)return false
+          }
+        }
       }
       return requirement==='all'&&rows.length>0
     }

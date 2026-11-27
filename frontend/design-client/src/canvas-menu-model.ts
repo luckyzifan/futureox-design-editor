@@ -13,6 +13,9 @@ import { canMakeSketchGrid } from './sketch-make-grid'
 import { selectedPaintSwap } from './sketch-paint-commands'
 import { selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
 import { pageMoveRoots } from './layer-drop'
+import { componentSourceId, containingSymbolId } from './component-navigation'
+import { canCloseSelectionPath, canJoinSelectionPaths, canReverseSelectionPath } from './sketch-path-commands'
+import { editableFrameCrop } from './selection-properties'
 
 export type CanvasMenuItem = { command: EditorCommand; label: string; group: string; disabled?: boolean; shortcut?: string; danger?: boolean }
 export type ContextMenuOrigin = 'canvas' | 'empty-canvas' | 'layers' | 'inspector'
@@ -103,6 +106,19 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
     { command: 'select-all-force', label: '全选（含隐藏与锁定）', group: 'selection', disabled: !page?.children.length },
     { command: 'select-all-top-level', label: '全选顶层画框与图形', group: 'selection', disabled: !selectTopLevelCanvasIds(doc, editor.state.page).length },
   )
+  if (context.uiMode === 'sketch') {
+    const single = nodes.length === 1 ? nodes[0] : undefined
+    const editContext = !!single && (!!componentSourceId(doc, single.id, parents) || editableFrameCrop(editor) ||
+      (!container(single) && single.kind !== 'text' && single.kind !== 'slice') || single.children.length > 0)
+    items.push(
+      { command: 'edit-selection', label: '进入编辑', group: 'structure', disabled: !editContext },
+      { command: 'close-path', label: '闭合路径', group: 'path', disabled: !canCloseSelectionPath(editor) },
+      { command: 'join-paths', label: '连接路径', group: 'path', disabled: !canJoinSelectionPaths(editor) },
+      { command: 'reverse-order', label: '倒序', group: 'path', disabled: !canReverseSelectionPath(editor) },
+      { command: 'select-containing-symbol', label: '选择包含的控件', group: 'selection',
+        disabled: !single || !containingSymbolId(doc, single.id, parents) },
+    )
+  }
   const hasFrame = !!page?.children.some(id => doc.nodes[id]?.visible && (doc.nodes[id].kind === 'frame' || doc.nodes[id].kind === 'section'))
   items.push(
     { command: 'zoom-next-frame', label: '缩放到下一画板', group: 'view', disabled: !hasFrame },
@@ -163,9 +179,10 @@ const sketchContextOrder: EditorCommand[] = [
   'swap-fills-and-strokes',
   'select-all-force', 'select-all-top-level', 'select-inverse',
   'group', 'frame-selection', 'ungroup', 'rename', 'create-component', 'detach-instance', 'auto-layout', 'remove-auto-layout',
+  'edit-selection', 'select-containing-symbol',
   'lock-selection', 'unlock-selection', 'hide-selection', 'show-selection',
   ...alignmentCommandIds,
-  'make-grid',
+  'make-grid', 'close-path', 'join-paths', 'reverse-order',
   'flip-horizontal', 'flip-vertical', 'fit-pixel-bounds', 'round-to-pixel', 'mask-selection', 'convert-vector', 'outline-stroke',
 ]
 const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = {
@@ -183,6 +200,11 @@ const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = 
   'auto-layout': ['添加层叠布局', 'Add Stack Layout'],
   'remove-auto-layout': ['移除层叠布局', 'Remove Stack Layout'],
   'create-component': ['创建控件', 'Create Symbol'],
+  'edit-selection': ['进入编辑', 'Edit Selection'],
+  'close-path': ['闭合路径', 'Close Path'],
+  'join-paths': ['连接路径', 'Join'],
+  'reverse-order': ['倒序', 'Reverse Order'],
+  'select-containing-symbol': ['选择包含的控件', 'Select Containing Symbol'],
 }
 export function sketchCommandLabel(command: EditorCommand, locale: 'zh-CN' | 'en') {
   return sketchLabels[command]?.[locale === 'en' ? 1 : 0]

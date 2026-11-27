@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { initializePicking, kernelLayout } from './kernel/picking'
 import { componentFixture, originNode } from './component-fixtures'
 import { Editor } from './engine'
+import { dispatchEditorCommand } from './editor-commands'
 import { blank, node, paint, validateDocument } from './model'
 import { detachMissing, family } from './components'
 import { produceDraft } from './draft'
@@ -303,4 +304,28 @@ test('removing a default nested master does not erase an alternate swap override
   walk(ids.a)
   expect(descendants.some((id) => e.state.doc.nodes[id].kind === 'ellipse')).toBe(true)
   expect(() => validateDocument(e.state.doc)).not.toThrow()
+})
+
+test('Select Containing Symbol and Enter Component Source reach the master from an instance or its child', async () => {
+  const { e, ids } = setup()
+  try {
+    e.select([ids.a])
+    await dispatchEditorCommand(e, 'select-containing-symbol')
+    expect(e.state.selection).toEqual([ids.button])
+
+    const child = originNode(e.state.doc, ids.a, e.state.doc.nodes[ids.label].componentKey!)
+    e.select([child.id])
+    await dispatchEditorCommand(e, 'select-containing-symbol')
+    expect(e.state.selection).toEqual([ids.button])
+
+    e.select([ids.a])
+    await dispatchEditorCommand(e, 'edit-selection')
+    expect(e.state.selection).toEqual([ids.button])
+
+    e.select([ids.iconA])
+    const version = e.state.version
+    await dispatchEditorCommand(e, 'select-containing-symbol')
+    expect(e.state.selection).toEqual([ids.iconA])
+    expect(e.state.version).toBe(version)
+  } finally { e.dispose() }
 })

@@ -98,12 +98,17 @@ export function shortcutBindings(context: ShortcutContext): readonly ShortcutBin
       bindings.push({ command: 'swap-fills-and-strokes', combo: 'Shift+X' })
       bindings.push({ command: 'toggle-sketch-borders', combo: 'Shift+B' })
       bindings.push({ command: 'toggle-sketch-fills', combo: 'Shift+F' })
+      // Native Sketch uses Fn↑/Fn↓, reported as PageUp/PageDown.
+      bindings.push({ command: 'previous-page', combo: 'PageUp' }, { command: 'next-page', combo: 'PageDown' })
     }
     bindings.push({ command: 'auto-layout', combo: 'Shift+S' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+S' },
-      { command: 'edit-frame-bounds', combo: 'Mod+Enter' })
+      { command: 'edit-selection', combo: 'Mod+Enter' })
     if (sketchMacSelection) bindings.push(
       { command: 'select-all-force', combo: 'Ctrl+Mod+A' },
       { command: 'select-all-top-level', combo: 'Mod+Shift+A' },
+      { command: 'select-matching', combo: 'Mod+Shift+M' },
+      { command: 'outline-stroke', combo: 'Mod+Alt+O' },
+      { command: 'toggle-pixel-grid', combo: 'Ctrl+X' },
     )
     if (desktop) bindings.unshift({ command: 'fit-frame-content', combo: 'Mod+Shift+F' }, { command: 'new-page', combo: 'Mod+Shift+N' }, { command: 'zoom-100', combo: 'Mod+0' }, { command: 'zoom-fit', combo: 'Mod+1' }, { command: 'zoom-selection', combo: 'Mod+2' }, { command: 'center-selection', combo: 'Mod+3' }, { command: 'frame-selection', combo: 'Mod+F' })
   } else {

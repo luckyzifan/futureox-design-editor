@@ -2827,6 +2827,16 @@ impl<'a> Importer<'a> {
                     style.line_height_auto = true;
                 }
                 restore_legacy_sketch_line_box(&mut node, None);
+                if let Some(native) = native_style_font_descriptor(layer) {
+                    let style = node.text_style.as_deref();
+                    let source = SketchStyleFontReceipt {
+                        native: native.clone(),
+                        face: style.map_or("default", |style| style.font_id.as_str()).into(),
+                        size: node.font_size,
+                        weight: style.map_or(400., |style| style.weight),
+                    };
+                    node.bindings.insert(SKETCH_STYLE_FONT_RECEIPT.into(), json!(source).to_string());
+                }
             }
             "bitmap" => {
                 node.bindings.insert("sketchSourceBitmap".into(), "true".into());
@@ -6937,8 +6947,39 @@ fn sketch_text_behaviour(node: &Node) -> i64 {
     }
 }
 
+const SKETCH_STYLE_FONT_RECEIPT: &str = "sketchSourceStyleFontDescriptor";
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SketchStyleFontReceipt {
+    native: Value,
+    face: String,
+    size: f64,
+    weight: f32,
+}
+
+fn is_plain_style_font_descriptor(value: &Value) -> bool {
+    let Some(descriptor) = value.as_object() else { return false };
+    let Some(attributes) = value.get("attributes").and_then(Value::as_object) else { return false };
+    descriptor.len() == 2
+        && value["_class"] == "fontDescriptor"
+        && attributes.len() == 2
+        && value["attributes"]["name"].as_str().is_some_and(|name| {
+            !name.is_empty() && name.len() <= 128 && !name.chars().any(char::is_control)
+        })
+        && value["attributes"]["size"].as_f64().is_some_and(|size| size.is_finite() && size > 0.)
+}
+
+fn native_style_font_descriptor(layer: &Value) -> Option<&Value> {
+    layer.pointer("/style/textStyle/encodedAttributes/MSAttributedStringFontAttribute")
+        .filter(|descriptor| is_plain_style_font_descriptor(descriptor))
+}
+
 fn native_text_projection(layer: &Value) -> Value {
-    json!({"attributedString":layer.get("attributedString"),"verticalAlignment":layer.pointer("/style/textStyle/verticalAlignment"),"textBehaviour":layer.get("textBehaviour"),"lineSpacingBehaviour":layer.get("lineSpacingBehaviour")})
+    let mut value = json!({"attributedString":layer.get("attributedString"),"verticalAlignment":layer.pointer("/style/textStyle/verticalAlignment"),"textBehaviour":layer.get("textBehaviour"),"lineSpacingBehaviour":layer.get("lineSpacingBehaviour")});
+    if let Some(descriptor) = native_style_font_descriptor(layer) {
+        value["styleFontDescriptor"] = descriptor.clone();
+    }
+    value
 }
 pub(crate) fn text_layout_signature(node: &Node) -> Value {
     json!({"text":node.text,"fontSize":node.font_size,"textStyle":node.text_style,
@@ -8385,7 +8426,27 @@ fn export_layer_impl(
                     )?);
                 }
                 if let Some(native_style) = layer.get_mut("style").and_then(Value::as_object_mut) {
-                    native_style.insert("textStyle".into(), json!({"_class":"textStyle","verticalAlignment":vertical_alignment.unwrap_or(0)}));
+                    let mut text_style = json!({"_class":"textStyle","verticalAlignment":vertical_alignment.unwrap_or(0)});
+                    // A style-level descriptor is separate from the first
+                    // run, which supplies the editable layer defaults.
+                    // Older FD files have no receipt of this slot's presence.
+                    if let Some(source) = n.bindings.get(SKETCH_STYLE_FONT_RECEIPT)
+                        .and_then(|raw| serde_json::from_str::<SketchStyleFontReceipt>(raw).ok())
+                        .filter(|source| is_plain_style_font_descriptor(&source.native))
+                    {
+                        let current_face = requested_default.unwrap_or(default_font);
+                        let mut descriptor = if current_face == source.face && default_weight == source.weight {
+                            source.native
+                        } else {
+                            sketch_font_descriptor(doc, &mut images.font_weight_axes, default_font,
+                                n.font_size, default_weight, requested_default)
+                        };
+                        if n.font_size != source.size {
+                            descriptor["attributes"]["size"] = json!(n.font_size);
+                        }
+                        text_style["encodedAttributes"] = json!({"MSAttributedStringFontAttribute":descriptor});
+                    }
+                    native_style.insert("textStyle".into(), text_style);
                 }
                 if let Some(name) = requested_default {
                     preserved_source_faces.insert("style".into(), json!(name));
@@ -11459,6 +11520,81 @@ mod tests {
         assert!((style.letter_spacing - 0.8).abs() < 1e-9);
         assert!((style.paragraph_spacing - 3.).abs() < 1e-9);
         assert_eq!(text.fills[0].color, "#102030");
+    }
+
+    #[test]
+    fn sketch_style_font_descriptor_remains_separate_from_the_first_run() {
+        use base64::Engine as _;
+        let bytes = export_sketch(&sample_document()).unwrap();
+        let mut files = read_zip(&bytes).unwrap();
+        let page_name = files.keys().find(|name| name.starts_with("pages/")).unwrap().clone();
+        let mut page: Value = serde_json::from_slice(&files[&page_name]).unwrap();
+        let layer = &mut page["layers"][1];
+        assert!(native_style_font_descriptor(layer).is_none());
+
+        let native = json!({"_class":"fontDescriptor","attributes":{"name":"StyleFace","size":19}});
+        let run = json!({"_class":"fontDescriptor","attributes":{"name":"RunFace","size":14}});
+        layer["style"]["textStyle"]["encodedAttributes"] = json!({"MSAttributedStringFontAttribute":native});
+        layer["attributedString"] = json!({
+            "_class":"attributedString","string":"AB","attributes":[
+                {"_class":"stringAttribute","location":0,"length":2,"attributes":{"MSAttributedStringFontAttribute":run}}
+            ]
+        });
+        layer["userInfo"]["com.futureox.design-kernel"].as_object_mut().unwrap().remove("textModel");
+
+        let pack = |page: &Value| {
+            let mut files = files.clone();
+            files.insert(page_name.clone(), serde_json::to_vec(page).unwrap());
+            write_zip(&files.into_iter().collect::<Vec<_>>()).unwrap()
+        };
+        let imported = import_sketch_report(&pack(&page)).unwrap().document;
+        let node = &imported.nodes["n2"];
+        assert_eq!(node.font_size, 14.);
+        assert_eq!(node.text_style.as_ref().unwrap().font_id, "default");
+        assert!(!node.bindings.contains_key(SKETCH_STYLE_FONT_RECEIPT));
+        let retained = |document: &Document| {
+            let zip = read_zip(&export_sketch(document).unwrap()).unwrap();
+            let (_, json) = zip.iter().find(|(name, _)| name.starts_with("pages/")).unwrap();
+            serde_json::from_slice::<Value>(json).unwrap()
+        };
+
+        let fd = crate::binfmt::encode_authored_json(&serde_json::to_string(&imported).unwrap()).unwrap();
+        let decoded: Document = serde_json::from_str(&crate::binfmt::decode_authored_json(&fd).unwrap()).unwrap();
+        let out = retained(&decoded);
+        assert_eq!(native_style_font_descriptor(&out["layers"][1]), Some(&native));
+        assert_eq!(out["layers"][1]["attributedString"]["attributes"][0]["attributes"]["MSAttributedStringFontAttribute"]["attributes"]["name"], "RunFace");
+
+        let mut edited = decoded.clone();
+        edited.nodes.get_mut("n2").unwrap().font_size = 28.;
+        let out = retained(&edited);
+        let descriptor = native_style_font_descriptor(&out["layers"][1]).unwrap();
+        assert_eq!(descriptor["attributes"]["name"], "StyleFace");
+        assert_eq!(descriptor["attributes"]["size"].as_f64(), Some(28.));
+        assert_eq!(out["layers"][1]["attributedString"]["attributes"][0]["attributes"]["MSAttributedStringFontAttribute"]["attributes"]["size"].as_f64(), Some(14.));
+
+        let resource = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"),
+            "/../../../frontend/design-client/public/fonts/abeezee/ABeeZee-Regular.ttf"));
+        edited.fonts.insert("chosen".into(), crate::font::FontResource {
+            family: "ABeeZee".into(),
+            postscript: Some("ABeeZee-Regular".into()),
+            data: base64::engine::general_purpose::STANDARD.encode(resource).into(),
+            index: 0,
+        });
+        edited.nodes.get_mut("n2").unwrap().text_style.as_mut().unwrap().font_id = "chosen".into();
+        let out = retained(&edited);
+        let descriptor = native_style_font_descriptor(&out["layers"][1]).unwrap();
+        assert_eq!(descriptor["attributes"]["name"], "ABeeZee-Regular");
+        assert_eq!(descriptor["attributes"]["size"].as_f64(), Some(28.));
+
+        let mut out = retained(&decoded);
+        out["layers"][1]["style"]["textStyle"]["encodedAttributes"]["MSAttributedStringFontAttribute"]
+            ["attributes"]["name"] = json!("NativeStyleEdit");
+        let reopened = import_sketch_report(&pack(&out)).unwrap().document;
+        let out = retained(&reopened);
+        assert_eq!(
+            native_style_font_descriptor(&out["layers"][1]).unwrap()["attributes"]["name"],
+            "NativeStyleEdit"
+        );
     }
 
     #[test]

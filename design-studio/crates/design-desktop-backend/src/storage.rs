@@ -289,7 +289,7 @@ fn create_temporary(path: PathBuf) -> Result<(File, Temporary)> {
     Ok((file, Temporary(path)))
 }
 
-fn sync_directory(parent: &Path) -> std::io::Result<()> {
+pub(crate) fn sync_directory(parent: &Path) -> std::io::Result<()> {
     #[cfg(unix)]
     {
         File::open(parent)?.sync_all()

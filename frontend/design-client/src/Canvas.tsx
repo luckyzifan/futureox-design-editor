@@ -2021,8 +2021,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }
       if (e.key === 'Enter') {
         e.preventDefault()
-        if (shortcut?.command === 'edit-frame-bounds' && editableFrameCrop(editor)) {
-          if (!e.repeat) void dispatchEditorCommand(editor, 'edit-frame-bounds')
+        if (shortcut?.command === 'edit-selection') {
+          if (!e.repeat) void dispatchEditorCommand(editor, 'edit-selection')
           return
         }
         if (e.shiftKey) {

@@ -560,6 +560,62 @@ fn autosave_recovery_stale_temp_with_newer_clock_does_not_roll_back_published() 
 }
 
 #[test]
+fn autosave_recovery_explicit_discard_does_not_revive_interrupted_writes() {
+    let fixture = Fixture::new();
+    let recovery = fixture.0.join("recovery");
+    let original = fixture.0.join("original.fd");
+    let original_bytes = serde_json::to_vec(&document("original")).unwrap();
+    fs::write(&original, &original_bytes).unwrap();
+    let original_hash = sha256(&original_bytes);
+    let write = |backend: &Backend, id: &str, name: &str| {
+        backend
+            .recovery_write(id, &document(name), original.to_str(), Some(&original_hash))
+            .unwrap()
+    };
+    let backend = Backend::new(&recovery).unwrap();
+    let published = recovery.join("discarded.recovery.json");
+    let older = recovery.join(".fd-write-older.tmp");
+    let duplicate = recovery.join(".fd-write-duplicate.tmp");
+    write(&backend, "discarded", "old edit");
+    fs::hard_link(&published, &older).unwrap();
+    let latest = write(&backend, "discarded", "latest edit");
+    // A crash can leave the synced temporary name after publishing by link.
+    fs::hard_link(&published, &duplicate).unwrap();
+    let other = write(&backend, "other", "second recovery of the same document");
+    let other_temp = recovery.join(".fd-write-other.tmp");
+    fs::hard_link(recovery.join("other.recovery.json"), &other_temp).unwrap();
+    let other_bytes = fs::read(&other_temp).unwrap();
+    let partial = recovery.join(".fd-write-partial.tmp");
+    let partial_bytes = b"{\"recoveryId\":\"discarded\",";
+    fs::write(&partial, partial_bytes).unwrap();
+    drop(backend);
+
+    let backend = Backend::new(&recovery).unwrap();
+    assert_eq!(
+        backend.recovery_read("discarded").unwrap().entry.hash,
+        latest.hash
+    );
+    assert!(backend.recovery_remove("discarded").unwrap());
+    assert!(!backend.recovery_remove("discarded").unwrap());
+    drop(backend);
+
+    let backend = Backend::new(&recovery).unwrap();
+    assert_eq!(
+        backend.recovery_read("discarded").unwrap_err().code,
+        "NOT_FOUND"
+    );
+    assert!(!older.exists());
+    assert!(!duplicate.exists());
+    assert_eq!(
+        backend.recovery_read("other").unwrap().entry.hash,
+        other.hash
+    );
+    assert_eq!(fs::read(&other_temp).unwrap(), other_bytes);
+    assert_eq!(fs::read(&partial).unwrap(), partial_bytes);
+    assert_eq!(fs::read(&original).unwrap(), original_bytes);
+}
+
+#[test]
 fn autosave_recovery_legacy_record_without_sequence_upgrades_and_recovers() {
     let f = Fixture::new();
     let recovery = f.0.join("recovery");
