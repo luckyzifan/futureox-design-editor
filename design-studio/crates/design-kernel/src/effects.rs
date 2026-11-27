@@ -1334,26 +1334,44 @@ pub(crate) fn gaussian_box_radii_bounded(sigma:f64,limit:f64)->Result<[u32;3],St
     if !sigma.is_finite() || !(0. ..=limit).contains(&sigma) {
         return Err(format!("Gaussian sigma must be in [0,{limit}]"));
     }
-    if sigma < 0.1 {
-        return Ok([0; 3]);
-    }
-    let ideal = (4. * sigma * sigma + 1.).sqrt();
-    let mut lower = ideal.floor() as i32;
-    if lower % 2 == 0 {
-        lower -= 1;
-    }
-    lower = lower.max(1);
-    let upper = lower + 2;
-    let m = ((12. * sigma * sigma - 3. * (lower * lower) as f64 - 12. * lower as f64 - 9.)
-        / (-4. * lower as f64 - 4.))
-        .round()
-        .clamp(0., 3.) as i32;
-    let radii =
-        std::array::from_fn(|i| ((if (i as i32) < m { lower } else { upper } - 1) / 2) as u32);
+    let radii = gaussian_box_radii_for_lattice(sigma)?;
     if radii.iter().any(|r| f64::from(*r) > limit) {
         return Err("Gaussian box radius exceeds its surface policy".into());
     }
     Ok(radii)
+}
+
+/// Select the same three boxes without an allocation policy. The image
+/// projection integrates these weights directly on the device lattice.
+pub(crate) fn gaussian_box_radii_for_lattice(sigma: f64) -> Result<[u32; 3], String> {
+    if !sigma.is_finite() || sigma < 0. {
+        return Err("Invalid Gaussian sigma".into());
+    }
+    if sigma < 0.1 {
+        return Ok([0; 3]);
+    }
+    let ideal = (4. * sigma * sigma + 1.).sqrt();
+    if ideal > (2 * i64::from(u32::MAX) + 1) as f64 {
+        return Err("Gaussian radius cannot be represented on the device lattice".into());
+    }
+    let mut lower = ideal.floor() as i64;
+    if lower % 2 == 0 {
+        lower -= 1;
+    }
+    let lower = lower.max(1);
+    let upper = lower + 2;
+    let width = lower as f64;
+    let m = ((12. * sigma * sigma - 3. * (width * width) - 12. * width - 9.)
+        / (-4. * width - 4.))
+        .round()
+        .clamp(0., 3.) as u8;
+    let low = (lower - 1) / 2;
+    if m == 3 {
+        return Ok([low as u32; 3]);
+    }
+    let high = u32::try_from((upper - 1) / 2)
+        .map_err(|_| "Gaussian radius cannot be represented on the device lattice")?;
+    Ok(std::array::from_fn(|i| if i < usize::from(m) { low as u32 } else { high }))
 }
 // Premultiplied three-box Gaussian; certified sliding sums, exact tie fallback.
 pub fn blur(surface: &Surface, sigma: f64) -> Result<Surface, String> {

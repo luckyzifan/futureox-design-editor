@@ -1058,22 +1058,31 @@ fn affine_image_coordinate_grid(
     Ok(Some(values))
 }
 
-/// The analytic canvas samples image color at device pixel centres. Return
-/// just the two one-dimensional rows for a bounded, separable Gaussian.
-pub(crate) fn image_gaussian_axes(
-    rect: Rect, matrix: Transform, size: [f64; 2], image: [u32;2], paint: &Paint,
-) -> Result<[Vec<(usize, f32)>;2], String> {
-    let coords = ImageCoordinates::new(paint, size, matrix, rect, image)?;
-    let mut axes = [Vec::with_capacity(rect.w as usize), Vec::with_capacity(rect.h as usize)];
-    let center = Point::new(f64::from(rect.x) + f64::from(rect.w) / 2., f64::from(rect.y) + f64::from(rect.h) / 2.);
-    for (axis, (start, length)) in [(rect.x, rect.w), (rect.y, rect.h)].into_iter().enumerate() {
-        let source = ImageLinearAxis::new(&coords, axis);
-        for i in 0..length {
-            let at = f64::from(start) + f64::from(i) + 0.5;
-            let sample = source.sample(if axis == 0 { Point::new(at, center.y) } else { Point::new(center.x, at) })
-                .ok_or("Invalid Gaussian image sample")?;
-            axes[axis].push((sample.cell as usize, sample.fraction));
+/// Device pixel centers mapped to a (possibly reflected) affine texel axis.
+/// The wide image filter integrates the bilinear sampling function over
+/// the integer box weights, including clamping at each end of the image.
+pub(crate) fn image_gaussian_lattice(
+    rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2], paint: &Paint,
+) -> Result<[[f64; 2]; 2], String> {
+    let c = ImageCoordinates::new(paint, size, matrix, rect, image)?;
+    let center = [f64::from(rect.x) + f64::from(rect.w) / 2.,
+        f64::from(rect.y) + f64::from(rect.h) / 2.];
+    let start = [f64::from(rect.x) + 0.5, f64::from(rect.y) + 0.5];
+    let axes = std::array::from_fn(|axis| {
+        let linear = ImageLinearAxis::new(&c, axis);
+        let device = if axis == 0 { [start[0], center[1]] } else { [center[0], start[1]] };
+        let [a, b, offset] = linear.inverse;
+        let local = a * device[0] + b * device[1] + offset;
+        let stride = [a, b][axis];
+        if let Some((ratio, inset)) = linear.fit_placement {
+            [(local - inset) / ratio - 0.5, stride / ratio]
+        } else {
+            [local / size[axis] * f64::from(image[axis]) - 0.5,
+                stride / size[axis] * f64::from(image[axis])]
         }
+    });
+    if axes.iter().flatten().any(|value| !value.is_finite()) {
+        return Err("Invalid Gaussian image sample".into());
     }
     Ok(axes)
 }
