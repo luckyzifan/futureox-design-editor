@@ -81,7 +81,6 @@ import { PendingEditContext } from './pending-edit-context'
 import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, pendingEditsChanged, registerPendingEdit, subscribePendingEdits } from './pending-edits'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { DesignTools } from './DesignTools'
-import { SketchInteractionPanel } from './SketchInteractionPanel'
 import { WorkspaceRail, DesignToolbar, ToolPopover, type WorkspaceSection } from './EditorChrome'
 import { PrototypePlayer } from './PrototypePlayer'
 import { WorkspaceLibrary } from './WorkspaceLibrary'
@@ -1467,7 +1466,6 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor} />
     : activeProperties === 'prototype' ? <DesignTools editor={editor} initialTab="prototype" embedded onClose={() => setPropertiesTab('design')} />
     : <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}>
-        {uiMode === 'sketch' && <SketchInteractionPanel editor={editor} doc={s.doc} selection={s.selection} armed={s.tool === 'hotspot'} />}
         <Inspector editor={editor} allowSpatial={!source} blurEffectIndex={blurEffectIndex} blurStopIndex={blurStopIndex}
           onSelectBlurStop={selectBlurStop} onEditBlur={editBlur} />
       </PendingEditContext.Provider>

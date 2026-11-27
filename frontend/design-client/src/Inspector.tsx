@@ -5,6 +5,7 @@ import { RepeatPanel } from './RepeatPanel'
 import {BoardPanel} from './BoardPanel'
 import { AlignmentControls, FlipControls } from './AlignmentControls'
 import { SketchLayerStyle } from './SketchLayerStyle'
+import { SketchInteractionPanel } from './SketchInteractionPanel'
 import { BlurEffectPanel } from './BlurEffectPanel'
 import { canAddSketchEffect, isMotionZoomBlur, isSketchProgressiveBlur, setProgressiveMode } from './blur-settings'
 import { GlassEffectPanel, createGlassEffect, prepareGlassFill } from './GlassEffectPanel'
@@ -570,9 +571,15 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   const liveBlur = useSyncExternalStore(editor.subscribeLiveBlur, () => editor.liveBlur)
   const update = (fn: Parameters<Editor['updateProperties']>[1], label = '修改属性') => editor.updateProperties(ids, fn, label)
   const [glassToOpen, setGlassToOpen] = useState<string | null>(null)
-  if (uiMode === 'sketch' && s.tool === 'graphic') return <GraphicTemplatePanel editor={editor}/>
-  if (s.tool === 'scale') return <ScaleInspector key={`${editor.sessionGeneration}:${s.page}:${s.selection.join(',')}`} editor={editor} />
-  if (ids.length > 1) return <MultiSelectionInspector editor={editor} nodes={ids.map((id) => s.doc.nodes[id]).filter(Boolean)} />
+  const sketchInteraction = sketchStyles && (ids.length === 1 || s.tool === 'hotspot')
+    ? <SketchInteractionPanel editor={editor} doc={s.doc} selection={ids} armed={s.tool === 'hotspot'} />
+    : null
+  const toolInspector = (content: React.ReactNode) => sketchInteraction
+    ? <div className="inspector-tool-content">{content}{sketchInteraction}</div>
+    : content
+  if (sketchStyles && s.tool === 'graphic') return toolInspector(<GraphicTemplatePanel editor={editor} />)
+  if (s.tool === 'scale') return toolInspector(<ScaleInspector key={`${editor.sessionGeneration}:${s.page}:${s.selection.join(',')}`} editor={editor} />)
+  if (ids.length > 1) return toolInspector(<MultiSelectionInspector editor={editor} nodes={ids.map((id) => s.doc.nodes[id]).filter(Boolean)} />)
   if (!n)
     return (
       <aside className="inspector">
@@ -580,6 +587,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
           <b>{tr("设计")}</b>
           <span>{tr("属性")}</span>
         </div>
+        {sketchInteraction}
         <section>
           <h3>{tr("页面")}</h3>
           <label className="paint-row">
@@ -920,6 +928,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
               }, '修改约束')} />
           </div>)}
         </section>
+        {sketchInteraction}
         <section>
           <h3 className={uiMode === 'figma' ? 'layout-section-heading' : undefined}>{tr("布局")}
             {uiMode === 'figma' && n.kind === 'frame' && ids.length === 1 &&
