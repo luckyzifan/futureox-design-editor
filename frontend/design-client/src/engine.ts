@@ -848,6 +848,15 @@ export class Editor {
             Object.values(authored.designSystem?.variables ?? {}).some(variable => isMotionVariable(variable.kind)))
           draft.schemaVersion = MOTION_VARIABLE_SCHEMA
         if(draft.schemaVersion < 19 && hasSchema19Features(featureDocOf(authored)))draft.schemaVersion=19
+        // Promotion is monotonic, but the 3D band is content-owned: schema 25
+        // exists for `preserve3d` and 24 for the projected fields. Removing
+        // the last spatial effect must not leave the document declaring a
+        // version its content no longer uses.
+        if (draft.schemaVersion === 24 || draft.schemaVersion === 25) {
+          const spatial = Object.values(draft.nodes).map(n => n.spatial).filter((s): s is NonNullable<typeof s> => !!s)
+          if (!spatial.length) draft.schemaVersion = 23
+          else if (draft.schemaVersion === 25 && !spatial.some(s => s.preserve3d)) draft.schemaVersion = 24
+        }
         draft.rasterProfile ??= before.doc.rasterProfile || (draft.colorManagement ? 'figma' : 'analytic')
         // Before component/dependency cleanup, only root schema/profile fields
         // have changed. Inspect finalized authored nodes here to avoid creating

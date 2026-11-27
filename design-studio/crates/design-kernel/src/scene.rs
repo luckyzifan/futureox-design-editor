@@ -1926,6 +1926,35 @@ impl Document {
     pub fn requires_schema22(&self) -> bool {
         self.nodes.values().any(|node| node.layout.as_ref().is_some_and(|layout| layout.reverse_flow))
     }
+    /// Schema 24 exists for the projected 3D fields and schema 25 only adds
+    /// the shared 3D space. Both versions are therefore derived from node
+    /// content: a document that removed its last spatial effect, or its last
+    /// `preserve3d` frame, must not keep claiming that band. Later schemas
+    /// carry unrelated authored features and keep their declared version.
+    pub fn spatial_schema_version(&self) -> u32 {
+        if !matches!(self.schema_version, 24 | 25) {
+            return self.schema_version;
+        }
+        let (mut any, mut shared) = (false, false);
+        for effects in self.nodes.values().filter_map(|node| node.spatial.as_ref()) {
+            any = true;
+            shared |= effects.preserve3d;
+        }
+        if !any {
+            23
+        } else if self.schema_version == 25 && !shared {
+            24
+        } else {
+            self.schema_version
+        }
+    }
+    /// Returns whether the declared version changed.
+    pub fn normalize_spatial_schema(&mut self) -> bool {
+        let version = self.spatial_schema_version();
+        let changed = version != self.schema_version;
+        self.schema_version = version;
+        changed
+    }
     fn validate_edit_scope(&self, changed:Option<&std::collections::BTreeSet<String>>) -> Result<(),String> {
         if self.schema_version<21 && self.requires_schema21() {return Err("Per-run letter spacing and line height require schema 21".into());}
         if self.schema_version<33 && self.requires_schema33() {return Err("Text lists require schema 33".into());}

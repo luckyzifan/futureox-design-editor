@@ -317,24 +317,31 @@ pub fn resolve_sample_planes(samples: [&[u8]; 4]) -> Vec<u8> {
     out
 }
 
-// Each jitter pass is filtered directly into a running RGBA8 average. The
-// sampled colour remains binary32 until its weighted blend; no RGBA8 temporary
-// is inserted between spatial filtering and accumulation. This order matches
-// complete official gradient/coverage exports and the independent numeric probes.
+// Each jitter pass is filtered directly into a running binary32 average. The
+// sampled colour keeps that precision until one final encode: re-quantizing
+// the running mean to RGBA8 between passes moves an edge tap like 74.8125 to
+// 74.5 and then to 74, while the desktop export keeps 75 (spatial inset
+// stroke sample (151, 125) of the perspective fixture, #1126).
 pub fn resolve_sample_planes_2x(samples: [&[u8]; 4], width: u32, height: u32) -> Vec<u8> {
     let mut out = vec![0; width as usize * height as usize * 4];
     for y in 0..height as usize {
         for x in 0..width as usize {
-            let mut accumulated = [0_u8; 4];
+            let mut accumulated = [0_f32; 4];
             for (pass, index) in EXPORT_ORDER.into_iter().enumerate() {
                 let pixels = std::array::from_fn(|corner| {
                     let i = ((y * 2 + corner / 2) * width as usize * 2 + x * 2 + corner % 2) * 4;
                     premultiplied_bytes(samples[index], i)
                 });
-                accumulated = accumulate_export(accumulated, pair_source(pixels), pass + 1);
+                let source = pair_source(pixels);
+                let weight = (1.0_f64 / (pass + 1) as f64) as f32;
+                accumulated = std::array::from_fn(|channel| {
+                    (source[channel] - accumulated[channel])
+                        .mul_add(weight, accumulated[channel])
+                        .clamp(0., 1.)
+                });
             }
             let i = (y * width as usize + x) * 4;
-            out[i..i + 4].copy_from_slice(&straight_bytes(accumulated));
+            out[i..i + 4].copy_from_slice(&straight_bytes(accumulated.map(crate::figma_sampling::encode_unorm8)));
         }
     }
     out

@@ -24,7 +24,25 @@ test('spatial admission distinguishes an empty payload from the schema 24 versio
   document.schemaVersion = 24
   assert.equal(validateDocument(document), document)
   delete shape.spatial
+  assert.equal(validateDocument(document).schemaVersion, 23)
+})
+
+test('the spatial schema band follows the content that remains', () => {
+  const { document, shape } = fixture(25, 'frame')
+  const parent = node('frame')
+  parent.children = [shape.id]
+  document.nodes[parent.id] = parent
+  document.pages[0].children = [parent.id]
+  parent.spatial = { preserve3d: true }
+  shape.spatial = { pose: { rotateX: 0, rotateY: 0, rotateZ: 0, depth: 0, origin: [0.5, 0.5], visible: true, backfaceVisible: true } }
+  assert.equal(validateDocument(document).schemaVersion, 25)
+  delete parent.spatial
   assert.equal(validateDocument(document).schemaVersion, 24)
+  delete shape.spatial
+  assert.equal(validateDocument(document).schemaVersion, 23)
+  // Later schemas carry unrelated features and keep their declaration.
+  document.schemaVersion = 33
+  assert.equal(validateDocument(document).schemaVersion, 33)
 })
 
 const extended = [
