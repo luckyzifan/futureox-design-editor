@@ -133,8 +133,12 @@ function kimiReport({ spawnSync, lookup, config, tempDir, env, token }) {
     : { status: 1, stdout: '', stderr: 'could not resolve the Kimi CLI Python interpreter' }
   let summary = null
   try { summary = JSON.parse(String(actions.stdout ?? '').trim().split('\n').at(-1)) } catch { summary = null }
-  const actionSteps = ['read', 'edit', 'screenshot', 'undo'].map(id => step(id, summary?.[id] === true ? 'passed' : 'failed',
-    summary?.[id] === true ? 'called through the Kimi CLI bundled fastmcp client' : cleanOutput(actions.stderr || actions.stdout, token).trim().split('\n').slice(0, 3).join('\n')))
+  const actionOutput = cleanOutput(String(actions.stderr || actions.stdout || '').trim().split('\n').slice(-12).join('\n'), token)
+  const actionSteps = ['read', 'edit', 'screenshot', 'undo'].map(id => step(
+    id,
+    summary?.[id] === true ? 'passed' : 'failed',
+    summary?.[id] === true ? 'called through the Kimi CLI bundled fastmcp client' : actionOutput,
+  ))
   return {
     id: 'kimi-cli-1',
     title: 'Kimi CLI 1.x',
