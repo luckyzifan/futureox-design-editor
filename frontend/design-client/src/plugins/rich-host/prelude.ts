@@ -124,6 +124,10 @@ function wrap(id) {
       const nodeId = target.id
       if (prop === 'id') return nodeId
       if (prop === 'removed') return dead.has(nodeId)
+      if (prop === 'reactions') {
+        if (dead.has(nodeId)) throw new Error('Node has been removed')
+        return host('readReactions', { id: nodeId }) ?? undefined
+      }
       if (prop === 'parent') {
         const snap = read(nodeId)
         if (!snap.parentId) return null
