@@ -232,9 +232,11 @@ test('Sketch Interaction arms the prototype tool and preserves an invisible hots
   doc.pages[0].children = [frame.id]
   await act(async () => { editor!.load(doc); canvas().focus() })
   try {
+    expect(document.querySelector('#design-properties-tab')?.getAttribute('aria-selected')).toBe('true')
+    expect(document.querySelector('.sketch-interaction-panel')).toBeNull()
     await key('i', { code: 'KeyI' })
     expect(editor!.state.tool).toBe('hotspot')
-    expect(document.querySelector('#prototype-properties-tab')).toBeNull()
+    expect(document.querySelector('#prototype-properties-tab')?.getAttribute('aria-selected')).toBe('true')
     expect(document.querySelector('.sketch-interaction-panel')).not.toBeNull()
     const authored = editor!.authoredDocument
     const hotspot = node('rectangle', 20, 30, 80, 55)

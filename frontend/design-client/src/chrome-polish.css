@@ -413,17 +413,55 @@ html[data-reduced-motion="true"] .prototype-hotspot { transition: none; }
 .editor-shell[data-ui-mode=figma] .floating-toolbar .figma-view-tools {
   color: var(--workspace-text);
 }
-.editor-shell .properties-content .inspector-tool-content {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
+/* Restore Futureox navigation without taking over compact canvas overlays. */
+@media (min-width: 901px) {
+  .editor-shell[data-ui-mode=figma]:not(.chrome-hide-layers, .chrome-hidden, .chrome-minimized) {
+    grid-template-columns: 56px max-content minmax(0, 1fr) var(--workspace-inspector-width);
+  }
+  .editor-shell[data-ui-mode=figma].chrome-hide-inspector:not(.chrome-hide-layers, .chrome-hidden, .chrome-minimized) {
+    grid-template-columns: 56px max-content minmax(0, 1fr) 0;
+  }
+  .editor-shell[data-ui-mode=figma]:not(.chrome-hide-layers, .chrome-hidden, .chrome-minimized) .workspace-rail {
+    display: flex;
+    grid-column: 1;
+    grid-row: 3;
+    width: 56px;
+    padding: 9px 5px;
+    border-color: var(--rail-line);
+    background: var(--rail-heading);
+  }
+  .editor-shell[data-ui-mode=figma] .workspace-rail button {
+    border-radius: 8px;
+    min-height: 42px;
+    gap: 3px;
+  }
 }
-.editor-shell .properties-content .inspector-tool-content > .inspector {
+
+.editor-shell[data-ui-mode=sketch] .properties-workspace .properties-tabs {
+  height: 40px;
+  padding: 5px 9px;
+}
+.editor-shell[data-ui-mode=sketch] .properties-tab-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   width: 100%;
-  border-left: 0;
+  gap: 3px;
+  padding: 2px;
+  background: var(--workspace-field);
+  border-radius: 8px;
+}
+.editor-shell[data-ui-mode=sketch] .properties-tab-buttons > [role=tab] {
+  min-height: 25px;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+.editor-shell[data-ui-mode=sketch] .properties-tab-buttons > [role=tab][aria-selected=true] {
+  box-shadow: 0 1px 2px #20314d30;
+}
+.sketch-prototype-empty {
+  margin: 12px;
+  color: var(--workspace-muted);
+  font-size: 12px;
 }
 .editor-shell[data-ui-mode=sketch] .properties-content .sketch-interaction-panel {
   min-width: 0;

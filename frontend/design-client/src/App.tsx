@@ -81,6 +81,7 @@ import { PendingEditContext } from './pending-edit-context'
 import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, pendingEditsChanged, registerPendingEdit, subscribePendingEdits } from './pending-edits'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { DesignTools } from './DesignTools'
+import { SketchInteractionPanel } from './SketchInteractionPanel'
 import { WorkspaceRail, DesignToolbar, ToolPopover, type WorkspaceSection } from './EditorChrome'
 import { PrototypePlayer } from './PrototypePlayer'
 import { WorkspaceLibrary } from './WorkspaceLibrary'
@@ -257,7 +258,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [propertiesTab, setPropertiesTabState] = useState<'design' | 'prototype'>('design')
   const setPropertiesTab = useCallback((next: 'design' | 'prototype') => { setPropertiesTabState(next); setPrototypeTab(next) }, [])
   useEffect(() => subscribePrototypeTab(() => setPropertiesTabState(getPrototypeTab())), [])
-  const activeProperties = uiMode === 'figma' ? propertiesTab : 'design'
+  const [sketchPropertiesTab, setSketchPropertiesTab] = useState<'design' | 'prototype'>('design')
   const [showPrototype, setShowPrototype] = useState(false)
   const [showSketchPreview, setShowSketchPreview] = useState(false)
   useEffect(() => { if (uiMode !== 'figma') setShowPrototype(false) }, [uiMode])
@@ -527,6 +528,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setDesktopStatus,
   ) : undefined)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
+  const sketchHotspotArmed = uiMode === 'sketch' && s.tool === 'hotspot'
+  const activeProperties = uiMode === 'figma' ? propertiesTab : sketchHotspotArmed ? 'prototype' : sketchPropertiesTab
+  useEffect(() => {
+    if (sketchHotspotArmed) setSketchPropertiesTab('prototype')
+  }, [sketchHotspotArmed])
+  const switchSketchProperties = (next: 'design' | 'prototype') => {
+    if (!commitPendingEdits(editor)) return
+    if (next === 'design' && sketchHotspotArmed) void activateTool(editor, 'select')
+    setSketchPropertiesTab(next)
+  }
   const [blurEdit, setBlurEdit] = useState<{
     session: number; document: string; page: string; node: string; index: number; effect: string; count: number; stop?: number
   } | null>(null)
@@ -1464,10 +1475,19 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   }
   const inspectorContent = source && !source.showLayers ? <SourcePageInspector source={source} editor={editor} />
     : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor} />
-    : activeProperties === 'prototype' ? <DesignTools editor={editor} initialTab="prototype" embedded onClose={() => setPropertiesTab('design')} />
+    : uiMode === 'figma' && activeProperties === 'prototype' ?
+      <DesignTools editor={editor} initialTab="prototype" embedded onClose={() => setPropertiesTab('design')} />
     : <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}>
-        <Inspector editor={editor} allowSpatial={!source} blurEffectIndex={blurEffectIndex} blurStopIndex={blurStopIndex}
-          onSelectBlurStop={selectBlurStop} onEditBlur={editBlur} />
+        {activeProperties === 'prototype'
+          ? <aside className="inspector sketch-prototype-inspector">
+              <div className="inspector-scroll">
+                {sketchHotspotArmed || s.selection.length === 1
+                  ? <SketchInteractionPanel editor={editor} doc={s.doc} selection={s.selection} armed={sketchHotspotArmed} />
+                  : <p className="sketch-prototype-empty">{locale === 'en' ? 'Select a layer to edit its interactions.' : '选择图层以编辑交互。'}</p>}
+              </div>
+            </aside>
+          : <Inspector editor={editor} allowSpatial={!source} blurEffectIndex={blurEffectIndex} blurStopIndex={blurStopIndex}
+              onSelectBlurStop={selectBlurStop} onEditBlur={editBlur} />}
       </PendingEditContext.Provider>
   const designToolbar = (
           <DesignToolbar disabled={toolbarDisabled} className={figmaDraw ? 'figma-workspace-tools figma-draw-toolbelt' : 'figma-workspace-tools'}>
@@ -2078,7 +2098,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               titles={panelText} zoom={figmaZoomDocked && figmaZoom} preview={figmaPreviewDocked && previewPrototype}>
               {inspectorContent}
             </FigmaPropertiesWorkspace>
-          : <SketchPropertiesWorkspace {...propertyHost}>{inspectorContent}</SketchPropertiesWorkspace>}
+          : <SketchPropertiesWorkspace {...propertyHost} tab={activeProperties} onTab={switchSketchProperties} titles={panelText}>
+              {inspectorContent}
+            </SketchPropertiesWorkspace>}
       </main>}
       <BatchRenameDialog editor={editor} />
       <SketchMakeGridDialog editor={editor} />
