@@ -48,6 +48,8 @@ test('all remote catalog tools are listed with the Figma-shaped names and schema
   for (const name of REMOTE_FIGMA_TOOL_NAMES) assert.ok(tools.has(name), name)
   assert.equal(REMOTE_FIGMA_TOOLS.length, 23)
   assert.equal(new Set(FIGMA_MCP_TOOLS.map(entry => entry.name)).size, FIGMA_MCP_TOOLS.length)
+  for (const entry of FIGMA_MCP_TOOLS) for (const key of entry.inputSchema.required ?? [])
+    assert.ok(entry.inputSchema.properties[key], `${entry.name} requires undeclared ${key}`)
   assert.ok(FIGMA_MCP_GAPS.some(gap => gap.id === 'export_video' && gap.status === 'unsupported'))
   assert.ok(FIGMA_MCP_GAPS.some(gap => gap.id === 'get_comments' && gap.status === 'local'))
   assert.ok(FIGMA_MCP_GAPS.some(gap => gap.id === 'generative_plugins'))
