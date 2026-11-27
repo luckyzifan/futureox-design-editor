@@ -45,12 +45,15 @@ export function closeSelectionPath(editor: Editor): boolean {
   if (editor.state.busy || editor.interactionActive) return false
   const ids = editor.topSelection()
   if (!closeablePath(editor.state.doc, ids)) return false
-  const node = editor.state.doc.nodes[ids[0]]
-  const [a, b] = openEndpoints(node.network!)
+  const network = editor.state.doc.nodes[ids[0]].network!
+  const [a, b] = openEndpoints(network)
+  // Continue a directed contour from its last vertex back to its first.
+  const incoming = (id: string) => network.edges.some(edge => edge.to === id)
+  const [from, to] = !incoming(a.id) && incoming(b.id) ? [b, a] : [a, b]
   const before = editor.state.doc
   editor.update(ids, n => {
     if (!n.network) return
-    n.network.edges.push({ id: uid(), from: a.id, to: b.id })
+    n.network.edges.push({ id: uid(), from: from.id, to: to.id })
   }, '闭合路径')
   return editor.state.doc !== before
 }

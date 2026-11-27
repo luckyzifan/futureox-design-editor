@@ -11,7 +11,7 @@ afterEach(() => {
   interfacePreference.reset()
 })
 
-function openPathEditor() {
+function openPathEditor(reorderVertices = false) {
   interfacePreference.set({ uiMode: 'sketch' })
   const doc = blank('Path commands')
   const path = node('vector', 10, 20, 100, 80)
@@ -27,6 +27,7 @@ function openPathEditor() {
     ],
     fillRule: 'evenodd',
   }
+  if (reorderVertices) path.network.vertices.reverse()
   doc.nodes[path.id] = path
   doc.pages[0].children = [path.id]
   const editor = new Editor(doc)
@@ -35,8 +36,8 @@ function openPathEditor() {
   return { editor, path }
 }
 
-test('Close Path links the two open ends as one undoable edit and refuses closed or branched paths', async () => {
-  const { editor } = openPathEditor()
+test.each([false, true])('Close Path closes the directed contour and supports undo (reordered vertices: %s)', async reorderVertices => {
+  const { editor } = openPathEditor(reorderVertices)
   const before = editor.state.doc
   expect(canCloseSelectionPath(editor)).toBe(true)
   await dispatchEditorCommand(editor, 'close-path')
