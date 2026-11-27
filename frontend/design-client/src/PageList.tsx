@@ -11,7 +11,9 @@ import { clampAnchoredMenu } from './anchored-menu'
 import { dispatchEditorCommand } from './editor-commands'
 import './design-ai/design-agent.css'
 
-export function PageList({ editor, onRename, layerDropPage }: { editor: Editor; onRename: (id: string) => void; layerDropPage?: string }) {
+export function PageList({ editor, onRename, layerDropPage, hidden = false }: {
+  editor: Editor; onRename: (id: string) => void; layerDropPage?: string; hidden?: boolean
+}) {
   const text = useInterfaceText()
   const { locale, uiMode } = useInterfacePreferences()
   const listId = useId()
@@ -63,7 +65,7 @@ export function PageList({ editor, onRename, layerDropPage }: { editor: Editor; 
   const resize = (height: number) => setPaneHeight(old => ({
     ...old, [uiMode]: Math.max(60, Math.min(maximum(), height)),
   }))
-  return <section ref={pane} className="layers-pages" data-pages-expanded={open}
+  return <section ref={pane} className="layers-pages" data-pages-expanded={open} hidden={hidden}
     onKeyDown={event => {
       // Native Sketch switches pages with Fn↑/Fn↓; browsers report PageUp/PageDown.
       // Handling it here keeps the page list usable when focus is outside the canvas.

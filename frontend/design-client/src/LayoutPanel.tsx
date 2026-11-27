@@ -141,6 +141,7 @@ export function LayoutPanel({
     catch (error) { setSuggestionError(error instanceof Error ? error.message : String(error)) }
   }
   const compact = uiMode === 'figma' && embedded && n.kind === 'frame' && !n.graphic && !active && !flow
+  const sizingDisclosure = compact || (uiMode === 'figma' && embedded && !active && !flow && !container(n))
   const suggestions = container(n) && ids.length === 1 && <div className="layout-suggestions">
         <button type="button" disabled={n.locked} onClick={() => {
           try { setSuggestion(editor.previewSuggestedLayout(n.id)); setSuggestionError('') }
@@ -386,10 +387,10 @@ export function LayoutPanel({
           </label>
         </>
       )}
-      {compact ? <details className="layout-options" key={n.id}>
+      {sizingDisclosure ? <details className="layout-options" key={n.id}>
         <summary>{tr('布局选项')}</summary>
         {sizingControls}
-        {suggestions}
+        {compact && suggestions}
       </details> : sizingControls}
       {flow && (
         <>

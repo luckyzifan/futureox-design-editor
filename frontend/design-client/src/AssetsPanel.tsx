@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { LibraryBig, Search } from 'lucide-react'
 import { ActionContextMenu } from './ActionContextMenu'
 import type { Editor } from './engine'
 import { componentSources, family } from './components'
@@ -9,9 +10,9 @@ import { armComponentPlacement, cancelComponentPlacement } from './component-pla
 import { activateTool } from './tool-activation'
 import { hasPendingEdits } from './pending-edits'
 
-export function AssetsPanel({ editor }: { editor: Editor }) {
+export function AssetsPanel({ editor, onOpenLibraries }: { editor: Editor; onOpenLibraries?: () => void }) {
   const { tr } = usePropertyText()
-  const { uiMode } = useInterfacePreferences()
+  const { uiMode, locale } = useInterfacePreferences()
   const [search, setSearch] = useState('')
   const [menu, setMenu] = useState<{
     id: string; point: { x: number; y: number }; trigger: HTMLButtonElement
@@ -49,12 +50,14 @@ export function AssetsPanel({ editor }: { editor: Editor }) {
   }
   return (
     <div className="assets-panel">
-      <input
-        aria-label={tr('搜索组件')}
-        placeholder={tr('搜索本地组件…')}
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
+      <div className="assets-search">
+        {onOpenLibraries && <Search size={15} aria-hidden="true" />}
+        <input aria-label={tr('搜索组件')} placeholder={tr('搜索本地组件…')} value={search}
+          onChange={event => setSearch(event.currentTarget.value)} />
+      </div>
+      {onOpenLibraries && <button type="button" className="assets-library-entry" onClick={onOpenLibraries}>
+        <LibraryBig size={15} aria-hidden="true" />{locale === 'en' ? 'Libraries' : '资源库'}
+      </button>}
       <button
         className="text-button"
         disabled={!editor.state.selection.length}
@@ -62,7 +65,7 @@ export function AssetsPanel({ editor }: { editor: Editor }) {
       >
         {tr('◇ 从选择创建组件')}
       </button>
-      <p className="muted">{tr('点击插入，或拖入画布')}</p>
+      {!onOpenLibraries && <p className="muted">{tr('点击插入，或拖入画布')}</p>}
       {items.map((n) => (
         <button
           className="component-asset"

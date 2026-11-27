@@ -75,7 +75,7 @@ async function press(target: EventTarget, key: string, init: KeyboardEventInit =
   return event
 }
 const rail = (title: string) => document.querySelector<HTMLButtonElement>(`.workspace-rail [title="${title}"]`)!
-const sideTab = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('[aria-label="侧栏内容"] [role="tab"]')].find(tab => tab.textContent === label)!
+const sidebarHeading = () => document.querySelector('.layer-heading h2')?.textContent
 
 test('Figma Option-1/2 open the layers and assets pages and Option-3 opens the design-system dialog', async () => {
   await render()
@@ -92,7 +92,8 @@ test('Figma Option-1/2 open the layers and assets pages and Option-3 opens the d
   await press(canvas(), '¡', { code: 'Digit1', altKey: true })
   expect(shell().classList.contains('chrome-hide-layers')).toBe(false)
   expect(rail('页面与图层').getAttribute('aria-pressed')).toBe('true')
-  expect(sideTab('图层').getAttribute('aria-pressed')).toBe('true')
+  expect(sidebarHeading()).toBe('图层')
+  expect(document.querySelector('.layers-pages[hidden]')).toBeNull()
   expect(document.querySelector('.layers-panel')!.getAttribute('aria-label')).toBe('页面与图层')
   expect(shown('.adaptive-layers-shell')).toBe(true)
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="图层面板"]')!.click())
@@ -100,7 +101,8 @@ test('Figma Option-1/2 open the layers and assets pages and Option-3 opens the d
 
   await press(canvas(), '™', { code: 'Digit2', altKey: true })
   expect(rail('组件与资源').getAttribute('aria-pressed')).toBe('true')
-  expect(sideTab('组件').getAttribute('aria-pressed')).toBe('true')
+  expect(sidebarHeading()).toBe('资源')
+  expect(document.querySelector('.layers-pages[hidden]')).not.toBeNull()
   expect(document.querySelector('.layers-panel')!.getAttribute('aria-label')).toBe('组件资源')
   expect(shell().classList.contains('chrome-hide-layers')).toBe(false)
   expect(editor!.state.selection).toEqual([shape.id])

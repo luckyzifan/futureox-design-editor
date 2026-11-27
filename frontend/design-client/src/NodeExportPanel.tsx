@@ -92,7 +92,7 @@ export function NodeExportPanel({editor,node,scopePageRoots=false}:{editor:Edito
     } catch(error){if(request.isCurrent())desktopPet.event('error');release();if(mounted.current)setMessage(request.signal.aborted?'导出已取消':String(error))}
     finally{owner.current.cancel(request);if(mounted.current)setBusy(false)}
   }
-  return <section aria-label={tr('图层导出设置')} className="node-export-panel">
+  return <section aria-label={tr('图层导出设置')} className="node-export-panel" data-property-section="export">
     <div className="section-title"><h3>{tr('导出')}</h3><button type="button" aria-label={tr('添加图层导出设置')} disabled={busy || (node.exportSettings?.length||0)>=16} onClick={()=>{if(commitPendingEdits(editor))update(s=>s.push(defaultLayerExportSetting()))}}>＋</button></div>
     {(node.exportSettings||[]).map((setting,i)=><div className="node-export-setting" key={setting.id}>
       <NumberField label={indexed('导出倍率', 'Export scale', i)} value={setting.scale} min={.001} max={128} onChange={value=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.scale=value})} />

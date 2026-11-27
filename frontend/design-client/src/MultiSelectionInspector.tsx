@@ -19,6 +19,8 @@ import { MixedNumberField } from './MixedNumberField'
 import { TextSizingControls } from './TextSizingControls'
 import { useInterfacePreferences } from './interface-preference'
 import { canAutoPinChild } from './layout-constraints'
+import { dispatchEditorCommand } from './editor-commands'
+import { LayoutTemplate } from 'lucide-react'
 
 export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nodes: DesignNode[] }) {
   const { locale, tr } = usePropertyText()
@@ -95,23 +97,41 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
   const dimensions = <div className="geometry-dimensions geometry-multiple-dimensions">{metricField('width', 'W')}{metricField('height', 'H')}</div>
   const textNodes = nodes.filter(node => node.kind === 'text'), textIds = textNodes.map(node => node.id)
   const textSizing = textNodes.length === nodes.length && <TextSizingControls editor={editor} nodes={textNodes} sketch={sketch} />
+  const roundedLayers = !sketch && nodes.every(node => ['rectangle', 'frame', 'section'].includes(node.kind))
+  const cornerRadius = roundedLayers ? commonValue(nodes.map(node => commonValue(node.radii.map(radius => radius * readUnits(node.id).style)))) : undefined
   return <aside className="inspector" aria-label={tr("多选属性")} data-geometry-mode={uiMode}>
     {sketch && <div className="sketch-inspector-alignment"><AlignmentControls editor={editor} compact />
       {spacingBesideTidy && spacingFields}</div>}
-    <div className="panel-tabs"><span>{propertyLayerCount(nodes.length, locale)}</span></div>
+    <div className={sketch ? 'panel-tabs' : 'panel-tabs property-selection-context'}>
+      {sketch ? <span>{propertyLayerCount(nodes.length, locale)}</span> : <div className="property-selection-title">
+        <h2>{locale === 'en' ? `${nodes.length} selected` : `已选中 ${nodes.length} 个图层`}</h2>
+      </div>}
+    </div>
     <div className="inspector-scroll">
       {styleDescription && <p role="note" className="property-unit-notice">{tr('＊ 最大缩放系数换算。')}{tr(styleDescription)}</p>}
-      <section className="geometry-position-section">
+      <section className="geometry-position-section" data-property-section="position">
         {!sketch && <><h3>{tr('位置')}</h3><AlignmentControls editor={editor} compact /></>}
         {position}
         {sketch ? <>{dimensions}{textSizing}</> : <div className="geometry-rotation">
           {rotation}<div className="geometry-actions"><FlipControls editor={editor} /></div>
         </div>}
       </section>
-      {!sketch && <section className="layout-panel"><h3>{tr('布局')}</h3>{dimensions}{textSizing}</section>}
-      <section>
+      {!sketch && <section className="layout-panel" data-property-section="layout">
+        <h3>{tr('布局')}<button type="button" disabled={editor.state.busy || editor.interactionActive}
+          aria-label={tr('添加自动布局')} title={tr('添加自动布局')}
+          onClick={() => void dispatchEditorCommand(editor, 'auto-layout')}><LayoutTemplate size={15} /></button></h3>
+        {dimensions}{textSizing}
+      </section>}
+      <section data-property-section="appearance">
         <h3>{tr('外观')}</h3>
-        {metricField('opacity', '透明度 %')}
+        <div className={sketch ? undefined : 'field-grid'}>
+          {metricField('opacity', '透明度 %')}
+          {roundedLayers && <MixedNumberField label={tr('圆角')} historyLabel="圆角" unit="length" diagnosticFamily={2}
+            value={cornerRadius} min={0} onChange={radius => update('修改所选图层圆角', (node, units) => {
+              const value = radius / units(node.id).style
+              node.radii = [value, value, value, value]
+            })} />}
+        </div>
         <label className="labeled-select">{tr("混合模式")}<select aria-label={tr("混合模式")} value={blend ?? 'mixed'} onChange={(event) => update('批量修改混合模式', (node) => { node.blend = event.target.value as NodeBlend })}>
           {blend === undefined && <option value="mixed" disabled>{tr("混合")}</option>}<option value="pass-through">{tr("穿透")}</option>{blendModes.map((value) => <option key={value}>{value}</option>)}
         </select></label>
@@ -136,7 +156,8 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
       </section>}
       {(['fills', 'strokes', 'effects'] as const).map(field => <MultiStylePanel key={field} editor={editor} nodes={nodes} field={field} readUnits={readUnits}/>)}
       <section><h3>{tr("布局与组件")}</h3><div className="selection-actions">
-        <button type="button" onClick={() => editor.autoLayout()}>{tr("添加自动布局")}</button><button type="button" onClick={() => editor.group()}>{tr("编组")}</button>
+        {sketch && <button type="button" onClick={() => editor.autoLayout()}>{tr("添加自动布局")}</button>}
+        <button type="button" onClick={() => editor.group()}>{tr("编组")}</button>
         <button type="button" onClick={() => editor.createComponent()}>{tr("创建组件")}</button>
         {nodes.every((node) => node.component) && <button type="button" onClick={() => editor.combineVariants()}>{tr("组合为变体")}</button>}
       </div></section>

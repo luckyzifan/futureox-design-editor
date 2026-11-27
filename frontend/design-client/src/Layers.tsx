@@ -72,9 +72,10 @@ const DrawLayerThumbnail = memo(function DrawLayerThumbnail({ layer, fallback }:
     </svg> : fallback}
   </span>
 })
-export function Layers({ editor, section, onSection, showPages=true, documentTitle, documents, drawThumbnails = false }: {
+export function Layers({ editor, section, onSection, showPages=true, documentTitle, documents, drawThumbnails = false, railNavigation = false, onOpenLibraries }: {
   editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void
   showPages?: boolean; documentTitle?: ReactNode; documents?: ReactNode; drawThumbnails?: boolean
+  railNavigation?: boolean; onOpenLibraries?: () => void
 }) {
   const text = useInterfaceText()
   const { uiMode, locale } = useInterfacePreferences()
@@ -400,9 +401,11 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
     <aside ref={panel} className="layers-panel" aria-label={tab === 'assets' ? text.componentAssetsLabel : text.pagesAndLayersLabel}>
       {documents}
       {showPages && uiMode === 'figma' && <div className="layers-document-title" title={s.doc.name}>{documentTitle || s.doc.name}</div>}
-      {showPages && <PageList editor={editor} onRename={renameIntendedPage} layerDropPage={layerDropPage} />}
+      {showPages && <PageList editor={editor} onRename={renameIntendedPage} layerDropPage={layerDropPage}
+        hidden={railNavigation && tab === 'assets'} />}
       <div className="layer-heading">
-        <div role="tablist" aria-label={text.sidebarContent} className="layer-tabs">
+        {railNavigation ? <h2>{tab === 'layers' ? text.layerTree : (locale === 'en' ? 'Assets' : '资源')}</h2>
+          : <div role="tablist" aria-label={text.sidebarContent} className="layer-tabs">
           {(['layers', 'assets'] as const).map((name, index) => <button key={name} type="button"
             id={`${tabId}-${name}-tab`} role="tab" aria-selected={tab === name} aria-pressed={tab === name}
             aria-controls={`${tabId}-${name}-panel`} tabIndex={tab === name ? 0 : -1}
@@ -414,7 +417,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
               event.preventDefault(); event.stopPropagation()
               if (setTab(next)) document.getElementById(`${tabId}-${next}-tab`)?.focus()
             }}>{name === 'layers' ? text.layerTree : text.componentsTab}</button>)}
-        </div>
+        </div>}
         {uiMode === 'figma' && tab === 'layers' && <button type="button" ref={searchToggle} aria-label={text.searchLayers}
           title={text.searchLayers} aria-expanded={findOpen} onClick={() => {
             if (findOpen) closeLayerFind()
@@ -427,10 +430,12 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
           setDisclosure(old => ({ ...old, [uiMode]: next }))
         }}><ChevronDown size={13} /></button>}
       </div>
-      <div id={`${tabId}-assets-panel`} role="tabpanel" className="layers-tabpanel" hidden={tab !== 'assets'} aria-labelledby={`${tabId}-assets-tab`}>
-        {tab === 'assets' && <AssetsPanel editor={editor} />}
+      <div id={`${tabId}-assets-panel`} role={railNavigation ? 'region' : 'tabpanel'} className="layers-tabpanel" hidden={tab !== 'assets'}
+        aria-label={railNavigation ? text.componentAssetsLabel : undefined} aria-labelledby={railNavigation ? undefined : `${tabId}-assets-tab`}>
+        {tab === 'assets' && <AssetsPanel editor={editor} onOpenLibraries={onOpenLibraries} />}
       </div>
-      <div id={`${tabId}-layers-panel`} role="tabpanel" className="layers-tabpanel" hidden={tab !== 'layers'} aria-labelledby={`${tabId}-layers-tab`}>
+      <div id={`${tabId}-layers-panel`} role={railNavigation ? 'region' : 'tabpanel'} className="layers-tabpanel" hidden={tab !== 'layers'}
+        aria-label={railNavigation ? text.layerTree : undefined} aria-labelledby={railNavigation ? undefined : `${tabId}-layers-tab`}>
       {findOpen ? <LayerFindPanel editor={editor} generation={findGeneration} refocus={findRefocus} /> : <div
         className="layer-list"
         role="tree" aria-label={text.layerTree} aria-multiselectable="true"

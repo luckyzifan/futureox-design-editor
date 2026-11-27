@@ -20,6 +20,8 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "填充不透明度": "Fill opacity",
   "不透明度 %": "Opacity %",
   "填充混合模式": "Fill blend mode",
+  "填充选项": "Fill options",
+  "描边选项": "Stroke options",
   "渐变角度": "Gradient angle",
   "位置 %": "Position %",
   "删除色标": "Remove color stop",
