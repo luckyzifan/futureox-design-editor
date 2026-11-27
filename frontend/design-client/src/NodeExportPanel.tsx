@@ -5,7 +5,9 @@ import type { Editor } from './engine'
 import { exportSuffixHasForbiddenCharacters, type DesignNode, type ExportSetting } from './model'
 import { NumberField } from './fields'
 import { DraftInput } from './DraftInput'
+import { validColor } from './color'
 import { commitExportEdits, ExportOwner } from './export-ownership'
+import { figReceipt } from './fig-document'
 import { commitPendingEdits } from './pending-edits'
 import { download } from './persistence'
 import { usePropertyText } from './property-interface-messages'
@@ -136,13 +138,23 @@ export function NodeExportPanel({editor,node,figmaMode=false}:{editor:Editor;nod
 }
 
 function supportsFigmaRoundedPng(document: import('./model').DesignDocument, node: DesignNode, figmaMode: boolean) {
-  if (!figmaMode || document.colorManagement || document.designSystem?.sketchContainers ||
+  if (!figmaMode || document.colorManagement ||
       node.kind !== 'rectangle' || node.spatial || node.repeat || node.mask || node.maskChain ||
       node.children.length || node.opacity !== 1 || node.blend !== 'normal' ||
       node.smoothing !== 0 || !node.radii.some(radius => radius > 0) ||
       node.strokes.some(stroke => stroke.visible && stroke.width > 0) ||
       node.effects.some(effect => effect.visible)) return false
+  // The compatibility container also holds FIG receipts. Keep Sketch layers
+  // on their own sampler even after they are appended to a FIG document.
+  const containers = document.designSystem?.sketchContainers
+  if (containers && figReceipt(document)?.source !== 'figma') return false
+  const metadata = containers?.nodeMetadata as Record<string, { bindings?: Record<string, string> }> | undefined
+  if ([...Object.keys(metadata?.[node.id]?.bindings ?? {}), ...Object.keys(node.bindings ?? {})]
+    .some(key => key.startsWith('sketch'))) return false
   const fills = node.fills.filter(fill => fill.visible && fill.opacity > 0)
-  return fills.length === 1 && fills[0].kind === 'solid' && fills[0].opacity === 1 &&
-    (fills[0].blend ?? 'normal') === 'normal' && /^#[\da-f]{6}$/i.test(fills[0].color)
+  const [fill] = fills
+  if (fills.length !== 1 || fill.kind !== 'solid' || fill.opacity !== 1 ||
+      (fill.blend ?? 'normal') !== 'normal' || !validColor(fill.color)) return false
+  const alpha = fill.color.slice(0, -1).split('/')[1]
+  return alpha === undefined || Number(alpha) === 1
 }
