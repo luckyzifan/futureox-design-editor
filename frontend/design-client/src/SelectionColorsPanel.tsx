@@ -4,21 +4,25 @@ import { ChevronRight } from 'lucide-react'
 import type { Editor } from './engine'
 import { ColorInput } from './ColorInput'
 import { commitPendingEdits } from './pending-edits'
+import { useInterfacePreferences } from './interface-preference'
 import { selectionColors, replaceSelectionColor, selectionColorLayerIds, type SelectionColor } from './selection-colors'
 
 export function SelectionColorsPanel({ editor }: { editor: Editor }) {
   const { locale, tr } = usePropertyText()
+  const { uiMode } = useInterfacePreferences()
   const { doc, selection } = editor.state
   const groups = useMemo(() => selectionColors(doc, selection), [doc, selection])
   if (!groups.length) return null
   return <section aria-label={tr("选区颜色")}><h3>{tr("选区颜色")}<small>{groups.length}</small></h3>
     {groups.map((group, index) => {
       const linked = group.uses.some(use => use.linked)
+      const count = group.uses.length
+      const references = locale === 'en' ? `${count} ${count === 1 ? 'reference' : 'references'}` : `${count} 处`
       return <div className="selection-color-row" data-selection-color={group.color} key={`${group.color}/${index}`}>
         {linked ? <span className="linked-color" title={tr("此颜色引用变量或共享样式")}>{group.color}</span> :
           <ColorInput editableHex label={`${tr("选区颜色")} ${index + 1}`} value={group.color} onChange={color => editor.updateProperties(
             [...new Set(group.uses.map(use => use.id))], node => replaceSelectionColor(node, group.uses, color), '修改选区颜色')} />}
-        <span title={tr("引用位置数量")}>{locale === 'en' ? `${group.uses.length} references` : `${group.uses.length} 处`}</span>
+        <span className="selection-color-count" title={references} aria-label={references}>{uiMode === 'figma' ? count : references}</span>
         <button type="button" className="selection-color-select" aria-label={tr("选择使用此颜色的图层")} title={tr("选择使用此颜色的图层")}
           onClick={() => selectLayersUsingColor(editor, group)}>
           <ChevronRight size={13} />
