@@ -159,7 +159,7 @@ export function TextInput({
             input.current!.value = original.current
             value.current = original.current
           }
-          finish(cancel)
+          if (!finish(cancel) && !cancel) finish(true)
         }
         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
           e.preventDefault()
@@ -815,7 +815,8 @@ export function CanvasTextEditor({
           navigate(e)
           if (e.key === 'Escape') {
             e.preventDefault()
-            finish(interfacePreference.getSnapshot().uiMode !== 'figma', true)
+            const cancel = interfacePreference.getSnapshot().uiMode !== 'figma'
+            if (!finish(cancel, true) && !cancel && !pendingFont.current) finish(true, true)
           }
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
             e.preventDefault()
