@@ -105,6 +105,7 @@ pub mod inferred_layout;
 pub mod interop;
 mod interop_resources;
 pub mod sketch;
+mod sketch_smart_layout;
 pub mod layout;
 pub mod layout_grid;
 pub mod measurement;
