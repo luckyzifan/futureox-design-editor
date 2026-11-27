@@ -19,6 +19,7 @@ import { PluginApiError, PluginClosed } from './errors'
 import { PLUGIN_LIMITS } from './limits'
 import { pluginEditorType, type PluginLaunchMode } from './manifest'
 import { styledTextSegments } from './text-segments'
+import { readNavigationReactions } from './prototype-reactions'
 import { fitVectorNetwork, readVectorNetwork, type FittedVectorNetwork } from './vector-network'
 import type { PluginEditorEvent } from './ui-document'
 import {
@@ -1283,6 +1284,14 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       calls += 1
       if (calls > PLUGIN_LIMITS.hostCalls) throw new PluginApiError('plugin_limit', `Plugin exceeded ${PLUGIN_LIMITS.hostCalls} host calls`)
       const body = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
+      if (op === 'readReactions') {
+        flush()
+        const id = shortText(body.id, 'id', 80)
+        const result = execute('node.get', { id }, false) as { node: DesignNode }
+        const type = figmaType(result.node)
+        if (type === 'SECTION' || type === 'SLICE' || type === 'COMPONENT_SET') return null
+        return readNavigationReactions(editor.authoredDocument.prototype?.interactions[id] ?? [])
+      }
       if (op === 'textSegments') {
         flush()
         const result = execute('node.get', { id: shortText(body.id, 'id', 80) }, false) as { node: DesignNode }
