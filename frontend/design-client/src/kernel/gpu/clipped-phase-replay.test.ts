@@ -4,7 +4,7 @@ import { ClippedPhaseReplay } from './clipped-phase-replay'
 import type { Driver, GpuScene } from './types'
 
 const pose = (x: number, y = 10): Matrix => [1, 0, 0, 1, x, y]
-function fixture(stationaryInsideView = false) {
+function fixture(stationaryInsideView = false, zoom = 1.6) {
   const doc = blank(), board = node('frame', 10, 10, 100, 80), stationary = stationaryInsideView ? node('frame', 35, 94, 40, 20) : node('frame', 124, 10, 120, 80)
   for (const root of [board, stationary]) {
     root.clip = true
@@ -16,9 +16,9 @@ function fixture(stationaryInsideView = false) {
   fill.color = 'color(srgb 1 1 1)'
   const page = doc.pages[0]
   page.children = [board.id, stationary.id]
-  const scene = { output: { x: 0, y: 0, w: 160, h: 160 }, view: { x: 0, y: 0, zoom: 1.6 },
+  const scene = { output: { x: 0, y: 0, w: 160, h: 160 }, view: { x: 0, y: 0, zoom },
     roots: page.children, nodes: { [board.id]: {} } } as GpuScene
-  const viewport = { view: { x: 0, y: 0, zoom: .8 }, width: 80, height: 80, dpr: 2 }
+  const viewport = { view: { x: 0, y: 0, zoom: zoom / 2 }, width: 80, height: 80, dpr: 2 }
   const controller = new AbortController()
   const device = {
     saveClippedBackground: vi.fn<NonNullable<Driver['saveClippedBackground']>>(() => 11),
@@ -76,4 +76,22 @@ test('a miss can capture a wider portion of the same phase without extending the
   atlas.record(5, anchor!)
   expect(atlas.find(pose(40, 15))).toBeDefined()
   expect(atlas.find(pose(15, 15))).toBeDefined()
+})
+
+test('same-phase replay accepts fractional authored origins on whole physical shifts', () => {
+  const { atlas, device } = fixture(false, 2)
+  atlas.record(5, pose(10.25))
+  expect(device.saveClippedRegion).toHaveBeenCalledOnce()
+  // Half a physical pixel is a different phase even though the document
+  // coordinates look continuous.
+  expect(atlas.find(pose(10.5))).toBeUndefined()
+  const match = atlas.find(pose(12.75))!
+  expect(match).toBeDefined()
+  expect(atlas.show(match)).toBe(13)
+  // The representative pose can still move a fractional origin inside the
+  // same capture by whole physical periods.
+  const anchor = atlas.representative(pose(40.25))!
+  expect(anchor).toBeDefined()
+  atlas.record(5, anchor)
+  expect(atlas.find(pose(40.25))).toBeDefined()
 })

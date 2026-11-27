@@ -79,7 +79,11 @@ export class ClippedPhaseReplay {
 
   private pose(transform: Matrix) {
     if (transform[0] !== 1 || transform[1] !== 0 || transform[2] !== 0 || transform[3] !== 1 ||
-        ![transform[4], transform[5]].every(Number.isSafeInteger)) return
+        ![transform[4], transform[5]].every(Number.isFinite)) return
+    // Authored origins are fractional during a drag. Placement below accepts
+    // only whole physical shifts, so a fractional origin still copies the
+    // exact sample lattice; requiring an integer document transform excluded
+    // every real pointer pose from the cache.
     const origin = { x: transform[4], y: transform[5] }
     const left = origin.x * this.view.zoom + this.view.x - this.output.x
     const top = origin.y * this.view.zoom + this.view.y - this.output.y
