@@ -42,3 +42,53 @@
 .variables-panel button:disabled { cursor: not-allowed; opacity: .5; }
 .variables-panel :focus-visible { outline: 2px solid var(--workspace-accent, #7755dd); outline-offset: 2px; }
 @media (max-width: 760px) { .variables-panel .variables-layout { grid-template-columns: 1fr; } .variables-panel aside { border-right: 0; border-bottom: 1px solid var(--workspace-border, #ddd); } .variables-panel .variables-collections { display: flex; max-height: 100px; } .variables-panel .variables-toolbar { align-items: flex-start; flex-direction: column; } }
+
+.editor-workspace[data-variables-active] > :is(.adaptive-layers-shell, .canvas-workspace, .properties-workspace) {
+  visibility: hidden;
+  opacity: 0;
+}
+.variables-workspace {
+  grid-area: 3 / 1 / 4 / -1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--workspace-panel);
+  color: var(--workspace-text);
+  container-type: inline-size;
+  padding: 0 clamp(12px, 2.2vw, 32px) 24px;
+}
+@media (min-width: 901px) {
+  .editor-shell[data-ui-mode=figma]:not(.chrome-hide-layers, .chrome-hidden, .chrome-minimized) .variables-workspace {
+    grid-column-start: 2;
+  }
+}
+.variables-workspace .variables-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--workspace-panel);
+  padding: 14px 0;
+  margin: 0;
+}
+.variables-workspace .variables-title, .variables-workspace .variables-return {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.variables-workspace .variables-title { gap: 16px; }
+.variables-workspace .variables-layout { grid-template-columns: 192px minmax(0, 1fr); }
+.variables-workspace .variables-collection-title > button { flex: none; }
+.variables-workspace :is(button, input, select) {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 6px;
+  color: var(--workspace-text);
+  background: var(--workspace-field);
+}
+.variables-workspace button:hover:not(:disabled),
+.variables-workspace .variables-collections [aria-pressed=true] { background: var(--workspace-selected); }
+@container (max-width: 650px) {
+  .variables-workspace .variables-layout { grid-template-columns: 1fr; }
+  .variables-workspace aside { border-right: 0; border-bottom: 1px solid var(--workspace-border); }
+}

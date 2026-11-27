@@ -3,10 +3,10 @@ import { createPortal } from 'react-dom'
 import { AnchoredMenu } from './anchored-menu'
 import type { PropertiesTab } from './prototype-chrome'
 
-type LeftPanel = { panelRef: Ref<HTMLDivElement>; rail: ReactNode; navigation: ReactNode; resize: ReactNode; children: ReactNode }
+type LeftPanel = { panelRef: Ref<HTMLDivElement>; rail: ReactNode; navigation: ReactNode; resize: ReactNode; children: ReactNode; inactive?: boolean }
 
-function FigmaLayersWorkspace({ panelRef, rail, navigation, resize, children }: LeftPanel) {
-  return <>{rail}<div ref={panelRef} className="adaptive-layers-shell" data-workspace-host="figma-layers">
+function FigmaLayersWorkspace({ panelRef, rail, navigation, resize, children, inactive }: LeftPanel) {
+  return <>{rail}<div ref={panelRef} className="adaptive-layers-shell" data-workspace-host="figma-layers" inert={inactive}>
     {navigation}{children}{resize}
   </div></>
 }
@@ -50,11 +50,12 @@ function PropertyTabContent({ tab, children }: { tab: PropertiesTab; children: R
   </div>
 }
 
-export function FigmaPropertiesWorkspace({ panelRef, label, resize, children, agent, tab, onTab, titles, zoom, preview }: RightPanel & InspectorTabs & {
+export function FigmaPropertiesWorkspace({ panelRef, label, resize, children, agent, tab, onTab, titles, zoom, preview, inactive }: RightPanel & InspectorTabs & {
   zoom: ReactNode
   preview: ReactNode
+  inactive?: boolean
 }) {
-  return <div ref={panelRef} className="properties-workspace" data-workspace-host="figma-inspector">
+  return <div ref={panelRef} className="properties-workspace" data-workspace-host="figma-inspector" inert={inactive}>
     {resize}
     {preview && <div className="figma-properties-actions">{preview}</div>}
     <div className="properties-tabs">

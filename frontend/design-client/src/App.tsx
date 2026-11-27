@@ -81,6 +81,7 @@ import { PendingEditContext } from './pending-edit-context'
 import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, pendingEditsChanged, registerPendingEdit, subscribePendingEdits } from './pending-edits'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { DesignTools } from './DesignTools'
+import { VariablesPanel } from './VariablesPanel'
 import { SketchInteractionPanel } from './SketchInteractionPanel'
 import { WorkspaceRail, DesignToolbar, ToolPopover, type WorkspaceSection } from './EditorChrome'
 import { PrototypePlayer } from './PrototypePlayer'
@@ -227,6 +228,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [startupError, setStartupError] = useState('')
   const homeSettingsFocus = useRef<HTMLElement | null>(null)
   const [showTools, setShowTools] = useState(false)
+  const [variableWorkspace, setVariableWorkspace] = useState(false)
+  const variablesTrigger = useRef<HTMLButtonElement>(null)
   const [showCatalog, setShowCatalog] = useState(false)
   const [showWorkspaceLibrary, setShowWorkspaceLibrary] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
@@ -528,6 +531,26 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setDesktopStatus,
   ) : undefined)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
+  const variablesVisible = variableWorkspace && uiMode === 'figma' && !showHome
+  useLayoutEffect(() => { setVariableWorkspace(false) }, [uiMode, showHome, s.doc.id, editor.sessionGeneration])
+  const returnFromVariables = useCallback(() => {
+    setVariableWorkspace(false)
+    variablesTrigger.current?.focus({ preventScroll: true })
+  }, [])
+  useEffect(() => {
+    if (!variablesVisible) return
+    // Undo can disable its focused button. Escape still belongs to the
+    // workspace when Chromium falls back to the body.
+    const closeUnfocused = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented ||
+          event.target !== document.body || document.querySelector('[aria-modal=true]') || !commitPendingEdits(editor)) return
+      event.preventDefault()
+      event.stopPropagation()
+      returnFromVariables()
+    }
+    window.addEventListener('keydown', closeUnfocused, true)
+    return () => window.removeEventListener('keydown', closeUnfocused, true)
+  }, [editor, variablesVisible, returnFromVariables])
   const sketchHotspotArmed = uiMode === 'sketch' && s.tool === 'hotspot'
   const activeProperties = uiMode === 'figma' ? propertiesTab : sketchHotspotArmed ? 'prototype' : sketchPropertiesTab
   useEffect(() => {
@@ -676,6 +699,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       event.stopPropagation()
       if (hideAll) { setUiHidden(value => !value); return }
       if (altPage![1] === '3') { setShowTools(true); return }
+      setVariableWorkspace(false)
       setWorkspaceSection(altPage![1] === '2' ? 'assets' : 'layers')
       setShowLayers(true)
       setUiMinimized(false)
@@ -1430,6 +1454,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     !!source?.openingPreview || (editor.interactionActive && !editor.propertyPreviewActive)
   const switchWorkspaceSection = (section: WorkspaceSection) => {
     if (editor.interactionActive || editor.state.busy || !commitPendingEdits(editor)) return
+    setVariableWorkspace(false)
     setWorkspaceSection(section); setShowLayers(true); setUiMinimized(false)
   }
   const inlineFigmaTabs = uiMode === 'figma' && !source && !!desktopSession?.supportsWorkspace
@@ -2058,18 +2083,27 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           searchField={sketchComponentSearch} onInsert={id => {
             if (switchSketchWorkspace(false)) editor.insertComponent(id)
           }} />
-      </main> : <main className={`editor-workspace ${hideLeftChrome ? 'hide-layers' : ''} ${figmaChromeHidden || !selectionShowsInspector ? 'hide-inspector' : ''} ${uiMinimized ? 'ui-minimized' : ''}`} >
-        <WorkspaceLayers panelRef={leftPanel}
+      </main> : <main className={`editor-workspace ${hideLeftChrome ? 'hide-layers' : ''} ${figmaChromeHidden || !selectionShowsInspector ? 'hide-inspector' : ''} ${uiMinimized ? 'ui-minimized' : ''}`}
+        data-variables-active={variablesVisible ? '' : undefined}>
+        <WorkspaceLayers panelRef={leftPanel} inactive={variablesVisible}
           rail={<WorkspaceRail section={workspaceSection} onSection={switchWorkspaceSection}
             onFiles={libraryRailVisible(uiMode, libraryHostKind(desktopSession)) ? openPersistentLibrary : undefined}
-            onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />}
+            onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands}
+            variablesOpen={variablesVisible} variablesTrigger={variablesTrigger} onVariables={() => {
+              if (editor.interactionActive || editor.state.busy || !commitPendingEdits(editor)) return
+              if (variablesVisible) returnFromVariables()
+              else {
+                setShowCommands(false)
+                setVariableWorkspace(true)
+              }
+            }} />}
           navigation={<>{source && !source.showLayers && sketchDocuments}{source?.navigation}</>}
           resize={<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />}>
           {(!source || source.showLayers) && <Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} showPages={!source}
             documents={sketchDocuments} drawThumbnails={uiMode === 'figma' && figmaDraw}
             documentTitle={figmaNameInSidebar ? documentNameField : undefined} />}
         </WorkspaceLayers>
-        <div className="canvas-workspace" ref={source?.canvas}>
+        <div className="canvas-workspace" ref={source?.canvas} inert={variablesVisible}>
           {!showHome&&!uiMinimized&&!figmaChromeHidden&&<div className="canvas-panel-toggles" onKeyDown={event=>event.stopPropagation()}>
             <button type="button" ref={leftPanelToggle} className="canvas-panel-toggle left"
               title={`${showLayers?panelText.collapse:panelText.expand} · ${panelText.left}`} aria-label={panelText.left}
@@ -2094,13 +2128,17 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           {uiMode === 'sketch' ? null : designToolbar}
         </div>
         {uiMode === 'figma'
-          ? <FigmaPropertiesWorkspace {...propertyHost} tab={propertiesTab} onTab={setPropertiesTab}
+          ? <FigmaPropertiesWorkspace {...propertyHost} inactive={variablesVisible} tab={propertiesTab} onTab={setPropertiesTab}
               titles={panelText} zoom={figmaZoomDocked && figmaZoom} preview={figmaPreviewDocked && previewPrototype}>
               {inspectorContent}
             </FigmaPropertiesWorkspace>
           : <SketchPropertiesWorkspace {...propertyHost} tab={activeProperties} onTab={switchSketchProperties} titles={panelText}>
               {inspectorContent}
             </SketchPropertiesWorkspace>}
+        {variablesVisible && <section id="variables-workspace" className="variables-workspace"
+          aria-label={translateProfessional('本地变量', locale)}>
+          <VariablesPanel editor={editor} onReturnToCanvas={returnFromVariables} />
+        </section>}
       </main>}
       <BatchRenameDialog editor={editor} />
       <SketchMakeGridDialog editor={editor} />

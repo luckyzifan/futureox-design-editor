@@ -475,7 +475,12 @@ html[data-reduced-motion="true"] .prototype-hotspot { transition: none; }
   gap: 6px;
   margin-top: 6px;
 }
-.editor-shell .properties-content .sketch-interaction-panel :is(input, select) {
+.editor-shell .properties-content .sketch-interaction-panel :is(input:not([type=checkbox]), select) {
   width: 100%;
   padding: 5px;
+}
+.sketch-prototype-frame input[type=checkbox] {
+  justify-self: start;
+  margin: 0;
+  accent-color: var(--workspace-accent);
 }
