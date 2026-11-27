@@ -395,3 +395,8 @@
 .paint-inline-alpha input { text-align: right; }
 .paint-inline-alpha > span { color: var(--workspace-muted); padding-inline: 2px; }
 .editor-shell[data-ui-mode="figma"] .selection-color-count { font-variant-numeric: tabular-nums; color: var(--workspace-muted); }
+.editor-shell[data-ui-mode="figma"] .selection-color-row input.color-readout {
+  width: 72px;
+  min-width: 72px;
+  font-variant-numeric: tabular-nums;
+}
