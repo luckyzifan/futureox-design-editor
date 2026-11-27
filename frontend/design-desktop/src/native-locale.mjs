@@ -16,7 +16,7 @@ const menuLabels = {
   'Mask': '用作蒙版', 'Flatten': '展平', 'Select Containing Symbol': '选择包含的控件',
   'Enter Component Source': '进入控件源', 'Rename': '重命名',
   'Bring to Front': '移到最前面', 'Bring Forward': '前置一层', 'Send Backward': '后置一层', 'Send to Back': '移到最后面',
-  'Close Path': '闭合路径', 'Reverse Order': '倒序', 'Outline Stroke': '轮廓化描边', 'Convert to Vector': '转换为矢量',
+  'Close Path': '闭合路径', 'Join': '连接路径', 'Reverse Order': '倒序', 'Outline Stroke': '轮廓化描边', 'Convert to Vector': '转换为矢量',
   'Combine Shapes': '结合形状', 'Union': '联集', 'Subtract': '减去顶层', 'Intersect': '交集', 'Exclude': '差集',
   'Insert Text': '插入文本', 'Run Command…': '运行命令…',
   'Align Left': '左对齐', 'Align Horizontal Center': '水平居中', 'Align Right': '右对齐',

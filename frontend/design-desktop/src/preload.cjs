@@ -277,7 +277,7 @@ contextBridge.exposeInMainWorld(
           'flip-horizontal', 'flip-vertical', 'create-component', 'detach-instance',
           'mask-selection', 'flatten', 'select-containing-symbol', 'edit-selection', 'rename',
           'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
-          'close-path', 'reverse-order', 'outline-stroke', 'convert-vector', 'boolean-add',
+          'close-path', 'join-paths', 'reverse-order', 'outline-stroke', 'convert-vector', 'boolean-add',
           'boolean-union', 'boolean-subtract', 'boolean-intersect', 'boolean-exclude', 'command-search'].includes(value),
       ),
   }),
