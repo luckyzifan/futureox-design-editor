@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { isRecord } from './framing.mjs'
+import { FIGMA_COMPATIBILITY_GAPS, FIGMA_COMPATIBILITY_TOOLS, callCompatibilityTool, isCompatibilityTool } from './figma-weave-tools.mjs'
 
 /** Explicit compatibility surface for AI clients that already speak Figma MCP.
  * These names are not added to the shared Design API registry. Every call is
@@ -27,6 +28,7 @@ export const FIGMA_MCP_GAPS = Object.freeze([
   { id: 'screenshot_is_cpu_export', tool: 'get_screenshot', status: 'partial', detail: 'preview.capture CPU raster of design content. Not an application window or GPU canvas screenshot.' },
   { id: 'file_key_ignored', tool: 'fileKey', status: 'partial', detail: 'The server is bound to the enabled local document. A Figma URL or file key does not select a different file.' },
   { id: 'no_remote_account', tool: 'remote MCP', status: 'absent', detail: 'Loopback HTTP and stdio only. No mcp.figma.com, OAuth, or multi-user account.' },
+  ...FIGMA_COMPATIBILITY_GAPS,
 ])
 
 const KINDS = new Set(['slice', 'frame', 'section', 'group', 'rectangle', 'ellipse', 'polygon', 'star', 'line', 'vector', 'text'])
@@ -214,17 +216,18 @@ export class FigmaFacade {
     const canWrite = this.scope === 'write' && this.methodNames.has('document.get')
     const canUseFigma = canWrite && (this.methodNames.has('batch.apply') || this.pluginHost() !== null)
     const canOpenDocument = canWrite && this.methodNames.has('workspace.open')
-    return FIGMA_MCP_TOOLS.filter(entry =>
+    const base = FIGMA_MCP_TOOLS.filter(entry =>
       entry.annotations.readOnlyHint ||
       (canUseFigma && entry.name === 'use_figma') ||
       (canOpenDocument && entry.name === 'open_document')
-    ).map(entry => ({ ...entry }))
+    )
+    return [...base, ...FIGMA_COMPATIBILITY_TOOLS].map(entry => ({ ...entry }))
   }
 
   async callTool(name, args, context = {}) {
     let toolArgs = args ?? {}
     try {
-      if (isRecord(toolArgs) && Object.hasOwn(toolArgs, 'sessionId')) {
+      if (name !== 'create_session' && isRecord(toolArgs) && Object.hasOwn(toolArgs, 'sessionId')) {
         const { sessionId, ...parameters } = toolArgs
         const boundSession = context.localSessionId ?? this.localSessionId
         if (typeof sessionId !== 'string' || !sessionId.length || sessionId.length > 256 || sessionId !== boundSession)
@@ -239,6 +242,13 @@ export class FigmaFacade {
       if (name === 'download_assets') return await this.download(toolArgs, context)
       if (name === 'use_figma') return await this.useFigma(toolArgs, context)
       if (name === 'open_document') return await this.openDocument(toolArgs, context)
+      if (isCompatibilityTool(name)) {
+        return await callCompatibilityTool({
+          name, args: toolArgs,
+          sessionId: context.localSessionId ?? this.localSessionId,
+          call: (method, params, fences) => this.call(method, params, context, fences),
+        })
+      }
       return failure(name, 'unknown_tool', `Unknown Figma-shaped tool ${name}`)
     } catch (error) {
       return failure(name, typeof error?.code === 'string' ? error.code : 'facade_error', error?.message || 'Figma-shaped tool failed')
