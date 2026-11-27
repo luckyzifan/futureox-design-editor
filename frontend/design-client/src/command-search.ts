@@ -15,7 +15,7 @@ import { selectedPaintSwap } from './sketch-paint-commands'
 import { container } from './model'
 import { componentSourceId, containingSymbolId } from './component-navigation'
 import { commandRecentRank, recordCommandSearchUse } from './command-recent'
-import { canCloseSelectionPath, canReverseSelectionPath } from './sketch-path-commands'
+import { canCloseSelectionPath, canJoinSelectionPaths, canReverseSelectionPath } from './sketch-path-commands'
 import { editableFrameCrop } from './selection-properties'
 import { commitPendingEdits } from './pending-edits'
 import { formatShortcutCombo, shortcutBindings, shortcutContextForLayout, type ShortcutContext } from './shortcut-profiles'
@@ -89,6 +89,7 @@ const catalog: readonly Spec[] = [
   { command: 'make-grid', layout: 'sketch', zh: '制作网格', en: 'Make Grid', group: 'arrange' },
   { command: 'edit-selection', layout: 'sketch', zh: '进入编辑', en: 'Edit selection', group: 'structure' },
   { command: 'close-path', layout: 'sketch', zh: '闭合路径', en: 'Close Path', group: 'path' },
+  { command: 'join-paths', layout: 'sketch', zh: '连接路径', en: 'Join', group: 'path', aliases: ['join paths'] },
   { command: 'reverse-order', layout: 'sketch', zh: '倒序', en: 'Reverse Order', group: 'path', aliases: ['reverse path', '反转路径'] },
   { command: 'select-containing-symbol', layout: 'sketch', zh: '选择包含的控件', en: 'Select Containing Symbol', group: 'selection' },
   { command: 'fit-pixel-bounds', layout: 'sketch', zh: '使边界贴合像素', en: 'Fit to pixel bounds', group: 'transform' },
@@ -256,6 +257,9 @@ function explain(editor: Editor, action: CommandSearchAction, context: ShortcutC
     phrase(locale, '请选择同一容器内可移动且已排齐的图层', 'Select movable, aligned layers in the same container')
   if (command === 'close-path') return canCloseSelectionPath(editor) ? undefined :
     phrase(locale, '请选择一条含两个端点的开放矢量路径', 'Select one open vector path with two endpoints')
+  if (command === 'join-paths') return canJoinSelectionPaths(editor) ? undefined :
+    phrase(locale, '请选择同一父级下两条相邻的开放路径，端点重合且描边一致',
+      'Select two adjacent open paths with a shared endpoint and matching strokes')
   if (command === 'reverse-order') return canReverseSelectionPath(editor) ? undefined :
     phrase(locale, '请选择一条矢量路径', 'Select a vector path')
   if (command === 'select-containing-symbol') {

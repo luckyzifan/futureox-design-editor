@@ -14,7 +14,7 @@ import { selectedPaintSwap } from './sketch-paint-commands'
 import { selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
 import { pageMoveRoots } from './layer-drop'
 import { componentSourceId, containingSymbolId } from './component-navigation'
-import { canCloseSelectionPath, canReverseSelectionPath } from './sketch-path-commands'
+import { canCloseSelectionPath, canJoinSelectionPaths, canReverseSelectionPath } from './sketch-path-commands'
 import { editableFrameCrop } from './selection-properties'
 
 export type CanvasMenuItem = { command: EditorCommand; label: string; group: string; disabled?: boolean; shortcut?: string; danger?: boolean }
@@ -113,6 +113,7 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
     items.push(
       { command: 'edit-selection', label: '进入编辑', group: 'structure', disabled: !editContext },
       { command: 'close-path', label: '闭合路径', group: 'path', disabled: !canCloseSelectionPath(editor) },
+      { command: 'join-paths', label: '连接路径', group: 'path', disabled: !canJoinSelectionPaths(editor) },
       { command: 'reverse-order', label: '倒序', group: 'path', disabled: !canReverseSelectionPath(editor) },
       { command: 'select-containing-symbol', label: '选择包含的控件', group: 'selection',
         disabled: !single || !containingSymbolId(doc, single.id, parents) },
@@ -181,7 +182,7 @@ const sketchContextOrder: EditorCommand[] = [
   'edit-selection', 'select-containing-symbol',
   'lock-selection', 'unlock-selection', 'hide-selection', 'show-selection',
   ...alignmentCommandIds,
-  'make-grid', 'close-path', 'reverse-order',
+  'make-grid', 'close-path', 'join-paths', 'reverse-order',
   'flip-horizontal', 'flip-vertical', 'fit-pixel-bounds', 'round-to-pixel', 'mask-selection', 'convert-vector', 'outline-stroke',
 ]
 const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = {
@@ -201,6 +202,7 @@ const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = 
   'create-component': ['创建控件', 'Create Symbol'],
   'edit-selection': ['进入编辑', 'Edit Selection'],
   'close-path': ['闭合路径', 'Close Path'],
+  'join-paths': ['连接路径', 'Join'],
   'reverse-order': ['倒序', 'Reverse Order'],
   'select-containing-symbol': ['选择包含的控件', 'Select Containing Symbol'],
 }
