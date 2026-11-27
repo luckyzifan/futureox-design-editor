@@ -42,10 +42,10 @@ export function distributeOffsets(rects: Bounds[], axis: 'x' | 'y'): Point[] | n
   return planArrangement(CORE_SELECTION_PROFILE, rects, axis, 'distribute')?.offsets ?? null
 }
 
-/** Grid tidy (Figma-style "tidy up"): rows clustered by vertical overlap are
- * vertically centered onto their row band, in-row gaps equalize to the global
- * mean gap, and row bands restack with the global mean row gap. The top-left
- * of the first row/column stays anchored. */
+/** Grid tidy: rows clustered by vertical overlap fill the original selection.
+ * Multi-item rows equalize horizontal edge gaps; multiple rows equalize their
+ * vertical gaps after centering each row. A single row retains its vertical
+ * bounds, while a single column centers horizontally and distributes vertically. */
 export function tidyOffsets(rects: Bounds[]): Point[] | null {
   if (rects.length < 2) return null
   const items = rects.map((r, index) => ({ r, index }))
@@ -59,24 +59,42 @@ export function tidyOffsets(rects: Bounds[]): Point[] | null {
     } else rows.push({ items: [item], top: item.r.y, bottom: item.r.y + item.r.height })
   }
   rows.forEach((row) => row.items.sort((a, b) => a.r.x - b.r.x))
-  // Global mean in-row gap; single-column layouts have no in-row gap at all.
-  const inRowGaps = rows.flatMap((row) =>
-    row.items.slice(1).map((item, i) => item.r.x - row.items[i].r.x - row.items[i].r.width),
-  )
-  const gapX = inRowGaps.length ? inRowGaps.reduce((a, b) => a + b, 0) / inRowGaps.length : 0
-  const rowGaps = rows.slice(1).map((row, i) => row.top - rows[i].bottom)
-  const gapY = rowGaps.length ? rowGaps.reduce((a, b) => a + b, 0) / rowGaps.length : 0
-  const deltas: Point[] = new Array(rects.length)
-  let rowTop = rows[0].top
-  for (const row of rows) {
-    const center = rowTop + (row.bottom - row.top) / 2
-    let cursor = row.items[0].r.x
-    for (const item of row.items) {
-      deltas[item.index] = { x: cursor - item.r.x, y: center - (item.r.y + item.r.height / 2) }
-      cursor += item.r.width + gapX
-    }
-    rowTop += row.bottom - row.top + gapY
+  const bounds = unionBounds(rects)
+  const deltas: Point[] = rects.map(() => ({ x: 0, y: 0 }))
+  if (rows.every((row) => row.items.length === 1)) {
+    const gapY = (bounds.height - rects.reduce((sum, r) => sum + r.height, 0)) / (rects.length - 1)
+    let cursor = bounds.y
+    rows.forEach((row, at) => {
+      const { r, index } = row.items[0]
+      const top = at === 0 ? bounds.y : at === rows.length - 1 ? bounds.y + bounds.height - r.height : cursor
+      deltas[index] = { x: bounds.x + (bounds.width - r.width) / 2 - r.x, y: top - r.y }
+      cursor += r.height + gapY
+    })
+    return deltas
   }
+  const rowHeights = rows.map((row) => Math.max(...row.items.map(({ r }) => r.height)))
+  const gapY = rows.length > 1
+    ? (bounds.height - rowHeights.reduce((a, b) => a + b, 0)) / (rows.length - 1)
+    : 0
+  let rowTop = bounds.y
+  rows.forEach((row, rowIndex) => {
+    const gapX = row.items.length > 1
+      ? (bounds.width - row.items.reduce((sum, { r }) => sum + r.width, 0)) / (row.items.length - 1)
+      : 0
+    const bandTop = rowIndex === 0 ? bounds.y : rowIndex === rows.length - 1
+      ? bounds.y + bounds.height - rowHeights[rowIndex]
+      : rowTop
+    let cursor = bounds.x
+    row.items.forEach(({ r, index }, at) => {
+      const left = row.items.length === 1 ? r.x : at === 0 ? bounds.x : at === row.items.length - 1
+        ? bounds.x + bounds.width - r.width
+        : cursor
+      const top = rows.length === 1 ? r.y : bandTop + (rowHeights[rowIndex] - r.height) / 2
+      deltas[index] = { x: left - r.x, y: top - r.y }
+      cursor += r.width + gapX
+    })
+    rowTop += rowHeights[rowIndex] + gapY
+  })
   return deltas
 }
 

@@ -159,7 +159,7 @@ test('host admission is shared across sessions and cancellation retains clones u
 test('pose transport binds one native interaction owner and retains the physical cancellation fence',async()=>{
  const port=new EventEmitter(),sent=[],transfers=[],jobs=[],cancels=[]
  let resolve,valid=true,retired=0
- Object.assign(port,{start(){},close(){this.emit('close')},postMessage(value,transfer){sent.push(value);transfers.push(transfer||[])}})
+ Object.assign(port,{start(){},close(){this.emit('close')},postMessage(value,transfer){if(transfer?.some(item=>item instanceof ArrayBuffer))throw new TypeError('Port at index 0 is not a valid port');sent.push(value);transfers.push(transfer||[])}})
  const worker={request(request){jobs.push(request);return new Promise(done=>{resolve=done})},cancel:id=>cancels.push(id)}
  bindPosePreparationPort(port,worker,()=>valid,()=>{retired++;valid=false})
  const send=data=>port.emit('message',{data})
@@ -279,6 +279,40 @@ test('a desktop pose port delivers an exact buffer when ArrayBuffer transfer is 
   assert.equal(reply.compileStats.compilations, 1)
   assert.equal(packet.byteLength, 256 * 1024)
   assert.equal(packet[0], 9)
+})
+
+test('a rejecting port pays one transfer throw and still sends exact pooled bytes', async () => {
+  const port = new EventEmitter()
+  const sent = []
+  let attempts = 0
+  Object.assign(port, {
+    start() {},
+    close() { this.emit('close') },
+    postMessage(value, transfer) {
+      if (transfer?.some(item => item instanceof ArrayBuffer)) {
+        attempts++
+        throw new TypeError('Port at index 0 is not a valid port')
+      }
+      sent.push(value)
+    },
+  })
+  let resolve
+  const worker = { closed: false, request() { return new Promise(done => { resolve = done }) }, cancel() {} }
+  let retired = 0
+  bindPosePreparationPort(port, worker, () => true, () => { retired++ })
+  const pool = new Uint8Array(64).fill(7)
+  for (const id of [1, 2]) {
+    port.emit('message', { data: { id, lane: 'interaction', method: 'compile_gpu_packet', args: ['{}'] } })
+    resolve({ value: pool.subarray(4, 12), compileStats: { compilations: 1 } })
+    await new Promise(done => setImmediate(done))
+  }
+  assert.equal(retired, 0)
+  assert.equal(attempts, 1)
+  assert.deepEqual(sent.at(-1).value, new Uint8Array([7, 7, 7, 7, 7, 7, 7, 7]))
+  assert.equal(sent.at(-1).value.byteOffset, 0)
+  assert.equal(sent.at(-1).value.buffer.byteLength, 8)
+  assert.equal(pool.byteLength, 64)
+  assert.equal(pool[4], 7)
 })
 
 test('pose packet buffers move across a message port without a second byte copy', async () => {

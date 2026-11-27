@@ -70,14 +70,27 @@ type Hooks = {
   onPostMessage?: (message: unknown) => void
   /** The guest finished itself with closePlugin. Host-initiated stop does not fire it. */
   onClose?: (message: string) => void
+  /** Sections from the latest codegen generate event, or the reason it failed. */
+  onCodegen?: (output: PluginCodegenOutput) => void
 }
 export type PluginUiState = { html: string; width: number; height: number; title: string; visible: boolean }
+/** One section a codegen generate handler returns. */
+export type PluginCodegenSection = { language: string; code: string; title?: string }
+/** What the latest generate event produced, or why it failed. */
+export type PluginCodegenOutput = { sections: PluginCodegenSection[]; error?: string }
+export type PluginCodegenTarget = {
+  nodeId: string
+  language: string
+  preferences: { unit: 'PIXEL'; customSettings: Record<string, string> }
+}
 
 export type PluginSessionOptions = {
   name: string
   pluginId: string
   command?: string
   mode?: PluginLaunchMode
+  /** Manifest codegen language values. The first one becomes the event language. */
+  codegenLanguages?: readonly string[]
   isModeCurrent?: () => boolean
   uiHtml: string | null
   storage?: PluginStorage
@@ -354,6 +367,10 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   let ui: PluginUiState | null = null
   let uiShown = false
   const listeners = new Set<PluginEditorEvent>()
+  let runListening = false
+  let codegenListening = false
+  const codegenOutputs: PluginCodegenOutput[] = []
+  let codegenRefresh = false
   let closed = false
   let closeMessage = ''
   let flushing = false
@@ -371,7 +388,8 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       throw new PluginApiError('editor_mode_changed', 'The editor mode changed while the plugin was running')
   }
   function requireDesignWrite() {
-    if (mode === 'inspect') throw new PluginApiError('permission_denied', 'Dev inspection plugins cannot edit the design')
+    if (mode === 'inspect' || mode === 'codegen')
+      throw new PluginApiError('permission_denied', 'Dev inspection and codegen plugins cannot edit the design')
   }
   function execute(method: string, params: Record<string, unknown>, mutate: boolean) {
     failIfReplaced()
@@ -391,7 +409,9 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   }
   function batch(operations: AutomationOp[]) {
     if (!operations.length) return null
-    if (mode === 'inspect' && operations.some(operation => operation.method !== 'plugin.data.replace')) requireDesignWrite()
+    if (mode === 'inspect' || mode === 'codegen') {
+      if (operations.some(operation => operation.method !== 'plugin.data.replace')) requireDesignWrite()
+    }
     const label = `Plugin: ${pluginName}`.replace(/[\u0000-\u001f]/g, ' ').slice(0, 200)
     const result = execute('batch.apply', { operations, label }, true)
     flushes += 1
@@ -1235,10 +1255,26 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return null
   }
 
+  /** The selected node for a generate event, or null when nothing is selected. */
+  function currentCodegenTarget(): PluginCodegenTarget | null {
+    if (mode !== 'codegen') return null
+    const nodeId = editor.state.selection[0]
+    if (!nodeId || !nodeView(nodeId)) return null
+    return {
+      nodeId,
+      language: options.codegenLanguages?.[0] ?? 'plaintext',
+      preferences: { unit: 'PIXEL', customSettings: {} },
+    }
+  }
+
   return {
     notifications, logs,
-    get ui() { return ui }, get uiShown() { return uiShown }, get listening() { return listeners.size > 0 }, get applying() { return applying > 0 },
+    get ui() { return ui }, get uiShown() { return uiShown }, get listening() { return listeners.size > 0 || codegenListening }, get applying() { return applying > 0 },
     watches: (type: PluginEditorEvent) => listeners.has(type),
+    get launchMode() { return mode }, listensToRun: () => runListening,
+    get codegenOutputs() { return codegenOutputs },
+    takeCodegenRefresh() { const wanted = codegenRefresh; codegenRefresh = false; return wanted },
+    codegenTarget: currentCodegenTarget,
     get closed() { return closed }, get closeMessage() { return closeMessage }, get flushes() { return flushes },     get pluginId() { return pluginId },
     flush,
     /** Drop the queued turn after a failed run. Already flushed history stays. */
@@ -1344,10 +1380,50 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       }
       if (op === 'listen') {
         const type = body.type
+        if (type === 'run') {
+          runListening = body.active !== false
+          return null
+        }
+        if (type === 'codegen') {
+          codegenListening = body.active !== false
+          return null
+        }
         if (type !== 'documentchange' && type !== 'currentpagechange' && type !== 'selectionchange')
           throw new PluginApiError('invalid_value', 'Unknown plugin editor event')
         if (body.active === false) listeners.delete(type)
         else listeners.add(type)
+        return null
+      }
+      if (op === 'codegenTarget') {
+        if (mode !== 'codegen') throw new PluginApiError('unsupported_codegen', 'Codegen events only run in codegen mode')
+        return currentCodegenTarget()
+      }
+      if (op === 'codegenResult') {
+        if (mode !== 'codegen') throw new PluginApiError('unsupported_codegen', 'Codegen events only run in codegen mode')
+        const error = body.error === undefined ? undefined : shortText(body.error, 'codegen error', 500)
+        const raw = body.sections
+        let sections: PluginCodegenSection[] = []
+        if (!error) {
+          if (!Array.isArray(raw) || raw.length > PLUGIN_LIMITS.codegenSections)
+            throw new PluginApiError('invalid_value', `A generate handler must return at most ${PLUGIN_LIMITS.codegenSections} sections`)
+          sections = raw.map(item => {
+            const section = record(item, 'codegen section')
+            const language = shortText(section.language, 'codegen section language', 80)
+            const code = typeof section.code === 'string' ? section.code : ''
+            if (code.length > PLUGIN_LIMITS.codegenCodeChars)
+              throw new PluginApiError('plugin_limit', 'A codegen section is too long')
+            const title = section.title === undefined ? undefined : shortText(section.title, 'codegen section title', 80)
+            return { language, code, ...(title === undefined ? {} : { title }) }
+          })
+        }
+        const output: PluginCodegenOutput = error ? { sections, error } : { sections }
+        codegenOutputs.splice(0, codegenOutputs.length, output)
+        options.hooks?.onCodegen?.(output)
+        return null
+      }
+      if (op === 'codegenRefresh') {
+        if (mode !== 'codegen') throw new PluginApiError('unsupported_codegen', 'Codegen events only run in codegen mode')
+        codegenRefresh = true
         return null
       }
       if (op === 'commitUndo') { flush(); return null }

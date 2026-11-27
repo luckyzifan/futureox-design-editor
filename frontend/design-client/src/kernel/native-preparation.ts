@@ -1,6 +1,17 @@
 import type { DesktopBridge } from '../desktop'
 import type { PreparationMethod } from './preparation-channel'
 
+/** Move exact binary replies; copy a subview once so its backing pool stays
+ * with the sender. Cloning a subview would also clone the unrelated pool. */
+function exactReply(value: unknown): { value: unknown; transfer: ArrayBuffer[] } {
+  if (!(value instanceof Uint8Array || value instanceof Float32Array)) return { value, transfer: [] }
+  const buffer = value.buffer
+  if (!(buffer instanceof ArrayBuffer)) return { value, transfer: [] }
+  if (value.byteOffset === 0 && value.byteLength === buffer.byteLength) return { value, transfer: [buffer] }
+  const copy = new Uint8Array(buffer, value.byteOffset, value.byteLength).slice()
+  return { value: value instanceof Float32Array ? new Float32Array(copy.buffer) : copy, transfer: [copy.buffer] }
+}
+
 /** Transport only: the preload sends jobs to a host Node worker + Rust child.
  * Browser builds retain their WASM preparation worker. GPU objects stay local. */
 export function connectNativePreparation(bridge: NonNullable<DesktopBridge['preparation']>, port: MessagePort, onFailure?: (error: Error) => void, record?: (fields: Record<string, number>) => void) {
@@ -62,9 +73,9 @@ export function connectNativePreparation(bridge: NonNullable<DesktopBridge['prep
       const reply = await pending
       progress(6)
       if (closed) return
-      const transfer = reply.value instanceof Uint8Array || reply.value instanceof Float32Array ? [reply.value.buffer] : []
+      const exact = exactReply(reply.value)
       const bridgeBoundaryAt = diagnostics ? boundary(13) : undefined
-      port.postMessage({ ...reply, id, ...(bridgeBoundaryAt === undefined ? {} : { bridgeBoundaryAt }) }, transfer)
+      port.postMessage({ ...reply, id, value: exact.value, ...(bridgeBoundaryAt === undefined ? {} : { bridgeBoundaryAt }) }, exact.transfer)
       if (diagnostics) boundary(14)
     } catch (error) {
       // Application errors arrive as replies. An IPC rejection means the
