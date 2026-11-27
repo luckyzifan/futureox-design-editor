@@ -1018,9 +1018,8 @@ fn constrain(doc: &mut Document, parent: &str) {
         } else {
             [None; 2]
         };
-        let flow_item = flow && !n.sizing_value().absolute;
         if let Some(mut c) = n.constraints.clone() {
-            if !flow_item {
+            if !flow {
                 let horizontal = ConstraintOpcode::from_anchor(0, c.horizontal);
                 let vertical = ConstraintOpcode::from_anchor(1, c.vertical);
                 let (x, nw) = constrained_axis(
