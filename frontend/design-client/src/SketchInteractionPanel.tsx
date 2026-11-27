@@ -3,6 +3,7 @@ import type { DesignDocument } from './model'
 import type { Interaction, PrototypeAction, PrototypeEasing, PrototypeTransitionStyle } from './prototype'
 import { isSketchHotspot } from './sketch-hotspot'
 import { usePropertyText } from './property-interface-messages'
+import { DraftInput } from './DraftInput'
 
 const previous = '__previous_frame__'
 const navigationIndex = (event: Interaction | undefined) =>
@@ -16,6 +17,11 @@ function primaryInteraction(events: Interaction[] | undefined) {
 function navigationAction(event: Interaction | undefined): PrototypeAction | undefined {
   const index = navigationIndex(event)
   return index >= 0 ? event!.actions[index] : undefined
+}
+
+function validTiming(raw: string, limit: number) {
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 0 && value <= limit
 }
 
 const triggers: readonly { value: Interaction['trigger']; zh: string; en: string }[] = [
@@ -134,12 +140,12 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
       }}>
       {triggers.map(item => <option key={item.value} value={item.value}>{english ? item.en : item.zh}</option>)}
     </select></label>
-    {trigger === 'after-delay' && <label>{delayLabel}<input type="number" aria-label={delayLabel} min={0} max={600000} step={100}
-      disabled={!action} value={event?.delayMs ?? 0}
-      onChange={change => {
-        const value = Number(change.currentTarget.value)
-        if (!Number.isFinite(value) || value < 0 || value > 600000) return
-        update('修改交互触发', (_draft, event) => { if (event) event.delayMs = Math.round(value) })
+    {trigger === 'after-delay' && <label>{delayLabel}<DraftInput key={layer.id} editor={editor}
+      type="number" aria-label={delayLabel} min={0} max={600000} step={100}
+      disabled={!action} value={String(event?.delayMs ?? 0)}
+      normalize={raw => raw === '' ? '0' : raw} validate={raw => validTiming(raw, 600000)}
+      onCommit={raw => {
+        update('修改交互触发', (_draft, event) => { if (event) event.delayMs = Math.round(Number(raw)) })
       }} /></label>}
     <label>{animationLabel}<select aria-label={animationLabel} disabled={!action}
       value={animation}
@@ -163,18 +169,17 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
       }}>
       {animations.map(item => <option key={item.value} value={item.value}>{english ? item.en : item.zh}</option>)}
     </select></label>
-    <label>{durationLabel}<input type="number" aria-label={durationLabel} min={0} max={10000} step={50}
+    <label>{durationLabel}<DraftInput key={layer.id} editor={editor}
+      type="number" aria-label={durationLabel} min={0} max={10000} step={50}
       disabled={durationDisabled} placeholder="300"
-      value={action?.durationMs ?? ''}
-      onInput={change => {
-        const raw = change.currentTarget.value
+      value={String(action?.durationMs ?? '')}
+      validate={raw => validTiming(raw, 10000)}
+      onCommit={raw => {
         update('修改交互动画', (_draft, event) => {
           const action = navigationAction(event)
           if (!action) return
           if (raw === '') { delete action.durationMs; return }
-          const value = Number(raw)
-          if (!Number.isFinite(value) || value < 0 || value > 10000) return
-          action.durationMs = Math.round(value)
+          action.durationMs = Math.round(Number(raw))
         })
       }} /></label>
     <label>{easingLabel}<select aria-label={easingLabel} disabled={durationDisabled}
