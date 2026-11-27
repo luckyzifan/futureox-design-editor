@@ -4172,14 +4172,14 @@ mod persistent_font_cache_tests {
                 1 => (
                     126usize,
                     238u8,
-                    "dc9dc10baf8b5a4f6ff72e09b9fb562f520a30f76a3c667b23d6d1c28937ea7d",
-                    "1bfaee31d1b2b7349d6462929de8c6a07fb1ec182b1c5a7fde9de0e1ac565475",
+                    "95b9a7bee56318d202052db13934fab788a610f8e4337ae4fe459093b081df16",
+                    "160d6df4a434b990f698337343e099463b5ae620a70d24311c17b54c8c8e3dd8",
                 ),
                 2 => (
                     445,
                     238,
-                    "1b2948fa5a939f097fb6f0001153b7f15e35850402be3e0fc7ab2e1184bbe8c5",
-                    "d4c41dfc7cd200f000756e46d3ebda0aea31d06a1097a6abfd12bfb17be210d4",
+                    "8fee5e1f95dc117067f0db72863447d6c01e0afdf7b4c505c7dc7bd2418deeb4",
+                    "7939cd89411cb4d34410abffc38e5ffa7d8d1b2fbf12fa2199863bdf0eb2402c",
                 ),
                 _ => unreachable!(),
             };
