@@ -35,7 +35,7 @@ import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
 import { inFlightPreviewCancelRatio, navigationPreviewDensity, zoomDetailInsteadOfViewportPreview } from './navigation-zoom'
 import { focusTileDuringZoom } from './zoom-underlay'
-import { captureMostlyOffscreen, liveNavigationCapture, navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, type NavigationCoverageFlight } from './navigation-coverage'
+import { captureMostlyOffscreen, deferCoveredOutwardPreview, liveNavigationCapture, navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, ZOOM_OUT_DETAIL_MIN_ZOOM, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
 import { panPrefetch } from './pan-prefetch'
@@ -54,7 +54,7 @@ import { progressiveTileLayer } from './progressive-quality'
 import { hasRetainedOverview, completeViewportBacking } from './overview-coverage'
 import { allowsReducedSampling } from './render-quality'
 import { sharpZoomScale, usesSharpZoom } from './gpu/sharp-zoom-policy'
-import { CoverageRetention } from './coverage-retention'
+import { CoverageRetention, hasNativeViewportSamples } from './coverage-retention'
 import { visibleCompositeContributors, touchCompositeContributors, type CompositeCacheFrame, type CompositeCacheOwner } from './composite-cache-use'
 import { isTileAdmissionBudgetError, planTileAdmission, retireRejectedTile, HandledTileDeliveryError,
   replacementTileBudget, tileAdmissionDiagnostic, type TileAdmissionDiagnostic } from './tile-admission'
@@ -567,8 +567,8 @@ export function ProgressiveSurfaceImpl(
         bounds: { x: -plan.view.x / plan.view.zoom, y: -plan.view.y / plan.view.zoom,
           width: plan.width / plan.view.zoom, height: plan.height / plan.view.zoom },
         keys: plan.ids, bytes: estimatedTileResidencyBytes(residents.values()),
-        native: residentDisplay && plan.samplingMode === 'native' &&
-          plan.rasterScale === plan.view.zoom * plan.dpr && [...residents.values()].every(tile => !tile.viewportPreview)
+        native: residentDisplay && hasNativeViewportSamples(plan, [...residents.values()],
+          progressiveNativeRepair && filteredContent && !cameraDependent && !props.animation)
           ? { view: plan.view, width: plan.width, height: plan.height, dpr: plan.dpr } : undefined,
       }, budget)
       const used = estimatedTileResidencyBytes(tileRef.current.values()) > budget ? compositeCacheUse() : new Set<PaintedTile>()
@@ -1131,8 +1131,14 @@ export function ProgressiveSurfaceImpl(
     // same-revision residents. Give exact tiles the raster turn instead of
     // starting a large filter graph for each intermediate viewport.
     const coveredHighZoomOut = movingDetailAvailable && zoomOutCoverage && filteredContent &&
-      requestedView.zoom >= 8 && hasContinuityBacking()
-    const detailInsteadOfPreview = coveredHighZoomOut || movingDetailAvailable && zoomDetailInsteadOfViewportPreview({
+      requestedView.zoom >= ZOOM_OUT_DETAIL_MIN_ZOOM && hasContinuityBacking()
+    // After a real hand-pan displacement, an owned resident union can keep the
+    // live camera covered while one native tile starts instead of a stale crop.
+    const coveredOutwardPan = movingDetailAvailable && navigationZoom.panAfterZoomOut &&
+      filteredContent && !cameraDependent && syncedDoc.current === doc &&
+      view.x === requestedView.x && view.y === requestedView.y && view.zoom === requestedView.zoom &&
+      hasContinuityBacking()
+    const detailInsteadOfPreview = coveredHighZoomOut || coveredOutwardPan || movingDetailAvailable && zoomDetailInsteadOfViewportPreview({
       navigating: true, displayedZoom: displayed?.view.zoom, requestedZoom: requestedView.zoom,
     }) && hasContinuityBacking()
     // At quiet, a same-owner coarse image already supplies continuity. Spend
@@ -1161,6 +1167,7 @@ export function ProgressiveSurfaceImpl(
         if (coveredHighZoomOut) flight.cancelForNative()
         else if (navigationZoom.active && zoomOutCoverage)
           flight.cancelObsoleteZoomOut(requestedView, width, height, hasReadyCoverage() ? 2 : 4)
+        if (coveredOutwardPan) flight.cancelShiftedPan(requestedView, width, height)
         // A zoom-in capture more than the preview ratio behind the live camera
         // can only be stretched. Yield the raster channel to closer tiles.
         // A reverse tick can still need a wider capture to fill uncovered
@@ -2031,6 +2038,12 @@ focus?: SurfaceProps['overview'],
             void navigationRefinement.request()
             return
           }
+          if (movingDetailAvailable && !cameraDependent && !props.panGestureActive &&
+              requestedView.x === view.x && requestedView.y === view.y && requestedView.zoom === view.zoom &&
+              deferCoveredOutwardPreview(retained, captureView.zoom, requestedView, width, height, navigationZoom.zoomingOut)) {
+            void navigationRefinement.request()
+            return
+          }
           // Continuous zoom and filtered pan keep bounded continuity captures;
           // native detail receives a separate single-tile fairness turn.
           navigationIntent = JSON.stringify([captureView.x, captureView.y, captureView.zoom, width, height, dpr, ratio, rasterProfile])
@@ -2708,6 +2721,7 @@ focus?: SurfaceProps['overview'],
     renderPhase.y,
     nativeReturnReady,
     navigationZoom.active,
+    navigationZoom.panAfterZoomOut,
     navigationZoom.sample?.sequence,
     navigationZoom.suspended,
     mailbox,

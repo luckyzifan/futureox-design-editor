@@ -29,7 +29,7 @@ export class NavigationZoom {
   private stableFrames = 0
   private intervals: number[] = []
   private resumedBeforeQuiet = false
-  private direction?: 'in' | 'out'
+  private direction?: 'in' | 'out' | 'pan-after-out'
   private panning = false
   private held = false
   sample: NavigationZoomSample
@@ -49,6 +49,15 @@ export class NavigationZoom {
     if (view.zoom !== this.target.zoom) return view.zoom > this.target.zoom
     return this.direction === 'in' && view.x === this.target.x && view.y === this.target.y
   }
+  isZoomingOut(view: CanvasCamera) {
+    if (view.zoom !== this.target.zoom) return view.zoom < this.target.zoom
+    return this.direction === 'out' && view.x === this.target.x && view.y === this.target.y
+  }
+  isPanningAfterZoomOut(view: CanvasCamera) {
+    return this.active && view.zoom === this.target.zoom &&
+      (this.direction === 'pan-after-out' ||
+       this.direction === 'out' && (view.x !== this.target.x || view.y !== this.target.y))
+  }
   inputChanged(view: CanvasCamera) {
     return view.zoom !== this.target.zoom || !!this.options.includeTranslation &&
       (view.x !== this.target.x || view.y !== this.target.y)
@@ -65,6 +74,7 @@ export class NavigationZoom {
       // A same-scale wheel pan ends inward refinement even when translation
       // does not own previews. Outward-pan quiet still uses the last zoom out.
       if (translated && this.direction === 'in') this.direction = undefined
+      if (translated && this.direction === 'out') this.direction = 'pan-after-out'
       if (changed) this.panning = !held && translated
     }
     this.held = held
@@ -104,7 +114,7 @@ export class NavigationZoom {
     // A wheel pan after zoom-out has one sampling density and can reuse its
     // accepted backing. Let two missing input intervals start native repair.
     // Zoom ticks and a burst that already resumed early keep the full guard.
-    const outwardPan = this.options.adaptiveQuiet === 'outward-pan' && this.direction === 'out' && this.panning
+    const outwardPan = this.options.adaptiveQuiet === 'outward-pan' && this.direction === 'pan-after-out' && this.panning
     const adaptive = this.options.adaptiveQuiet === true || outwardPan
     const quiet = !adaptive || this.resumedBeforeQuiet || this.intervals.length < CADENCE_REQUIRED_INTERVALS ? NAVIGATION_ZOOM_QUIET_MS :
       Math.min(NAVIGATION_ZOOM_QUIET_MS,

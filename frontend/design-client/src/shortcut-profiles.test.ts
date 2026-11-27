@@ -542,3 +542,20 @@ test('Sketch preset maps ⌃⌘A/⇧⌘A select-all variants and keeps Figma inv
   expect(resolveShortcut(key('a', { code: 'KeyA', ctrlKey: true }), { ...mac, platform: 'windows' })?.command).toBe('select-all')
   expect(resolveShortcut(key('A', { code: 'KeyA', ctrlKey: true, shiftKey: true }), { ...mac, platform: 'windows' })?.command).toBe('select-inverse')
 })
+
+test('Sketch residual chords reach pages, matching, pixel grid, outlines and component source without changing Figma', () => {
+  const mac = { profile: 'sketch-like', platform: 'mac', uiMode: 'sketch', desktop: true } as const
+  expect(resolveShortcut(key('PageDown', { code: 'PageDown' }), mac)?.command).toBe('next-page')
+  expect(resolveShortcut(key('PageUp', { code: 'PageUp' }), mac)?.command).toBe('previous-page')
+  expect(resolveShortcut(key('m', { code: 'KeyM', metaKey: true, shiftKey: true }), mac)?.command).toBe('select-matching')
+  expect(resolveShortcut(key('x', { code: 'KeyX', ctrlKey: true }), mac)?.command).toBe('toggle-pixel-grid')
+  expect(resolveShortcut(key('o', { code: 'KeyO', metaKey: true, altKey: true }), mac)?.command).toBe('outline-stroke')
+  expect(resolveShortcut(key('Enter', { code: 'Enter', metaKey: true }), mac)?.command).toBe('edit-selection')
+  const figma = { profile: 'figma-like', platform: 'mac', uiMode: 'figma', desktop: true } as const
+  expect(resolveShortcut(key('PageDown', { code: 'PageDown' }), figma)?.command).toBe('next-page')
+  expect(resolveShortcut(key('m', { code: 'KeyM', metaKey: true, shiftKey: true }), figma)).toBeNull()
+  expect(resolveShortcut(key('x', { code: 'KeyX', ctrlKey: true }), figma)).toBeNull()
+  expect(resolveShortcut(key('Enter', { code: 'Enter', metaKey: true }), figma)).toBeNull()
+  expect(resolveShortcut(key('a', { code: 'KeyA', metaKey: true, altKey: true }), figma)?.command).toBe('select-matching')
+  expect(resolveShortcut(key("'", { code: 'Quote', shiftKey: true }), figma)?.command).toBe('toggle-pixel-grid')
+})

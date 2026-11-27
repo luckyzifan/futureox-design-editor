@@ -11,6 +11,7 @@
 .command-search-dialog {
   width: min(560px, 100%);
   max-height: min(640px, calc(100dvh - 48px));
+  position: relative;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -24,7 +25,7 @@
 .command-search-dialog header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   padding: 12px 14px 0;
 }
 .command-search-dialog h2 {
@@ -33,10 +34,51 @@
   font-weight: 600;
 }
 .command-search-dialog header button {
-  margin-left: auto;
+  flex: none;
   width: 28px;
   height: 28px;
   font-size: 18px;
+}
+.command-search-dialog header .command-search-filter {
+  width: auto;
+  max-width: 190px;
+  margin-left: auto;
+  padding: 0 9px;
+  overflow: hidden;
+  border: 1px solid var(--workspace-border);
+  border-radius: 7px;
+  background: var(--workspace-field);
+  color: var(--workspace-text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.command-search-filter-menu {
+  position: absolute;
+  z-index: 2;
+  top: 46px;
+  right: 48px;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  max-height: 280px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 9px;
+  background: var(--workspace-panel);
+  box-shadow: 0 12px 30px #1c191724;
+}
+.command-search-filter-menu button {
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-align: left;
+  color: inherit;
+}
+.command-search-filter-menu button[aria-checked="true"] {
+  background: var(--workspace-selected);
 }
 .command-search-dialog input {
   width: calc(100% - 28px);

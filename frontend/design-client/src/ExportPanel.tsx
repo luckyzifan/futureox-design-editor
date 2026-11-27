@@ -158,11 +158,11 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch, initialTarg
         if(exportSelectedSketch){
           name=await exportSelectedSketch()
         }else{
-          const [{selectedDocument},{exportSketchInWorker},{download},{filename}]=await Promise.all([
-            import('./clipboard-core'),import('./import-file-worker'),import('./persistence'),import('./export')
+          const [{selectedSketchDocument},{exportSketchInWorker},{download},{filename}]=await Promise.all([
+            import('./sketch-selection-export'),import('./import-file-worker'),import('./persistence'),import('./export')
           ])
           const label=selection.length===1?committed.doc.nodes[selection[0]].name:tx('选区','Selection')
-          const {document}=selectedDocument(committed.doc,selection,label)
+          const document=selectedSketchDocument(committed.doc,selection,label)
           const bytes=await exportSketchInWorker(document,controller.signal)
           if(controller.signal.aborted||request.current!==controller)return
           name=filename(label)+'.sketch'

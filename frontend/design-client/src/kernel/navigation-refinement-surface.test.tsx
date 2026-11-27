@@ -6,7 +6,7 @@ import { blank } from '../model'
 import { readFile } from 'node:fs/promises'
 import { URL as FileURL } from 'node:url'
 
-const state = vi.hoisted(() => ({ active: true, sequence: 1, real: false, sampleView: undefined as any, pending: [] as any[], clients: [] as any[], composites: [] as any[] }))
+const state = vi.hoisted(() => ({ active: true, sequence: 1, real: false, panAfterZoomOut: false, sampleView: undefined as any, pending: [] as any[], clients: [] as any[], composites: [] as any[] }))
 vi.mock('./client', () => ({
   renderExecutionPolicy: { desktopDisplay: true, desktopFullMath: true, cpuOnly: false, hdrCompositing: false, imageMips: false, imageAtlas: false },
   KernelClient: class {
@@ -14,7 +14,7 @@ vi.mock('./client', () => ({
     recordViewportDiagnostic() {}; presentationDiagnosticsEnabled() { return false }
     constructor() { state.clients.push(this) }
     render(document: any, options: any, ...args: any[]) {
-      return new Promise<any>((resolve, reject) => state.pending.push({ document, options, progress: args[5], resolve, reject }))
+      return new Promise<any>((resolve, reject) => state.pending.push({ document, options, progress: args[5], signal: args[6], resolve, reject }))
     }
   },
 }))
@@ -42,7 +42,7 @@ vi.mock('./tile-plan-aligned', async original => {
   planTilesWithPrefetchRim: (...args: any[]) => state.real ? actual.planTilesWithPrefetchRim(...args) : ({ viewport: [], rim: [], cacheLimitSkipped: 0 }),
 } })
 vi.mock('./use-navigation-zoom', () => ({ useNavigationZoom: (view: any, _identity: string, enabled: boolean) => ({
-  active: enabled && state.active, suspended: false, panEnabled: true,
+  active: enabled && state.active, suspended: false, panEnabled: true, panAfterZoomOut: state.panAfterZoomOut,
   sample: enabled && state.active ? { sequence: state.sequence, view: state.sampleView || view } : undefined,
 }) }))
 vi.mock('./use-raster-density', () => ({ useRasterDensity: (density: number) => density }))
@@ -52,7 +52,7 @@ vi.mock('./ResidentCompositeSurface', () => ({ ResidentCompositeSurface: (props:
 vi.mock('./TileCompositeSurface', () => ({ TileCompositeSurface: () => null }))
 
 beforeEach(() => {
-  state.active = true; state.sequence = 1; state.real = false; state.sampleView = undefined; state.pending = []; state.clients = []; state.composites = []
+  state.active = true; state.sequence = 1; state.real = false; state.panAfterZoomOut = false; state.sampleView = undefined; state.pending = []; state.clients = []; state.composites = []
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.stubGlobal('WebGL2RenderingContext', function () {})
   Object.defineProperty(navigator, 'gpu', { configurable: true, value: {} })
   vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION', '0'); vi.stubEnv('VITE_DESIGN_SHARP_ZOOM', '0'); vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', '0')
@@ -64,10 +64,10 @@ async function fixture(zoom = 32, document = blank()) {
   let props: any = { document, pageId: document.pages[0].id, width: 855, height: 888,
     view: { x: 0, y: 0, zoom }, grid: false, backend: 'webgpu', onFallback: vi.fn() }
   const render = async (extra: any = {}) => { props = { ...props, ...extra }; await act(async () => root.render(<ProgressiveSurfaceImpl {...props} />)) }
-  const complete = async (index: number) => {
+  const complete = async (index: number, gpuTile?: number) => {
     const request = state.pending[index]
     await act(async () => request.resolve({ bitmap: { width: request.options.width, height: request.options.height, close: vi.fn() },
-      bytes: new Uint8Array(0), backend: 'webgpu', milliseconds: 1 }))
+      gpuTile, bytes: new Uint8Array(0), backend: 'webgpu', milliseconds: 1 }))
   }
   await render(); await vi.waitFor(() => expect(state.pending).toHaveLength(1))
   return { render, complete, root, container, get props() { return props } }
@@ -161,6 +161,46 @@ test('a long pan after the zoom sample yields the native tile that left the view
     expect(state.clients[0].cancelTileFill.mock.calls.length).toBeGreaterThan(cancels)
   } finally { await act(async () => f.root.unmount()) }
 })
+
+test.each(['covered', 'exposed', 'unacknowledged', 'plain-pan', 'stationary'] as const)(
+  'an outward hand pan yields the unfinished old viewport only with ready coverage: %s', async scenario => {
+    const f = await fixture(.4)
+    try {
+      const client = state.clients[0]
+      const device = { client, deviceWorkerScope: 1, deviceIncarnation: 1, deviceOwner: 1 }
+      await f.complete(0, 111)
+      const presenter = () => state.composites.at(-1)
+      const retained = presenter().items.find((item: any) => item.tile.gpuTile === 111).tile
+      await act(async () => presenter().onReady(retained.key, retained.serial, false))
+      await act(async () => presenter().onPresented({
+        ids: scenario === 'unacknowledged' ? [] : [111], view: f.props.view,
+        width: f.props.width, height: f.props.height, dpr: 2, interaction: false,
+      }, undefined, device))
+
+      const outward = { x: -151.5, y: -507, zoom: 1 }
+      state.sequence++
+      state.sampleView = outward
+      await f.render({ view: outward })
+      await vi.waitFor(() => expect(state.pending).toHaveLength(2))
+      const capture = state.pending[1]
+      expect(capture.options).toMatchObject({ livePreview: true, view: { x: -303, y: -1014, zoom: 2 } })
+      expect(capture.signal.aborted).toBe(false)
+      state.panAfterZoomOut = scenario !== 'plain-pan' && scenario !== 'stationary'
+      const moved = { ...outward, x: scenario === 'exposed' ? 48.5 : scenario === 'stationary' ? -151.5 : -111.625 }
+      await f.render({ view: moved, panGestureActive: true })
+      expect(capture.signal.aborted).toBe(scenario === 'covered')
+      if (scenario !== 'covered') return
+
+      await act(async () => capture.reject(Error('PREVIEW_CANCELLED')))
+      await vi.waitFor(() => expect(state.pending).toHaveLength(3))
+      expect(state.pending[2].options).toMatchObject({ renderIntent: 'canvas', tileViewport: [{ zoom: 2 }] })
+      state.sequence++
+      state.sampleView = moved
+      await f.render({ view: moved })
+      expect(state.pending.filter(job => job.options.livePreview)).toHaveLength(2)
+      expect(f.container.querySelector('[data-detail-ready="true"]')).toBeNull()
+    } finally { await act(async () => f.root.unmount()) }
+  })
 
 test('latest pan wins queued refinement while one in-flight native tile survives inputs and previews continue', async () => {
   const f = await fixture()

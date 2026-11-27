@@ -186,7 +186,7 @@ export const PLUGIN_API_COVERAGE: readonly PluginApiEntry[] = [
   { api: 'SceneNode.getSharedPluginData', status: 'supported', notes: 'Reads a namespace another plugin on this file could also read. Missing keys return "".' },
   { api: 'SceneNode.setSharedPluginData', status: 'supported', notes: 'Writes a namespaced string on the node, page, or root. An empty string deletes the key.' },
   { api: 'SceneNode.setRelaunchData', status: 'unsupported', notes: 'Throws unsupported_api. Relaunch buttons are not shown.' },
-  { api: 'SceneNode.reactions', status: 'unsupported', notes: 'Absent. Prototype reactions are not edited from this host.' },
+  { api: 'SceneNode.reactions', status: 'partial', notes: 'Reads complete authored navigation reactions with supported transitions. Conditions, other actions, imported inert receipts and writes are outside this projection.' },
   { api: 'SceneNode.boundVariables', status: 'partial', notes: 'Reads bindings written by setBoundVariable. Fields are width, height, opacity, characters, visible, fontSize, and itemSpacing. Fills, strokes, and effects are not bound.' },
   { api: 'TextNode.getStyledTextSegments', status: 'partial', notes: 'Reads UTF-16 ranges and groups equal adjacent styles. Supports fontSize, fontWeight, fontStyle, textDecoration, textCase, lineHeight, letterSpacing, paragraphSpacing, and paragraphIndent.' },
 ]

@@ -93,6 +93,61 @@ describe('Figma plugin host', () => {
     expect(current.authoredDocument).toEqual(before)
   })
 
+  it('reads authored navigation reactions without editing the design', async () => {
+    const doc = blank('Prototype reactions')
+    doc.schemaVersion = 20
+    const start = node('frame', 0, 0, 200, 100)
+    const end = node('frame', 240, 0, 200, 100)
+    doc.pages[0].children = [start.id, end.id]
+    doc.nodes = { [start.id]: start, [end.id]: end }
+    doc.prototype = { interactions: {
+      [start.id]: [
+        { trigger: 'click', actions: [
+          { kind: 'navigate', target: end.id, transitionStyle: 'dissolve', durationMs: 250, easingCurve: 'ease-in-out', transitionPreserveScroll: true },
+          { kind: 'navigate', target: start.id, transitionStyle: 'none' },
+        ] },
+        { trigger: 'hover', actions: [{ kind: 'navigate', target: end.id, durationMs: 0 }] },
+        // Keeping only the first action would incorrectly describe this interaction.
+        { trigger: 'leave', actions: [{ kind: 'navigate', target: end.id }, { kind: 'back' }] },
+        { trigger: 'after-delay', delayMs: 170, actions: [{ kind: 'navigate', target: end.id, durationMs: 0 }] },
+      ],
+    } }
+    const current = new Editor(doc)
+    editors.push(current)
+    current.select([start.id])
+    const before = current.authoredDocument
+    const revision = current.state.version
+    const run = await openPlugin(current, bundle('Read prototype', `
+      const from = figma.currentPage.selection[0];
+      const result = from.reactions;
+      if (!Array.isArray(result)) throw new Error('reactions unavailable');
+      const original = JSON.stringify(result);
+      result[0].actions[0].destinationId = 'local copy';
+      const messages = JSON.stringify([...JSON.parse(original), {
+        isolated: JSON.stringify(from.reactions) === original,
+        empty: figma.getNodeById(${JSON.stringify(end.id)}).reactions,
+      }]);
+      for (let i = 0; i < messages.length; i += 300) figma.notify(messages.slice(i, i + 300));
+      figma.closePlugin();
+    `))
+    const result = JSON.parse(run.notifications.join(''))
+    const navigate = (id: string, transition: unknown = null, preserveScrollPosition = false) => ({
+      type: 'NODE', destinationId: id, navigation: 'NAVIGATE', transition, preserveScrollPosition,
+    })
+    const animated = navigate(end.id, { type: 'DISSOLVE', duration: 0.25, easing: { type: 'EASE_IN_AND_OUT' } }, true)
+    const instant = navigate(end.id)
+    expect(result).toEqual([
+        { trigger: { type: 'ON_CLICK' }, actions: [animated, navigate(start.id)], action: animated },
+        { trigger: { type: 'MOUSE_ENTER', delay: 0, deprecatedVersion: false }, actions: [instant], action: instant },
+        { trigger: { type: 'AFTER_TIMEOUT', timeout: 170 }, actions: [instant], action: instant },
+      { isolated: true, empty: [] },
+    ])
+    expect(current.authoredDocument).toBe(before)
+    expect(current.state.version).toBe(revision)
+    expect(current.canUndo).toBe(false)
+    run.close()
+  })
+
   it('ships a layout-kit PNG whose IDAT crc matches the bytes', () => {
     const source = readFileSync(new URL('../../../plugins/layout-kit/code.js', import.meta.url), 'utf8')
     const encoded = source.match(/base64Decode\('([^']+)'\)/)?.[1]

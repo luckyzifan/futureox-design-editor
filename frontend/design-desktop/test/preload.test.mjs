@@ -216,6 +216,26 @@ test('command subscription strips IPC event, rejects invalid payloads and remove
   assert.equal(observed.length, commands.length)
 })
 
+test('Sketch native menu commands reach the renderer as admitted IDs only', () => {
+  const { api, events } = load()
+  const observed = []
+  const unsubscribe = api.onCommand(value => observed.push(value))
+  const commands = [
+    'set-tool-frame', 'set-tool-rectangle', 'set-tool-ellipse', 'set-tool-line',
+    'set-tool-pen', 'set-tool-text', 'set-tool-hotspot', 'set-tool-slice',
+    'flip-horizontal', 'flip-vertical', 'create-component', 'detach-instance',
+    'mask-selection', 'flatten', 'select-containing-symbol', 'edit-selection', 'rename',
+    'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
+    'close-path', 'join-paths', 'reverse-order', 'outline-stroke', 'convert-vector', 'boolean-add',
+    'boolean-union', 'boolean-subtract', 'boolean-intersect', 'boolean-exclude', 'command-search',
+  ]
+  for (const command of [...commands, 'set-tool-unregistered', ['close-path'], { command: 'edit-selection' }]) {
+    events.emit('design-desktop:command', {}, command)
+  }
+  assert.deepEqual(observed, commands)
+  unsubscribe()
+})
+
 test('close subscription strips event, validates requests, and independently cleans up callbacks', () => {
   const { api, events } = load()
   const observed = []
