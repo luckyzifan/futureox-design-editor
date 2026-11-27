@@ -2703,6 +2703,13 @@ impl Engine {
         scene.version = 8;
         Ok(scene)
     }
+    /// Identity of a compiled scene that the render options do not carry: the
+    /// content revision plus the engine-wide pixel switches. `None` while
+    /// layout or animation makes the scene depend on frame state, which also
+    /// means a caller must not retain it.
+    pub fn gpu_scene_lineage(&self) -> Option<(u64, bool, bool)> {
+        self.static_scene_revision()
+    }
     pub fn gpu_compile_cache_stats(&self) -> serde_json::Value {
         let mut stats=self.camera_prepare.as_ref().map(|cache|serde_json::json!({"hits":cache.programs.hits,
             "builds":cache.programs.builds,"programShifts":cache.programs.shifts,"bytes":cache.programs.bytes+cache.fragments.bytes,"fragmentHits":cache.fragments.hits,"fragmentBuilds":cache.fragments.builds,"entries":cache.programs.len(),

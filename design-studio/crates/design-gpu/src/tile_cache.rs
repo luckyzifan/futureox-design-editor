@@ -84,11 +84,35 @@ pub struct TileCacheStats {
     /// Whole render call, including assembly.
     pub render_ms: f64,
     pub cache_bytes: usize,
+    /// Full-scene compiles this call performed.
+    pub scene_compiles: usize,
+    /// Retained full scenes replayed without recompiling.
+    pub scene_reuses: usize,
+    /// Cropped per-tile compiles.
+    pub tile_compiles: usize,
+    /// Nodes across every scene compiled this call, including tile crops.
+    /// This is the unit repeated full-document preparation shows up in.
+    pub compiled_nodes: usize,
+}
+
+/// One full-scene compile retained between frames. Serve mode asks for the
+/// same camera many times (progressive tiles, pointer jitter between content
+/// patches); a full-scene compile walks every document node, so an identical
+/// request replays the exact scene and its fingerprints instead. The entry is
+/// keyed by the engine's scene lineage plus the complete render options and is
+/// replaced on the first miss, so at most one scene is retained.
+struct RetainedScene {
+    identity: ((u64, bool, bool), String),
+    scene: GpuScene,
+    partitioned: bool,
+    global: Key,
+    keys: BTreeMap<String, Key>,
 }
 
 pub struct TileCache {
     entries: HashMap<(i32, i32), CachedTile>,
     global_key: Option<(Key, bool)>,
+    retained: Option<RetainedScene>,
     pub stats: TileCacheStats,
 }
 
@@ -238,11 +262,11 @@ fn node_key(scene: &GpuScene, n: &GpuNode) -> Result<Key, String> {
 /// Influence rectangle per node: where edits to this node can change pixels.
 /// Starts at the compiled working rect; see the module docs for the mask and
 /// backdrop widening rules.
-fn influence_rects(scene: &GpuScene) -> BTreeMap<&str, Rect> {
-    let mut rects: BTreeMap<&str, Rect> = scene
+fn influence_rects(scene: &GpuScene) -> BTreeMap<String, Rect> {
+    let mut rects: BTreeMap<String, Rect> = scene
         .nodes
         .iter()
-        .map(|(id, node)| (id.as_str(), node.rect))
+        .map(|(id, node)| (id.clone(), node.rect))
         .collect();
     // Masks consume their group's content: editing the mask changes the
     // group output across the whole consumer rect.
@@ -278,18 +302,18 @@ fn influence_rects(scene: &GpuScene) -> BTreeMap<&str, Rect> {
 }
 
 /// Nodes influencing a device rect, sorted for deterministic hashing.
-fn influencers<'a>(influence: &BTreeMap<&'a str, Rect>, rect: Rect) -> Vec<&'a str> {
+fn influencers<'a>(influence: &'a BTreeMap<String, Rect>, rect: Rect) -> Vec<&'a str> {
     influence
         .iter()
         .filter(|(_, r)| !r.intersect(rect).empty())
-        .map(|(id, _)| *id)
+        .map(|(id, _)| id.as_str())
         .collect()
 }
 
 fn tile_key(
     global: &Key,
-    influence: &BTreeMap<&str, Rect>,
-    node_keys: &BTreeMap<&str, Key>,
+    influence: &BTreeMap<String, Rect>,
+    node_keys: &BTreeMap<String, Key>,
     tile: Tile,
 ) -> Key {
     let mut hasher = Sha256::new();
@@ -506,6 +530,7 @@ impl TileCache {
         TileCache {
             entries: HashMap::new(),
             global_key: None,
+            retained: None,
             stats: TileCacheStats::default(),
         }
     }
@@ -514,6 +539,7 @@ impl TileCache {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.global_key = None;
+        self.retained = None;
     }
 
     /// Render `options` through the tile cache. On any condition this module
@@ -565,25 +591,61 @@ impl TileCache {
         self.stats.tiles_total = tiles.len();
 
         let compile_started = Instant::now();
-        let compiled;
-        let scene = if let Some(scene) = prepared {
-            scene
-        } else {
-            compiled = engine.compile_gpu(options)?;
-            &compiled
-        };
+        // A scene whose inputs match the retained identity is replayed instead
+        // of recompiled. Identical serve frames (progressive tiles, pointer
+        // jitter between content patches) otherwise walk every document node
+        // again to rebuild commands this cache already holds.
+        let identity = engine
+            .gpu_scene_lineage()
+            .map(|lineage| (lineage, serde_json::to_string(options).unwrap_or_default()));
+        let mut retained = self.retained.take();
+        if prepared.is_some()
+            || identity.is_none()
+            || retained
+                .as_ref()
+                .is_none_or(|entry| Some(&entry.identity) != identity.as_ref())
+        {
+            // A caller-supplied scene and a changed identity both compile.
+            retained = None;
+        }
+        let mut scratch: Option<GpuScene> = None;
+        if prepared.is_none() && retained.is_none() {
+            let compiled = engine.compile_gpu(options)?;
+            self.stats.scene_compiles += 1;
+            self.stats.compiled_nodes += compiled.nodes.len();
+            scratch = Some(compiled);
+        } else if retained.is_some() {
+            self.stats.scene_reuses += 1;
+        }
+        let scene: &GpuScene = prepared
+            .or(scratch.as_ref())
+            .or(retained.as_ref().map(|entry| &entry.scene))
+            .expect("a scene is supplied, compiled or retained");
         if scene.presentation.is_some() || scene.resolve.is_some() {
             return Err(
                 "Scene presents a resampled crop; tile cache needs a direct viewport".into(),
             );
         }
-        let partitioned = needs_partitioned_crops(scene, options.raster_profile);
-        let mut global = global_key(scene)?;
-        let node_keys: BTreeMap<&str, Key> = scene
-            .nodes
-            .iter()
-            .map(|(id, node)| node_key(scene, node).map(|key| (id.as_str(), key)))
-            .collect::<Result<_, _>>()?;
+        let partitioned = retained
+            .as_ref()
+            .map_or_else(|| needs_partitioned_crops(scene, options.raster_profile), |entry| entry.partitioned);
+        let mut global = match &retained {
+            Some(entry) => entry.global,
+            None => global_key(scene)?,
+        };
+        let mut keys_owned: Option<BTreeMap<String, Key>> = None;
+        if retained.is_none() {
+            keys_owned = Some(
+                scene
+                    .nodes
+                    .iter()
+                    .map(|(id, node)| node_key(scene, node).map(|key| (id.clone(), key)))
+                    .collect::<Result<_, _>>()?,
+            );
+        }
+        let node_keys: &BTreeMap<String, Key> = retained
+            .as_ref()
+            .map_or_else(|| keys_owned.as_ref().unwrap(), |entry| &entry.keys);
         self.stats.compile_ms += compile_started.elapsed().as_secs_f64() * 1000.;
 
         let key_started = Instant::now();
@@ -607,21 +669,27 @@ impl TileCache {
         let influence = influence_rects(scene);
         let keyed: Vec<(Tile, Key)> = tiles
             .iter()
-            .map(|tile| (*tile, tile_key(&global, &influence, &node_keys, *tile)))
+            .map(|tile| (*tile, tile_key(&global, &influence, node_keys, *tile)))
             .collect();
         self.stats.key_ms = key_started.elapsed().as_secs_f64() * 1000.;
 
         let dirty: Vec<(Tile, Key)> = keyed
-            .into_iter()
+            .iter()
             .filter(|(tile, key)| {
                 self.entries
                     .get(&(tile.col, tile.row))
                     .is_none_or(|entry| entry.key != *key)
             })
+            .copied()
             .collect();
         self.stats.tiles_cached = tiles.len() - dirty.len();
 
-        let full_frame = dirty.len() == tiles.len() && !partitioned;
+        // Bound the stale-tile compile fan-out. Every stale tile compiles its
+        // own cropped scene, and each of those walks the document; past half a
+        // viewport one whole-frame composition is fewer compiles and is
+        // byte-identical to the ordinary path (it seeds every tile below).
+        let full_frame =
+            !partitioned && !dirty.is_empty() && dirty.len() * 2 >= tiles.len();
         let mut totals = FrameTotals {
             // Each crop keeps ordinary native scene admission. The cold
             // partition shares the old full-frame command budget with its
@@ -674,6 +742,8 @@ impl TileCache {
                 } else {
                     engine.compile_gpu_region(options, tile.rect, prepare)?
                 };
+                self.stats.tile_compiles += 1;
+                self.stats.compiled_nodes += tile_scene.nodes.len();
                 self.stats.compile_ms += compile_started.elapsed().as_secs_f64() * 1000.;
                 let raw = self.compose_and_read(gpu, &tile_scene, tile.rect, &mut totals)?;
                 let presented = present_bytes(
@@ -710,12 +780,32 @@ impl TileCache {
         };
 
         if full_frame {
-            let keys: HashMap<(i32, i32), Key> = dirty
+            // A whole-frame composition seeds every tile, including ones whose
+            // key already matched; use the full key set, not just the stale
+            // subset that asked for this composition.
+            let keys: HashMap<(i32, i32), Key> = keyed
                 .iter()
                 .map(|(tile, key)| ((tile.col, tile.row), *key))
                 .collect();
             self.entries = split_frame(&tiles, &keys, options.width, &rgba, linear.as_deref());
         }
+        // Keep this compile for the next identical request. The scene and its
+        // fingerprints move across without a copy; a caller-supplied scene is
+        // never retained because its caller owns the compile.
+        if retained.is_none()
+            && prepared.is_none()
+            && let (Some(scene), Some(keys), Some(identity)) =
+                (scratch.take(), keys_owned.take(), identity)
+        {
+            retained = Some(RetainedScene {
+                identity,
+                scene,
+                partitioned,
+                global,
+                keys,
+            });
+        }
+        self.retained = retained;
         self.stats.cache_bytes = self
             .entries
             .values()
