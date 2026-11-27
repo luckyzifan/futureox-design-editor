@@ -1,13 +1,13 @@
 import type { Editor } from './engine'
 import type { DesignDocument } from './model'
-import type { Interaction, PrototypeAction, PrototypeEasing, PrototypeTransitionStyle } from './prototype'
+import type { Interaction, PrototypeAction, PrototypeEasing, PrototypeOverflow, PrototypeTransitionStyle } from './prototype'
 import { isSketchHotspot } from './sketch-hotspot'
 import { usePropertyText } from './property-interface-messages'
 import { DraftInput } from './DraftInput'
 
 const previous = '__previous_frame__'
 const navigationIndex = (event: Interaction | undefined) =>
-  event?.actions.findIndex(action => action.kind === 'navigate' || action.kind === 'back') ?? -1
+  event?.actions.findIndex(action => action.kind === 'navigate' || action.kind === 'overlay' || action.kind === 'back') ?? -1
 
 function primaryInteraction(events: Interaction[] | undefined) {
   return events?.find(event => !event.condition && event.trigger === 'click') ??
@@ -69,6 +69,10 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
   }
   const title = english ? 'Interaction' : '交互'
   const targetLabel = english ? 'Link to' : '链接到'
+  const openAsLabel = english ? 'Open as' : '打开方式'
+  const frameTitle = english ? 'Frame settings' : '画框设置'
+  const startLabel = english ? 'Start point' : '起点'
+  const scrollLabel = english ? 'Scrolling' : '滚动方向'
   const triggerLabel = english ? 'Trigger On' : '触发方式'
   const animationLabel = english ? 'Animation Type' : '动画类型'
   const durationLabel = english ? 'Duration (ms)' : '时长（毫秒）'
@@ -76,9 +80,9 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
   const delayLabel = english ? 'Delay (ms)' : '延迟（毫秒）'
   const event = primaryInteraction(doc.prototype?.interactions[layer.id])
   const action = navigationAction(event)
-  const target = action?.kind === 'back' ? previous : action?.kind === 'navigate' ? action.target ?? '' : ''
+  const target = action?.kind === 'back' ? previous : action?.target ?? ''
   const trigger = event?.trigger ?? 'click'
-  const animation = action ? action.transitionStyle ?? 'smart' : 'none'
+  const animation = action && action.kind !== 'overlay' ? action.transitionStyle ?? 'smart' : 'none'
   const durationDisabled = !action || animation === 'none'
   const frames = Object.values(doc.nodes).filter(node => node.kind === 'frame')
   const update = (label: string, change: (draft: DesignDocument, event: Interaction | undefined) => void) =>
@@ -87,7 +91,30 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
       change(draft, primaryInteraction(draft.prototype?.interactions[layer.id]))
     })
 
-  return <section className="sketch-interaction-panel" aria-label={title} data-hotspot={hotspot ? 'true' : undefined}>
+  return <>
+    {layer.kind === 'frame' && <section className="sketch-interaction-panel sketch-prototype-frame" aria-label={frameTitle}>
+      <h3>{frameTitle}</h3>
+      <label>{startLabel}<input type="checkbox" aria-label={startLabel} disabled={layer.locked}
+        checked={doc.prototype?.startNode === layer.id} onChange={event => {
+          const enabled = event.currentTarget.checked
+          update('设置原型起点', draft => {
+            if (draft.nodes[layer.id].locked) return
+            if (enabled) (draft.prototype ??= { interactions: {} }).startNode = layer.id
+            else if (draft.prototype?.startNode === layer.id) delete draft.prototype.startNode
+          })
+        }} /></label>
+      <label>{scrollLabel}<select aria-label={scrollLabel} value={layer.prototypeOverflow ?? 'none'} disabled={layer.locked}
+        onChange={event => {
+          const overflow = event.currentTarget.value as PrototypeOverflow
+          editor.updateProperties([layer.id], frame => { frame.prototypeOverflow = overflow }, '设置原型溢出滚动')
+        }}>
+        <option value="none">{english ? 'None' : '无'}</option>
+        <option value="vertical">{english ? 'Vertical' : '垂直'}</option>
+        <option value="horizontal">{english ? 'Horizontal' : '水平'}</option>
+        <option value="both">{english ? 'Both axes' : '双向'}</option>
+      </select></label>
+    </section>}
+    <section className="sketch-interaction-panel" aria-label={title} data-hotspot={hotspot ? 'true' : undefined}>
     <h3>{title}</h3>
     <label>{targetLabel}<select aria-label={targetLabel}
       value={target}
@@ -114,9 +141,9 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
           }
           const index = navigationIndex(current)
           const old = current.actions[index]
-          const kind = selected === previous ? 'back' : 'navigate'
+          const kind = selected === previous ? 'back' : old?.kind === 'overlay' ? 'overlay' : 'navigate'
           const next: PrototypeAction = old?.kind === kind ? { ...old } : { kind, transitionStyle: 'none' }
-          if (kind === 'navigate') next.target = selected
+          if (kind !== 'back') next.target = selected
           if (index >= 0) current.actions[index] = next
           else current.actions.push(next)
         })
@@ -126,6 +153,25 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
       {action?.target && doc.nodes[action.target]?.kind !== 'frame' &&
         <option value={action.target}>{doc.nodes[action.target]?.name ?? action.target}</option>}
       {frames.map(frame => <option key={frame.id} value={frame.id}>{frame.name}</option>)}
+    </select></label>
+    <label>{openAsLabel}<select aria-label={openAsLabel} value={action?.kind === 'overlay' ? 'overlay' : 'navigate'}
+      disabled={!action?.target} onChange={change => {
+        const kind = change.currentTarget.value as 'navigate' | 'overlay'
+        update('修改交互打开方式', (_draft, event) => {
+          const action = navigationAction(event)
+          if (!action?.target || action.kind === 'back' || kind === action.kind) return
+          action.kind = kind
+          if (kind === 'overlay') {
+            delete action.transitionStyle
+            delete action.transitionShouldSmartAnimate
+          } else {
+            delete action.overlayPosition
+            action.transitionStyle = 'none'
+          }
+        })
+      }}>
+      <option value="navigate">{english ? 'Screen' : '屏幕'}</option>
+      <option value="overlay">{english ? 'Overlay' : '覆盖层'}</option>
     </select></label>
     <label>{triggerLabel}<select aria-label={triggerLabel} disabled={!action}
       value={trigger}
@@ -147,13 +193,13 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
       onCommit={raw => {
         update('修改交互触发', (_draft, event) => { if (event) event.delayMs = Math.round(Number(raw)) })
       }} /></label>}
-    <label>{animationLabel}<select aria-label={animationLabel} disabled={!action}
+    <label>{animationLabel}<select aria-label={animationLabel} disabled={!action || action.kind === 'overlay'}
       value={animation}
       onChange={change => {
         const next = change.currentTarget.value as PrototypeTransitionStyle | 'smart'
         update('修改交互动画', (_draft, event) => {
           const action = navigationAction(event)
-          if (!action) return
+          if (!action || action.kind === 'overlay') return
           if (next === 'smart') {
             delete action.transitionStyle
             delete action.transitionShouldSmartAnimate
@@ -195,5 +241,6 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
       }}>
       {easings.map(item => <option key={item.value || 'default'} value={item.value}>{english ? item.en : item.zh}</option>)}
     </select></label>
-  </section>
+    </section>
+  </>
 }

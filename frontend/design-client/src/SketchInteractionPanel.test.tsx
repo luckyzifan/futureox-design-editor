@@ -106,6 +106,35 @@ test('hotspot Link to and the no-selection hint keep their existing behavior', a
   expect(document.querySelector('.sketch-interaction-panel')).toBeNull()
 })
 
+test('Sketch frame settings and overlay links use the shared prototype and undo history', async () => {
+  await act(async () => { editor.select([frame.id]) })
+  await render()
+  const start = document.querySelector<HTMLInputElement>('[aria-label="起点"]')!
+  await act(async () => { start.click() })
+  expect(editor.state.doc.prototype?.startNode).toBe(frame.id)
+  await render()
+  await setSelect('滚动方向', 'both')
+  expect(editor.state.doc.nodes[frame.id].prototypeOverflow).toBe('both')
+  await act(async () => { editor.undo(); editor.undo() })
+  expect(editor.state.doc.nodes[frame.id].prototypeOverflow).toBeUndefined()
+  expect(editor.state.doc.prototype?.startNode).toBeUndefined()
+
+  await act(async () => { editor.select([rectangle.id]) })
+  await render()
+  expect(document.querySelector('[aria-label="滚动方向"]')).toBeNull()
+  await setSelect('链接到', frame.id)
+  await render()
+  await setSelect('打开方式', 'overlay')
+  expect(editor.state.doc.prototype?.interactions[rectangle.id][0].actions).toEqual([
+    { kind: 'overlay', target: frame.id },
+  ])
+  await render()
+  await setSelect('链接到', '__previous_frame__')
+  expect(editor.state.doc.prototype?.interactions[rectangle.id][0].actions).toEqual([
+    { kind: 'back', transitionStyle: 'none' },
+  ])
+})
+
 test('one committed duration typing sequence has one undo step and Escape cancels a later draft', async () => {
   await render()
   await setSelect('链接到', frame.id)
