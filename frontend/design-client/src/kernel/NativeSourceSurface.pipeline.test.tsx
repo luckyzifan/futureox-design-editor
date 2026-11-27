@@ -532,6 +532,59 @@ test('continuous zoom-in from a settled view requests at least half the native d
   expect(statuses.at(-1)?.sharp).not.toBe(true)
 })
 
+test.each([
+  { name:'coarser opening pixels', thumbnailScale:0.25, x:-800, keepsNative:true },
+  { name:'finer opening pixels', thumbnailScale:2, x:-800, keepsNative:false },
+  { name:'a crop outside the native backing', thumbnailScale:0.25, x:300, keepsNative:false },
+  { name:'a complete intermediate bitmap', thumbnailScale:0.25, x:-1200, keepsNative:true, intermediate:true },
+  { name:'an intermediate bitmap with coarser residents', thumbnailScale:1.45, x:-1200, keepsNative:false, intermediate:true },
+])('full source chooses its continuity pixels with $name',async({ thumbnailScale, x, keepsNative, intermediate })=>{
+  vi.stubGlobal('OffscreenCanvas', class {})
+  vi.stubGlobal('ImageBitmapRenderingContext', class {})
+  Object.defineProperty(dom.window.HTMLCanvasElement.prototype, 'getContext', {
+    configurable:true, value:()=>({ transferFromImageBitmap() {} }),
+  })
+  state.bitmap=true
+  const underlay = {
+    current: (_view:unknown, _width:number, _height:number, _requirement?:string, maximumScale?:number) =>
+      maximumScale === undefined || thumbnailScale <= maximumScale,
+  }
+  const render=(view:{x:number;y:number;zoom:number}, wheel=false)=>act(async()=>{
+    root.render(<NativeSourceSurface source={source} view={view} wheelView={wheel?view:undefined}
+      width={800} height={700} underlay={underlay} onStatus={value=>statuses.push(value)}/>)
+    await pause()
+  })
+  let tileId=9000
+  const fillUntil=async(done:()=>boolean)=>{
+    for(let attempt=0;attempt<8&&!done();attempt++){
+      const job=state.jobs.find(item=>item.active)
+      expect(job).toBeDefined()
+      await act(async()=>{
+        job!.options.tileViewport!.forEach((_,i)=>deliver(job!,i,++tileId))
+        job!.finish();await pause();paint()
+      })
+    }
+  }
+  await render({x:0,y:0,zoom:1})
+  await fillUntil(()=>statuses.at(-1)?.phase==='ready')
+  expect(statuses.at(-1)).toMatchObject({phase:'ready',sharp:true,view:{zoom:1}})
+  if(intermediate){
+    await render({x:-200,y:-175,zoom:1.5},true)
+    await fillUntil(()=>state.frames.at(-1)?.view.zoom===1.5)
+    const mid=state.frames.at(-1)!
+    expect(mid.view.zoom).toBe(1.5)
+    expect(Math.min(...mid.items.map(row=>row.tile.zoom))).toBeLessThan(1.45)
+    expect(statuses.at(-1)?.sharp).toBe(false)
+  }
+  const zoom=intermediate?4:3
+  await render({x,y:-350*(zoom-1),zoom},true)
+  const canvas=document.querySelector<HTMLCanvasElement>('.native-source-content')!
+  expect(canvas.dataset.previewUpscaleRejected).toBe('true')
+  expect(canvas.style.visibility).toBe(keepsNative?'':'hidden')
+  expect(canvas.dataset.cameraReprojected).toBe(String(keepsNative))
+  expect(statuses.at(-1)).toMatchObject({phase:'refining',sharp:false,view:{zoom}})
+})
+
 test('one ready tile below the preview ratio is submitted over the retained picture', async () => {
   vi.stubGlobal('OffscreenCanvas', class {})
   vi.stubGlobal('ImageBitmapRenderingContext', class {})

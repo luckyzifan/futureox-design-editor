@@ -1479,7 +1479,10 @@ async function buildWindow() {
     windowCleanup = Promise.all([directoryGrants.clear(), closeNativeRender(), closeNativePreparation(), automationBridge.close()])
     if (process.platform !== 'darwin' || quitRequested) void shutdown()
   })
-  rebuildApplicationMenu = () => Menu.setApplicationMenu(
+  rebuildApplicationMenu = () => {
+  const sketchMenu = interfaceMode === 'sketch' && process.platform === 'darwin'
+  const alignAccelerator = (value) => process.platform === 'darwin' && sketchMenu ? value : undefined
+  return Menu.setApplicationMenu(
     Menu.buildFromTemplate(localizeNativeMenu([
       ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
       {
@@ -1540,22 +1543,81 @@ async function buildWindow() {
           click:()=>sendCommand('select-inverse') },
         { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: () => sendCommand('select-all') },
       ] },
+      ...(sketchMenu ? [{
+        label: 'Insert',
+        submenu: [
+          { label: 'Artboard', click: () => sendCommand('set-tool-frame') },
+          { label: 'Rectangle', click: () => sendCommand('set-tool-rectangle') },
+          { label: 'Ellipse', click: () => sendCommand('set-tool-ellipse') },
+          { label: 'Line', click: () => sendCommand('set-tool-line') },
+          { label: 'Pen', click: () => sendCommand('set-tool-pen') },
+          { label: 'Text', click: () => sendCommand('set-tool-text') },
+          { label: 'Hotspot', click: () => sendCommand('set-tool-hotspot') },
+          { label: 'Slice', click: () => sendCommand('set-tool-slice') },
+        ],
+      }] : []),
       { label: 'Object', submenu: [
         { label: 'Group', accelerator: 'CmdOrCtrl+G', click: () => sendCommand('group') },
         { label: 'Ungroup', accelerator: 'CmdOrCtrl+Shift+G', click: () => sendCommand('ungroup') },
-        ...(process.platform === 'darwin' && interfaceMode === 'sketch' ? [
+        ...(sketchMenu ? [
+          { label: 'Duplicate', accelerator: 'CmdOrCtrl+D', click: () => sendCommand('duplicate') },
+          { label: 'Delete', accelerator: 'Backspace', click: () => sendCommand('delete') },
           { type: 'separator' },
-          { label: 'Align Left', accelerator: 'Control+Command+Left', click: () => sendCommand('align-left') },
-          { label: 'Align Horizontal Center', accelerator: 'Control+Command+H', click: () => sendCommand('align-horizontal-center') },
-          { label: 'Align Right', accelerator: 'Control+Command+Right', click: () => sendCommand('align-right') },
-          { label: 'Align Top', accelerator: 'Control+Command+Up', click: () => sendCommand('align-top') },
-          { label: 'Align Vertical Center', accelerator: 'Control+Command+V', click: () => sendCommand('align-vertical-center') },
-          { label: 'Align Bottom', accelerator: 'Control+Command+Down', click: () => sendCommand('align-bottom') },
+          { label: 'Flip Horizontal', click: () => sendCommand('flip-horizontal') },
+          { label: 'Flip Vertical', click: () => sendCommand('flip-vertical') },
+        ] : []),
+      ] },
+      ...(sketchMenu ? [{
+        label: 'Layer',
+        submenu: [
+          { label: 'Create Symbol', accelerator: 'CmdOrCtrl+Y', click: () => sendCommand('create-component') },
+          { label: 'Detach Symbol', click: () => sendCommand('detach-instance') },
+          { type: 'separator' },
+          { label: 'Mask', click: () => sendCommand('mask-selection') },
+          { label: 'Flatten', click: () => sendCommand('flatten') },
+          { type: 'separator' },
+          { label: 'Select Containing Symbol', click: () => sendCommand('select-containing-symbol') },
+          { label: 'Enter Component Source', accelerator: 'CmdOrCtrl+Enter', click: () => sendCommand('edit-selection') },
+          { label: 'Rename', accelerator: 'CmdOrCtrl+R', click: () => sendCommand('rename') },
+        ],
+      }, {
+        label: 'Arrange',
+        submenu: [
+          { label: 'Bring to Front', accelerator: 'CmdOrCtrl+Alt+]', click: () => sendCommand('bring-to-front') },
+          { label: 'Bring Forward', accelerator: 'CmdOrCtrl+]', click: () => sendCommand('bring-forward') },
+          { label: 'Send Backward', accelerator: 'CmdOrCtrl+[', click: () => sendCommand('send-backward') },
+          { label: 'Send to Back', accelerator: 'CmdOrCtrl+Alt+[', click: () => sendCommand('send-to-back') },
+          { type: 'separator' },
+          { label: 'Align Left', accelerator: alignAccelerator('Control+Command+Left'), click: () => sendCommand('align-left') },
+          { label: 'Align Horizontal Center', accelerator: alignAccelerator('Control+Command+H'), click: () => sendCommand('align-horizontal-center') },
+          { label: 'Align Right', accelerator: alignAccelerator('Control+Command+Right'), click: () => sendCommand('align-right') },
+          { label: 'Align Top', accelerator: alignAccelerator('Control+Command+Up'), click: () => sendCommand('align-top') },
+          { label: 'Align Vertical Center', accelerator: alignAccelerator('Control+Command+V'), click: () => sendCommand('align-vertical-center') },
+          { label: 'Align Bottom', accelerator: alignAccelerator('Control+Command+Down'), click: () => sendCommand('align-bottom') },
           { type: 'separator' },
           { label: 'Distribute Horizontally', click: () => sendCommand('distribute-horizontal') },
           { label: 'Distribute Vertically', click: () => sendCommand('distribute-vertical') },
-        ] : []),
-      ] },
+        ],
+      }, {
+        label: 'Text',
+        submenu: [
+          { label: 'Insert Text', click: () => sendCommand('set-tool-text') },
+        ],
+      }, {
+        label: 'Path',
+        submenu: [
+          { label: 'Close Path', click: () => sendCommand('close-path') },
+          { label: 'Reverse Order', click: () => sendCommand('reverse-order') },
+          { label: 'Outline Stroke', accelerator: 'CmdOrCtrl+Alt+O', click: () => sendCommand('outline-stroke') },
+          { label: 'Convert to Vector', click: () => sendCommand('convert-vector') },
+          { type: 'separator' },
+          { label: 'Combine Shapes', click: () => sendCommand('boolean-add') },
+          { label: 'Union', click: () => sendCommand('boolean-union') },
+          { label: 'Subtract', click: () => sendCommand('boolean-subtract') },
+          { label: 'Intersect', click: () => sendCommand('boolean-intersect') },
+          { label: 'Exclude', click: () => sendCommand('boolean-exclude') },
+        ],
+      }] : []),
       { label: 'Plugins', submenu: [
         { label: 'Open plugin host…', click: () => sendCommand('plugins') },
         ...(localPlugins.length ? [
@@ -1591,10 +1653,17 @@ async function buildWindow() {
           { role: 'togglefullscreen' },
         ],
       },
+      ...(sketchMenu ? [{
+        label: 'Help',
+        submenu: [
+          { label: 'Run Command…', accelerator: 'CmdOrCtrl+K', click: () => sendCommand('command-search') },
+        ],
+      }] : []),
       automationBridge.menu,
       ...(process.platform === 'darwin' ? [{ role: 'windowMenu' }] : []),
     ], interfaceLocale)),
   )
+  }
   rebuildApplicationMenu()
   await window.loadURL(renderCheck?.url || APP_URL)
   window.webContents.setZoomFactor(1)

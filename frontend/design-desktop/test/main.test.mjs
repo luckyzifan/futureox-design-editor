@@ -1561,7 +1561,7 @@ for (const platform of ['darwin', 'win32', 'linux']) {
       assert.equal(exportCopy.accelerator, 'CmdOrCtrl+Alt+Shift+S')
       state.sent = []; manualSave.click(); duplicateDocument.click(); exportCopy.click()
       assert.deepEqual(state.sent, ['save', 'duplicate-document', 'saveAs'].map(command => ['design-desktop:command', command]))
-      const sketchObjects = state.menu.find(item => item.label === 'Object').submenu
+      const sketchArrange = state.menu.find(item => item.label === 'Arrange')?.submenu ?? []
       const alignment = [
         ['Align Left', 'Control+Command+Left', 'align-left'],
         ['Align Horizontal Center', 'Control+Command+H', 'align-horizontal-center'],
@@ -1574,7 +1574,7 @@ for (const platform of ['darwin', 'win32', 'linux']) {
       ]
       state.sent = []
       for (const [label, accelerator, command] of alignment) {
-        const item = sketchObjects.find(item => item.label === label)
+        const item = sketchArrange.find(item => item.label === label)
         if (platform === 'darwin') {
           assert.ok(item)
           assert.equal(item.accelerator, accelerator)
@@ -1596,6 +1596,40 @@ for (const platform of ['darwin', 'win32', 'linux']) {
     } finally { await state.dispose() }
   })
 }
+
+test('Sketch menu bar adds Insert, Layer, Arrange, Text, Path and Help with executable commands', async () => {
+  const state = await host({ platform: 'darwin' })
+  try {
+    assert.deepEqual(await state.invoke('set-interface-mode', 'sketch'), { status: 'ok' })
+    await state.invoke('set-interface-locale', 'en')
+    const top = label => state.menu.find(item => item.label === label)
+    for (const label of ['Insert', 'Layer', 'Arrange', 'Text', 'Path', 'Help']) assert.ok(top(label), label)
+    const leaves = label => top(label).submenu.filter(item => item.type !== 'separator')
+    for (const label of ['Insert', 'Layer', 'Arrange', 'Text', 'Path', 'Help']) {
+      for (const item of leaves(label)) {
+        assert.equal(typeof item.click, 'function', `${label} > ${item.label}`)
+        state.sent = []
+        item.click()
+        assert.equal(state.sent.length, 1, `${label} > ${item.label}`)
+        assert.equal(state.sent[0][0], 'design-desktop:command')
+        assert.ok(typeof state.sent[0][1] === 'string' && state.sent[0][1].length > 0)
+      }
+    }
+    state.sent = []
+    leaves('Layer').find(item => item.label === 'Select Containing Symbol').click()
+    leaves('Layer').find(item => item.label === 'Enter Component Source').click()
+    leaves('Text').find(item => item.label === 'Insert Text').click()
+    leaves('Path').find(item => item.label === 'Close Path').click()
+    leaves('Path').find(item => item.label === 'Reverse Order').click()
+    leaves('Help').find(item => item.label === 'Run Command…').click()
+    assert.deepEqual(state.sent.map(([, command]) => command), [
+      'select-containing-symbol', 'edit-selection', 'set-tool-text', 'close-path', 'reverse-order', 'command-search',
+    ])
+    assert.equal(leaves('Arrange').find(item => item.label === 'Align Left').accelerator, 'Control+Command+Left')
+    await state.invoke('set-interface-locale', 'zh-CN')
+    for (const label of ['插入', '图层', '排列', '文本', '路径', '帮助']) assert.ok(top(label), label)
+  } finally { await state.dispose() }
+})
 
 test('actual main rejects unsupported locale and forged sender without changing menus or issuing IO', async () => {
   const state = await host()
