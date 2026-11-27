@@ -102,3 +102,36 @@ On that baseline the analytic area program turned each FreeType coverage byte in
 | Sweep wall time, debug, one thread | 25.02 s | 25.22 s and 25.84 s |
 
 The rectangles are now `byte/255` wide and one pixel tall, so every sample span carries that fraction. CPU stamps the same eight additions directly. Figma profiles still draw outlines. Thresholds are unchanged. The 665 pixels still above 16 are labels whose advances differ from the Quartz text matrix by 1–8 font units and then cross Splash's quarter-pixel truncation; that position gap is not closed here. No Mac, Sketch, Electron, Metal, or full-page native export was run.
+
+## 2026-11-28 re-measurement on main
+
+Baseline `origin/main` `daf00d556`, macOS arm64, CPU only, no Metal. The
+committed crops and the shipped text matrices were re-run, not the full page:
+
+```
+cargo test --locked --manifest-path design-studio/Cargo.toml \
+  -p futureox-design-kernel --test sketch_uswds_colors_measure -- --nocapture
+```
+
+8 passed, 0 failed, 1 ignored (`poppler_preview_pixel_sweep` needs
+`USWDS_PREVIEW_PNG`). Measured, same crops and thresholds as above:
+
+| Check | Result |
+| --- | ---: |
+| `50v` analytic delta > 0 / > 1 / > 2 | 0 / 0 / 0 (max 0) |
+| `50v` Figma delta > 0 / > 1 / > 2 | 127 / 124 / 120 (max 62) |
+| `Old` / column / `Changed values in 2.6.0` delta > 0 | 0 / 0 / 0 (max 0) |
+| Quartz text matrices, 952 pages | max baseline error 0, max x error 0.048 |
+
+The analytic text path is still exact. The Figma crop does not use the
+FreeType mask: `geometry_snapshot.rs` keeps glyph outlines whenever
+`compatible` is set, and `sketch/preview/display.rs` requests
+`RasterProfile::Figma` for the display snapshot. That outline path is the
+remaining text-adjacent class; it was not changed here because the Figma
+profile has its own measured outputs.
+
+Not run: the full 3193×3821 artboard against a native page export, so the
+historical 1.31% / 71% figures are still unreproduced. `uswds-colors.sketch`
+and `text-previews.pdf` are not in the tree, the GitHub tree request returned
+no data from this machine, and `pdftoppm` is absent. No Mac Sketch export,
+Electron, Metal, or WebGPU.
