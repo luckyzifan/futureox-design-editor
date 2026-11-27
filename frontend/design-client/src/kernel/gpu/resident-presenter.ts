@@ -21,9 +21,16 @@ import { retainedPreviewUnderlay } from '../zoom-underlay'
 import { paintDamageIntersects, paintDamageRects, viewportDamage, type PaintDamage, type PaintRect } from '../paint-damage'
 
 const QUEUED_FRAME_WAIT_MS = 150
+/** Dynamic-offset slots for the transient motion-preview affine uniforms. The
+ * worker previews one selection slot at a time; the cap is a hard guard. */
+const AFFINE_UNIFORM_SLOTS = 256
 
 export type ResidentItem = Omit<CompositeItem, 'tile'> & {
   tile: Omit<CompositeItem['tile'], 'bytes' | 'bitmap'> & { gpuTile: number }
+  /** Optional motion-preview content affine in display viewport coordinates.
+   * When present the placed content quad is transformed on the GPU instead of
+   * being re-rasterized. Worker-local only; never a wire/exact certificate. */
+  affine?: import('../../model').Matrix
 }
 export type ResidentFrame = {
   /** Diagnostic request ordering only, not a content identity. */
@@ -43,6 +50,11 @@ export type ResidentFrame = {
   dpr: number
   interaction?: boolean
   panGesture?: boolean
+  /** Transient GPU affine motion preview. Coverage/terminal-quality gates are
+   * bypassed because the picture is an explicitly approximate cached-pose
+   * reprojection, not a native exact frame. Only set by the worker when the
+   * motion-affine-preview experiment is enabled. */
+  affinePreview?: boolean
   gestureGuides?: boolean
   allowEmpty?: boolean
   allowBackground?: boolean
@@ -123,6 +135,25 @@ const sampleSource = source.replace('pixels:texture_2d<f32>', 'pixels:texture_2d
  if(COLOR_MODE==2){value=(textureSample(pixels,filtering,v.uv,0)+textureSample(pixels,filtering,v.uv,1)+
  textureSample(pixels,filtering,v.uv,2)+textureSample(pixels,filtering,v.uv,3))*0.25;}`)
 
+/** Motion-preview affine content quad. The same box/uv placement as the normal
+ * raster, but each viewport-space corner is additionally mapped by a 2x3 affine
+ * (row0=(a,c,e), row1=(b,d,f) for x'=a*x+c*y+e, y'=b*x+d*y+f) before projection.
+ * The texture content therefore follows the object while the UV mapping stays
+ * tied to the original quad. Transient preview only; never an exact frame. */
+const affineSource = `struct U { box:vec4<f32>,uv:vec4<f32>,viewport:vec2<f32>,pad:vec2<f32>,row0:vec4<f32>,row1:vec4<f32> }
+@group(0) @binding(0) var<uniform> u:U;
+@group(0) @binding(1) var pixels:texture_2d<f32>;
+@group(0) @binding(2) var filtering:sampler;
+struct V { @builtin(position) p:vec4<f32>, @location(0) uv:vec2<f32> }
+@vertex fn vertex(@builtin(vertex_index) i:u32)->V {
+ let corners=array<vec2<f32>,6>(vec2(0,0),vec2(1,0),vec2(0,1),vec2(0,1),vec2(1,0),vec2(1,1));
+ let q=corners[i];let p=u.box.xy+q*u.box.zw;
+ let ap=vec2(u.row0.x*p.x+u.row0.y*p.y+u.row0.z,u.row1.x*p.x+u.row1.y*p.y+u.row1.z);
+ let n=ap/u.viewport;
+ return V(vec4(n.x*2.-1.,1.-n.y*2.,0.,1.),u.uv.xy+q*u.uv.zw);
+}
+@fragment fn fragment(v:V)->@location(0) vec4<f32>{return textureSample(pixels,filtering,v.uv);}`
+
 /** The raster device also owns display textures and the final canvas. Frames
  * contain handles and transforms only; no ImageBitmap or pixel readback. */
 export class ResidentPresenter {
@@ -140,6 +171,10 @@ export class ResidentPresenter {
   private samplePipeline: GPURenderPipeline
   private sampleBlendPipeline: GPURenderPipeline
   private sampleResolvePipeline: GPURenderPipeline
+  private affineLayout?: GPUBindGroupLayout
+  private affinePipeline?: GPURenderPipeline
+  private affineUniforms?: GPUBuffer
+  private readonly affineBinds = new Map<GPUTexture, GPUBindGroup>()
   private previewPipeline?: GPURenderPipeline
   private linearTarget?: { texture: GPUTexture; bind: GPUBindGroup; width: number; height: number; samples:1|4; payload: PayloadToken }
   private sampler: GPUSampler
@@ -445,6 +480,7 @@ export class ResidentPresenter {
         this.textures.delete(id)
         this.bytes -= entry.bytes
         this.payload.retire(entry.payload)
+        this.affineBinds.delete(entry.texture)
         entry.texture.destroy()
       }
     }
@@ -461,6 +497,7 @@ export class ResidentPresenter {
       throw Error('Resident interaction texture ownership changed')
     if (slot === next) return
     this.payload.retire(old.payload)
+    this.affineBinds.delete(old.texture)
     old.texture.destroy()
     this.bytes -= old.bytes
     this.textures.delete(next)
@@ -839,7 +876,8 @@ export class ResidentPresenter {
     // A nonresident tile cannot occlude a valid lower-density source. Filter
     // before planning, not after covered rectangles have removed that source.
     const available = frame.items.filter(item => this.textures.has(item.tile.gpuTile))
-    const missing = strictSharpDiagnostics ? [...new Set(compositeDrawPlan(frame.items as CompositeItem[], view, width, height)
+    // The axis-aligned plan can hide a source the affine preview still needs.
+    const missing = strictSharpDiagnostics && !frame.affinePreview ? [...new Set(compositeDrawPlan(frame.items as CompositeItem[], view, width, height)
       .filter(planned => !this.textures.has((planned.item as ResidentItem).tile.gpuTile) &&
         compositeRasterQuad(planned.placement, planned.clip, width, height, dpr))
       .map(planned => (planned.item as ResidentItem).tile.gpuTile))] :
@@ -870,6 +908,12 @@ export class ResidentPresenter {
     // clearing or acknowledging this camera. Explicit empty interaction
     // captures retain their existing separate clear/background contract.
     let complete=physicalPixelCoverage(rows.map(row=>({...row.raster,blend:row.item.blend})),w,h),backgroundAdded=false
+    // An ACK can replay a queued preview after one of its handles was retired.
+    // Keep the accepted image until the live sources can draw the approximation
+    // or a new exact frame arrives. Axis-aligned coverage alone cannot vouch
+    // for an affine draw that went missing or was clipped out.
+    const incompleteAffine = frame.affinePreview && (missing.length > 0 || !rows.some(row => row.item.affine))
+    if (frame.affinePreview && !incompleteAffine) complete = true
     let backgroundDecline=complete?0:1
     if(!complete&&frame.allowBackground&&!frame.linearBlend){
       // Draw order starts with overview/history. Those certificates describe
@@ -908,7 +952,7 @@ export class ResidentPresenter {
       }
     }
     if (captureOnly) {
-      if (!complete || missing.length || rows.some(row => row.item.blend || row.entry.linear)) return
+      if (!complete || missing.length || frame.affinePreview || rows.some(row => row.item.blend || row.entry.linear || row.item.affine)) return
       const captured = this.capture(w, h)
       try {
         this.submitRows(rows, frame, w, h, undefined, undefined, captured.texture)
@@ -928,7 +972,7 @@ export class ResidentPresenter {
     const basisCamera = basis?.camera ?? previous
     const basisContent = basis?.content ?? (!this.drawnPreview ? this.drawnContent : undefined)
     const basisDensity = basisCamera ? basisCamera.view.zoom * basisCamera.dpr : 0
-    const underlay = frame.zoomUnderlay && !complete && !frame.interaction && !frame.linearBlend &&
+    const underlay = !incompleteAffine && frame.zoomUnderlay && !complete && !frame.interaction && !frame.linearBlend &&
       basisCamera && source && content && sameContent(basisContent, content) &&
       rows.some(row => row.item.tile.zoom > basisDensity * (1 + 1e-9))
       ? retainedPreviewUnderlay({
@@ -984,7 +1028,7 @@ export class ResidentPresenter {
     // Empty background is intentional for isolated interaction layers, but a
     // missing source is never intentional transparency. Do not clear the
     // accepted backing when an imported/released interaction handle is absent.
-    if (!frame.allowEmpty && !complete && !preview || frame.allowEmpty && missing.length > 0) {
+    if (incompleteAffine || (!frame.allowEmpty && !complete && !preview) || (frame.allowEmpty && missing.length > 0)) {
       const densityProofs=rows.flatMap(row=>row.entry.background?.pixel&&row.entry.background.view.zoom===view.zoom*dpr?[row.entry.background]:[])
       const backgroundPhaseError=densityProofs.length?Math.min(...densityProofs.map(p=>{
         const dx=view.x*dpr-p.view.x,dy=view.y*dpr-p.view.y;return Math.max(Math.abs(dx-Math.round(dx)),Math.abs(dy-Math.round(dy)))
@@ -1022,7 +1066,7 @@ export class ResidentPresenter {
     if(pending){this.payload.commit(pending.payload);this.bitmapPending=pending;this.bitmapReserved=undefined}
     const submittedEpoch = performance.timeOrigin + performance.now()
     this.drawn = frame
-    this.drawnPreview = !!preview || usedZoomUnderlay
+    this.drawnPreview = !!preview || usedZoomUnderlay || !!frame.affinePreview
     this.drawnIds = available.filter(item => item.active).map(item => item.tile.gpuTile)
     this.translatedProof=undefined
     const translation=frame.backgroundTranslation,sourceProof=rows.find(row=>row.entry.background?.pixel)?.entry.background
@@ -1048,8 +1092,8 @@ export class ResidentPresenter {
     }
     this.frames++
     const coverageAt=performance.now()
-    const terminalQuality = this.terminalQualityGate.claim(complete && !usedZoomUnderlay ? frame.terminalQuality : undefined, detailedDiagnostics)
-    const measureCoverage=strictSharpDiagnostics || traceQuality || !!terminalQuality || import.meta.env.DEV || (detailedDiagnostics && coverageAt-this.diagnosticCoverageAt>=250)
+    const terminalQuality = this.terminalQualityGate.claim(complete && !usedZoomUnderlay && !frame.affinePreview ? frame.terminalQuality : undefined, detailedDiagnostics)
+    const measureCoverage=!frame.affinePreview && (strictSharpDiagnostics || traceQuality || !!terminalQuality || import.meta.env.DEV || (detailedDiagnostics && coverageAt-this.diagnosticCoverageAt>=250))
     if(measureCoverage)this.diagnosticCoverageAt=coverageAt
     const report = {
       ...this.diagnosticFields(),
@@ -1071,12 +1115,13 @@ export class ResidentPresenter {
       compositorTiles: this.textures.size,
       compositorDraws: drawCount + (linear ? 1 : 0) + (preview?.gaps.length || 0),
       linearBlend: linear,
+      ...(frame.affinePreview ? { affinePreview: true } : {}),
       presented: {
         presentationId: frame.presentationId,
         presentationToken: pending?.token,
         ...(this.navigationBacking ? { navigationBackingBytes: this.navigationBacking.bytes } : {}),
         ...(this.atomic && preview && preview.gaps.length <= MAX_NAVIGATION_GAPS ? {previewGaps: preview.gaps} : {}),
-        preview: !!preview || usedZoomUnderlay,
+        preview: !!preview || usedZoomUnderlay || !!frame.affinePreview,
         zoomUnderlay: usedZoomUnderlay,
         gpuOverlay: !!frame.overlay,
         gpuSelection: !!frame.overlay?.selection,
@@ -1134,6 +1179,54 @@ export class ResidentPresenter {
   }
   repaint() {
     if (this.latest) this.draw(this.latest)
+  }
+  /** Lazily build the motion-preview affine pipeline. Nothing here is created
+   * while the experiment is off, so the default presentation path is unchanged. */
+  private ensureAffinePipeline() {
+    if (this.affinePipeline) return
+    this.affineLayout = this.device.createBindGroupLayout({ entries: [
+      { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+        buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 80 } },
+      { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float', viewDimension: '2d' } },
+      { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+    ] })
+    const module = this.device.createShaderModule({ code: affineSource })
+    this.affinePipeline = this.device.createRenderPipeline({
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.affineLayout] }),
+      vertex: { module, entryPoint: 'vertex' },
+      fragment: { module, entryPoint: 'fragment', targets: [{ format: this.format }] },
+      primitive: { topology: 'triangle-list' },
+    })
+    this.affineUniforms = this.device.createBuffer({ size: AFFINE_UNIFORM_SLOTS * 256, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+  }
+  private affineBind(texture: GPUTexture) {
+    let bind = this.affineBinds.get(texture)
+    if (!bind) {
+      bind = this.device.createBindGroup({ layout: this.affineLayout!, entries: [
+        { binding: 0, resource: { buffer: this.affineUniforms!, size: 80 } },
+        { binding: 1, resource: texture.createView() },
+        { binding: 2, resource: this.sampler },
+      ] })
+      this.affineBinds.set(texture, bind)
+    }
+    return bind
+  }
+  /** Device-pixel AABB of an affine-transformed content quad, clamped to the
+   * viewport. Used only as the preview scissor; it is not an exact coverage proof. */
+  private affineScissor(box: readonly [number, number, number, number], m: import('../../model').Matrix,
+    width: number, height: number, w: number, h: number) {
+    const sx = w / width, sy = h / height
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity
+    for (const [qx, qy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
+      const px = box[0] + qx * box[2], py = box[1] + qy * box[3]
+      const x = m[0] * px + m[2] * py + m[4], y = m[1] * px + m[3] * py + m[5]
+      left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y)
+    }
+    if (![left, top, right, bottom].every(Number.isFinite)) return undefined
+    const x = Math.max(0, Math.floor(left * sx - 1)), y = Math.max(0, Math.floor(top * sy - 1))
+    const rr = Math.min(w, Math.ceil(right * sx + 1)), bb = Math.min(h, Math.ceil(bottom * sy + 1))
+    if (rr <= x || bb <= y) return undefined
+    return { x, y, width: rr - x, height: bb - y }
   }
   private submitRows(rows: DisplayRow[], frame: ResidentFrame, w: number, h: number,
     preview: ReturnType<typeof cameraPreviewCoverage>, freshZoomBasis: ZoomBasis | undefined, capture?: GPUTexture) {
@@ -1220,6 +1313,23 @@ export class ResidentPresenter {
       if(upload?.data.length)this.device.queue.writeBuffer(this.uniforms,upload.offset,upload.data)
       uploadBytes = upload?.data.byteLength || 0
     }
+    // Motion-preview affine rows carry their own 80-byte uniforms (box/uv plus
+    // the 2x3 content matrix). They are written to a dedicated buffer so the
+    // normal raster uniform layout and its dynamic offsets stay untouched. The
+    // slots pack only affine rows, so a late affine row cannot offset past the
+    // preview buffer regardless of how many ordinary rows precede it.
+    const affineSlots = new Map<number, number>()
+    rows.forEach((row, i) => { if (row.item.affine) affineSlots.set(i, affineSlots.size) })
+    if (affineSlots.size > AFFINE_UNIFORM_SLOTS) throw Error('Resident affine preview row overflow')
+    if (affineSlots.size) {
+      this.ensureAffinePipeline()
+      for (const [rowIndex, slot] of affineSlots) {
+        const m = rows[rowIndex].item.affine!
+        const data = new Float32Array([...rows[rowIndex].raster.box, ...rows[rowIndex].raster.uv, width, height, 0, 0,
+          m[0], m[2], m[4], 0, m[1], m[3], m[5], 0])
+        this.device.queue.writeBuffer(this.affineUniforms!, slot * 256, data)
+      }
+    }
     const background = frame.backgroundLinear || [1, 1, 1, 1]
     // Retained interaction layers are transparent outside their objects. A
     // transparent clear lets the workspace backdrop show through every gap.
@@ -1262,6 +1372,16 @@ export class ResidentPresenter {
     }
     rows.forEach((row, i) => {
       const r = row.raster
+      const m = row.item.affine
+      if (m && !linear) {
+        const sc = this.affineScissor(r.box, m, width, height, w, h)
+        if (!sc) return
+        pass.setScissorRect(sc.x, sc.y, sc.width, sc.height)
+        pass.setPipeline(this.affinePipeline!)
+        pass.setBindGroup(0, this.affineBind(row.entry.texture), [affineSlots.get(i)! * 256])
+        pass.draw(6)
+        return
+      }
       pass.setScissorRect(r.x, r.y, r.width, r.height)
       pass.setPipeline(
         linear
@@ -1354,6 +1474,8 @@ export class ResidentPresenter {
     if (this.zoomBasis) { this.payload.retire(this.zoomBasis.payload); this.zoomBasis.texture.destroy(); this.zoomBasis = undefined }
     if (this.backbuffer) { this.payload.retire(this.backbuffer.payload); this.backbuffer.texture.destroy(); this.backbuffer = undefined }
     this.uniforms.destroy()
+    this.affineUniforms?.destroy()
+    this.affineBinds.clear()
     this.context.unconfigure()
   }
 }
