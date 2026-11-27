@@ -684,12 +684,9 @@ impl TileCache {
             .collect();
         self.stats.tiles_cached = tiles.len() - dirty.len();
 
-        // Bound the stale-tile compile fan-out. Every stale tile compiles its
-        // own cropped scene, and each of those walks the document; past half a
-        // viewport one whole-frame composition is fewer compiles and is
-        // byte-identical to the ordinary path (it seeds every tile below).
-        let full_frame =
-            !partitioned && !dirty.is_empty() && dirty.len() * 2 >= tiles.len();
+        // Whole-viewport misses already take the single-composition path; a
+        // partial miss keeps per-tile crops so untouched pixels are replayed.
+        let full_frame = dirty.len() == tiles.len() && !partitioned;
         let mut totals = FrameTotals {
             // Each crop keeps ordinary native scene admission. The cold
             // partition shares the old full-frame command budget with its
@@ -780,9 +777,6 @@ impl TileCache {
         };
 
         if full_frame {
-            // A whole-frame composition seeds every tile, including ones whose
-            // key already matched; use the full key set, not just the stale
-            // subset that asked for this composition.
             let keys: HashMap<(i32, i32), Key> = keyed
                 .iter()
                 .map(|(tile, key)| ((tile.col, tile.row), *key))
