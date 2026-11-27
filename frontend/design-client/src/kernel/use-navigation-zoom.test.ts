@@ -31,14 +31,13 @@ function harness() {
   owners.push(dispose)
   return {
     render(zoom: number, identity = 'document', enabled = true,
-      pan: { enabled?: boolean; held?: boolean; x?: number; y?: number; sampleOnFrame?: boolean; adaptiveQuiet?: boolean;
-        wheelEnd?: { x: number; y: number; zoom: number } } = {}) {
+      pan: { enabled?: boolean; held?: boolean; x?: number; y?: number; sampleOnFrame?: boolean; adaptiveQuiet?: boolean } = {}) {
       state = ref = effect = 0; layouts = []
       const internal = (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE
       const previous = internal.H
       let value: ReturnType<typeof useNavigationZoom>
       try { internal.H = dispatcher; value = useNavigationZoom({ x: pan.x || 0, y: pan.y || 0, zoom },
-        identity, enabled, pan.enabled === true, pan.held === true, pan.sampleOnFrame === true, pan.adaptiveQuiet === true, pan.wheelEnd) }
+        identity, enabled, pan.enabled === true, pan.held === true, pan.sampleOnFrame === true, pan.adaptiveQuiet === true) }
       finally { internal.H = previous }
       layouts.forEach(run => run()); return value!
     },
@@ -48,20 +47,6 @@ function harness() {
     get pending() { return frames.size }, get listeners() { return listeners.size }, dispose,
   }
 }
-
-test('a physical wheel release admits exactly its final camera and never releases a newer target', () => {
-  const h = harness()
-  h.render(32)
-  expect(h.render(128).active).toBe(true)
-  const ended = { x: 0, y: 0, zoom: 128 }
-  expect(h.render(128, 'document', true, { wheelEnd: ended }).active).toBe(false)
-  expect(h.render(128, 'document', true, { wheelEnd: ended }).active).toBe(false)
-  expect(h.pending).toBe(0)
-  expect(h.render(256, 'document', true, { wheelEnd: ended }).active).toBe(true)
-  h.frame(40)
-  expect(h.render(256, 'document', true, { wheelEnd: ended }).active).toBe(true)
-  expect(h.render(1, 'new-document', true, { wheelEnd: ended }).active).toBe(false)
-})
 
 test('first changed input suppresses exact work before the sampled preview layout publication', () => {
   const h = harness()

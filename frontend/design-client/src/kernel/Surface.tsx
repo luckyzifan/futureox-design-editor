@@ -6,7 +6,6 @@ import { allowsColorPresentation, effectiveBackend, canvasSamplingProfile } from
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { flushSync } from 'react-dom'
 import type { DesignDocument } from '../model'
-import type { CanvasCamera } from '../canvas-camera'
 import {
   KernelClient,
   backendPreference,
@@ -67,7 +66,6 @@ export type SurfaceProps = {
   navigationInputOwner?: object
   /** Explicit hand/space/middle-button pan ownership; never object editing. */
   panGestureActive?: boolean
-  wheelZoomEnd?: CanvasCamera
   livePanCamera?: Pick<import('../engine').Editor, 'effectiveView' | 'subscribeCamera'>
   overlay?: { document: DesignDocument; pageId: string; epoch: number; uiIdentity?: string; selectionIdentity?: string; commands: import('./gpu/canvas-overlay').CanvasOverlay }
   interaction?: import('./interaction-layers').InteractionProps
@@ -719,9 +717,7 @@ export function KernelSurface(props: SurfaceProps) {
     ? previewed : sameIdentity ? frame : null
   const targetCompute = fallback ? 'cpu' : backend
   const holding = sameIdentity && (presented?.backend !== target || presented.computeBackend !== targetCompute)
-  const ended = props.wheelZoomEnd
-  const wheelZoomEnd = ended && ended.x === props.view.x && ended.y === props.view.y && ended.zoom === props.view.zoom ? ended : undefined
-  const renderProps: SurfaceProps = { ...props, view: renderView, requestedView: props.view, wheelZoomEnd, onRenderFailure }
+  const renderProps: SurfaceProps = { ...props, view: renderView, requestedView: props.view, onRenderFailure }
   const heldProps: SurfaceProps = frame ? { ...props, ...frame, presentationEpoch: frame.epoch, grid: !!frame.grid, checkerboard: !!frame.checkerboard } : props
   const holdGpu = !!holding && presented?.backend === 'gpu'
   const holdReference = !!holding && presented?.backend === 'cpu'
