@@ -23,7 +23,7 @@ import { isRecord } from './framing.mjs'
 export const UNSUPPORTED_REMOTE_CAPABILITY = 'unsupported_remote_capability'
 export const FIGMA_COMPATIBILITY_DOC = 'docs/FIGMA_MCP_FACADE.md#weave-sessions-and-branches'
 
-const WEAVE_BOUNDARY = 'Weave runs recipes and models on a Figma account with credits. Futureox is local-first: it has no Weave account, credits, hosted recipe catalog, upload store, or model gateway, and this call contacted no remote service.'
+const WEAVE_BOUNDARY = 'Weave runs recipes and models on a Figma account with credits. Futureox is local-first, and this document session exposes no Weave account, credit ledger, hosted recipe catalog, upload store, or hosted prediction service; this call contacted no remote service.'
 
 const SESSION_ASSERTION = {
   type: 'string', minLength: 1, maxLength: 256,
@@ -81,10 +81,10 @@ export const FIGMA_COMPATIBILITY_TOOLS = Object.freeze([
     recipeId: { type: 'string', minLength: 1, maxLength: 256 },
     runIds: { type: 'array', maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 256 } },
   }, ['recipeId']),
-  tool('weave_find_model', 'Compatibility name for the Figma Weave model catalog. Futureox has no model catalog, pricing, or credits, so the call returns unsupported_remote_capability with no candidates.', {
+  tool('weave_find_model', 'Compatibility name for the Figma Weave model catalog. This document session exposes no Weave-compatible model catalog, pricing, or credits, so the call returns unsupported_remote_capability with no candidates.', {
     query: { type: 'string', minLength: 1, maxLength: 512 },
   }, ['query']),
-  tool('weave_run_model', 'Compatibility name for a direct paid Figma Weave model prediction. Futureox has no model gateway, so the call returns unsupported_remote_capability and starts no prediction. Use use_figma for local edits.', {
+  tool('weave_run_model', 'Compatibility name for a direct paid Figma Weave model prediction. This document session exposes no Weave-compatible model gateway, so the call returns unsupported_remote_capability and starts no prediction. Use use_figma for local edits.', {
     id: { type: 'string', minLength: 1, maxLength: 256 },
     input: { description: 'Model input. Type is not published; not interpreted.' },
     acknowledgedCost: { description: 'Cost acknowledgement from a Weave quote. Type is not published; not interpreted.' },
@@ -104,11 +104,11 @@ export const FIGMA_WEAVE_TOOL_NAMES = Object.freeze(FIGMA_COMPATIBILITY_TOOLS
 export const FIGMA_COMPATIBILITY_GAPS = Object.freeze([
   {
     id: 'weave_recipes', tool: 'weave_list_tools, weave_get_tool_inputs, weave_run_tool, weave_get_tool_run_output, weave_cancel_tool_run, weave_upload_asset', status: 'unsupported',
-    detail: 'Listed by name for Figma clients. Every call returns unsupported_remote_capability and contacts no service. Weave accounts, credits, hosted recipes, upload tickets, and job state do not exist locally.',
+    detail: 'Listed by name for Figma clients. Every call returns unsupported_remote_capability and contacts no service. This document session exposes no Weave account, credits, hosted recipes, upload tickets, or job state.',
   },
   {
     id: 'weave_models', tool: 'weave_find_model, weave_run_model, weave_get_model_run_output', status: 'unsupported',
-    detail: 'Listed by name for Figma clients. Every call returns unsupported_remote_capability. There is no local model catalog, pricing, or prediction queue.',
+    detail: 'Listed by name for Figma clients. Every call returns unsupported_remote_capability. This document session exposes no Weave-compatible model catalog, pricing, or prediction service.',
   },
   {
     id: 'weave_request_report', tool: 'weave_request_report', status: 'unsupported',
@@ -129,11 +129,11 @@ const UNSUPPORTED = {
   weave_get_tool_inputs: { capability: 'figma.weave.catalog', hint: 'The local editing schema is advertised on use_figma.' },
   weave_upload_asset: { capability: 'figma.weave.assets', hint: 'Import images or SVG in the app, or use svg.import on the design_* catalog; use_figma creates local nodes.' },
   weave_run_tool: { capability: 'figma.weave.recipes', hint: 'Nothing was queued. Use use_figma for local edits.' },
-  weave_get_tool_run_output: { capability: 'figma.weave.recipes', hint: 'There is no local Weave run to report on.' },
-  weave_cancel_tool_run: { capability: 'figma.weave.recipes', hint: 'There is no local Weave run to cancel.' },
-  weave_find_model: { capability: 'figma.weave.models', hint: 'There is no local model catalog or pricing.' },
+  weave_get_tool_run_output: { capability: 'figma.weave.recipes', hint: 'This session has no Weave run to report on.' },
+  weave_cancel_tool_run: { capability: 'figma.weave.recipes', hint: 'This session has no Weave run to cancel.' },
+  weave_find_model: { capability: 'figma.weave.models', hint: 'This session exposes no Weave model catalog or pricing.' },
   weave_run_model: { capability: 'figma.weave.models', hint: 'No prediction was started. Use use_figma for local edits.' },
-  weave_get_model_run_output: { capability: 'figma.weave.models', hint: 'There is no local prediction to read.' },
+  weave_get_model_run_output: { capability: 'figma.weave.models', hint: 'This session has no Weave prediction to read.' },
   weave_request_report: { capability: 'figma.weave.report', hint: 'There is no local report pipeline or account.' },
   create_branch: { capability: 'figma.branch', hint: 'No branch was created. Save a copy of the design and open it with open_document.' },
 }
