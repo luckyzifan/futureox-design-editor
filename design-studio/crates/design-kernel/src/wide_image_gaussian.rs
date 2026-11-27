@@ -329,8 +329,8 @@ mod tests {
             "pages": [{"id":"p", "name":"p", "background":"#ffffff", "children":["bitmap"]}],
             "nodes": {"bitmap": {
                 "id":"bitmap", "kind":"rectangle", "width":1920, "height":1080, "blend":"normal",
-                "fills":[{"kind":"image", "image":"data:image/png;base64,AA==", "fit":"cover"}],
-                "effects":[{"kind":"gaussian-blur", "radius":9.564871788024902}]
+                "fills":[{"kind":"image", "color":"#000000", "image":"data:image/png;base64,AA==", "fit":"cover"}],
+                "effects":[{"kind":"gaussian-blur", "color":"#000000", "radius":9.564871788024902}]
             }}
         })).unwrap();
         let node = &doc.nodes["bitmap"];
