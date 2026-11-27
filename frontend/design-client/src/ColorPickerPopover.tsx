@@ -223,6 +223,11 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
     return () => document.removeEventListener('pointerdown', outside, true)
   }, [editor, preview, valid, onCommit])
   const update = (next: Partial<ColorDraft>) => onUpdate(next)
+  const updateColorText = (text: string) => {
+    const trimmed = text.trim()
+    const bareHex = uiMode === 'figma' && /^[0-9a-f]{6}([0-9a-f]{2})?$/i.test(trimmed)
+    update({ color: bareHex ? `#${trimmed}` : text })
+  }
   const cancelDrag = () => {
     const previous = drag.current; drag.current = null
     if (previous) update({ color: previous.color, opacity: previous.opacity })
@@ -258,7 +263,7 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
   const channels = simple && notation !== 'HEX' ? notationChannels(draft.color, notation) : null
   const platform = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other'
   return createPortal(<div ref={panel} role="dialog" aria-label={tr('填充颜色和不透明度')} aria-modal="false"
-    className="property-color-popover" data-property-preview={preview ? '' : undefined} style={position}
+    className="property-color-popover" data-ui-mode={uiMode} data-property-preview={preview ? '' : undefined} style={position}
     onKeyDown={event => {
       if (composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
       if (eyedropperChord(event, platform)) { event.preventDefault(); event.stopPropagation(); onSample(); return }
@@ -346,7 +351,7 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
           {cssMenu && (['HSL', 'HSB'] as const).map(id => <button type="button" key={id} role="option" aria-selected={notation === id} onClick={() => { setNotation(id); setMenu(false); setCssMenu(false) }}>{notationLabel[id]}</button>)}
         </div>}
         {notation === 'HEX' || !simple ? <label className="property-color-hex">{tr('颜色值')}<input ref={color} aria-label={tr('填充颜色值')} value={draft.color} data-hex-mask={simple ? 'true' : undefined} spellCheck={false}
-          aria-invalid={!valid} onChange={event => update({ color: event.target.value })}
+          aria-invalid={!valid} onChange={event => updateColorText(event.target.value)}
           onCompositionStart={() => { composing.current = true; onComposition(true) }}
           onCompositionEnd={() => { composing.current = false; onComposition(false) }} /></label>
           : <div className="property-color-channels">{channels!.map((value, index) => {
@@ -356,7 +361,7 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
             </label>
           })}</div>}
         {notation !== 'HEX' && simple && <input ref={color} className="property-color-raw" aria-label={tr('填充颜色值')} value={draft.color} spellCheck={false}
-          aria-invalid={!valid} onChange={event => update({ color: event.target.value })}
+          aria-invalid={!valid} onChange={event => updateColorText(event.target.value)}
           onCompositionStart={() => { composing.current = true; onComposition(true) }}
           onCompositionEnd={() => { composing.current = false; onComposition(false) }} />}
         <label className="property-color-alpha">{tr('填充不透明度 %')}<input ref={opacity} aria-label={tr('填充不透明度 %')} inputMode="decimal" value={draft.opacity}

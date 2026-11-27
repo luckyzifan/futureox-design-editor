@@ -1,5 +1,6 @@
 /* The design workspace shares the editor's inputs and actions, with its own chrome. */
-.editor-shell[data-ui-mode="figma"] {
+.editor-shell[data-ui-mode="figma"],
+.property-color-popover[data-ui-mode="figma"] {
   --workspace-panel: #fcfbf7;
   --workspace-text: #222e2b;
   --workspace-muted: #586761;
@@ -317,4 +318,18 @@
   background: var(--workspace-selected);
   color: var(--workspace-selected-ink);
   box-shadow: inset 0 0 0 1px #9bbfb0;
+}
+
+.property-color-popover[data-ui-mode="figma"] {
+  color: var(--workspace-text);
+  background: var(--workspace-panel);
+  border-color: var(--workspace-border);
+  box-shadow: var(--workspace-shadow);
+}
+.property-color-popover[data-ui-mode="figma"] :is(.property-color-tabs, input:not([type="range"]), select) {
+  background: var(--workspace-field);
+}
+.property-color-popover[data-ui-mode="figma"] .property-color-tabs [aria-selected="true"] {
+  color: var(--workspace-selected-ink);
+  background: var(--workspace-panel);
 }

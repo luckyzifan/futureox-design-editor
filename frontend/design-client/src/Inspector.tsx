@@ -56,7 +56,7 @@ import type { PencilCap } from './freehand'
 import { canFitFrameContents, editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import { frameEdgeDisplayLocal, sketchFrameDistance, sketchFrameEdges, sketchNestedFramePins } from './sketch-frame-distance'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
-import { Plus, Minus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, Minimize2, RotateCw } from 'lucide-react'
+import { Plus, Minus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, Minimize2, RotateCw, Palette } from 'lucide-react'
 import type { Editor } from './engine'
 import { VectorBrushPanel } from './VectorBrushPanel'
 import {
@@ -619,7 +619,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
         {onOpenPageStyles && <section data-property-section="styles" className="page-inspector-action">
           <h3>{locale === 'en' ? 'Styles' : '样式'}
             <button type="button" aria-label={locale === 'en' ? 'Manage local styles' : '管理本地样式'} onClick={onOpenPageStyles}>
-              <Plus size={15} aria-hidden="true" />
+              <Palette size={15} aria-hidden="true" />
             </button>
           </h3>
         </section>}
@@ -885,6 +885,16 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   const usesSketchRamp = (effect: Effect) => !!(effect.gradientBlur?.sketch || effect.inactiveGradientBlur?.parameters.sketch)
   const nativeBlurSettings = (kind: Effect['kind']) =>
     uiMode === 'figma' ? kind === 'blur' || kind === 'background-blur' : isMotionZoomBlur(kind) || isSketchProgressiveBlur(kind)
+  const activeComponent = uiMode === 'figma' && (n.component || n.componentSet || n.instance)
+  const extraLayerControls = <>
+    <VectorBrushPanel editor={editor} node={n} />
+    {(n.pathOffset !== undefined || s.tool === 'offset-path') &&
+      <NumberField historyLabel="路径偏移距离" diagnosticFamily={2} unit="number" label={tr('路径偏移距离')}
+        value={n.pathOffset || 0} min={-10000} max={10000} onChange={value => update(node => { node.pathOffset = value })} />}
+    <BoardPanel editor={editor} node={n} />
+    <RepeatPanel editor={editor} node={n} />
+    {!activeComponent && <ComponentPanel editor={editor} node={n} ids={ids} />}
+  </>
   return (
     <>
     <aside className="inspector" data-node-id={n.id} data-node-name={n.name} data-geometry-mode={uiMode} aria-label={propertyOwnerLabel(n.name, locale)}>
@@ -906,6 +916,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
         </div>
       </div>
       <div className="inspector-scroll">
+        {activeComponent && <ComponentPanel editor={editor} node={n} ids={ids} />}
         {styleDescription && <p role="note" className="property-unit-notice">{tr('＊ 最大缩放系数换算。')}{tr(styleDescription)}</p>}
         <section className="geometry-position-section" data-property-section="position">
           {uiMode === 'sketch' && framePresetButton}
@@ -1099,11 +1110,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
           </section>
         )}
         {n.kind!=='slice' && <>
-        <VectorBrushPanel editor={editor} node={n}/>
-        {(n.pathOffset!==undefined || s.tool==='offset-path') && <NumberField historyLabel="路径偏移距离" diagnosticFamily={2} unit="number" label={tr("路径偏移距离")} value={n.pathOffset||0} min={-10000} max={10000} onChange={v=>update(n=>{n.pathOffset=v})}/>}
-        <BoardPanel editor={editor} node={n}/>
-        <RepeatPanel editor={editor} node={n}/>
-        <ComponentPanel editor={editor} node={n} ids={ids} />
+        {uiMode === 'sketch' && extraLayerControls}
         {!n.spatial?.preserve3d && <section data-property-section="fill">
           <h3>{tr("填充")}{stackButton('fills', () => update(node => {
             if (node.fills.length < 16) {
@@ -1448,7 +1455,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
               )}
             </StylePropertyRow>
           )}
-          {!n.effects.length && !n.spatial && <p className="muted">{tr("用光影和质感表达层次")}</p>}
+          {uiMode === 'sketch' && !n.effects.length && !n.spatial && <p className="muted">{tr("用光影和质感表达层次")}</p>}
         </section>
         {allowSpatial && uiMode === 'figma' && (n.spatial || n.kind === 'frame' && !n.graphic &&
           n.children.some(id => s.doc.nodes[id]?.spatial)) && <section>
@@ -1463,6 +1470,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
           <LayoutGuidePanel key={`${editor.sessionGeneration}:${n.id}`} editor={editor} frame={n} ids={ids} compact />}
         </>}
         <NodeExportPanel key={n.id} editor={editor} node={n} scopePageRoots={uiMode === 'figma'} />
+        {uiMode === 'figma' && n.kind !== 'slice' && extraLayerControls}
       </div>
       {context && <CanvasContextMenu editor={editor} x={context.x} y={context.y} origin="inspector" worldPoint={editor.selectionBounds()} onClose={() => setContext(null)} />}
     </aside>
