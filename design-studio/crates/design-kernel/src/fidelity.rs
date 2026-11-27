@@ -52,7 +52,15 @@ impl crate::Engine {
         let mut source = source(options, 0, 0, width, height)?;
         if source.raster_profile.is_software() && self.source_compile_context.is_none() {
             self.resolve_layout()?;
-            if self.doc.as_ref().is_some_and(|doc| measured_export_arithmetic(doc, options, &source)) {
+            // Glass, frost, refraction and backdrop documents are preserved
+            // against Chrome Figma PNGs in the measured Figma arithmetic.
+            // Their byte software path is one code off on the material
+            // captures, so the software profile selects the measured path
+            // for these documents only. Ordinary geometry keeps the
+            // versioned software arithmetic.
+            if self.doc.as_ref().is_some_and(|doc| {
+                has_backdrop(doc, options) || measured_export_arithmetic(doc, options, &source)
+            }) {
                 source.raster_profile = RasterProfile::Figma;
             }
         }
