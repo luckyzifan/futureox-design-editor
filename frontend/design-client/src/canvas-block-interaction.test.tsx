@@ -141,6 +141,58 @@ test.each(['pointerup', 'pointercancel'])('the original pointer can finish or ca
 })
 
 test.each([
+  ['releases after capture loss', 'pointerup', true],
+  ['cancels after capture loss', 'pointercancel', true],
+  ['cancels while captured', 'pointercancel', false],
+] as const)('edge resize %s', async (_label, terminal, losesCapture) => {
+  Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+  const shape = node('rectangle', 100, 100, 100, 90)
+  const before = await render([shape])
+  await act(async () => editor.select([shape.id]))
+  const revision = editor.state.version
+  const edge = mount.querySelector<SVGLineElement>('[data-testid="resize-edge-1"]')!
+  expect(edge).toBeTruthy()
+  const outside = document.createElement('div')
+  document.body.append(outside)
+
+  await act(async () => pointer('pointerdown', 200, 145, { buttons: 1 }, edge))
+  expect(editor.interactionActive).toBe(true)
+  await act(async () => pointer('pointermove', 212, 145, { buttons: 1 }))
+  await flushFrames()
+  expect(editor.state.doc.nodes[shape.id].width).toBeCloseTo(112, 9)
+  expect(editor.state.version).toBe(revision)
+  expect(editor.canUndo).toBe(false)
+
+  if (losesCapture) {
+    await act(async () => pointer('lostpointercapture', 212, 145, { buttons: 1 }))
+    expect(editor.interactionActive).toBe(true)
+    expect(editor.state.doc.nodes[shape.id].width).toBeCloseTo(112, 9)
+  }
+  const target = losesCapture ? outside : host()
+  await act(async () => pointer('pointermove', 224, 145, { buttons: 1 }, target))
+  await flushFrames()
+  expect(editor.state.doc.nodes[shape.id].width).toBeCloseTo(124, 9)
+  expect(editor.state.version).toBe(revision)
+  expect(editor.canUndo).toBe(false)
+
+  await act(async () => pointer(terminal, 235, 145, { button: 0, buttons: 0 }, target))
+  expect(editor.interactionActive).toBe(false)
+  if (terminal === 'pointercancel') {
+    unchanged(before)
+    expect(editor.authoredDocument).toBe(before)
+    expect(editor.state.version).toBe(revision)
+  } else {
+    expect(editor.authoredDocument.nodes[shape.id].width).toBeCloseTo(135, 9)
+    expect(editor.authoredDocument.nodes[shape.id].height).toBe(90)
+    expect(editor.state.version).toBe(revision + 1)
+    expect(editor.canUndo).toBe(true)
+    await act(async () => editor.undo())
+    expect(editor.state.doc).toEqual(before)
+    expect(editor.canUndo).toBe(false)
+  }
+})
+
+test.each([
   ['space-left', true, 0, 1],
   ['middle', false, 1, 4],
 ] as const)('hand pan %s follows a cross-element move and the original button-up after capture loss', async (_label, space, button, buttons) => {
