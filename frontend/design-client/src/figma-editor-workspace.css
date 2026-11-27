@@ -347,16 +347,14 @@
 }
 
 .canvas-context-menu[data-ui-mode="figma"] {
-  background: #233632;
-  color: #f6f5ec;
+  --context-menu-surface: #233632;
+  --context-menu-text: #f6f5ec;
+  --context-menu-highlight: #3d6157;
   border-color: #47615a;
   border-radius: 8px;
 }
-.canvas-context-menu[data-ui-mode="figma"] button:not(:disabled) { color: inherit; }
-.canvas-context-menu[data-ui-mode="figma"] button:hover:not(:disabled),
-.canvas-context-menu[data-ui-mode="figma"] button:focus-visible,
 .canvas-context-menu[data-ui-mode="figma"] button[aria-expanded="true"] {
-  background: #3d6157;
+  background: var(--context-menu-highlight);
   color: #fffdf3;
 }
 .canvas-context-menu[data-ui-mode="figma"] kbd { color: #bfcfc6; }
