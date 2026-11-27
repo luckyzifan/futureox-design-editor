@@ -2138,17 +2138,23 @@ if retain_translated_roots {
         if self.integer_bucket_residency(options)
             && options.raster_profile == crate::fidelity::RasterProfile::Analytic
         {
+            crate::render_cancellation::checkpoint()?;
             if let Some(bytes) = self.recall_exact_viewport(options) {
+                crate::render_cancellation::checkpoint()?;
                 return Ok(bytes);
             }
             match self.render_unretained(options) {
                 Ok(bytes) => {
-                    self.remember_exact_viewport(options, &bytes);
+                    crate::render_cancellation::checkpoint()?;
+                    self.remember_exact_viewport(options, &bytes)?;
                     return Ok(bytes);
                 }
                 Err(error)
                     if error == crate::export::BACKDROP_PADDING_BUDGET_ERROR
-                        || display_pressure(&error) => {}
+                        || display_pressure(&error) =>
+                {
+                    crate::render_cancellation::checkpoint()?;
+                }
                 Err(error) => return Err(error),
             }
         }
@@ -2168,14 +2174,41 @@ if retain_translated_roots {
         let key = ExactViewportKey::from_options(self.content_revision(), options)?;
         self.exact_viewports.iter().rev().find(|frame| frame.key == key).map(|frame| frame.bytes.clone())
     }
-    fn remember_exact_viewport(&mut self, options: &RenderOptions, bytes: &[u8]) {
-        let Some(key) = ExactViewportKey::from_options(self.content_revision(), options) else { return };
-        let expected = (options.width as usize).saturating_mul(options.height as usize).saturating_mul(4);
-        if bytes.len() != expected || expected == 0 || expected > EXACT_VIEWPORT_BYTES { return; }
+    fn remember_exact_viewport(
+        &mut self,
+        options: &RenderOptions,
+        bytes: &[u8],
+    ) -> Result<(), String> {
+        let Some(key) = ExactViewportKey::from_options(self.content_revision(), options) else {
+            return Ok(());
+        };
+        let expected = (options.width as usize)
+            .saturating_mul(options.height as usize)
+            .saturating_mul(4);
+        if bytes.len() != expected || expected == 0 || expected > EXACT_VIEWPORT_BYTES {
+            return Ok(());
+        }
+        let staged = if crate::render_cancellation::is_cancellable() {
+            // A cancellable copy must fit beside the last valid frames until
+            // the final checkpoint. When it cannot, return the rendered bytes
+            // without publishing a cache entry.
+            if self.exact_viewport_bytes().saturating_add(expected) > EXACT_VIEWPORT_BYTES {
+                return Ok(());
+            }
+            let staged = bytes.to_vec();
+            crate::render_cancellation::checkpoint()?;
+            Some(staged)
+        } else {
+            None
+        };
         if let Some(slot) = self.exact_viewports.iter_mut().find(|frame| frame.key == key) {
-            slot.bytes.clear();
-            slot.bytes.extend_from_slice(bytes);
-            return;
+            if let Some(staged) = staged {
+                slot.bytes = staged;
+            } else {
+                slot.bytes.clear();
+                slot.bytes.extend_from_slice(bytes);
+            }
+            return Ok(());
         }
         while !self.exact_viewports.is_empty()
             && (self.exact_viewports.len() >= EXACT_VIEWPORT_LIMIT
@@ -2183,7 +2216,11 @@ if retain_translated_roots {
         {
             self.exact_viewports.remove(0);
         }
-        self.exact_viewports.push(ExactViewport { key, bytes: bytes.to_vec() });
+        self.exact_viewports.push(ExactViewport {
+            key,
+            bytes: staged.unwrap_or_else(|| bytes.to_vec()),
+        });
+        Ok(())
     }
     fn exact_viewport_bytes(&self) -> usize {
         self.exact_viewports.iter().map(|frame| frame.bytes.len()).sum()
