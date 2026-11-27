@@ -1045,8 +1045,24 @@ mod wasm {
         .map_err(|e| JsValue::from_str(&e))
     }
     #[wasm_bindgen]
+    pub fn wide_image_gaussian_source_window(
+        plan: &str, matrix: &[f64], size: &[f64], image: &[u32], paint: &str,
+    ) -> Result<Vec<u32>, JsValue> {
+        let window = || -> Result<[u32; 4], String> {
+            crate::wide_image_gaussian::source_window(
+                serde_json::from_str(plan).map_err(|e| e.to_string())?,
+                math::Transform(matrix.try_into().map_err(|_| "Invalid Gaussian image transform")?),
+                size.try_into().map_err(|_| "Invalid Gaussian node dimensions")?,
+                image.try_into().map_err(|_| "Invalid Gaussian image dimensions")?,
+                &serde_json::from_str(paint).map_err(|e| e.to_string())?,
+            )
+        };
+        window().map(Vec::from).map_err(|error| JsValue::from_str(&error))
+    }
+    #[wasm_bindgen]
     pub fn wide_image_gaussian_pixels(
         plan: &str, matrix: &[f64], size: &[f64], image: &[u32], paint: &str, pixels: &[f32],
+        window: Option<Vec<u32>>,
     ) -> Result<Vec<f32>, JsValue> {
         let render = || -> Result<Vec<f32>, String> {
             crate::wide_image_gaussian::pixels(
@@ -1056,6 +1072,7 @@ mod wasm {
                 image.try_into().map_err(|_| "Invalid Gaussian image dimensions")?,
                 &serde_json::from_str(paint).map_err(|e| e.to_string())?,
                 pixels,
+                window.as_deref().map(|rect| rect.try_into().map_err(|_| "Invalid Gaussian source window")).transpose()?,
             )
         };
         render().map_err(|error| JsValue::from_str(&error))

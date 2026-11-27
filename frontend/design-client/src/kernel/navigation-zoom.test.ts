@@ -202,7 +202,7 @@ test('opted-in wheel translation waits for the existing quiet boundary and emits
 })
 
 test('dense wheel pan after zoom-out starts exact repair after its measured cadence', () => {
-  const owner = new NavigationZoom(camera(8), { includeTranslation: true, adaptiveQuiet: 'outward-pan' })
+  const owner = new NavigationZoom(camera(8), { includeTranslation: true, adaptiveQuiet: 'filtered' })
   owner.update(camera(.5), 0)
   for (let n = 1; n <= 9; n++) owner.update(camera(.5, n * 12), n * 32)
   const at = 9 * 32
@@ -214,6 +214,20 @@ test('dense wheel pan after zoom-out starts exact repair after its measured cade
   owner.update(camera(.5, 120), resumedAt)
   expect(owner.frame(resumedAt + 72).active).toBe(true)
   expect(owner.frame(resumedAt + NAVIGATION_ZOOM_QUIET_MS).active).toBe(false)
+})
+
+test.each(['in', 'out', 'pan'] as const)('filtered dense inward refinement followed by %s uses its current camera', direction => {
+  const owner = new NavigationZoom(camera(1), { includeTranslation: true, adaptiveQuiet: 'filtered' })
+  for (let n = 1; n <= 12; n++) owner.update(camera(n + 1), 8 * n)
+  expect(owner.frame(104).active).toBe(true)
+  expect(owner.frame(143).active).toBe(true)
+  expect(owner.frame(144)).toMatchObject({ active: false, view: camera(13) })
+
+  const resumedAt = 152
+  const next = direction === 'in' ? camera(14) : direction === 'out' ? camera(12) : camera(13, 100)
+  expect(owner.update(next, resumedAt).active).toBe(true)
+  expect(owner.frame(resumedAt + 48).active).toBe(true)
+  expect(owner.frame(resumedAt + NAVIGATION_ZOOM_QUIET_MS)).toMatchObject({ active: false, view: next })
 })
 
 test('a pan during zoom retains the most recent camera for the exact final sample', () => {

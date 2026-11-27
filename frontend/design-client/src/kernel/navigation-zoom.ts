@@ -18,9 +18,8 @@ const CADENCE_INTERVALS = 8
 // packet is not enough evidence to speculate about the next packet gap.
 const CADENCE_REQUIRED_INTERVALS = CADENCE_INTERVALS
 const CADENCE_QUIET_MULTIPLIER = 3
-/** Experimental only: the normal React hook deliberately uses conservative
- * settling until hardware-backed input/display measurements justify a change. */
-export type NavigationZoomOptions = { adaptiveQuiet?: boolean | 'outward-pan'; includeTranslation?: boolean; sampleOnFrame?: boolean }
+/** Filtered native repair adapts for inward zoom and pan after zoom-out. */
+export type NavigationZoomOptions = { adaptiveQuiet?: boolean | 'filtered'; includeTranslation?: boolean; sampleOnFrame?: boolean }
 export type NavigationZoomSample = { active: boolean; view: CanvasCamera; sequence: number }
 export class NavigationZoom {
   private target: CanvasCamera
@@ -113,9 +112,11 @@ export class NavigationZoom {
     if (now > this.changedAt) this.stableFrames++
     // A wheel pan after zoom-out has one sampling density and can reuse its
     // accepted backing. Let two missing input intervals start native repair.
-    // Zoom ticks and a burst that already resumed early keep the full guard.
-    const outwardPan = this.options.adaptiveQuiet === 'outward-pan' && this.direction === 'pan-after-out' && this.panning
-    const adaptive = this.options.adaptiveQuiet === true || outwardPan
+    // An inward zoom allows the same exact phase once dense input goes quiet.
+    // Reversals keep the outward guard and a short resume restores the full guard.
+    const filtered = this.options.adaptiveQuiet === 'filtered'
+    const outwardPan = filtered && this.direction === 'pan-after-out' && this.panning
+    const adaptive = this.options.adaptiveQuiet === true || outwardPan || filtered && this.direction === 'in'
     const quiet = !adaptive || this.resumedBeforeQuiet || this.intervals.length < CADENCE_REQUIRED_INTERVALS ? NAVIGATION_ZOOM_QUIET_MS :
       Math.min(NAVIGATION_ZOOM_QUIET_MS,
         Math.max(NAVIGATION_ZOOM_DENSE_QUIET_MS, ...this.intervals.map(interval =>
