@@ -105,6 +105,20 @@ export class NavigationZoom {
         now - this.sampledAt >= NAVIGATION_ZOOM_SAMPLE_MS) return this.publish(true, now)
     return this.sample
   }
+  /** A physical zoom modifier was released at this exact camera. The host
+   * can refine immediately, just as it does after a captured pan release. */
+  finish(view: CanvasCamera, now: number): NavigationZoomSample {
+    if (this.held) return this.update(view, now, true)
+    const changed = this.inputChanged(view)
+    this.target = { ...view }
+    this.direction = undefined
+    this.panning = false
+    this.changedAt = -Infinity
+    this.stableFrames = 0
+    this.intervals = []
+    this.resumedBeforeQuiet = false
+    return this.active || changed ? this.publish(false, now) : this.sample
+  }
   frame(now: number): NavigationZoomSample {
     if (!this.active) return this.sample
     // Observe stability during the quiet interval, rather than adding another

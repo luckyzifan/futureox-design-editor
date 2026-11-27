@@ -21,7 +21,9 @@ import { DraftInput } from './DraftInput'
 import { ColorInput } from './ColorInput'
 import { LoosePaintColor, SolidFillColorInput } from './ColorPickerPopover'
 import { LOCAL_VIDEO_ACCEPT, localVideoObjectUrl, readLocalVideoFill } from './local-video-fill'
-import { nearestStopIndex } from './color-field'
+import { nearestStopIndex, normalizePaintHex } from './color-field'
+import { validColor } from './color'
+import { InputFamily } from './input-diagnostics'
 import { rememberPaintChannel } from './eyedropper-target'
 import type { SolidFillTarget } from './property-preview'
 import { StrokeProfilePanel } from './StrokeProfilePanel'
@@ -218,6 +220,15 @@ function PaintEditor({
         </select>
       </div>
   const paintOptionsLabel = tr(channel === 'fill' ? '填充选项' : '描边选项')
+  const inline = figma && !!target && !!editor?.canEditSolidFill(target)
+  const displayInlineColor = (value: string) => {
+    const parsed = normalizePaintHex(value.trim())
+    return /^#[\da-f]{6}(?:[\da-f]{2})?$/i.test(parsed) ? parsed.slice(1).toUpperCase() : parsed
+  }
+  const decimalOpacity = /^(?:\d+(?:\.\d*)?|\.\d+)$/
+  const updateInline = (patch: Pick<Partial<Paint>, 'color' | 'opacity'>) => {
+    if (target && editor?.canEditSolidFill(target)) onChange({ ...latestPaint.current, ...patch })
+  }
   return (
     <div className="paint-editor">
       {chooseVideo && <input ref={videoFile} type="file" hidden accept={LOCAL_VIDEO_ACCEPT}
@@ -228,11 +239,31 @@ function PaintEditor({
         }} />}
       {videoError && <p role="alert">{tr(videoError)}</p>}
       {videoLoading && <p role="status">{tr('正在解码视频首帧')}</p>}
-      <div className="paint-color-row" onPointerDownCapture={() => rememberPaintChannel(editor, channel)}>
+      <div className="paint-color-row" data-inline-solid={inline || undefined} onPointerDownCapture={() => rememberPaintChannel(editor, channel)}>
         {target ? <>
           <SolidFillColorInput target={target} label={tr('颜色')} value={p.color} kind={p.kind} onKind={changeKind} onVideo={chooseVideo} channel={channel} />
-          <span className="paint-hex">{hex}</span>
-          <SolidFillColorInput target={target} label={tr('填充不透明度')} value={formatPercent(p.opacity * 100)} opacity kind={p.kind} onKind={changeKind} onVideo={chooseVideo} channel={channel} />
+          {inline ? <>
+            <DraftInput className="paint-inline-color" aria-label={tr('填充颜色值')} diagnosticFamily={InputFamily.color}
+              value={displayInlineColor(p.color)} normalize={displayInlineColor}
+              validate={value => validColor(normalizePaintHex(value), !!editor?.authoredDocument.colorManagement)}
+              onFocus={event => event.currentTarget.select()} spellCheck={false}
+              onCommit={value => updateInline({ color: normalizePaintHex(value) })} />
+            <span className="paint-inline-alpha">
+              <DraftInput aria-label={tr('填充不透明度 %')} diagnosticFamily={11}
+                value={formatPercent(p.opacity * 100)} inputMode="decimal"
+                onFocus={event => event.currentTarget.select()}
+                normalize={value => {
+                  const raw = value.trim().replace(/%$/, '').trim()
+                  return decimalOpacity.test(raw) ? String(Number(raw)) : raw
+                }}
+                validate={value => decimalOpacity.test(value) && Number(value) >= 0 && Number(value) <= 100}
+                onCommit={value => updateInline({ opacity: Number(value) / 100 })} />
+              <span aria-hidden="true">%</span>
+            </span>
+          </> : <>
+            <span className="paint-hex">{hex}</span>
+            <SolidFillColorInput target={target} label={tr('填充不透明度')} value={formatPercent(p.opacity * 100)} opacity kind={p.kind} onKind={changeKind} onVideo={chooseVideo} channel={channel} />
+          </>}
         </> : <LoosePaintColor label={tr('颜色')} color={p.color} opacity={p.opacity} hex={hex} kind={p.kind} channel={channel} onKind={changeKind}
           onVideo={chooseVideo} isVideo={!!p.video}
           onChange={patch => onChange({ ...p, ...patch })} />}

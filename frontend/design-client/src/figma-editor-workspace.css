@@ -359,3 +359,38 @@
 }
 .canvas-context-menu[data-ui-mode="figma"] kbd { color: #bfcfc6; }
 .canvas-context-submenu { z-index: 901; }
+
+.editor-shell[data-ui-mode="figma"] .paint-color-row[data-inline-solid] {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(53px, auto);
+  gap: 4px;
+  padding: 3px 5px 3px 7px;
+  background: var(--workspace-field);
+  border-color: var(--workspace-border);
+}
+.editor-shell[data-ui-mode="figma"] .paint-color-row[data-inline-solid]:focus-within {
+  border-color: var(--workspace-accent);
+}
+.editor-shell[data-ui-mode="figma"] .paint-color-row[data-inline-solid] input {
+  width: 100%;
+  min-width: 0;
+  height: 25px;
+  padding: 0 3px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--workspace-text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.editor-shell[data-ui-mode="figma"] .paint-color-row[data-inline-solid] input:focus-visible {
+  outline: none;
+  background: var(--workspace-panel);
+  border-color: var(--workspace-accent);
+}
+.editor-shell[data-ui-mode="figma"] .paint-color-row[data-inline-solid] input[aria-invalid="true"] {
+  border-color: #a12036;
+}
+.paint-inline-alpha { display: flex; align-items: center; max-width: 65px; padding-inline-start: 3px; border-inline-start: 1px solid var(--workspace-border); }
+.paint-inline-alpha input { text-align: right; }
+.paint-inline-alpha > span { color: var(--workspace-muted); padding-inline: 2px; }

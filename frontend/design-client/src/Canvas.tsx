@@ -1100,6 +1100,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     })
   },[])
   const wheelModifiers = useRef({ ctrl: false, meta: false })
+  const wheelZoomOwner = useRef<{ key: 'Control' | 'Meta'; scope: string; view: CanvasCamera } | null>(null)
+  const [wheelZoomEnd, setWheelZoomEnd] = useState<{ scope: string; view: CanvasCamera } | null>(null)
   const space = useRef(false)
   type KeyboardBox = { page: string; session: number; original: string[]; point: Point; anchor?: Point; parent?: string; mode: 'box' | 'pick'; pick?: string }
   const keyboardBox = useRef<KeyboardBox | null>(null)
@@ -2240,6 +2242,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       nudge.finish()
       cancelQueuedMove()
       wheelModifiers.current = { ctrl: false, meta: false }
+      wheelZoomOwner.current = null
       setMeasureKeys({alt:false,deep:false,text:false})
       setPenShift(false)
       if(drag.current?.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
@@ -2320,6 +2323,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if(scope!==wheelScope){wheelGesture.reset();wheelScope=scope}
       const anchor = screenPoint(e)
       const next = wheelGesture.update(v, e, wheelSize, anchor, editor.state.scrollWheelZoom, pinch)
+      const key = !pinch && e.isTrusted && !drag.current && !nativeSource
+        ? e.ctrlKey && wheelModifiers.current.ctrl ? 'Control' : e.metaKey && wheelModifiers.current.meta ? 'Meta' : undefined
+        : undefined
+      if (key && (next.zoom !== v.zoom || wheelZoomOwner.current?.key === key && wheelZoomOwner.current.scope === scope))
+        wheelZoomOwner.current = { key, scope, view: next }
+      else wheelZoomOwner.current = null
       if (drag.current?.kind === 'pan') {
         const d = drag.current
         // Retain the pointer displacement already consumed by this gesture.
@@ -2333,7 +2342,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       scheduleView(next)
     }
     el.addEventListener('wheel', wheel, { passive: false })
-    const modifiers = (e: KeyboardEvent) => { wheelModifiers.current = { ctrl: e.ctrlKey, meta: e.metaKey } }
+    const modifiers = (e: KeyboardEvent) => {
+      wheelModifiers.current = { ctrl: e.ctrlKey, meta: e.metaKey }
+      const owned = wheelZoomOwner.current
+      if (!owned || e.type !== 'keyup' || e.key !== owned.key) return
+      wheelZoomOwner.current = null
+      const scope = `${editor.sessionGeneration}/${editor.state.page}`, view = editor.effectiveView()
+      if (!e.isTrusted || e.ctrlKey || e.metaKey || drag.current || owned.scope !== scope ||
+          view.x !== owned.view.x || view.y !== owned.view.y || view.zoom !== owned.view.zoom) return
+      flushView()
+      setWheelZoomEnd({ scope, view })
+    }
     window.addEventListener('keydown', modifiers, true)
     window.addEventListener('keyup', modifiers, true)
     return () => {
@@ -4246,6 +4265,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if(complete||nativeSource?.materialKeys&&frame.ids.length&&(!frame.preview||frame.previewGaps))onSourcePresented?.(frame.view)
       }}/>:<KernelSurface
         navigationInputOwner={editor}
+        wheelZoomEnd={wheelZoomEnd?.scope === `${editor.sessionGeneration}/${state.page}` ? wheelZoomEnd.view : undefined}
         panGestureActive={panning}
         livePanCamera={import.meta.env.VITE_DESIGN_LIVE_RESIDENT_PAN === '1' ? editor : undefined}
         overlay={overlay}
