@@ -3521,7 +3521,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   function recoverMouseCapture(e: React.PointerEvent, draft: Drag) {
     const canvas = host.current
     const canvasWindow = canvas?.ownerDocument.defaultView
-    const recoverable = draft.kind === 'move' || draft.kind === 'rotate' || draft.kind === 'pan'
+    const recoverable = draft.kind === 'move' || draft.kind === 'rotate' || draft.kind === 'resize' || draft.kind === 'pan'
     if (!canvas || !canvasWindow || e.target !== canvas || e.pointerType !== 'mouse' ||
         !recoverable ||
         draft.session !== editor.sessionGeneration || draft.page !== editor.state.page ||
@@ -3532,7 +3532,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const options = { capture: true, signal: controller.signal }
     const pointerId = draft.pointerId
     // Space and the hand tool press the left button. Middle-button pan uses bit 4.
-    // Move and rotate stay on the left button.
+    // Move, rotate and resize stay on the left button.
     const pressedButtons = draft.kind === 'pan' && draft.pointerButton === 1 ? 4 : 1
     const releaseButton = draft.pointerButton === 1 ? 1 : 0
     const current = (event: PointerEvent) => {
@@ -3567,9 +3567,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }, options)
     canvasWindow.addEventListener('pointerup', event => {
       if (!current(event)) return
-      // Hand pan keeps the gesture until the button that started it comes up.
-      // That event's coordinates are the release; a different button is not.
-      if (draft.kind === 'pan' && event.button !== releaseButton) return
+      // Pan and resize finish on the release of the button that started them.
+      if ((draft.kind === 'pan' || draft.kind === 'resize') && event.button !== releaseButton) return
       event.stopPropagation()
       endCallback.current(event)
     }, options)
