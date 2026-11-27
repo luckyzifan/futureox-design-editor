@@ -25,16 +25,29 @@ export function isDirectInvocation(moduleUrl, argv1 = process.argv[1], platform 
   return platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right
 }
 
-export function parseOptions(argv, env = process.env) {
-  const options = { endpoint: env.FUTUREOX_DESIGN_SOCKET, sessionId: env.FUTUREOX_DESIGN_SESSION, token: env.FUTUREOX_DESIGN_BRIDGE_TOKEN }
+export function parseOptions(argv, env = process.env, { requireToken = true } = {}) {
+  const options = {
+    endpoint: env.FUTUREOX_DESIGN_SOCKET, sessionId: env.FUTUREOX_DESIGN_SESSION, token: env.FUTUREOX_DESIGN_BRIDGE_TOKEN,
+    extensions: env.FUTUREOX_FIGMA_EXTENSIONS === '1', figmaCompatible: env.FUTUREOX_FIGMA_COMPATIBLE === '1',
+  }
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i]
     if (flag === '--help' || flag === '-h') return { help: true }
+    if (flag === '--extensions') { options.extensions = true; continue }
+    if (flag === '--figma-compatible') { options.figmaCompatible = true; continue }
+    if (flag === '--port') {
+      const value = argv[++i]
+      if (!value || !/^\d{1,5}$/.test(value) || Number(value) < 1 || Number(value) > 65535)
+        throw new Error('--port requires an integer from 1 to 65535')
+      options.port = Number(value)
+      continue
+    }
     const key = flag === '--socket' ? 'endpoint' : flag === '--session' ? 'sessionId' : undefined
     if (!key || !argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error('Use --socket PATH and --session ID; supply the ephemeral token through the FUTUREOX_DESIGN_BRIDGE_TOKEN environment variable')
     options[key] = argv[++i]
   }
-  if (!options.endpoint || !options.sessionId || !options.token) throw new Error('Enable the desktop AI bridge, then set FUTUREOX_DESIGN_SOCKET, FUTUREOX_DESIGN_SESSION and FUTUREOX_DESIGN_BRIDGE_TOKEN')
+  if (!options.endpoint || !options.sessionId) throw new Error('Enable the desktop AI bridge, then set FUTUREOX_DESIGN_SOCKET, FUTUREOX_DESIGN_SESSION and FUTUREOX_DESIGN_BRIDGE_TOKEN')
+  if (requireToken && !options.token) throw new Error('Enable the desktop AI bridge, then set FUTUREOX_DESIGN_SOCKET, FUTUREOX_DESIGN_SESSION and FUTUREOX_DESIGN_BRIDGE_TOKEN')
   return options
 }
 

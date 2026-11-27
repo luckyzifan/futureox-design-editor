@@ -113,10 +113,22 @@ export function attachFigmaMcp(bridge, start) {
 
 export async function startDesktopFigmaMcp(config, resourcesPath) {
   const { startLoopbackFigmaMcp } = await import(pathToFileURL(desktopMcpPaths(resourcesPath).http).href)
-  return startLoopbackFigmaMcp({
+  const figmaCompatible = process.env.FUTUREOX_FIGMA_COMPATIBLE === '1'
+  const options = {
     endpoint: config.endpoint,
     sessionId: config.sessionId,
     token: config.token,
     connectTimeoutMs: 2000,
-  })
+    figmaCompatible,
+    extensions: process.env.FUTUREOX_FIGMA_EXTENSIONS === '1',
+  }
+  if (!figmaCompatible) return startLoopbackFigmaMcp(options)
+  try {
+    return await startLoopbackFigmaMcp({ ...options, port: 3845 })
+  } catch (error) {
+    // The published Figma config targets 3845. Another local server may own it;
+    // keep the facade usable on an ephemeral loopback port instead of failing.
+    if (error?.code !== 'EADDRINUSE') throw error
+    return startLoopbackFigmaMcp(options)
+  }
 }

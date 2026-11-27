@@ -266,11 +266,12 @@ export async function verifyPackagedMcpTransport({ resources, executable, hostSo
     const figmaConfig = desktopMcpClientConfig(grant, { format: 'figma-stdio', resourcesPath: resourceLink, executable: executableLink }).mcpServers.futureox_design_figma
     assert.deepEqual(figmaConfig.args, [endpoints.figmaCli])
     assert.deepEqual(figmaConfig.env, config.env)
+    figmaConfig.env.FUTUREOX_FIGMA_EXTENSIONS = '1'
     const figma = stdioClient(figmaConfig.command, figmaConfig.args, figmaConfig.env, { cwd })
     clients.push(figma)
     await figma.init(); mark('handshake', 'figma-cli.mjs')
     const figmaTools = (await figma.rpc('tools/list')).result.tools.map(tool => tool.name)
-    for (const name of ['get_selection', 'use_figma', 'get_screenshot', 'download_assets']) assert.ok(figmaTools.includes(name), name)
+    for (const name of ['get_selection', 'use_figma', 'get_screenshot', 'download_assets', 'get_code_connect_map', 'get_motion_context']) assert.ok(figmaTools.includes(name), name)
     assert.equal(figmaTools.includes('open_document'), false)
     const selection = await call(figma, 'get_selection', {})
     assert.equal(selection.structuredContent.result.nodes[0].name, 'External MCP card')

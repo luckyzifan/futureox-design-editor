@@ -28,7 +28,7 @@ function authorized(header, token) {
 }
 
 class HttpMcpSession {
-  constructor(backend, clientId) {
+  constructor(backend, clientId, activeSessionIds = () => [clientId]) {
     this.input = new PassThrough()
     this.output = new PassThrough()
     this.decoder = new StringDecoder('utf8')
@@ -38,8 +38,10 @@ class HttpMcpSession {
     this.closed = false
     this.server = new DesignMcpServer({
       // The desktop grant owns the shared socket. Ending one client session
-      // only retires that client's request IDs, work and resources.
-      backend: { ...backend, callTool: (name, args, context) => backend.callTool(name, args, { ...context, localSessionId: clientId }) },
+      // only retires that client's request IDs, work and resources. The session
+      // list lets the facade reject another active local transport id while
+      // ignoring a UUID-shaped Figma cloud session id.
+      backend: { ...backend, callTool: (name, args, context) => backend.callTool(name, args, { ...context, localSessionId: clientId, localSessionIds: activeSessionIds }) },
       input: this.input, output: this.output, diagnostics: { write() {} },
       instructions: FIGMA_MCP_INSTRUCTIONS, artifactCount: FIGMA_ASSET_LIMIT,
     }).start()
@@ -108,7 +110,7 @@ function respond(response, status, body, headers = {}) {
   response.end(body === undefined ? undefined : JSON.stringify(body))
 }
 
-async function facadeFromSocket({ endpoint, sessionId, token, connectTimeoutMs }) {
+async function facadeFromSocket({ endpoint, sessionId, token, connectTimeoutMs, extensions }) {
   const socket = new SocketDesignBackend({ endpoint, sessionId, token, connectTimeoutMs })
   const operation = await socket.connect()
   const facade = new FigmaFacade({
@@ -117,17 +119,23 @@ async function facadeFromSocket({ endpoint, sessionId, token, connectTimeoutMs }
     scope: operation.scope,
     target: operation.target,
     terminalSignal: socket.terminalSignal,
+    extensions,
   })
   return { facade, close: () => socket.close() }
 }
 
 /** Loopback Streamable HTTP using JSON responses and per-client MCP sessions.
- * Bind address must be a loopback host. The bearer token is the desktop bridge token. */
-export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backend, host = '127.0.0.1', port = 0, connectTimeoutMs = 10000 } = {}) {
+ * Bind address must be a loopback host. By default the bearer token is the
+ * desktop bridge token. `figmaCompatible` opts into the published Figma client
+ * shape: a loopback-only endpoint without a bearer token on port 3845. The
+ * endpoint still checks Origin and never binds a public interface. */
+export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backend, host = '127.0.0.1', port = 0, connectTimeoutMs = 10000, figmaCompatible = false, extensions = false } = {}) {
   if (host !== '127.0.0.1' && host !== '::1') throw new TypeError('Figma MCP HTTP listens on loopback only')
-  if (typeof token !== 'string' || token.length < 16) throw new TypeError('An ephemeral bridge token is required')
+  if (token !== undefined && (typeof token !== 'string' || token.length < 16)) throw new TypeError('The bridge token must be a string of at least 16 characters')
+  if (token === undefined && !figmaCompatible) throw new TypeError('An ephemeral bridge token is required unless figmaCompatible is enabled')
+  if (token === undefined && !backend) throw new TypeError('A bridge token is required to connect to the desktop socket')
   const urlHost = host === '::1' ? '[::1]' : host
-  const owned = backend ? null : await facadeFromSocket({ endpoint, sessionId, token, connectTimeoutMs })
+  const owned = backend ? null : await facadeFromSocket({ endpoint, sessionId, token, connectTimeoutMs, extensions })
   const source = backend ?? owned.facade
   const sharedBackend = {
     listTools: (...args) => source.listTools(...args),
@@ -163,7 +171,7 @@ export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backen
       response.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Origin is not allowed' } }))
       return
     }
-    if (!authorized(request.headers.authorization, token)) {
+    if (token !== undefined && (!figmaCompatible || request.headers.authorization !== undefined) && !authorized(request.headers.authorization, token)) {
       response.writeHead(401, { 'content-type': 'application/json', 'www-authenticate': 'Bearer' })
       response.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Unauthorized' } }))
       return
@@ -253,7 +261,7 @@ export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backen
         return
       }
       const clientId = randomUUID()
-      const session = new HttpMcpSession(sharedBackend, clientId)
+      const session = new HttpMcpSession(sharedBackend, clientId, () => [...sessions.keys()])
       sessions.set(clientId, session)
       void session.server.done.then(() => retire(clientId, session))
       const result = await session.dispatch(message)
@@ -282,6 +290,7 @@ export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backen
   return {
     url: `http://${urlHost}:${boundPort}/mcp`,
     port: boundPort,
+    anonymous: figmaCompatible || token === undefined,
     close: async () => {
       closing = true
       sharedBackend.terminalSignal?.removeEventListener('abort', revoke)
@@ -296,13 +305,31 @@ export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backen
 }
 
 async function main(argv = process.argv.slice(2)) {
-  const options = parseOptions(argv)
+  const options = parseOptions(argv, process.env, { requireToken: false })
   if (options.help) {
-    process.stderr.write('Futureox Design Figma-shaped MCP (loopback HTTP)\nUsage: node src/figma-http.mjs --socket ABSOLUTE_SOCKET_PATH --session SESSION_ID\nToken: FUTUREOX_DESIGN_BRIDGE_TOKEN. The URL is printed to stderr. Clients send Authorization: Bearer <token>.\nThe desktop app starts this listener when local automation is enabled. Use this command when that listener is unavailable.\n')
+    process.stderr.write('Futureox Design Figma-shaped MCP (loopback HTTP)\nUsage: node src/figma-http.mjs --socket ABSOLUTE_SOCKET_PATH --session SESSION_ID [--port 3845] [--figma-compatible] [--extensions]\nToken: FUTUREOX_DESIGN_BRIDGE_TOKEN. The URL is printed to stderr. By default clients send Authorization: Bearer <token>.\n--figma-compatible accepts the published Figma client shape (no Authorization header, port 3845 by default). It still binds loopback only and checks Origin. The bridge token is still used to reach the desktop socket.\n--extensions also advertises get_selection and open_document.\nThe desktop app starts this listener when local automation is enabled. Use this command when that listener is unavailable.\n')
     return
   }
-  const server = await startLoopbackFigmaMcp({ endpoint: options.endpoint, sessionId: options.sessionId, token: options.token })
-  process.stderr.write(`Futureox Figma MCP listening on ${server.url}\nSend Authorization: Bearer with FUTUREOX_DESIGN_BRIDGE_TOKEN. The token is not printed.\n`)
+  // --figma-compatible only removes the HTTP Authorization requirement. The
+  // launcher still authenticates to the desktop socket with the bridge token.
+  if (!options.token) throw new Error('Send the ephemeral bridge token through FUTUREOX_DESIGN_BRIDGE_TOKEN. --figma-compatible only removes the HTTP Authorization header; the token is still required to reach the desktop socket.')
+  const requestedPort = options.port ?? (options.figmaCompatible ? 3845 : 0)
+  const start = port => startLoopbackFigmaMcp({
+    endpoint: options.endpoint, sessionId: options.sessionId, token: options.token,
+    port, figmaCompatible: options.figmaCompatible, extensions: options.extensions,
+  })
+  let server
+  try { server = await start(requestedPort) }
+  catch (error) {
+    if (requestedPort === 3845 && error?.code === 'EADDRINUSE') {
+      process.stderr.write('Port 3845 is already in use; using an ephemeral loopback port. Update the Figma client URL to the printed URL.\n')
+      server = await start(0)
+    } else throw error
+  }
+  process.stderr.write(`Futureox Figma MCP listening on ${server.url}\n`)
+  process.stderr.write(server.anonymous
+    ? 'Figma-compatible mode: no Authorization header is required. Loopback and Origin checks still apply. The bridge token is not printed.\n'
+    : 'Send Authorization: Bearer with FUTUREOX_DESIGN_BRIDGE_TOKEN. The token is not printed.\n')
   await new Promise(resolve => {
     const stop = () => { void server.close().then(resolve) }
     process.once('SIGINT', stop)

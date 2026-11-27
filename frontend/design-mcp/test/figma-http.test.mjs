@@ -15,6 +15,7 @@ function facade() {
     execute,
     methods: ['selection.get', 'node.get'].map(name => ({ name, description: 'Read', inputSchema: { type: 'object' }, mutates: false })),
     scope: 'read',
+    extensions: true,
   })
 }
 
@@ -53,6 +54,33 @@ async function openClient(url, init = initialize) {
   assert.equal((await post(url, initializedNote, authorization, headers)).status, 202)
   return headers
 }
+
+test('figma-compatible mode accepts the published no-header loopback config and still rejects a wrong bearer', async t => {
+  const server = await startLoopbackFigmaMcp({ backend: facade(), token, figmaCompatible: true, port: 0 })
+  t.after(() => server.close())
+  assert.equal(server.anonymous, true)
+  const init = await post(server.url, initialize)
+  assert.equal(init.status, 200)
+  const sessionId = init.headers.get('mcp-session-id')
+  assert.ok(sessionId)
+  const headers = { 'mcp-session-id': sessionId, 'mcp-protocol-version': (await init.json()).result.protocolVersion }
+  assert.equal((await post(server.url, initializedNote, undefined, headers)).status, 202)
+  const list = await post(server.url, listRequest, undefined, headers)
+  assert.equal(list.status, 200)
+  assert.ok((await list.json()).result.tools.some(tool => tool.name === 'get_selection'))
+  const wrong = await post(server.url, listRequest, 'Bearer not-the-token', headers)
+  assert.equal(wrong.status, 401)
+  const get = await fetch(server.url, { headers: { ...headers, accept: 'text/event-stream' } })
+  assert.equal(get.status, 405)
+})
+
+test('figma-compatible mode can run without a token when a backend is injected', async t => {
+  const server = await startLoopbackFigmaMcp({ backend: facade(), figmaCompatible: true, port: 0 })
+  t.after(() => server.close())
+  const init = await post(server.url, initialize)
+  assert.equal(init.status, 200)
+  assert.match(init.url, /^http:\/\/127\.0\.0\.1:\d+\/mcp$/)
+})
 
 test('HTTP server refuses public bind and serves only authorized clients with the negotiated session', async t => {
   await assert.rejects(() => startLoopbackFigmaMcp({ backend: facade(), token, host: '0.0.0.0' }), /loopback/)

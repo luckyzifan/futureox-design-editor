@@ -55,6 +55,19 @@ test('CLI parser accepts explicit ephemeral configuration and refuses token argu
   assert.throws(() => parseOptions(['--token', token], {}), /environment/)
   assert.throws(() => parseOptions([], {}), /Enable the desktop/)
 })
+
+test('CLI parser accepts fixed port, Figma-compatible and extension options', () => {
+  const env = { FUTUREOX_DESIGN_SOCKET: '/tmp/private/bridge.sock', FUTUREOX_DESIGN_SESSION: 'sid', FUTUREOX_DESIGN_BRIDGE_TOKEN: token }
+  const options = parseOptions(['--port', '3845', '--figma-compatible', '--extensions', '--socket', '/tmp/private/bridge.sock', '--session', 'sid'], env)
+  assert.equal(options.port, 3845)
+  assert.equal(options.figmaCompatible, true)
+  assert.equal(options.extensions, true)
+  assert.throws(() => parseOptions(['--port', '70000'], env), /1 to 65535/)
+  const noToken = parseOptions(['--figma-compatible'], { FUTUREOX_DESIGN_SOCKET: '/tmp/private/bridge.sock', FUTUREOX_DESIGN_SESSION: 'sid' }, { requireToken: false })
+  assert.equal(noToken.figmaCompatible, true)
+  assert.equal(noToken.token, undefined)
+  assert.throws(() => parseOptions(['--extensions'], { FUTUREOX_DESIGN_SOCKET: '/tmp/private/bridge.sock', FUTUREOX_DESIGN_SESSION: 'sid' }), /Enable the desktop/)
+})
 test('help and configuration errors write only stderr', async () => {
   for (const args of [['--help'], []]) {
     const child = spawn(process.execPath, [cli, ...args], { env: { PATH: process.env.PATH }, stdio: ['pipe', 'pipe', 'pipe'] })
@@ -64,6 +77,20 @@ test('help and configuration errors write only stderr', async () => {
     assert(stderr.length > 0)
     assert.equal(code, args.length ? 0 : 1)
   }
+})
+test('figma-compatible launcher still requires the bridge token for the desktop socket', async () => {
+  const http = fileURLToPath(new URL('../src/figma-http.mjs', import.meta.url))
+  const child = spawn(process.execPath, [http, '--figma-compatible'], {
+    env: { PATH: process.env.PATH, FUTUREOX_DESIGN_SOCKET: '/tmp/private/bridge.sock', FUTUREOX_DESIGN_SESSION: 'sid' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let stdout = '', stderr = ''
+  child.stdout.on('data', bytes => { stdout += bytes })
+  child.stderr.on('data', bytes => { stderr += bytes })
+  const [code] = await once(child, 'exit')
+  assert.equal(code, 1)
+  assert.equal(stdout, '')
+  assert.match(stderr, /FUTUREOX_DESIGN_BRIDGE_TOKEN/)
 })
 test('spawned stdio lifecycle works and a missing live backend fails honestly', async t => {
   const child = spawn(process.execPath, [cli], { env: { PATH: process.env.PATH, FUTUREOX_DESIGN_SOCKET: '/nonexistent-futureox-private/bridge.sock', FUTUREOX_DESIGN_SESSION: 'session', FUTUREOX_DESIGN_BRIDGE_TOKEN: token }, stdio: ['pipe', 'pipe', 'pipe'] })
