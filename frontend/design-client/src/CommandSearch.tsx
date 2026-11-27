@@ -50,9 +50,9 @@ function CommandSearchDialog({ editor }: { editor: Editor }) {
   useEffect(() => {
     if (filterOpen) filterMenu.current?.querySelector<HTMLButtonElement>('button')?.focus()
   }, [filterOpen])
-  const closeFilter = (focusInput = true) => {
+  const closeFilter = () => {
     setFilterOpen(false)
-    if (focusInput) input.current?.focus()
+    input.current?.focus()
   }
   const chooseGroup = (next: string | null) => {
     setGroup(next); setActive(0); setQuery(''); closeFilter()
@@ -77,7 +77,10 @@ function CommandSearchDialog({ editor }: { editor: Editor }) {
         const primary = shortcutPlatform() === 'mac' ? event.metaKey : event.ctrlKey
         if (primary && !event.shiftKey && event.key.toLowerCase() === 'f') {
           event.preventDefault()
-          if (!event.repeat) setFilterOpen(open => !open)
+          if (!event.repeat) {
+            if (filterOpen) closeFilter()
+            else setFilterOpen(true)
+          }
           return
         }
         // Sketch Command Bar: ⌘↑ enters the selected group or goes back to all
@@ -124,7 +127,10 @@ function CommandSearchDialog({ editor }: { editor: Editor }) {
           if (filtered.length) setActive(event.key === 'Home' ? 0 : filtered.length - 1)
           return
         }
-        if (event.key === 'Enter') { event.preventDefault(); if (!event.repeat) void activate(selected) }
+        if (event.key === 'Enter' && event.target === input.current) {
+          event.preventDefault()
+          if (!event.repeat) void activate(selected)
+        }
       }}>
       <header>
         <h2 id={`${listId}-title`}>{text.title}</h2>

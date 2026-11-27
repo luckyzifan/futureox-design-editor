@@ -310,3 +310,31 @@ test('⌘F filter menu, ⌘↑ parent group and ⌥⌘↑ all commands stay insi
   await act(async () => { press(input, 'Escape') })
   expect(document.querySelector('[role="dialog"]')).toBeNull()
 })
+
+test('Enter on a focused filter group leaves the current document action idle', async () => {
+  const shape = node('rectangle', 10, 20, 30, 40)
+  const editor = editorWith([shape])
+  editor.select([shape.id])
+  const input = await openSearch()
+  await setQuery(input, '删除')
+  expect(input.getAttribute('aria-activedescendant')).toBe(option('delete').id)
+  await act(async () => { press(input, 'f', { metaKey: true }) })
+  const group = document.activeElement as HTMLButtonElement
+  expect(group.getAttribute('role')).toBe('menuitemradio')
+  let enter!: KeyboardEvent
+  await act(async () => { enter = press(group, 'Enter') })
+  expect(enter.defaultPrevented).toBe(false)
+  expect(commandSearchSnapshot()).toBeGreaterThan(0)
+  expect(editor.state.doc.nodes[shape.id]).toBeDefined()
+  expect(editor.canUndo).toBe(false)
+})
+
+test('closing the command filter with ⌘F restores input focus', async () => {
+  editorWith([])
+  const input = await openSearch()
+  await act(async () => { press(input, 'f', { metaKey: true }) })
+  expect(document.activeElement?.getAttribute('role')).toBe('menuitemradio')
+  await act(async () => { press(document.activeElement!, 'f', { metaKey: true }) })
+  expect(document.querySelector('[role="menu"]')).toBeNull()
+  expect(document.activeElement).toBe(input)
+})
