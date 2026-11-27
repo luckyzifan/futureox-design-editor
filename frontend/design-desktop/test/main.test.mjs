@@ -1622,9 +1622,10 @@ test('Sketch menu bar adds Insert, Layer, Arrange, Text, Path and Help with exec
     leaves('Path').find(item => item.label === 'Close Path').click()
     leaves('Path').find(item => item.label === 'Join').click()
     leaves('Path').find(item => item.label === 'Reverse Order').click()
+    leaves('Path').find(item => item.label === 'Rotate Copies…').click()
     leaves('Help').find(item => item.label === 'Run Command…').click()
     assert.deepEqual(state.sent.map(([, command]) => command), [
-      'select-containing-symbol', 'edit-selection', 'set-tool-text', 'close-path', 'join-paths', 'reverse-order', 'command-search',
+      'select-containing-symbol', 'edit-selection', 'set-tool-text', 'close-path', 'join-paths', 'reverse-order', 'rotate-copies', 'command-search',
     ])
     assert.equal(leaves('Arrange').find(item => item.label === 'Align Left').accelerator, 'Control+Command+Left')
     await state.invoke('set-interface-locale', 'zh-CN')

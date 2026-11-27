@@ -226,7 +226,7 @@ test('Sketch native menu commands reach the renderer as admitted IDs only', () =
     'flip-horizontal', 'flip-vertical', 'create-component', 'detach-instance',
     'mask-selection', 'flatten', 'select-containing-symbol', 'edit-selection', 'rename',
     'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
-    'close-path', 'join-paths', 'reverse-order', 'outline-stroke', 'convert-vector', 'boolean-add',
+    'close-path', 'join-paths', 'reverse-order', 'rotate-copies', 'outline-stroke', 'convert-vector', 'boolean-add',
     'boolean-union', 'boolean-subtract', 'boolean-intersect', 'boolean-exclude', 'command-search',
   ]
   for (const command of [...commands, 'set-tool-unregistered', ['close-path'], { command: 'edit-selection' }]) {

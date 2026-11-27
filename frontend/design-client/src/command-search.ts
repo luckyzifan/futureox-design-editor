@@ -16,6 +16,7 @@ import { container } from './model'
 import { componentSourceId, containingSymbolId } from './component-navigation'
 import { commandRecentRank, recordCommandSearchUse } from './command-recent'
 import { canCloseSelectionPath, canJoinSelectionPaths, canReverseSelectionPath } from './sketch-path-commands'
+import { canRotateCopies } from './sketch-rotate-copies'
 import { editableFrameCrop } from './selection-properties'
 import { commitPendingEdits } from './pending-edits'
 import { componentSources } from './components'
@@ -94,6 +95,7 @@ const catalog: readonly Spec[] = [
   { command: 'close-path', layout: 'sketch', zh: '闭合路径', en: 'Close Path', group: 'path' },
   { command: 'join-paths', layout: 'sketch', zh: '连接路径', en: 'Join', group: 'path', aliases: ['join paths'] },
   { command: 'reverse-order', layout: 'sketch', zh: '倒序', en: 'Reverse Order', group: 'path', aliases: ['reverse path', '反转路径'] },
+  { command: 'rotate-copies', layout: 'sketch', zh: '旋转副本', en: 'Rotate Copies', group: 'path', aliases: ['rotate copies', '旋转复制'] },
   { command: 'select-containing-symbol', layout: 'sketch', zh: '选择包含的控件', en: 'Select Containing Symbol', group: 'selection' },
   { command: 'fit-pixel-bounds', layout: 'sketch', zh: '使边界贴合像素', en: 'Fit to pixel bounds', group: 'transform' },
   { command: 'round-to-pixel', layout: 'sketch', zh: '舍入到像素', en: 'Round to pixel', group: 'transform' },
@@ -266,6 +268,8 @@ function explain(editor: Editor, action: CommandSearchAction, context: ShortcutC
       'Select two adjacent open paths with a shared endpoint and matching strokes')
   if (command === 'reverse-order') return canReverseSelectionPath(editor) ? undefined :
     phrase(locale, '请选择一条矢量路径', 'Select a vector path')
+  if (command === 'rotate-copies') return canRotateCopies(editor) ? undefined :
+    phrase(locale, '请选择可旋转的未锁定图层', 'Select mutable layers to rotate')
   if (command === 'select-containing-symbol') {
     const target = nodes.length === 1 ? containingSymbolId(doc, nodes[0].id, editor.parentMap()) : undefined
     return target ? undefined : phrase(locale, '当前图层不在控件内', 'The layer is not inside a component')
