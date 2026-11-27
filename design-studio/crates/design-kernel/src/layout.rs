@@ -990,11 +990,18 @@ fn constrain(doc: &mut Document, parent: &str) {
     let p = &doc.nodes[parent];
     let (w, h) = (p.width, p.height);
     let graphic = p.graphic;
+    // A Smart Layout group owns its direct children's main-axis geometry.
+    // Legacy resize masks on those children must not fight the reflow when a
+    // hidden sibling shrinks the group.
+    let smart_layout = crate::sketch_smart_layout::has_model(doc, p);
     let flow = p.layout.as_ref().is_some_and(|l| l.mode != Flow::None);
     let relative_in_frame = p.kind == "frame" && !flow;
     let use_master_source = crate::interop::sketch_responsive_instance(doc, p);
     let children = p.children.clone();
     for id in children {
+        if smart_layout {
+            continue;
+        }
         if graphic {
             let mut c = doc.nodes[&id].constraints.clone().unwrap_or_default();
             let sx = w / c.reference_width.unwrap_or(w);
@@ -1067,7 +1074,8 @@ pub(crate) fn resolve_roots(doc:&mut Document,fonts:&Fonts,roots:Option<&std::co
     if !doc
         .nodes
         .values()
-        .any(|n| n.graphic || n.layout.is_some() || n.sizing.is_some() || n.constraints.is_some())
+        .any(|n| n.graphic || n.layout.is_some() || n.sizing.is_some() || n.constraints.is_some()
+            || crate::sketch_smart_layout::has_model(doc, n))
     {
         return if roots.is_none(){crate::connectors::resolve(doc)}else{Ok(())};
     }
@@ -1145,6 +1153,10 @@ pub(crate) fn resolve_roots(doc:&mut Document,fonts:&Fonts,roots:Option<&std::co
                     Flow::Horizontal | Flow::Vertical => flex(doc, id, &l)?,
                     Flow::Grid => grid(doc, id, &l)?,
                 }
+            } else {
+                // Archived Sketch Smart Layout groups keep their own one-axis
+                // reflow; an explicit stack above always wins.
+                crate::sketch_smart_layout::reflow(doc, id);
             }
         }
         let after = if roots.is_some(){scoped_state(doc)}else{state(doc)};

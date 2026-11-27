@@ -32,6 +32,10 @@ const alignments = [
   ['end', '终点'],
   ['stretch', '拉伸'],
 ] as const
+/** Sketch stacks keep overflowing content at the leading edge, so the
+ * Figma-only allow-overflow choices collapse to their safe counterparts. */
+const safeAlignment = (value: string) =>
+  value === 'unsafe-center' ? 'center' : value === 'unsafe-end' ? 'end' : value
 
 function isUnstackedFrame(node: DesignNode | undefined): node is DesignNode {
   return node?.kind === 'frame' && !node.graphic && (node.layout?.mode ?? 'none') === 'none'
@@ -88,6 +92,9 @@ export function LayoutPanel({
   const frameRelativeItem = uiMode === 'sketch' && isUnstackedFrame(parent)
   const relativeItem = frameRelativeItem || (!sizing.absolute &&
     (parent?.layout?.mode === 'horizontal' || parent?.layout?.mode === 'vertical'))
+  const sketchMode = uiMode === 'sketch'
+  const justifyValue = (sketchMode ? safeAlignment(layout.justify) : layout.justify) as AutoLayout['justify']
+  const alignValue = (sketchMode ? safeAlignment(layout.align) : layout.align) as AutoLayout['align']
   const gapMin = layoutGapMinimum(layout.mode, 'gap', uiMode)
   const lineGapMin = layoutGapMinimum(layout.mode, 'lineGap', uiMode)
   const updateLayout = (patch: Partial<AutoLayout>) =>
@@ -95,6 +102,10 @@ export function LayoutPanel({
       ids,
       (n) => {
         n.layout = { ...defaultLayout(), ...n.layout, ...patch }
+        if (sketchMode) {
+          n.layout.justify = safeAlignment(n.layout.justify) as AutoLayout['justify']
+          n.layout.align = safeAlignment(n.layout.align) as AutoLayout['align']
+        }
       },
       '修改自动布局',
     )
@@ -359,14 +370,14 @@ export function LayoutPanel({
           {layout.mode !== 'grid' && (
             <label className="labeled-select">{tr("主轴分布")}<select
                 aria-label={tr("主轴分布")}
-                value={layout.justify}
+                value={justifyValue}
                 onChange={(e) => updateLayout({ justify: e.target.value as AutoLayout['justify'] })}
               >
                 <option value="start">{tr("起点")}</option>
                 <option value="center">{tr("居中")}</option>
                 <option value="end">{tr("终点")}</option>
-                <option value="unsafe-center">{tr("居中（允许溢出）")}</option>
-                <option value="unsafe-end">{tr("终点（允许溢出）")}</option>
+                {!sketchMode && <option value="unsafe-center">{tr("居中（允许溢出）")}</option>}
+                {!sketchMode && <option value="unsafe-end">{tr("终点（允许溢出）")}</option>}
                 <option value="space-between">{tr("两端对齐")}</option>
                 <option value="space-around">{tr("环绕等距")}</option>
                 <option value="space-evenly">{tr("全部等距")}</option>
@@ -375,11 +386,11 @@ export function LayoutPanel({
           )}
           <label className="labeled-select">{tr("交叉轴对齐")}<select
               aria-label={tr("交叉轴对齐")}
-              value={layout.align}
+              value={alignValue}
               onChange={(e) => updateLayout({ align: e.target.value as AutoLayout['align'] })}
             >
-              <option value="unsafe-center">{tr("居中（允许溢出）")}</option>
-              <option value="unsafe-end">{tr("终点（允许溢出）")}</option>
+              {!sketchMode && <option value="unsafe-center">{tr("居中（允许溢出）")}</option>}
+              {!sketchMode && <option value="unsafe-end">{tr("终点（允许溢出）")}</option>}
               {alignments.map(([value, label]) => (
                 <option key={value} value={value}>
                   {tr(label)}

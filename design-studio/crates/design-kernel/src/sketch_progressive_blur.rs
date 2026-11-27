@@ -1,6 +1,7 @@
 //! Sketch-style variable-radius blur. The strength field is evaluated in
-//! layer space. Three fractional boxes per axis approximate a Gaussian with
-//! the requested local variance. The existing two-end Figma filter is separate.
+//! layer space. Three or four fractional boxes per axis approximate a Gaussian
+//! with the requested local variance. The existing two-end Figma filter is
+//! separate.
 
 use crate::{
     blend::{Pixel, Surface},
@@ -198,11 +199,11 @@ pub fn uniforms(params: &GradientBlurParameters, matrix: Transform, bounds: Rect
     Ok(values)
 }
 
-fn box_radius(sigma: f32) -> (usize, f32) {
-    let variance = sigma * sigma / 3.;
+fn box_radius(sigma: f32, boxes: usize) -> (usize, f32) {
+    let variance = sigma * sigma / boxes as f32;
     // The integer box [-r,r] has variance r(r+1)/3. Include the two
     // neighbouring taps fractionally, solving for this pass's variance.
-    let radius = (((4. * sigma * sigma + 1.).sqrt() - 1.) * 0.5).floor();
+    let radius = (((12. * variance + 1.).sqrt() - 1.) * 0.5).floor();
     let weight = 2. * radius + 1.;
     let edge = radius + 1.;
     let fraction = weight * (variance - radius * edge / 3.) / (2. * (edge * edge - variance));
@@ -216,6 +217,20 @@ const SHARP_BACKDROP_SIGMA: f32 = 0.7 * std::f32::consts::SQRT_2 * 0.75;
 const FULL_BACKDROP_SIGMA: f32 = 1.5 * std::f32::consts::SQRT_2 * 0.75;
 
 pub(crate) fn apply(
+    source: Surface,
+    params: &GradientBlurParameters,
+    matrix: Transform,
+    origin: Point,
+    sigma: f64,
+    clamp_edges: bool,
+    byte: bool,
+    sharp_layer: bool,
+) -> Result<Surface, String> {
+    apply_with_boxes(source, params, matrix, origin, sigma, clamp_edges, byte, sharp_layer, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_with_boxes(
     mut source: Surface,
     params: &GradientBlurParameters,
     matrix: Transform,
@@ -224,6 +239,7 @@ pub(crate) fn apply(
     clamp_edges: bool,
     byte: bool,
     sharp_layer: bool,
+    boxes_override: Option<usize>,
 ) -> Result<Surface, String> {
     if !sigma.is_finite() || !(0. ..=512.).contains(&sigma) {
         return Err("Sketch progressive blur sigma must be in [0,512]".into());
@@ -237,6 +253,20 @@ pub(crate) fn apply(
     );
     let field = Field::new(params, matrix, guard)?;
     let sigma = sigma as f32;
+    // Radial and multi-stop ramps change the radius inside the kernel's
+    // support, so the three-box approximation leaves a visible kernel-shape
+    // residual against the native optical blur. A fourth box cuts that
+    // residual once the smallest local radius reaches four device pixels.
+    // Below that the box stack has too few taps and keeps three boxes;
+    // two-end linear ramps keep the established three-box cost.
+    let smallest = field.stops.iter().map(|stop| stop[1]).fold(1f32, f32::min);
+    let boxes = boxes_override
+        .unwrap_or(if (field.radial || field.stops.len() > 2) && sigma * smallest >= 4. {
+            4
+        } else {
+            3
+        })
+        .max(1);
     // Rotated and sheared captures require a separate sharp sampling phase.
     let axis_aligned_backdrop = clamp_edges && matrix.0[1] == 0. && matrix.0[2] == 0.;
     let (sharp_start, sharp_end) = if axis_aligned_backdrop {
@@ -256,9 +286,9 @@ pub(crate) fn apply(
     let _line = source.reserve_scratch::<[f32; 4]>(max_line)?;
     let mut prefix = vec![[0.; 4]; max_line + 1];
     let mut original = vec![[0.; 4]; max_line];
-    for pass in 0..6 {
+    for pass in 0..2 * boxes {
         let horizontal = pass % 2 == 0;
-        let sharp = if pass == 5 { sharp.as_ref() } else { None };
+        let sharp = if pass + 1 == 2 * boxes { sharp.as_ref() } else { None };
         let (lines, length) = if horizontal { (h, w) } else { (w, h) };
         for line in 0..lines {
             crate::render_cancellation::checkpoint()?;
@@ -283,7 +313,7 @@ pub(crate) fn apply(
                 let x = (source.rect.x as f32 + x as f32 + 0.5) + origin.x as f32;
                 let y = (source.rect.y as f32 + y as f32 + 0.5) + origin.y as f32;
                 let local_sigma = sigma * field.strength(x, y);
-                let (r, edge) = box_radius(local_sigma);
+                let (r, edge) = box_radius(local_sigma, boxes);
                 let left = i as i64 - r as i64;
                 let right = (i + r) as i64;
                 let a = prefix[left.max(0) as usize];
@@ -310,4 +340,117 @@ pub(crate) fn apply(
         if byte { source.quantize_rgba8(); }
     }
     Ok(source)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn stripes(width: usize, height: usize) -> Surface {
+        let mut surface = Surface::new(Rect::new(0, 0, width as u32, height as u32)).unwrap();
+        for y in 0..height {
+            for x in 0..width {
+                surface.pixels[y * width + x] = Pixel(if x / 6 % 2 == 0 {
+                    [0.1, 0.25, 0.8, 1.]
+                } else {
+                    [0.9, 0.85, 0.1, 1.]
+                });
+            }
+        }
+        surface
+    }
+
+    /// Separable variable Gaussian evaluated directly. It is an independent
+    /// 2D kernel at every pixel, not the three/four box stack under test.
+    fn gaussian_oracle(
+        source: &Surface, params: &GradientBlurParameters, sigma: f64,
+    ) -> Vec<[f32; 4]> {
+        let [w, h] = [source.rect.w as usize, source.rect.h as usize];
+        let field = Field::new(params, Transform::default(), source.rect).unwrap();
+        let mut out = vec![[0.; 4]; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                let local = sigma as f32 * field.strength(x as f32 + 0.5, y as f32 + 0.5);
+                let reach = (3. * local).ceil() as i32;
+                let mut sum = [0f64; 4];
+                let mut mass = 0f64;
+                for dy in -reach..=reach {
+                    for dx in -reach..=reach {
+                        let weight = (-0.5 * (f64::from(dx * dx + dy * dy)) / f64::from(local).powi(2)).exp();
+                        if weight < 1e-12 {
+                            continue;
+                        }
+                        let sx = (x as i32 + dx).clamp(0, w as i32 - 1) as usize;
+                        let sy = (y as i32 + dy).clamp(0, h as i32 - 1) as usize;
+                        let pixel = source.pixels[sy * w + sx].0;
+                        for c in 0..4 {
+                            sum[c] += f64::from(pixel[c]) * weight;
+                        }
+                        mass += weight;
+                    }
+                }
+                out[y * w + x] = sum.map(|value| (value / mass) as f32);
+            }
+        }
+        out
+    }
+
+    fn error(
+        actual: &Surface, expected: &[[f32; 4]], radius: i32,
+    ) -> (f64, i32, f64) {
+        let w = actual.rect.w as usize;
+        let [x0, y0] = [radius as usize, radius as usize];
+        let [x1, y1] = [w - radius as usize, actual.rect.h as usize - radius as usize];
+        let (mut sum, mut max, mut count) = (0f64, 0i32, 0usize);
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let i = y * w + x;
+                for c in 0..4 {
+                    let delta = ((actual.pixels[i].0[c] - expected[i][c]).abs() * 255.).round() as i32;
+                    sum += f64::from(delta);
+                    max = max.max(delta);
+                    count += 1;
+                }
+            }
+        }
+        (sum / count as f64, max, sum / count as f64)
+    }
+
+    #[test]
+    fn radial_and_multi_stop_kernels_gain_from_a_fourth_box() {
+        let source = stripes(192, 144);
+        let params: GradientBlurParameters = serde_json::from_value(json!({
+            "start":[96.,72.],"end":[192.,72.],"startCount":1,"endCount":1,"smooth":true,
+            "sketch":{"shape":"radial","ellipse":1.5,"stops":[
+                {"offset":0.,"strength":0.6},{"offset":0.4,"strength":1.},{"offset":1.,"strength":0.7}
+            ]}
+        })).unwrap();
+        let sigma = 12.;
+        let expected = gaussian_oracle(&source, &params, sigma);
+        let mut results = Vec::new();
+        for boxes in [3, 4] {
+            let filtered = apply_with_boxes(
+                source.try_clone().unwrap(), &params, Transform::default(),
+                Point::default(), sigma, true, false, false, Some(boxes),
+            ).unwrap();
+            let (mean, max, _) = error(&filtered, &expected, (3. * sigma).ceil() as i32 + 1);
+            println!("KERNEL\tradial\tboxes={boxes}\tmean={mean:.3}\tmax={max}");
+            results.push((boxes, mean, max));
+        }
+        let three = results.iter().find(|r| r.0 == 3).unwrap();
+        let four = results.iter().find(|r| r.0 == 4).unwrap();
+        assert!(four.1 < three.1, "four-box mean {four:?} must beat three-box {three:?}");
+        assert!(four.2 <= three.2, "four-box max {four:?} must not exceed three-box {three:?}");
+        // The shipped selection takes the fourth box at this radius.
+        let production = apply(
+            source, &params, Transform::default(), Point::default(),
+            sigma, true, false, false,
+        ).unwrap();
+        let override_four = apply_with_boxes(
+            stripes(192, 144), &params, Transform::default(),
+            Point::default(), sigma, true, false, false, Some(4),
+        ).unwrap();
+        assert_eq!(production.pixels, override_four.pixels, "production must select four boxes");
+    }
 }
