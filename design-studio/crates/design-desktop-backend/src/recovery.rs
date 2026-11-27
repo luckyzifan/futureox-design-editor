@@ -10,6 +10,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+const RECOVERY_DIRECTORY_ENTRIES: usize = 256;
+
 fn recovery_byte_limit() -> usize {
     document_byte_limit().saturating_add(64 * 1024)
 }
@@ -132,29 +134,38 @@ impl RecoveryStore {
         Ok(record)
     }
 
+    fn read_temporary_record(&self, path: &Path) -> Result<Option<RecoveryRecord>> {
+        if !path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with(".fd-write-") && name.ends_with(".tmp"))
+        {
+            return Ok(None);
+        }
+        let bytes = match storage::read_bounded(path, recovery_byte_limit()) {
+            Ok(bytes) => bytes,
+            Err(error)
+                if matches!(
+                    error.code,
+                    "INVALID_PATH" | "NOT_FOUND" | "DOCUMENT_TOO_LARGE"
+                ) =>
+            {
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+        Ok(self.validated_record(&bytes).ok())
+    }
+
     /// Publish only a fully parsed temporary snapshot. Partial temps stay on disk
     /// and never replace a newer published snapshot or the import they name.
     fn publish_synced_temps(&self) -> Result<()> {
         let directory = fs::read_dir(&self.root)
             .map_err(|e| BackendError::io("Cannot list recovery directory", e))?;
-        for item in directory.take(256) {
+        for item in directory.take(RECOVERY_DIRECTORY_ENTRIES) {
             let item = item.map_err(|e| BackendError::io("Cannot inspect recovery entry", e))?;
-            let name = item.file_name();
-            let Some(name) = name.to_str() else { continue };
-            if !(name.starts_with(".fd-write-") && name.ends_with(".tmp")) {
-                continue;
-            }
             let path = item.path();
-            let Ok(metadata) = fs::symlink_metadata(&path) else {
-                continue;
-            };
-            if !metadata.is_file() || metadata.file_type().is_symlink() {
-                continue;
-            }
-            let Ok(bytes) = storage::read_bounded(&path, recovery_byte_limit()) else {
-                continue;
-            };
-            let Ok(record) = self.validated_record(&bytes) else {
+            let Ok(Some(record)) = self.read_temporary_record(&path) else {
                 continue;
             };
             let dest = self.path(&record.entry.recovery_id)?;
@@ -202,20 +213,26 @@ impl RecoveryStore {
         Ok(self.root.join(format!("{id}.recovery.json")))
     }
 
+    fn directory_entries(&self) -> Result<Vec<fs::DirEntry>> {
+        let entries = fs::read_dir(&self.root)
+            .map_err(|e| BackendError::io("Cannot list recovery directory", e))?
+            .take(RECOVERY_DIRECTORY_ENTRIES + 1)
+            .collect::<std::io::Result<Vec<_>>>()
+            .map_err(|e| BackendError::io("Cannot inspect recovery entry", e))?;
+        // A private recovery directory contains at most 16 published snapshots
+        // and some interrupted writes. Keep reads and discard preflight bounded.
+        if entries.len() > RECOVERY_DIRECTORY_ENTRIES {
+            return Err(BackendError::new(
+                "RECOVERY_LIMIT",
+                "Recovery directory contains too many files; existing files were retained",
+            ));
+        }
+        Ok(entries)
+    }
+
     fn files(&self) -> Result<Vec<(String, PathBuf)>> {
         let mut files = Vec::new();
-        let directory = fs::read_dir(&self.root)
-            .map_err(|e| BackendError::io("Cannot list recovery directory", e))?;
-        // App-owned directory should contain at most 16 snapshots plus interrupted
-        // temp writes. Refuse unexpected unbounded content instead of walking it.
-        for (index, item) in directory.enumerate() {
-            if index >= 256 {
-                return Err(BackendError::new(
-                    "RECOVERY_LIMIT",
-                    "Recovery directory contains too many files; existing files were retained",
-                ));
-            }
-            let item = item.map_err(|e| BackendError::io("Cannot inspect recovery entry", e))?;
+        for item in self.directory_entries()? {
             let name = item.file_name();
             let Some(id) = name.to_str().and_then(|s| s.strip_suffix(".recovery.json")) else {
                 continue;
@@ -336,8 +353,32 @@ impl RecoveryStore {
     /// a snapshot never deletes it or writes to its original sourcePath.
     pub fn remove(&self, id: &str) -> Result<bool> {
         let path = self.path(id)?;
-        if storage::checked_metadata(&path)?.is_none() {
-            return Ok(false);
+        let published = storage::checked_metadata(&path)?.is_some();
+        let mut pending = Vec::new();
+        for item in self.directory_entries()? {
+            let candidate = item.path();
+            if self
+                .read_temporary_record(&candidate)?
+                .is_some_and(|record| record.entry.recovery_id == id)
+            {
+                pending.push(candidate);
+            }
+        }
+        // Clear the interrupted writes before removing the published snapshot.
+        // On failure the last published copy stays available. If the process
+        // stops mid-discard, no older temp can replace a successfully removed
+        // snapshot after the next startup.
+        for candidate in &pending {
+            fs::remove_file(candidate)
+                .map_err(|e| BackendError::io("Cannot remove interrupted recovery snapshot", e))?;
+        }
+        if !pending.is_empty() {
+            storage::sync_directory(&self.root).map_err(|e| {
+                BackendError::io("Cannot sync interrupted recovery snapshot removal", e)
+            })?;
+        }
+        if !published {
+            return Ok(!pending.is_empty());
         }
         fs::remove_file(path)
             .map_err(|e| BackendError::io("Cannot remove selected recovery snapshot", e))?;
