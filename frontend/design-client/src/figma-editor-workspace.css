@@ -345,3 +345,19 @@
   color: var(--workspace-selected-ink);
   background: var(--workspace-panel);
 }
+
+.canvas-context-menu[data-ui-mode="figma"] {
+  background: #233632;
+  color: #f6f5ec;
+  border-color: #47615a;
+  border-radius: 8px;
+}
+.canvas-context-menu[data-ui-mode="figma"] button:not(:disabled) { color: inherit; }
+.canvas-context-menu[data-ui-mode="figma"] button:hover:not(:disabled),
+.canvas-context-menu[data-ui-mode="figma"] button:focus-visible,
+.canvas-context-menu[data-ui-mode="figma"] button[aria-expanded="true"] {
+  background: #3d6157;
+  color: #fffdf3;
+}
+.canvas-context-menu[data-ui-mode="figma"] kbd { color: #bfcfc6; }
+.canvas-context-submenu { z-index: 901; }

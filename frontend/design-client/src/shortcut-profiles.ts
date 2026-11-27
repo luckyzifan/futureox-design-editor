@@ -5,7 +5,7 @@ import { sketchBooleanCommands, sketchBooleanCommandIds } from './sketch-boolean
 
 export type ShortcutProfile = 'figma-like' | 'sketch-like'
 export type ShortcutPlatform = 'mac' | 'windows' | 'linux'
-export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-quick-insert' | 'open-layer-find' | 'toggle-layout-guides' | 'toggle-pixel-grid' | 'toggle-pixel-snapping' | 'select-parent' | 'open-shortcut-reference' | 'keyboard-box-select' | 'decrease-font-size' | 'increase-font-size' | 'decrease-font-weight' | 'increase-font-weight' | 'decrease-letter-spacing' | 'increase-letter-spacing' | 'decrease-line-height' | 'increase-line-height' | 'toggle-text-underline' | 'text-bullet-list' | 'text-numbered-list'
+export type ShortcutAction = EditorCommand | 'opacity-digit' | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-quick-insert' | 'open-layer-find' | 'toggle-layout-guides' | 'toggle-pixel-grid' | 'toggle-pixel-snapping' | 'select-parent' | 'open-shortcut-reference' | 'keyboard-box-select' | 'decrease-font-size' | 'increase-font-size' | 'decrease-font-weight' | 'increase-font-weight' | 'decrease-letter-spacing' | 'increase-letter-spacing' | 'decrease-line-height' | 'increase-line-height' | 'toggle-text-underline' | 'text-bullet-list' | 'text-numbered-list'
 export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean; uiMode?: UiMode; keyboardLayout?: FigmaKeyboardLayout }
 export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean; preserveFrameContents?: true; physicalCode?: string }
 export type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'isComposing' | 'defaultPrevented'> & { keyCode?: number; getModifierState?: (key: string) => boolean }
@@ -41,6 +41,7 @@ const common: ShortcutBinding[] = [
   { command: 'zoom-100', combo: 'Shift+0' }, { command: 'zoom-fit', combo: 'Shift+1' }, { command: 'zoom-selection', combo: 'Shift+2' },
 ]
 const figmaBindings: ShortcutBinding[] = [
+  ...Array.from({ length: 10 }, (_, digit): ShortcutBinding => ({ command: 'opacity-digit', combo: String(digit) })),
   { command: 'copy-as-png', combo: 'Mod+Shift+C' },
   { command: 'toggle-outlines', combo: 'Mod+Shift+O' },
   { command: 'toggle-pixel-grid', combo: "Shift+'", physicalCode: 'Quote' },
@@ -168,6 +169,8 @@ export function shortcutBindings(context: ShortcutContext): readonly ShortcutBin
   if (desktop) bindings.unshift({ command: 'rename', combo: 'Mod+R' }, { command: 'paste-to-replace', combo: 'Mod+Shift+R' })
   if (platform !== 'mac') bindings.push({ command: 'redo', combo: 'Mod+Y' })
   bindings.push({ command: 'mask-selection', combo: platform === 'mac' ? 'Mod+Ctrl+M' : 'Mod+Alt+M' })
+  if (profile === 'figma-like' && platform === 'mac')
+    bindings.push({ command: 'flatten', combo: 'Alt+Shift+F', physicalCode: 'KeyF' })
   if (uiMode !== 'sketch') bindings.push({ command: 'flatten', combo: 'Mod+E' })
   for (const [command, combo] of tools) if (combo) bindings.push({ command: command as EditorCommand, combo })
   if (profile === 'figma-like') bindings.push(

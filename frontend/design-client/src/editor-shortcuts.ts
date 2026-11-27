@@ -8,14 +8,48 @@ import { recordShortcutUse, requestShortcutReference } from './shortcut-referenc
 import { editableFrameCrop } from './selection-properties'
 import { resolveShortcut, shortcutContextForLayout, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 import { applyFigmaTextShortcut, figmaTextCommandRepeats, isFigmaTextCommand } from './figma-text-shortcuts'
+import { commitPendingEdits } from './pending-edits'
 export function shortcutTargetOwnsKeyboard(target: EventTarget | null): boolean {
   return editableOwnsKeyboard(target) || modalOwnsKeyboard(target)
 }
+// Consecutive digits are a percentage only while the same edit owner is current.
+const opacityDigits = new WeakMap<Editor, {
+  digit: number
+  selection: readonly string[]
+  version: number
+  session: number
+  page: string
+  time: number
+}>()
+const OPACITY_DIGIT_INTERVAL_MS = 500
+
+function applyOpacityDigit(editor: Editor, digit: number) {
+  if (editor.state.tool !== 'select' || editor.state.busy || editor.interactionActive || !commitPendingEdits(editor)) return false
+  const ids = editor.topSelection()
+  if (!ids.length) return false
+  const { selection, version, page } = editor.state
+  const session = editor.sessionGeneration, now = performance.now(), previous = opacityDigits.get(editor)
+  const pair = previous && previous.selection === selection && previous.version === version &&
+    previous.session === session && previous.page === page && now - previous.time <= OPACITY_DIGIT_INTERVAL_MS
+  const percent = pair ? previous.digit * 10 + digit : digit === 0 ? 100 : digit * 10
+  editor.update(ids, { opacity: percent / 100 }, '设置图层不透明度')
+  if (pair) opacityDigits.delete(editor)
+  else opacityDigits.set(editor, { digit, selection: editor.state.selection, version: editor.state.version, session, page, time: now })
+  return true
+}
+
 /** Runs the same command dispatcher as toolbar and context-menu actions. */
 export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey & { target: EventTarget | null; preventDefault(): void }, context: ShortcutContext): Promise<boolean> {
-  if (shortcutTargetOwnsKeyboard(event.target)) return false
+  if (shortcutTargetOwnsKeyboard(event.target)) { opacityDigits.delete(editor); return false }
   const layout = shortcutContextForLayout(context)
   const binding = resolveShortcut(event, layout)
+  if (binding?.command === 'opacity-digit') {
+    if (event.repeat || !applyOpacityDigit(editor, Number(binding.combo))) return false
+    event.preventDefault()
+    recordShortcutUse(binding)
+    return true
+  }
+  if (binding) opacityDigits.delete(editor)
   if (!binding) return false
   const action = binding.command
   if (isFigmaTextCommand(action)) {
