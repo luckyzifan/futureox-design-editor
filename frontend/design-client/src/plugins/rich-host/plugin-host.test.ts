@@ -1762,6 +1762,35 @@ describe('Figma Plugin API surface', () => {
     run.close()
   })
 
+  it('re-runs generate when the plugin asks for a codegen refresh', async () => {
+    const current = editor()
+    current.change('Seed refresh node', doc => {
+      const card = node('rectangle', 0, 0, 60, 40)
+      card.name = 'Refresh card'
+      doc.nodes[card.id] = card
+      doc.pages[0].children.push(card.id)
+    })
+    current.select([named(current, 'Refresh card')!.id])
+    const run = await openPlugin(current, {
+      manifest: parsePluginManifest({
+        name: 'Refresh probe', id: 'refresh.probe', api: '1.0.0', main: 'code.js', editorType: ['dev'],
+        capabilities: ['codegen'], codegenLanguages: [{ label: 'CSS', value: 'css' }],
+      }),
+      main: `
+        let round = 0
+        figma.codegen.on('generate', function () {
+          round += 1
+          if (round === 1) figma.codegen.refresh()
+          return [{ language: 'css', code: 'round ' + round }]
+        })
+      `,
+      ui: null,
+    })
+    expect(await run.requestCodegen()).toBe(true)
+    expect(run.codegen.at(-1)).toEqual({ sections: [{ language: 'css', code: 'round 2' }] })
+    run.close()
+  })
+
   it('accepts FigJam and Slides manifests and explains that this editor cannot run them', async () => {
     const current = editor()
     expect(() => parsePluginManifest({ name: 'Board', id: 'board.plugin', api: '1.0.0', main: 'code.js', editorType: ['figjam'] })).not.toThrow()
