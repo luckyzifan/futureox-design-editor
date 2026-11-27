@@ -182,9 +182,9 @@ html[data-reduced-motion="true"] .local-home[aria-busy="true"]::before { animati
 html[data-reduced-motion="true"] .canvas-scrollbar-thumb,
 html[data-reduced-motion="true"] .prototype-hotspot { transition: none; }
 
-/* Loaded after styles.css so the canvas right-click menu stays Figma-dark at every width. */
+/* Workspace context actions share the command tray palette. */
 .canvas-context-menu {
-  background: #2c2c2c !important;
+  background: #222d42 !important;
   color: #fff !important;
   border-color: #00000055;
 }
@@ -194,7 +194,7 @@ html[data-reduced-motion="true"] .prototype-hotspot { transition: none; }
 }
 .canvas-context-menu button:hover:not(:disabled),
 .canvas-context-menu button:focus-visible {
-  background: #0d99ff !important;
+  background: #3459d4 !important;
   color: #fff !important;
 }
 .canvas-context-menu button:disabled { color: #ffffff59; opacity: 1; }
@@ -204,4 +204,184 @@ html[data-reduced-motion="true"] .prototype-hotspot { transition: none; }
 .canvas-context-menu [role=separator] { background: #ffffff1f; }
 .canvas-context-menu .context-danger { color: #ff8a80; }
 .canvas-context-menu .context-danger:hover:not(:disabled),
-.canvas-context-menu .context-danger:focus-visible { background: #0d99ff !important; color: #fff !important; }
+.canvas-context-menu .context-danger:focus-visible { background: #3459d4 !important; color: #fff !important; }
+
+/* The editor keeps its viewport geometry in styles.css. These surfaces and
+   states apply to both workflows in the shared web and desktop workspace. */
+.editor-shell {
+  --chrome-surface: #202a3e;
+  --chrome-raised: #2d3a53;
+  --chrome-line: #43516c;
+  --chrome-text: #f3f6ff;
+  --chrome-muted: #b4c1d6;
+  --chrome-focus: #9cb6ff;
+  --rail-heading: #ecf0f7;
+  --rail-line: #d9e1ed;
+  --inspector-field: #eef2f8;
+}
+
+.editor-shell[data-ui-mode] > .editor-header {
+  color: var(--chrome-text);
+  background: linear-gradient(105deg, #26334b, var(--chrome-surface) 58%, #27334a);
+  border-bottom-color: #152033;
+}
+.editor-shell .editor-header .document-title input {
+  color: var(--chrome-text);
+}
+.editor-shell .editor-header .document-title .document-location {
+  color: var(--chrome-muted);
+}
+.editor-shell[data-ui-mode] .editor-header .document-title .document-location:hover {
+  color: var(--chrome-text);
+}
+.editor-shell .editor-header .brand-mark {
+  background: #f6f8ff;
+  border-radius: 6px;
+}
+.editor-shell .editor-header :is(.document-title, .header-right) > button:not(.primary):hover:not(:disabled),
+.editor-shell .editor-header .workspace-actions > summary:hover,
+.editor-shell .editor-header .local-window-control > button:hover:not(:disabled),
+.editor-shell .editor-header .document-title input:hover:not(:disabled) {
+  background: var(--chrome-raised);
+  border-color: var(--chrome-line);
+}
+.editor-shell .editor-header :is(button, input, select, summary):focus-visible {
+  outline-color: var(--chrome-focus);
+}
+.editor-shell[data-ui-mode] .editor-header .header-right .save-status {
+  color: var(--chrome-muted);
+}
+.editor-shell[data-ui-mode] .editor-header .header-right .save-status.error {
+  color: #ffb6b8;
+}
+.editor-shell .editor-header .header-right :is(.locale-switch select, .local-window-control > button) {
+  color: var(--chrome-text);
+  background: var(--chrome-raised);
+  border-color: var(--chrome-line);
+}
+.editor-shell[data-ui-mode] .editor-header .header-right > .primary {
+  color: white;
+  background: var(--workspace-accent);
+  box-shadow: inset 0 1px 0 #ffffff38;
+}
+.editor-shell[data-ui-mode] .editor-header .header-right > .primary:hover {
+  background: var(--workspace-accent-hover);
+}
+.editor-shell .editor-header .ui-mode-switch {
+  background: #192235;
+  border-color: var(--chrome-line);
+}
+.editor-shell[data-ui-mode] .editor-header .ui-mode-switch > button {
+  color: var(--chrome-muted);
+}
+.editor-shell[data-ui-mode] .editor-header .ui-mode-switch > button[aria-pressed=true] {
+  color: var(--chrome-text);
+  background: var(--chrome-raised);
+  box-shadow: inset 0 0 0 1px #6481c8;
+}
+.editor-shell[data-ui-mode] .editor-header .ui-mode-switch > button:not([aria-pressed=true]):hover:not(:disabled) {
+  color: var(--chrome-text);
+  background: var(--chrome-raised);
+}
+
+.editor-shell[data-ui-mode] .adaptive-layers-shell .layers-panel,
+.editor-shell[data-ui-mode] .properties-workspace {
+  border-color: var(--rail-line);
+}
+.editor-shell .layers-panel .layers-document-title {
+  color: var(--workspace-text);
+  box-shadow: inset 0 -1px 0 var(--rail-line);
+}
+.editor-shell[data-ui-mode] .layers-panel :is(.layer-heading, .pages-heading),
+.editor-shell[data-ui-mode] .properties-workspace .properties-tabs {
+  background: var(--rail-heading);
+  color: #475870;
+  border-color: var(--rail-line);
+}
+.editor-shell .layers-panel .layer-row {
+  border-radius: 5px;
+}
+.editor-shell[data-ui-mode] .layers-panel .layer-row.selected {
+  background: var(--workspace-selected);
+  box-shadow: inset 2px 0 0 var(--workspace-accent);
+}
+.editor-shell .layers-panel .layer-row[data-search-context=true] {
+  color: var(--workspace-muted);
+}
+.editor-shell .properties-tab-buttons > [role=tab][aria-selected=true] {
+  background: #fff;
+  color: #233e8d;
+  box-shadow: inset 0 -2px 0 var(--workspace-accent);
+}
+.editor-shell[data-ui-mode] .properties-content .inspector :is(h3, h4) {
+  color: #344259;
+  font-weight: 650;
+  letter-spacing: .01em;
+  text-transform: none;
+}
+.editor-shell[data-ui-mode] .properties-content :is(.number-field, input[type=number], input[type=text], input:not([type]), select) {
+  background: var(--inspector-field);
+}
+.editor-shell[data-ui-mode] .properties-content .number-field input {
+  background: transparent;
+}
+.editor-shell .properties-content .number-field:focus-within {
+  box-shadow: inset 0 0 0 1px var(--workspace-accent);
+}
+.editor-shell[data-ui-mode=sketch] .properties-workspace {
+  background: #f1f4f8;
+}
+.editor-shell[data-ui-mode=sketch] .properties-content :is(.inspector > section, .property-card) {
+  border-color: var(--rail-line);
+}
+.editor-shell .canvas-workspace .canvas-panel-toggle {
+  background: #f3f6fc;
+  color: #526581;
+  border-color: var(--rail-line);
+}
+.editor-shell .canvas-workspace .canvas-panel-toggle:hover {
+  background: var(--workspace-selected);
+  color: var(--workspace-accent);
+}
+
+.editor-shell[data-ui-mode=figma] .canvas-workspace > .floating-toolbar {
+  background: var(--chrome-surface);
+  color: var(--chrome-text);
+  border-color: var(--chrome-line);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px #17223840, 0 2px 4px #1722384d;
+}
+.editor-shell[data-ui-mode=figma] .canvas-workspace > .floating-toolbar :is(.tool-group > button, .tool-popover > button, .figma-toolbelt-mode > button),
+.editor-shell[data-ui-mode=sketch] .editor-header .floating-toolbar :is(.tool-group > button, .tool-popover > button),
+.editor-shell[data-ui-mode=sketch] .editor-header .sketch-window-zoom .view-menu > summary,
+.editor-shell[data-ui-mode=sketch] .editor-header .sketch-workspace-switch > button {
+  color: var(--chrome-text);
+}
+.editor-shell[data-ui-mode=figma] .canvas-workspace > .floating-toolbar .figma-toolbelt-mode,
+.editor-shell[data-ui-mode=sketch] .editor-header .sketch-workspace-switch {
+  background: #192235;
+  border-color: var(--chrome-line);
+}
+.editor-shell[data-ui-mode=figma] .canvas-workspace > .floating-toolbar :is(.tool-group > button, .tool-popover > button, .figma-toolbelt-mode > button):hover:not(:disabled),
+.editor-shell[data-ui-mode=sketch] .editor-header .floating-toolbar :is(.tool-group > button, .tool-popover > button):hover:not(:disabled),
+.editor-shell[data-ui-mode=sketch] .editor-header .sketch-workspace-switch > button:hover {
+  background: var(--chrome-raised);
+}
+.editor-shell[data-ui-mode=figma] .canvas-workspace > .floating-toolbar :is(.tool-group > button, .tool-popover > button, .figma-toolbelt-mode > button):is(.active, [aria-pressed=true], [aria-expanded=true]),
+.editor-shell[data-ui-mode=sketch] .editor-header .floating-toolbar :is(.tool-group > button, .tool-popover > button):is(.active, [aria-pressed=true], [aria-expanded=true]),
+.editor-shell[data-ui-mode=sketch] .editor-header .sketch-workspace-switch > button[aria-pressed=true] {
+  background: #405a9b;
+  color: #fff;
+  box-shadow: inset 0 0 0 1px #7995e2;
+}
+.editor-shell .canvas-workspace > .floating-toolbar button:focus-visible {
+  outline-color: var(--chrome-focus);
+}
+.editor-shell .floating-toolbar .tool-popover-content {
+  color: var(--workspace-text);
+  background: var(--workspace-panel);
+  border-color: var(--rail-line);
+}
+.editor-shell .floating-toolbar .tool-popover-content button {
+  color: var(--workspace-text);
+}
