@@ -82,8 +82,48 @@ fn hidden_and_absolute_children_do_not_expand_hug() {
     solve(&mut d);
     close(d.nodes["p"].width, 50.);
     close(d.nodes["p"].height, 40.);
-    close(d.nodes["absolute"].transform.0[4], 35.);
+    close(d.nodes["absolute"].transform.0[4], 85.);
 }
+#[test]
+fn absolute_stack_child_ignores_parent_resize_constraints() {
+    let mut absolute = shape("absolute", 50., 20.);
+    absolute["transform"] = json!([1, 0, 0, 1, 20, 0]);
+    absolute["sizing"] = json!({"absolute":true});
+    absolute["constraints"] = json!({"horizontal":"end","referenceWidth":400});
+    let mut d = doc(parent(400., 100., "horizontal"), vec![absolute]);
+    solve(&mut d);
+    close(d.nodes["absolute"].transform.0[4], 20.);
+    close(d.nodes["absolute"].width, 50.);
+
+    d.nodes.get_mut("p").unwrap().width = 200.;
+    solve(&mut d);
+    close(d.nodes["absolute"].transform.0[4], 20.);
+    close(d.nodes["absolute"].width, 50.);
+    let constraints = d.nodes["absolute"].constraints.as_ref().unwrap();
+    assert_eq!(constraints.reference_width, Some(200.));
+    assert_eq!(constraints.reference_height, Some(100.));
+}
+
+#[test]
+fn absolute_non_stack_child_still_follows_end_pin() {
+    let mut absolute = shape("absolute", 50., 20.);
+    absolute["transform"] = json!([1, 0, 0, 1, 20, 0]);
+    absolute["sizing"] = json!({"absolute":true});
+    absolute["constraints"] = json!({"horizontal":"end","referenceWidth":400});
+    let mut p = parent(400., 100., "none");
+    p.as_object_mut().unwrap().remove("layout");
+    let mut d = doc(p, vec![absolute]);
+    solve(&mut d);
+    d.nodes.get_mut("p").unwrap().width = 200.;
+    solve(&mut d);
+    close(d.nodes["absolute"].transform.0[4], -180.);
+    close(d.nodes["absolute"].width, 50.);
+    assert_eq!(
+        d.nodes["absolute"].constraints.as_ref().unwrap().reference_width,
+        Some(200.)
+    );
+}
+
 #[test]
 fn hug_fill_cycle_converts_parent_axis_to_fixed() {
     let mut p = parent(120., 80., "horizontal");
