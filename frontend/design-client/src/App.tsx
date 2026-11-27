@@ -534,7 +534,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     if (sketchHotspotArmed) setSketchPropertiesTab('prototype')
   }, [sketchHotspotArmed])
   const switchSketchProperties = (next: 'design' | 'prototype') => {
-    if (!commitPendingEdits(editor)) return
+    if (!commitPendingEdits(editor)) return false
     if (next === 'design' && sketchHotspotArmed) void activateTool(editor, 'select')
     setSketchPropertiesTab(next)
   }

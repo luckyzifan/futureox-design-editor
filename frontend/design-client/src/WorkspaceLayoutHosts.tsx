@@ -26,7 +26,7 @@ type RightPanel = {
 }
 type InspectorTabs = {
   tab: PropertiesTab
-  onTab: (tab: PropertiesTab) => void
+  onTab: (tab: PropertiesTab) => void | boolean
   titles: Record<PropertiesTab, string>
 }
 
@@ -36,8 +36,7 @@ function PropertyTabs({ label, tab, onTab, titles }: InspectorTabs & { label: st
     event.preventDefault()
     event.stopPropagation()
     const next = event.key === 'Home' ? 'design' : event.key === 'End' ? 'prototype' : tab === 'design' ? 'prototype' : 'design'
-    onTab(next)
-    document.getElementById(`${next}-properties-tab`)?.focus()
+    if (onTab(next) !== false) document.getElementById(`${next}-properties-tab`)?.focus()
   }}>
     {(['design', 'prototype'] as const).map(value =>
       <button key={value} type="button" role="tab" id={`${value}-properties-tab`} tabIndex={tab === value ? 0 : -1}
