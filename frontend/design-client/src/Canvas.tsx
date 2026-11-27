@@ -918,6 +918,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const seed = createShapeSeed(kind)
     if (kind === 'text' && interfacePreference.getSnapshot().uiMode === 'figma') {
       seed.fontSize = 12
+      seed.fills[0].color = '#000000'
       seed.textStyle = { ...defaultTextStyle(), lineHeightAuto: true }
     }
     const remembered = lastPrimitive.current

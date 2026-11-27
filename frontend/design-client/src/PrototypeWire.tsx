@@ -124,7 +124,9 @@ export function PrototypeWire({ editor, entries, view, locale }: {
       onPointerDown={event => {
         event.stopPropagation()
         if (event.button !== 0 || editor.interactionActive || editor.state.busy || !commitPendingEdits(editor) || editor.state.doc !== doc) return
+        event.preventDefault()
         ignoreMouseClick.current = false
+        event.currentTarget.focus({ preventScroll: true })
         event.currentTarget.setPointerCapture(event.pointerId)
         press.current = { pointer: event.pointerId, origin: position(event), session: editor.sessionGeneration,
           revision: editor.state.version, moved: false }
@@ -138,9 +140,9 @@ export function PrototypeWire({ editor, entries, view, locale }: {
         setPreview({ point, target: match(point) })
       }}
       onPointerUp={event => {
+        event.stopPropagation()
         const active = press.current
         if (active?.pointer !== event.pointerId) return
-        event.stopPropagation()
         const point = position(event)
         const moved = active.moved || Math.hypot(point.x-active.origin.x, point.y-active.origin.y) >= 3
         ignoreMouseClick.current = moved
@@ -148,7 +150,9 @@ export function PrototypeWire({ editor, entries, view, locale }: {
         const target = moved ? match(point) : undefined
         if (target) link(target.id, active)
       }}
-      onPointerCancel={clear} onLostPointerCapture={clear}
+      onPointerCancel={event => { event.stopPropagation(); clear() }}
+      onLostPointerCapture={event => { event.stopPropagation(); clear() }}
+      onDoubleClick={event => event.stopPropagation()}
       onClick={event => {
         event.stopPropagation()
         if (!ignoreMouseClick.current || event.detail === 0) setChoosing(value => !value)

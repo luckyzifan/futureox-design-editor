@@ -546,6 +546,10 @@ html[data-reduced-motion="true"] .prototype-hotspot { transition: none; }
   color: var(--chrome-text);
   gap: 4px;
 }
+.editor-shell[data-ui-mode="figma"] .canvas-workspace > .figma-workspace-tools .figma-toolbelt-mode {
+  background: var(--rail-heading);
+  border-color: var(--chrome-line);
+}
 .editor-shell[data-ui-mode="figma"] .figma-workspace-tools .tool-group { gap: 2px; }
 .editor-shell[data-ui-mode="figma"] .figma-workspace-tools .tool-group > button:not(:disabled) { color: var(--chrome-text); }
 .editor-shell[data-ui-mode="figma"] .figma-workspace-tools .tool-group > button[aria-pressed=true] {
