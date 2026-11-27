@@ -1101,6 +1101,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   },[])
   const wheelModifiers = useRef({ ctrl: false, meta: false })
   const wheelZoomOwner = useRef<{ key: 'Control' | 'Meta'; scope: string; view: CanvasCamera } | null>(null)
+  const pendingWheelRelease = useRef<{ key: 'Control' | 'Meta'; scope: string; time: number; frame: number } | null>(null)
+  const cancelWheelRelease = () => {
+    const pending = pendingWheelRelease.current
+    pendingWheelRelease.current = null
+    if (pending) cancelAnimationFrame(pending.frame)
+  }
+  useEffect(() => () => cancelWheelRelease(), [editor])
   const [wheelZoomEnd, setWheelZoomEnd] = useState<{ scope: string; view: CanvasCamera } | null>(null)
   const space = useRef(false)
   type KeyboardBox = { page: string; session: number; original: string[]; point: Point; anchor?: Point; parent?: string; mode: 'box' | 'pick'; pick?: string }
@@ -2243,6 +2250,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       cancelQueuedMove()
       wheelModifiers.current = { ctrl: false, meta: false }
       wheelZoomOwner.current = null
+      cancelWheelRelease()
       setMeasureKeys({alt:false,deep:false,text:false})
       setPenShift(false)
       if(drag.current?.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
@@ -2317,14 +2325,24 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       // A native Chromium pinch synthesizes ctrlKey without a physical Ctrl
       // keydown. Track keyboard modifiers separately so Ctrl/⌘+wheel keeps
       // its mouse-wheel step instead of being magnified as a pinch.
-      const pinch = isNativePinch(e, wheelModifiers.current)
+      const scope = `${editor.sessionGeneration}/${editor.state.page}`
+      const pending = pendingWheelRelease.current
+      // Chromium can deliver wheel events queued before keyup in the next
+      // frame. Their original timestamp distinguishes them from a new pinch.
+      const trailing = pending && e.isTrusted && pending.scope === scope && e.timeStamp <= pending.time
+        && (pending.key === 'Control' ? e.ctrlKey : e.metaKey)
+      if (pending && !trailing) cancelWheelRelease()
+      const physical = {
+        ctrl: wheelModifiers.current.ctrl || !!trailing && pending?.key === 'Control',
+        meta: wheelModifiers.current.meta || !!trailing && pending?.key === 'Meta',
+      }
+      const pinch = isNativePinch(e, physical)
       const wheelSize = { width: el.clientWidth, height: el.clientHeight }
-      const scope=`${editor.sessionGeneration}/${editor.state.page}`
       if(scope!==wheelScope){wheelGesture.reset();wheelScope=scope}
       const anchor = screenPoint(e)
       const next = wheelGesture.update(v, e, wheelSize, anchor, editor.state.scrollWheelZoom, pinch)
       const key = !pinch && e.isTrusted && !drag.current && !nativeSource
-        ? e.ctrlKey && wheelModifiers.current.ctrl ? 'Control' : e.metaKey && wheelModifiers.current.meta ? 'Meta' : undefined
+        ? e.ctrlKey && physical.ctrl ? 'Control' : e.metaKey && physical.meta ? 'Meta' : undefined
         : undefined
       if (key && (next.zoom !== v.zoom || wheelZoomOwner.current?.key === key && wheelZoomOwner.current.scope === scope))
         wheelZoomOwner.current = { key, scope, view: next }
@@ -2344,14 +2362,26 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     el.addEventListener('wheel', wheel, { passive: false })
     const modifiers = (e: KeyboardEvent) => {
       wheelModifiers.current = { ctrl: e.ctrlKey, meta: e.metaKey }
+      if (e.type === 'keydown' && (e.key === 'Control' || e.key === 'Meta') && pendingWheelRelease.current) {
+        wheelZoomOwner.current = null
+        cancelWheelRelease()
+      }
       const owned = wheelZoomOwner.current
-      if (!owned || e.type !== 'keyup' || e.key !== owned.key) return
-      wheelZoomOwner.current = null
-      const scope = `${editor.sessionGeneration}/${editor.state.page}`, view = editor.effectiveView()
-      if (!e.isTrusted || e.ctrlKey || e.metaKey || drag.current || owned.scope !== scope ||
-          view.x !== owned.view.x || view.y !== owned.view.y || view.zoom !== owned.view.zoom) return
-      flushView()
-      setWheelZoomEnd({ scope, view })
+      if (!owned || e.type !== 'keyup' || e.key !== owned.key || !e.isTrusted || e.ctrlKey || e.metaKey) return
+      cancelWheelRelease()
+      const pending = { key: owned.key, scope: owned.scope, time: e.timeStamp, frame: 0 }
+      pending.frame = requestAnimationFrame(() => {
+        if (pendingWheelRelease.current !== pending) return
+        pendingWheelRelease.current = null
+        const latest = wheelZoomOwner.current
+        wheelZoomOwner.current = null
+        const scope = `${editor.sessionGeneration}/${editor.state.page}`, view = editor.effectiveView()
+        if (!latest || latest.key !== pending.key || latest.scope !== scope || drag.current ||
+            view.x !== latest.view.x || view.y !== latest.view.y || view.zoom !== latest.view.zoom) return
+        flushView()
+        setWheelZoomEnd({ scope, view })
+      })
+      pendingWheelRelease.current = pending
     }
     window.addEventListener('keydown', modifiers, true)
     window.addEventListener('keyup', modifiers, true)
