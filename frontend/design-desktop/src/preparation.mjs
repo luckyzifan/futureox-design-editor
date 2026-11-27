@@ -111,9 +111,8 @@ export class NativePreparation {
   return this.done
  }
 }
-/** Buffers an EventTarget port can move. A pooled Node Buffer stays copied:
- * transferring it would detach the pool. MessagePortMain is not an EventTarget
- * and rejects an ArrayBuffer transfer list, so the caller clones that reply. */
+/** A pooled Node Buffer stays copied: transferring it would detach the pool
+ * and move unrelated bytes. */
 export function poseReplyTransfers(reply) {
   const value = reply?.value
   if (!value || typeof value.byteLength !== 'number' || typeof value.byteOffset !== 'number') return []
@@ -123,20 +122,34 @@ export function poseReplyTransfers(reply) {
   return [buffer]
 }
 
-function compactPoseReply(reply) {
+/** Exact-buffer transport plan. A pool-exposed subview is copied once so the
+ * owned pool can stay with its sender; everything else moves its own buffer.
+ * A capable port detaches the moved bytes; an incapable one clones them, and
+ * the copied packet is still only held by the sender until that clone. */
+export function poseReplyPlan(reply) {
   const value = reply?.value
-  if (!(value instanceof Uint8Array || value instanceof Float32Array)) return reply
+  if (!(value instanceof Uint8Array || value instanceof Float32Array)) return { reply, transfers: [] }
   const buffer = value.buffer
-  if (buffer instanceof ArrayBuffer && value.byteOffset === 0 && value.byteLength === buffer.byteLength) return reply
+  if (!(buffer instanceof ArrayBuffer)) return { reply, transfers: [] }
+  const exact = value.byteOffset === 0 && value.byteLength === buffer.byteLength
+  // A Node Buffer may share a larger slab; it is never transferred, but an
+  // exact Buffer reply still clones as-is.
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) {
+    if (exact) return { reply, transfers: [] }
+  } else if (exact) return { reply, transfers: [buffer] }
   // Structured cloning a subview also clones its backing store. Keep the
   // owned pool in place and send an exact copy of the exposed bytes.
   const copy = new Uint8Array(buffer, value.byteOffset, value.byteLength).slice()
-  return { ...reply, value: value instanceof Float32Array ? new Float32Array(copy.buffer) : copy }
+  const moved = value instanceof Float32Array ? new Float32Array(copy.buffer) : copy
+  return { reply: { ...reply, value: moved }, transfers: [copy.buffer] }
 }
 /** The renderer owns its existing preparation process. Only real pose mutations
  * and packets cross this port, in the same physical queue as ordinary calls. */
 export function bindPosePreparationPort(port,worker,current,retire){
  let active=0,last=0,closed=false
+ // null = untried, false = this port rejects ArrayBuffer transfers
+ // (MessagePortMain only moves MessagePortMain objects).
+ let movesBuffers=null
  const fatal=error=>{
   if(!closed&&current())port.postMessage({fatal:String(error)})
   closed=true;retire();port.close()
@@ -158,12 +171,18 @@ export function bindPosePreparationPort(port,worker,current,retire){
     ...(diagnostics?{diagnostics:{...diagnostics,preparationId:id}}:{}),
     ...(method==='compile_gpu_packet'&&cancellable?{cancellationId:id}:{})})
    if(!closed&&current()){
-    const transfers=poseReplyTransfers(reply)
-    const outgoing=transfers.length?reply:compactPoseReply(reply)
-    // MessagePortMain.postMessage throws "not a valid port" for an ArrayBuffer,
-    // and that throw retires the session. EventTarget ports can move the buffer.
-    if(transfers.length&&typeof port.addEventListener==='function')port.postMessage({...outgoing,id},transfers)
-    else port.postMessage({...outgoing,id})
+    const plan=poseReplyPlan(reply)
+    const message={...plan.reply,id}
+    if(!plan.transfers.length||movesBuffers===false)port.postMessage(message)
+    else try{
+     port.postMessage(message,plan.transfers);movesBuffers=true
+    }catch(error){
+     // MessagePortMain answers an ArrayBuffer transfer list with a TypeError.
+     // The failed transfer detached nothing, so clone the same bytes once and
+     // stop paying a throw per pose on this port.
+     if(!(error instanceof TypeError))throw error
+     movesBuffers=false;port.postMessage(message)
+    }
    }
   }catch(error){if(!closed&&current())fatal(error)}finally{active=0}
  })

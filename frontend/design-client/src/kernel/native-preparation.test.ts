@@ -52,6 +52,22 @@ test('native transport preserves request IDs and binary replies and closes an op
   } finally { connection.close(); channel.close() }
   await vi.waitFor(() => expect(close).toHaveBeenCalledWith('owned'))
 })
+test('native transport moves exact replies and copies a subview without detaching its pool', async () => {
+  const pair = new MessageChannel(), channel = new PreparationChannel(pair.port2)
+  const pool = new Uint8Array(64).fill(3)
+  let pooled = true
+  const bridge = { open: async () => 'owned', close: async () => {}, request: vi.fn(async () => pooled
+    ? { id: 5, value: pool.subarray(8, 16) }
+    : { id: 6, value: new Uint8Array([9, 8, 7, 6]) }) }
+  const connection = connectNativePreparation(bridge, pair.port1)
+  try {
+    expect((await channel.request('canvas', 'compile_gpu_packet', ['{}'])).value).toEqual(new Uint8Array([3, 3, 3, 3, 3, 3, 3, 3]))
+    expect(pool.byteLength).toBe(64)
+    expect(pool[8]).toBe(3)
+    pooled = false
+    expect((await channel.request('canvas', 'compile_gpu_packet', ['{}'])).value).toEqual(new Uint8Array([9, 8, 7, 6]))
+  } finally { connection.close(); channel.close() }
+})
 test('desktop serialization cannot reorder document revisions or wait for rendering to complete', async () => {
   let firstResolve!: (value: string) => void
   let first = true

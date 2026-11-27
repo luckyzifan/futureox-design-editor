@@ -173,7 +173,7 @@ fn packet_millis(start: Option<std::time::Instant>) -> f64 {
     start.map(|start| start.elapsed().as_secs_f64() * 1000.).unwrap_or(0.)
 }
 
-struct FgscInfo { geometry_bytes: usize, inline_curve_bytes: usize, curve_sent_bytes: usize }
+struct FgscInfo { geometry_bytes: usize, inline_curve_bytes: usize, curve_sent_bytes: usize, node_sent_bytes: usize, image_sent_bytes: usize, plan_sent_bytes: usize }
 
 fn inspect_fgsc(packet: &[u8]) -> Option<FgscInfo> {
     if packet.len() < 24 || &packet[..4] != b"FGSC" { return None }
@@ -186,16 +186,22 @@ fn inspect_fgsc(packet: &[u8]) -> Option<FgscInfo> {
     let geometry = nv.checked_mul(4)?.checked_add(inline)?;
     let mut at = start.checked_add(geometry)?;
     if at.checked_add(payload)? != packet.len() { return None }
-    let mut curve_sent = 0usize;
+    let (mut curve_sent, mut node_sent, mut image_sent, mut plan_sent) = (0usize, 0usize, 0usize, 0usize);
     while at < packet.len() {
         if packet.len() - at < 9 { return None }
         let kind = packet[at + 4];
         let len = u32::from_le_bytes(packet[at + 5..at + 9].try_into().ok()?) as usize;
         at = at.checked_add(9)?.checked_add(len)?;
         if at > packet.len() { return None }
-        if kind == 4 { curve_sent = curve_sent.saturating_add(len); }
+        match kind {
+            1 => image_sent = image_sent.saturating_add(len),
+            2 => node_sent = node_sent.saturating_add(len),
+            3 => plan_sent = plan_sent.saturating_add(len),
+            4 => curve_sent = curve_sent.saturating_add(len),
+            _ => {}
+        }
     }
-    (at == packet.len()).then_some(FgscInfo { geometry_bytes: geometry, inline_curve_bytes: inline, curve_sent_bytes: curve_sent })
+    (at == packet.len()).then_some(FgscInfo { geometry_bytes: geometry, inline_curve_bytes: inline, curve_sent_bytes: curve_sent, node_sent_bytes: node_sent, image_sent_bytes: image_sent, plan_sent_bytes: plan_sent })
 }
 
 /// Lossless envelope around one FGSC packet. Kept only when the wire shrinks.
@@ -293,6 +299,11 @@ curve_transfer_keys: HashMap<u32, Key>,
     packet_inline_curve_bytes: u64,
     packet_curve_sent_bytes: u64,
     packet_curve_omitted_bytes: u64,
+    packet_vertex_bytes: u64,
+    packet_node_resource_bytes: u64,
+    packet_image_resource_bytes: u64,
+    packet_plan_resource_bytes: u64,
+    packet_resource_bytes: u64,
     #[cfg(test)] limit_override:Option<usize>,
 }
 impl FrameSceneContext {
@@ -364,7 +375,10 @@ impl FrameSceneContext {
             "sourceReplayHits":self.source_history_hits,"sourceReplayEntries":self.source_history.len(),"sourceReplayBytes":self.source_history_bytes,
             "packet":{"compileMs":self.packet_compile_ms,"encodeMs":self.packet_encode_ms,"sceneBytes":self.packet_scene_bytes,"wireBytes":self.packet_wire_bytes,
                 "geometryBytes":self.packet_geometry_bytes,"wireGeometryBytes":self.packet_wire_geometry_bytes,"inlineCurveBytes":self.packet_inline_curve_bytes,
-                "curveSentBytes":self.packet_curve_sent_bytes,"curveOmittedBytes":self.packet_curve_omitted_bytes}})
+                "curveSentBytes":self.packet_curve_sent_bytes,"curveOmittedBytes":self.packet_curve_omitted_bytes,
+                "vertexBytes":self.packet_vertex_bytes,"curveResourceBytes":self.packet_curve_sent_bytes,
+                "nodeResourceBytes":self.packet_node_resource_bytes,"imageResourceBytes":self.packet_image_resource_bytes,
+                "planResourceBytes":self.packet_plan_resource_bytes,"resourceBytes":self.packet_resource_bytes}})
     }
     fn reuse(&mut self,key:&StaticRequest,request:&serde_json::Value)->Result<Option<Vec<u8>>,String>{
         let Some(frame)=self.cached.as_ref().filter(|frame|&frame.key==key)else{return Ok(None)};
@@ -707,7 +721,7 @@ impl crate::Engine {
         let compress_started = packet_clock();
         let bytes = if scene_lz4_requested(Some(fields)) { compress_scene_packet(raw)? } else { raw };
         let encode_ms = encode_ms + packet_millis(compress_started);
-        let info = info.unwrap_or(FgscInfo { geometry_bytes: 0, inline_curve_bytes: 0, curve_sent_bytes: 0 });
+        let info = info.unwrap_or(FgscInfo { geometry_bytes: 0, inline_curve_bytes: 0, curve_sent_bytes: 0, node_sent_bytes: 0, image_sent_bytes: 0, plan_sent_bytes: 0 });
         let logical = if self.frame_scene.curve_word_bytes == 0 { info.inline_curve_bytes } else { self.frame_scene.curve_word_bytes };
         let vertex = info.geometry_bytes.saturating_sub(info.inline_curve_bytes);
         self.frame_scene.packet_compile_ms = compile_ms;
@@ -719,6 +733,15 @@ impl crate::Engine {
         self.frame_scene.packet_inline_curve_bytes = info.inline_curve_bytes as u64;
         self.frame_scene.packet_curve_sent_bytes = info.curve_sent_bytes as u64;
         self.frame_scene.packet_curve_omitted_bytes = logical.saturating_sub(info.inline_curve_bytes).saturating_sub(info.curve_sent_bytes) as u64;
+        // Split what this pose actually generated from what crossed the
+        // boundary: the vertex arena is always inline, curves and node wire
+        // bodies move as resources the receiver may already acknowledge.
+        self.frame_scene.packet_vertex_bytes = info.geometry_bytes.saturating_sub(info.inline_curve_bytes) as u64;
+        self.frame_scene.packet_node_resource_bytes = info.node_sent_bytes as u64;
+        self.frame_scene.packet_image_resource_bytes = info.image_sent_bytes as u64;
+        self.frame_scene.packet_plan_resource_bytes = info.plan_sent_bytes as u64;
+        self.frame_scene.packet_resource_bytes = info.curve_sent_bytes.saturating_add(info.node_sent_bytes)
+            .saturating_add(info.image_sent_bytes).saturating_add(info.plan_sent_bytes) as u64;
         Ok(bytes)
     }
     pub(crate) fn compile_gpu_packet_request_checked(&mut self,options:&str,mut accept:impl FnMut(&GpuScene)->Result<(),String>)->Result<Vec<u8>,String>{
@@ -1167,6 +1190,11 @@ let encoded=self.frame_scene.encode_with_curves(scene,Some(&fields),self.geo_rev
         let dragged = engine.compile_gpu_packet_request(&pose_request(&options, true, true, Some(ack))).unwrap();
         let packet = engine.gpu_compile_cache_stats()["frameScene"]["packet"].clone();
         assert!(packet["curveOmittedBytes"].as_u64().unwrap() > 0, "{packet}");
+        assert_eq!(packet["wireGeometryBytes"], packet["vertexBytes"].as_u64().unwrap()
+            + packet["inlineCurveBytes"].as_u64().unwrap() + packet["curveSentBytes"].as_u64().unwrap(), "{packet}");
+        assert_eq!(packet["resourceBytes"].as_u64().unwrap(), packet["curveResourceBytes"].as_u64().unwrap()
+            + packet["nodeResourceBytes"].as_u64().unwrap() + packet["imageResourceBytes"].as_u64().unwrap()
+            + packet["planResourceBytes"].as_u64().unwrap(), "{packet}");
         assert!(packet["wireBytes"].as_u64().unwrap() < packet["sceneBytes"].as_u64().unwrap(), "{packet}");
         assert!(dragged.len() * 2 < posed.len(), "acked drag {} should be well under inline {}", dragged.len(), posed.len());
         assert_eq!(fresh.render_png(&fresh.parse_options(options.clone()).unwrap()).unwrap(), png_hold);
