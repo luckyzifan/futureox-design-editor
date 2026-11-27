@@ -6,6 +6,7 @@ import { GpuMemoryPanel } from './GpuMemoryPanel'
 import { RenderProfilePanel } from './RenderProfilePanel'
 import './styles.css'
 import './chrome-polish.css'
+import './figma-editor-workspace.css'
 startLocalDiagnostics()
 createRoot(document.getElementById('root')!, {
   onUncaughtError: error => { recordLocalError('react', error, 'REACT_ERROR'); console.error(error) },

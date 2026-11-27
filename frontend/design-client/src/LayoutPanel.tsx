@@ -141,6 +141,7 @@ export function LayoutPanel({
     catch (error) { setSuggestionError(error instanceof Error ? error.message : String(error)) }
   }
   const compact = uiMode === 'figma' && embedded && n.kind === 'frame' && !n.graphic && !active && !flow
+  const sizingDisclosure = compact || (uiMode === 'figma' && embedded && !active && !flow && !container(n))
   const suggestions = container(n) && ids.length === 1 && <div className="layout-suggestions">
         <button type="button" disabled={n.locked} onClick={() => {
           try { setSuggestion(editor.previewSuggestedLayout(n.id)); setSuggestionError('') }
@@ -230,7 +231,7 @@ export function LayoutPanel({
   const Heading = embedded ? 'h4' : 'h3'
   return (
     <Tag className="layout-panel">
-      {!compact && !n.graphic && <Heading>{tr(legacySmartLayout ? "智能布局（旧版）" : "自动布局")}{' '}
+      {!(embedded && uiMode === 'figma') && !compact && !n.graphic && <Heading>{tr(legacySmartLayout ? "智能布局（旧版）" : "自动布局")}{' '}
         {!active && (
           <button title={tr("添加自动布局 Shift+A")} onClick={() => setLayoutMode()}>
             ＋
@@ -283,6 +284,7 @@ export function LayoutPanel({
           <div className="field-grid">
             <UnitNumberField historyLabel={layout.mode === 'grid' ? '列间距' : '项目间距'} unit="length" diagnosticFamily={2} unitScale={layout.mode === 'vertical' ? units.y : units.x}
               label={tr(layout.mode === 'grid' ? '列间距' : '项目间距')}
+              caption={uiMode === 'figma' && layout.mode !== 'grid' ? tr('间距') : undefined}
               value={layout.gap}
               min={gapMin}
               max={LAYOUT_GAP_LIMIT}
@@ -291,6 +293,7 @@ export function LayoutPanel({
             />
             <UnitNumberField historyLabel={layout.mode === 'grid' ? '行间距' : '换行间距'} unit="length" diagnosticFamily={2} unitScale={layout.mode === 'vertical' ? units.x : units.y}
               label={tr(layout.mode === 'grid' ? '行间距' : '换行间距')}
+              caption={uiMode === 'figma' && layout.mode !== 'grid' ? (locale === 'en' ? 'Wrap gap' : '换行间距') : undefined}
               value={layout.lineGap}
               min={lineGapMin}
               max={LAYOUT_GAP_LIMIT}
@@ -386,10 +389,10 @@ export function LayoutPanel({
           </label>
         </>
       )}
-      {compact ? <details className="layout-options" key={n.id}>
+      {sizingDisclosure ? <details className="layout-options" key={n.id}>
         <summary>{tr('布局选项')}</summary>
         {sizingControls}
-        {suggestions}
+        {compact && suggestions}
       </details> : sizingControls}
       {flow && (
         <>

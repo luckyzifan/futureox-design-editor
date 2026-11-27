@@ -1,6 +1,6 @@
 import { clearStyleStack, type StyleField } from './style-stack'
 import { StylePropertyRow, useSketchStyleOptions } from './StylePropertyRow'
-import { usePropertyText, propertyOwnerLabel, propertyLayerCount } from './property-interface-messages'
+import { usePropertyText, propertyOwnerLabel } from './property-interface-messages'
 import { RepeatPanel } from './RepeatPanel'
 import {BoardPanel} from './BoardPanel'
 import { AlignmentControls, FlipControls } from './AlignmentControls'
@@ -56,7 +56,7 @@ import type { PencilCap } from './freehand'
 import { canFitFrameContents, editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import { frameEdgeDisplayLocal, sketchFrameDistance, sketchFrameEdges, sketchNestedFramePins } from './sketch-frame-distance'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
-import { Plus, Minus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, Minimize2, RotateCw } from 'lucide-react'
+import { Plus, Minus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, Minimize2, RotateCw, Palette } from 'lucide-react'
 import type { Editor } from './engine'
 import { VectorBrushPanel } from './VectorBrushPanel'
 import {
@@ -168,7 +168,8 @@ function PaintEditor({
     if (next === 'none') onChange({ ...base, visible: false })
     else onChange({ ...stillPaint(base), kind: next, visible: true })
   }
-  const chooseVideo = channel === 'fill' && interfacePreference.getSnapshot().uiMode === 'figma'
+  const figma = interfacePreference.getSnapshot().uiMode === 'figma'
+  const chooseVideo = channel === 'fill' && figma
     ? () => videoFile.current?.click() : undefined
   const importVideo = async (file: File) => {
     videoRead.current?.abort()
@@ -198,6 +199,25 @@ function PaintEditor({
       }
     }
   }
+  const paintOptions = <div className="field-grid">
+        {target ? null : <NumberField historyLabel="不透明度 %" diagnosticFamily={11} unit="percent"
+          label={tr("不透明度 %")}
+          value={p.opacity * 100}
+          min={0}
+          max={100}
+          onChange={(v) => onChange({ ...p, opacity: v / 100 })}
+        />}
+        <select
+          aria-label={tr("填充混合模式")}
+          value={p.blend}
+          onChange={(e) => onChange({ ...p, blend: e.target.value as Blend })}
+        >
+          {blends.map((b) => (
+            <option key={b}>{b}</option>
+          ))}
+        </select>
+      </div>
+  const paintOptionsLabel = tr(channel === 'fill' ? '填充选项' : '描边选项')
   return (
     <div className="paint-editor">
       {chooseVideo && <input ref={videoFile} type="file" hidden accept={LOCAL_VIDEO_ACCEPT}
@@ -259,24 +279,9 @@ function PaintEditor({
           </div>
         </details>
       )}
-      <div className="field-grid">
-        {target ? null : <NumberField historyLabel="不透明度 %" diagnosticFamily={11} unit="percent"
-          label={tr("不透明度 %")}
-          value={p.opacity * 100}
-          min={0}
-          max={100}
-          onChange={(v) => onChange({ ...p, opacity: v / 100 })}
-        />}
-        <select
-          aria-label={tr("填充混合模式")}
-          value={p.blend}
-          onChange={(e) => onChange({ ...p, blend: e.target.value as Blend })}
-        >
-          {blends.map((b) => (
-            <option key={b}>{b}</option>
-          ))}
-        </select>
-      </div>
+      {figma ? <details className="paint-options">
+        <summary>{paintOptionsLabel}</summary>{paintOptions}
+      </details> : paintOptions}
       {['linear', 'radial', 'angular', 'diamond'].includes(p.kind) && (
         <>
           <NumberField historyLabel="渐变角度" diagnosticFamily={2} unit="angle"
@@ -546,13 +551,15 @@ function PencilCapSection({ editor, cap }: { editor: Editor; cap: PencilCap }) {
 }
 // Camera presentation updates re-render the parent shell. The controls consume
 // the editor's independent panel snapshot and must not rebuild for those frames.
-export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blurStopIndex, onSelectBlurStop, onEditBlur, allowSpatial = true }: {
+export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blurStopIndex, onSelectBlurStop, onEditBlur, allowSpatial = true, onOpenPageStyles, onOpenPageExport }: {
   editor: Editor
   blurEffectIndex?: number
   blurStopIndex?: number
   onSelectBlurStop?: (index: number) => void
   onEditBlur?: (index: number | null) => void
   allowSpatial?: boolean
+  onOpenPageStyles?: () => void
+  onOpenPageExport?: () => void
 }) {
   const { uiMode, figmaPropertyLabels } = useInterfacePreferences()
   const sketchStyles = uiMode === 'sketch'
@@ -575,12 +582,13 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   if (ids.length > 1) return <MultiSelectionInspector editor={editor} nodes={ids.map((id) => s.doc.nodes[id]).filter(Boolean)} />
   if (!n)
     return (
-      <aside className="inspector">
-        <div className="panel-tabs">
+      <aside className={uiMode === 'figma' ? 'inspector page-inspector' : 'inspector'} data-geometry-mode={uiMode} aria-label={tr('页面')}>
+        {uiMode === 'sketch' && <div className="panel-tabs">
           <b>{tr("设计")}</b>
           <span>{tr("属性")}</span>
-        </div>
-        <section>
+        </div>}
+        <div className={uiMode === 'figma' ? 'inspector-scroll' : 'sketch-page-properties'}>
+        <section data-property-section="page">
           <h3>{tr("页面")}</h3>
           <label className="paint-row">
             <ColorInput
@@ -607,12 +615,32 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
               onChange={(e) => editor.set({ snap: e.target.checked })}
             />{tr("智能吸附")}</label>
         </section>
-        {uiMode === 'figma' && s.tool === 'pencil'
-          ? <PencilCapSection editor={editor} cap={s.pencil.cap ?? 'round'} />
-          : <section className="empty-inspector"><p>{tr("选中图层后，在这里编辑颜色、形状与约束。")}</p></section>}
-        <div className="local-badge">{tr("独立工作空间 · 本地优先")}</div>
+        {uiMode === 'figma' && s.tool === 'pencil' && <PencilCapSection editor={editor} cap={s.pencil.cap ?? 'round'} />}
+        {onOpenPageStyles && <section data-property-section="styles" className="page-inspector-action">
+          <h3>{locale === 'en' ? 'Styles' : '样式'}
+            <button type="button" aria-label={locale === 'en' ? 'Manage local styles' : '管理本地样式'} onClick={onOpenPageStyles}>
+              <Palette size={15} aria-hidden="true" />
+            </button>
+          </h3>
+        </section>}
+        {onOpenPageExport && <section data-property-section="export" className="page-inspector-action">
+          <h3>{tr('导出')}
+            <button type="button" aria-label={locale === 'en' ? 'Export page' : '导出页面'} onClick={onOpenPageExport}>
+              <Plus size={15} aria-hidden="true" />
+            </button>
+          </h3>
+        </section>}
+        {uiMode === 'sketch' && <section className="empty-inspector"><p>{tr("选中图层后，在这里编辑颜色、形状与约束。")}</p></section>}
+        </div>
+        {uiMode === 'sketch' && <div className="local-badge">{tr("独立工作空间 · 本地优先")}</div>}
       </aside>
     )
+  const layerKind = tr(n.graphic ? '图形容器' : uiMode === 'figma' && n.instance ? '实例' : uiMode === 'figma' && n.componentSet ? '组件集' : uiMode === 'figma' && n.component ? '组件' : {
+    slice: '切片', frame: '画板', section: '分区', group: '编组', rectangle: '矩形', ellipse: '椭圆',
+    polygon: '多边形', star: '星形', line: '直线', vector: '矢量', text: '文字',
+  }[n.kind])
+  const hasAutoLayout = n.layout !== undefined && n.layout.mode !== 'none'
+  const autoLayoutLabel = tr(hasAutoLayout ? '移除自动布局' : '添加自动布局')
   const parents = editor.parentMap(s.doc)
   const presetGate = frameSizePresetGate(s.doc, s.page, ids, parents)
   const showFramePreset = presetGate === 'ready' || presetGate === 'locked' || presetGate === 'instance'
@@ -790,7 +818,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   const listControls = (field: StyleField, i: number, inRow = false) => (
     <div className="mini-actions" onClickCapture={field === 'effects' ? () => onEditBlur?.(null) : undefined}>
       {sketchStyles && !inRow && visibilityCheckbox(field, i)}
-      <button
+      {(sketchStyles || n[field].length > 1) && <><button
         title={tr("上移")}
         disabled={!i}
         onClick={() =>
@@ -820,6 +848,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
       >
         <ChevronDown size={13} />
       </button>
+      </>}
       {!sketchStyles && <button
         title={tr("切换可见性")}
         onClick={() =>
@@ -858,18 +887,40 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   const usesSketchRamp = (effect: Effect) => !!(effect.gradientBlur?.sketch || effect.inactiveGradientBlur?.parameters.sketch)
   const nativeBlurSettings = (kind: Effect['kind']) =>
     uiMode === 'figma' ? kind === 'blur' || kind === 'background-blur' : isMotionZoomBlur(kind) || isSketchProgressiveBlur(kind)
+  const activeComponent = uiMode === 'figma' && (n.component || n.componentSet || n.instance)
+  const extraLayerControls = <>
+    <VectorBrushPanel editor={editor} node={n} />
+    {(n.pathOffset !== undefined || s.tool === 'offset-path') &&
+      <NumberField historyLabel="路径偏移距离" diagnosticFamily={2} unit="number" label={tr('路径偏移距离')}
+        value={n.pathOffset || 0} min={-10000} max={10000} onChange={value => update(node => { node.pathOffset = value })} />}
+    <BoardPanel editor={editor} node={n} />
+    <RepeatPanel editor={editor} node={n} />
+    {!activeComponent && <ComponentPanel editor={editor} node={n} ids={ids} />}
+  </>
   return (
     <>
     <aside className="inspector" data-node-id={n.id} data-node-name={n.name} data-geometry-mode={uiMode} aria-label={propertyOwnerLabel(n.name, locale)}>
       {uiMode === 'sketch' && <div className="sketch-inspector-alignment"><AlignmentControls editor={editor} compact /></div>}
-      <div className="panel-tabs">
-        {uiMode === 'figma' && framePresetButton ||
-          <span>{n.graphic ? tr('图形容器') : ids.length > 1 ? propertyLayerCount(ids.length, locale) : tr({ slice:'切片', frame: '画板', section: '分区', group: '编组', rectangle: '矩形', ellipse: '椭圆', polygon: '多边形', star: '星形', line: '直线', vector: '矢量', text: '文字' }[n.kind])}</span>}
-        <button type="button" aria-label={tr("更多图层操作")} onClick={event => setContext({ x: event.clientX, y: event.clientY })}>⋯</button>
+      <div className={uiMode === 'figma' ? 'panel-tabs property-selection-context' : 'panel-tabs'}>
+        {uiMode === 'figma' ? <div className="property-selection-title">
+          <h2 title={n.name}>{n.name}</h2><span>{layerKind}</span>
+        </div> : <span>{layerKind}</span>}
+        <div className="property-context-actions">
+          {uiMode === 'figma' && <button type="button" disabled={s.busy || editor.interactionActive}
+            aria-label={tr(n.visible ? '隐藏所选图层' : '显示所选图层')} title={tr(n.visible ? '隐藏所选图层' : '显示所选图层')}
+            onClick={() => void dispatchEditorCommand(editor, n.visible ? 'hide-selection' : 'show-selection')}>
+            {n.visible ? <Eye size={15} /> : <EyeOff size={15} />}
+          </button>}
+          <button type="button" aria-label={tr("更多图层操作")} onClick={event => {
+            const box = event.currentTarget.getBoundingClientRect()
+            setContext(event.detail ? { x: event.clientX, y: event.clientY } : { x: box.right, y: box.bottom })
+          }}>⋯</button>
+        </div>
       </div>
       <div className="inspector-scroll">
+        {activeComponent && <ComponentPanel editor={editor} node={n} ids={ids} />}
         {styleDescription && <p role="note" className="property-unit-notice">{tr('＊ 最大缩放系数换算。')}{tr(styleDescription)}</p>}
-        <section className="geometry-position-section">
+        <section className="geometry-position-section" data-property-section="position">
           {uiMode === 'sketch' && framePresetButton}
           {uiMode === 'sketch' ? <>
             <div className="geometry-position">{positionFields}{angleField}</div>
@@ -920,13 +971,21 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
               }, '修改约束')} />
           </div>)}
         </section>
-        <section>
-          <h3 className={uiMode === 'figma' ? 'layout-section-heading' : undefined}>{tr("布局")}
-            {uiMode === 'figma' && n.kind === 'frame' && ids.length === 1 &&
-              <button type="button" aria-label={tr('调整尺寸以适应内容')} title={tr('调整尺寸以适应内容')}
+        <section data-property-section="layout">
+          <h3 className={uiMode === 'figma' ? 'layout-section-heading' : undefined}>
+            {tr(uiMode === 'figma' && hasAutoLayout ? '自动布局' : '布局')}
+            {uiMode === 'figma' && <span className="layout-heading-actions">
+              {n.kind === 'frame' && <button type="button" aria-label={tr('调整尺寸以适应内容')} title={tr('调整尺寸以适应内容')}
                 disabled={n.locked || !canFitFrameContents(s.doc, n)}
                 onClick={() => void dispatchEditorCommand(editor, 'fit-frame-content')}><Minimize2 size={15} /></button>}
+              {n.kind !== 'slice' && !n.graphic && <button type="button" aria-label={autoLayoutLabel} title={autoLayoutLabel}
+                disabled={n.locked || s.busy || editor.interactionActive} onClick={() => void dispatchEditorCommand(editor,
+                  hasAutoLayout ? 'remove-auto-layout' : 'auto-layout')}>
+                {hasAutoLayout ? <Minus size={15} aria-hidden="true" /> : <Plus size={15} aria-hidden="true" />}
+              </button>}
+            </span>}
           </h3>
+          {uiMode === 'figma' && framePresetButton}
           {n.kind==='slice' && uiMode === 'figma' && dimensions}
           {n.kind === 'ellipse' && !n.network && (
             <div className="field-grid">
@@ -949,10 +1008,10 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
             {n.kind === 'text' && !constraintParent?.graphic && <TextSizingControls editor={editor} nodes={[n]} />}
           </> : undefined} />}
         </section>
-        {n.kind!=='slice' && <section>
+        {n.kind!=='slice' && <section data-property-section="appearance">
           <h3>{tr("外观")}</h3>
           {uiMode === 'sketch' && ids.length === 1 && <SketchLayerStyle key={n.id} editor={editor} node={n} />}
-          <div className={uiMode === 'sketch' ? 'sketch-appearance-opacity' : 'field-grid'}>
+          <div className={uiMode === 'sketch' ? 'sketch-appearance-opacity' : 'layer-opacity-field'}>
             <NumberField historyLabel="透明度 %" diagnosticFamily={10} unit="percent"
               label={tr("透明度 %")}
               sliderLabel={uiMode === 'sketch' ? '图层不透明度滑块' : undefined}
@@ -1003,7 +1062,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
           {uiMode === 'sketch' && <>{primitiveCount}{primitiveRatio}</>}
         </section>}
         {n.kind === 'text' && (
-            <section>
+            <section data-property-section="typography">
               <h3>{tr(uiMode === 'sketch' ? '字符' : '排版')}</h3>
               <TextInput key={`${editor.sessionGeneration}:${n.id}`} node={n} editor={editor} />
               {n.textPath&&<><NumberField historyLabel="沿路径偏移" diagnosticFamily={2} unit="number" label={tr("沿路径偏移")} value={n.textPath.offset} onChange={v=>update(n=>{n.textPath!.offset=v})}/><NumberField historyLabel="路径基线偏移" diagnosticFamily={2} unit="number" label={tr("路径基线偏移")} value={n.textPath.normal} onChange={v=>update(n=>{n.textPath!.normal=v})}/><label><input type="checkbox" checked={n.textPath.reverse} onChange={e=>update(n=>{n.textPath!.reverse=e.target.checked})}/>{tr("反向路径")}</label></>}
@@ -1060,12 +1119,8 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
           </section>
         )}
         {n.kind!=='slice' && <>
-        <VectorBrushPanel editor={editor} node={n}/>
-        {(n.pathOffset!==undefined || s.tool==='offset-path') && <NumberField historyLabel="路径偏移距离" diagnosticFamily={2} unit="number" label={tr("路径偏移距离")} value={n.pathOffset||0} min={-10000} max={10000} onChange={v=>update(n=>{n.pathOffset=v})}/>}
-        <BoardPanel editor={editor} node={n}/>
-        <RepeatPanel editor={editor} node={n}/>
-        <ComponentPanel editor={editor} node={n} ids={ids} />
-        {!n.spatial?.preserve3d && <section>
+        {uiMode === 'sketch' && extraLayerControls}
+        {!n.spatial?.preserve3d && <section data-property-section="fill">
           <h3>{tr("填充")}{stackButton('fills', () => update(node => {
             if (node.fills.length < 16) {
               node.fills.push(paint())
@@ -1093,7 +1148,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
           ))}
           {!n.fills.length && <p className="muted">{tr("无填充")}</p>}
         </section>}
-        <section>
+        <section data-property-section="stroke">
           <h3>{tr("描边")}{stackButton('strokes', () => update(node => {
             if (node.strokes.length < 16) node.strokes.push(stroke())
           }, '添加描边'))}</h3>
@@ -1195,7 +1250,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
             </StylePropertyRow>
           ))}
         </section>
-        <section>
+        <section data-property-section="effects">
           <h3>{tr("效果")}{removeStacks ? stackButton('effects') : <select
               aria-label={tr("添加效果")}
               value=""
@@ -1409,7 +1464,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
               )}
             </StylePropertyRow>
           )}
-          {!n.effects.length && !n.spatial && <p className="muted">{tr("用光影和质感表达层次")}</p>}
+          {uiMode === 'sketch' && !n.effects.length && !n.spatial && <p className="muted">{tr("用光影和质感表达层次")}</p>}
         </section>
         {allowSpatial && uiMode === 'figma' && (n.spatial || n.kind === 'frame' && !n.graphic &&
           n.children.some(id => s.doc.nodes[id]?.spatial)) && <section>
@@ -1424,6 +1479,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
           <LayoutGuidePanel key={`${editor.sessionGeneration}:${n.id}`} editor={editor} frame={n} ids={ids} compact />}
         </>}
         <NodeExportPanel key={n.id} editor={editor} node={n} scopePageRoots={uiMode === 'figma'} />
+        {uiMode === 'figma' && n.kind !== 'slice' && extraLayerControls}
       </div>
       {context && <CanvasContextMenu editor={editor} x={context.x} y={context.y} origin="inspector" worldPoint={editor.selectionBounds()} onClose={() => setContext(null)} />}
     </aside>

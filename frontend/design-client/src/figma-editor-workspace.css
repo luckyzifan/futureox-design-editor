@@ -1,0 +1,347 @@
+/* The design workspace shares the editor's inputs and actions, with its own chrome. */
+.editor-shell[data-ui-mode="figma"],
+.property-color-popover[data-ui-mode="figma"] {
+  --workspace-panel: #fcfbf7;
+  --workspace-text: #222e2b;
+  --workspace-muted: #586761;
+  --workspace-border: #dddcd2;
+  --workspace-hover: #edf1eb;
+  --workspace-field: #eeefe8;
+  --workspace-accent: #216a5e;
+  --workspace-selected: #dcebe4;
+  --workspace-selected-ink: #184c44;
+  --workspace-shadow: 0 8px 26px #24372e1c, 0 1px 4px #24372e18;
+  --rail-heading: #f4f3ec;
+  --rail-line: var(--workspace-border);
+  --inspector-field: var(--workspace-field);
+  --chrome-surface: #f4f3ec;
+  --chrome-raised: #e9ece4;
+  --chrome-text: var(--workspace-text);
+  --chrome-muted: var(--workspace-muted);
+  --chrome-focus: #216a5e;
+  --chrome-action: #216a5e;
+  --chrome-action-hover: #18564c;
+  --chrome-line: var(--workspace-border);
+}
+.editor-shell[data-ui-mode="figma"] > .editor-header {
+  box-shadow: inset 0 -1px var(--workspace-border);
+}
+.editor-shell[data-ui-mode="figma"] :is(.adaptive-layers-shell, .properties-workspace) {
+  background: var(--workspace-panel);
+}
+.editor-shell[data-ui-mode="figma"] .workspace-rail {
+  background: #eeeee5;
+  border-color: var(--workspace-border);
+}
+.editor-shell[data-ui-mode="figma"] .workspace-rail button {
+  border-radius: 8px;
+}
+.editor-shell[data-ui-mode="figma"] .workspace-rail button[aria-pressed="true"] {
+  color: var(--workspace-selected-ink);
+  background: var(--workspace-selected);
+  box-shadow: inset 2px 0 var(--workspace-accent);
+}
+.editor-shell[data-ui-mode="figma"] .layers-pages[hidden] { display: none; }
+.editor-shell[data-ui-mode="figma"] .layer-heading {
+  min-height: 38px;
+  padding: 5px 10px 5px 12px;
+  background: var(--rail-heading);
+  border-bottom: 1px solid var(--workspace-border);
+}
+.editor-shell[data-ui-mode="figma"] .layer-heading h2 {
+  flex: 1;
+  margin: 0;
+  color: var(--workspace-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+.editor-shell[data-ui-mode="figma"] .layer-heading > button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+}
+.editor-shell[data-ui-mode="figma"] .layers-document-title {
+  min-height: 40px;
+  padding-inline: 11px;
+}
+.editor-shell[data-ui-mode="figma"] .layers-document-title input {
+  font-weight: 660;
+}
+.editor-shell[data-ui-mode="figma"] .layer-row.selected {
+  color: var(--workspace-selected-ink);
+  box-shadow: inset 2px 0 var(--workspace-accent);
+}
+.editor-shell[data-ui-mode="figma"] .assets-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+}
+.assets-panel .assets-search { position: relative; color: var(--workspace-muted); }
+.assets-panel .assets-search svg { position: absolute; left: 8px; top: 8px; pointer-events: none; }
+.assets-panel .assets-search input { box-sizing: border-box; width: 100%; }
+.assets-panel .assets-search:has(svg) input { padding-left: 28px; }
+.editor-shell[data-ui-mode="figma"] .assets-library-entry {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  justify-content: flex-start;
+  min-height: 30px;
+  color: var(--workspace-selected-ink);
+  background: var(--workspace-selected);
+}
+.editor-shell[data-ui-mode="figma"] .component-asset {
+  margin: 2px 0;
+  padding: 8px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 7px;
+  background: var(--workspace-panel);
+}
+.editor-shell[data-ui-mode="figma"] .component-asset:hover {
+  background: var(--workspace-hover);
+  border-color: var(--workspace-accent);
+}
+
+.editor-shell[data-ui-mode="figma"] .workspace-tool-panel {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.workspace-tool-search {
+  flex: none;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--workspace-border);
+}
+.workspace-tool-search h2 { margin: 0 0 7px; }
+.workspace-tool-search label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  color: var(--workspace-muted);
+  border: 1px solid var(--workspace-border);
+  border-radius: 7px;
+  background: var(--workspace-field);
+}
+.workspace-tool-search label:focus-within { border-color: var(--workspace-accent); box-shadow: 0 0 0 1px var(--workspace-accent); }
+.editor-shell[data-ui-mode="figma"] .workspace-tool-search input:focus-visible { outline: 0; }
+.workspace-tool-search input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--workspace-text);
+  font: inherit;
+}
+.workspace-tool-list { overflow-y: auto; padding: 0 10px; }
+.workspace-tool-list > p { margin: 13px 2px; color: var(--workspace-muted); }
+.workspace-tool-list section { padding: 9px 0; border-bottom: 1px solid var(--workspace-border); }
+.workspace-tool-list h3 { margin: 0 4px 5px; color: var(--workspace-muted); font: inherit; font-size: 11px; }
+.workspace-tool-list button {
+  display: grid;
+  grid-template-columns: 17px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  margin: 1px 0;
+  padding: 2px 5px;
+  border-color: transparent;
+  border-radius: 6px;
+}
+.workspace-tool-list button span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.workspace-tool-list kbd { color: var(--workspace-muted); font: inherit; font-size: 10px; }
+
+.editor-shell[data-ui-mode="figma"] .figma-properties-actions {
+  height: 36px;
+  gap: 3px;
+  background: var(--rail-heading);
+}
+.figma-properties-actions .presentation-options > button,
+.figma-properties-actions .prototype-preview-button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  color: var(--workspace-text);
+}
+.figma-properties-actions .presentation-options > button:hover,
+.figma-properties-actions .prototype-preview-button:hover:not(:disabled) {
+  background: var(--workspace-selected);
+}
+.figma-properties-actions .workspace-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  margin-left: 5px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--chrome-action);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+}
+.figma-properties-actions .workspace-export:hover { background: var(--chrome-action-hover); }
+.figma-properties-actions .workspace-export svg:last-child { display: none; }
+.editor-shell[data-ui-mode="figma"] .properties-workspace .properties-tabs {
+  height: 38px;
+  gap: 4px;
+  padding-inline: 8px;
+  background: var(--workspace-panel);
+}
+.editor-shell[data-ui-mode="figma"] .properties-tab-buttons {
+  display: flex;
+  gap: 1px;
+  min-width: 0;
+  padding: 2px;
+  margin: 0;
+  border-radius: 7px;
+  background: var(--workspace-field);
+}
+.editor-shell[data-ui-mode="figma"] .properties-tab-buttons > [role="tab"] {
+  height: 25px;
+  min-width: 0;
+  border-radius: 5px;
+}
+.editor-shell[data-ui-mode="figma"] .properties-tab-buttons > [aria-selected="true"] {
+  background: var(--workspace-panel);
+  color: var(--workspace-selected-ink);
+  box-shadow: 0 1px 3px #24372e24;
+}
+.editor-shell[data-ui-mode="figma"] .properties-zoom details > summary {
+  color: var(--workspace-text);
+  font-variant-numeric: tabular-nums;
+  border-radius: 6px;
+}
+.editor-shell[data-ui-mode="figma"] .properties-zoom details > summary:hover {
+  background: var(--workspace-field);
+}
+
+.editor-shell[data-ui-mode="figma"] .properties-content .property-selection-context {
+  min-height: 48px;
+  padding: 6px 11px;
+  gap: 6px;
+  background: var(--workspace-panel);
+  border-color: var(--workspace-border);
+}
+.property-selection-title { min-width: 0; flex: 1; }
+.property-selection-title h2 {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 660;
+}
+.property-selection-title > span { display: block; margin-top: 2px; color: var(--workspace-muted); font-size: 10px; }
+.property-context-actions { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.editor-shell[data-ui-mode="figma"] .property-context-actions button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  width: 25px;
+  height: 26px;
+}
+.sketch-page-properties { display: contents; }
+.editor-shell[data-ui-mode="figma"] .inspector-scroll > section {
+  margin: 0;
+  padding: 10px 11px;
+  border-bottom: 1px solid var(--workspace-border);
+  background: var(--workspace-panel);
+}
+.editor-shell[data-ui-mode="figma"] .inspector-scroll > section h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 22px;
+  margin: 0 0 6px;
+  color: var(--workspace-text);
+  font-size: 12px;
+}
+.editor-shell[data-ui-mode="figma"] .page-inspector-action h3 { margin-bottom: 0; }
+.layout-heading-actions { display: flex; align-items: center; gap: 3px; }
+.layer-opacity-field { margin-bottom: 5px; }
+.editor-shell[data-ui-mode="figma"] .inspector h3 button {
+  display: grid;
+  place-items: center;
+  min-width: 23px;
+  min-height: 22px;
+  padding: 0 3px;
+}
+.editor-shell[data-ui-mode="figma"] .inspector .number-field {
+  min-width: 0;
+  min-height: 28px;
+  border-radius: 6px;
+}
+.editor-shell[data-ui-mode="figma"] .inspector .field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.editor-shell[data-ui-mode="figma"] .inspector .alignment-controls { gap: 2px; margin: 4px 0 8px; }
+.editor-shell[data-ui-mode="figma"] .alignment-controls:not([data-property-labels]) > button {
+  width: 26px;
+  height: 26px;
+  background: var(--workspace-field);
+}
+.editor-shell[data-ui-mode="figma"] .alignment-controls > button:hover:not(:disabled) {
+  background: var(--workspace-selected);
+}
+.editor-shell[data-ui-mode="figma"] .layout-options,
+.editor-shell[data-ui-mode="figma"] .paint-options {
+  margin: 4px 0 0;
+}
+.editor-shell[data-ui-mode="figma"] .paint-options > summary {
+  padding: 3px 0;
+  color: var(--workspace-muted);
+  font-size: 10px;
+}
+.editor-shell[data-ui-mode="figma"] .inspector [data-property-section] .property-card {
+  padding: 5px 6px;
+  margin: 4px 0;
+  border-radius: 7px;
+  border-color: var(--workspace-border);
+  background: var(--rail-heading);
+}
+.editor-shell[data-ui-mode="figma"] .figma-workspace-tools.floating-toolbar {
+  flex-wrap: wrap;
+  justify-content: center;
+  height: auto;
+  gap: 5px;
+  border-radius: 10px;
+  background: #f5f4eb;
+  border-color: var(--workspace-border);
+  box-shadow: var(--workspace-shadow);
+}
+.editor-shell[data-ui-mode="figma"] .figma-workspace-tools > .tool-group {
+  flex-wrap: wrap;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+}
+.editor-shell[data-ui-mode="figma"] .canvas-workspace > .figma-workspace-tools .figma-toolbelt-mode {
+  background: var(--workspace-field);
+  border-color: var(--workspace-border);
+}
+.editor-shell[data-ui-mode="figma"] .canvas-workspace > .figma-workspace-tools
+  :is(.tool-group > button, .tool-popover > button, .figma-toolbelt-mode > button):is(.active, [aria-pressed="true"], [aria-expanded="true"], [aria-checked="true"]) {
+  background: var(--workspace-selected);
+  color: var(--workspace-selected-ink);
+  box-shadow: inset 0 0 0 1px #9bbfb0;
+}
+
+.property-color-popover[data-ui-mode="figma"] {
+  color: var(--workspace-text);
+  background: var(--workspace-panel);
+  border-color: var(--workspace-border);
+  box-shadow: var(--workspace-shadow);
+}
+.property-color-popover[data-ui-mode="figma"] :is(.property-color-tabs, input:not([type="range"]), select) {
+  background: var(--workspace-field);
+}
+.property-color-popover[data-ui-mode="figma"] .property-color-tabs [aria-selected="true"] {
+  color: var(--workspace-selected-ink);
+  background: var(--workspace-panel);
+}

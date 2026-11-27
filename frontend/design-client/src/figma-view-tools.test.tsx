@@ -63,10 +63,15 @@ async function openEditor() {
   for (let i = 0; i < 20; i++) await Promise.resolve()
 }
 
-test('Figma hand and zoom stay with the canvas toolbelt and Sketch uses the header', async () => {
+test('Figma docks view controls in the inspector, keeps a canvas fallback, and Sketch uses the header', async () => {
   await openEditor()
   expect(document.querySelector('.editor-shell')?.getAttribute('data-ui-mode')).toBe('figma')
   expect(readout()?.textContent).toMatch(/%$/)
+  expect(group()).toBeNull()
+  expect(readout()?.closest('[data-testid="figma-docked-zoom"]')).not.toBeNull()
+  const toggle = document.querySelector<HTMLButtonElement>('.canvas-panel-toggle.right')!
+  await act(async () => toggle.click())
+  expect(toggle.getAttribute('aria-expanded')).toBe('false')
   expect(group()?.closest('.canvas-workspace .floating-toolbar')).not.toBeNull()
   expect(readout()?.closest('[data-testid="figma-view-tools"]')).toBe(group())
   const hand = group()?.querySelector('button')!
@@ -74,12 +79,9 @@ test('Figma hand and zoom stay with the canvas toolbelt and Sketch uses the head
   expect(editor?.state.tool).toBe('hand')
   expect(hand.getAttribute('aria-pressed')).toBe('true')
 
-  const toggle = document.querySelector<HTMLButtonElement>('.canvas-panel-toggle.right')!
   await act(async () => toggle.click())
-  expect(toggle.getAttribute('aria-expanded')).toBe('false')
-  expect(readout()?.closest('.floating-toolbar')).not.toBeNull()
-  await act(async () => toggle.click())
-  expect(readout()?.closest('.floating-toolbar')).not.toBeNull()
+  expect(toggle.getAttribute('aria-expanded')).toBe('true')
+  expect(readout()?.closest('[data-testid="figma-docked-zoom"]')).not.toBeNull()
 
   await act(async () => button('Sketch').click())
   expect(document.querySelector('.editor-shell')?.getAttribute('data-ui-mode')).toBe('sketch')
@@ -93,7 +95,8 @@ test('Figma hand and zoom stay with the canvas toolbelt and Sketch uses the head
   expect(preview?.classList.contains('prototype-preview-button')).toBe(false)
   expect(preview?.classList.contains('sketch-preview-tool')).toBe(true)
   expect(document.querySelector('.prototype-preview-button')).toBeNull()
-  expect(document.querySelector('.properties-tabs')).toBeNull()
+  expect(document.querySelector('[data-workspace-host="figma-inspector"]')).toBeNull()
+  expect(document.querySelector('[data-workspace-host="sketch-inspector"]')).not.toBeNull()
   expect(tools.querySelector('button[aria-label="编辑"]')?.classList.contains('sketch-edit-tool')).toBe(true)
   expect(insert.classList.contains('sketch-insert-tool')).toBe(true)
   expect(tools.querySelector('button[aria-label="画框"]')?.classList.contains('sketch-main-tool')).toBe(true)
@@ -104,7 +107,7 @@ test('Figma hand and zoom stay with the canvas toolbelt and Sketch uses the head
   expect(editor?.state.tool).toBe('rectangle')
 
   await act(async () => button('Figma').click())
-  expect(readout()?.closest('.floating-toolbar')).not.toBeNull()
+  expect(readout()?.closest('[data-testid="figma-docked-zoom"]')).not.toBeNull()
   expect(document.querySelector('.sketch-window-tools')).toBeNull()
   expect(document.querySelector('button[aria-label="预览"]')).toBeNull()
   expect(document.querySelector('.prototype-preview-button')).not.toBeNull()

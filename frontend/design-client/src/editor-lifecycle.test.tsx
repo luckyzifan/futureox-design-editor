@@ -409,7 +409,9 @@ test('inspector image decode does not apply to a reloaded same-ID document', asy
   let finish!: () => void; const decoded = new Promise<void>((resolve) => { finish = resolve })
   vi.stubGlobal('FileReader', class { result = 'data:image/png;base64,AA=='; onload!: () => void; readAsDataURL() { this.onload() } })
   vi.stubGlobal('Image', class { naturalWidth = 100; naturalHeight = 100; width = 1; height = 1; decode() { return decoded } })
-  const importing = find(paintTree, (el) => el.type === 'input' && el.props.type === 'file').props.onChange({ target: { files: [{ name: 'image.png', type: 'image/png', size: 1 }] } })
+  const imageInput = find(paintTree, (el) => el.type === 'input' && el.props.type === 'file' && el.props.accept?.includes('image/png'))
+  expect(imageInput).toBeDefined()
+  const importing = imageInput.props.onChange({ target: { files: [{ name: 'image.png', type: 'image/png', size: 1 }] } })
   f.editor.load(structuredClone(f.editor.state.doc)); const before = f.editor.state.doc
   finish(); await importing
   expect(f.editor.state.doc).toBe(before)
