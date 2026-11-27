@@ -243,13 +243,13 @@ function PaintEditor({
         {target ? <>
           <SolidFillColorInput target={target} label={tr('颜色')} value={p.color} kind={p.kind} onKind={changeKind} onVideo={chooseVideo} channel={channel} />
           {inline ? <>
-            <DraftInput className="paint-inline-color" aria-label={tr('填充颜色值')} diagnosticFamily={InputFamily.color}
+            <DraftInput className="paint-inline-color" aria-label={tr('填充颜色')} diagnosticFamily={InputFamily.color}
               value={displayInlineColor(p.color)} normalize={displayInlineColor}
               validate={value => validColor(normalizePaintHex(value), !!editor?.authoredDocument.colorManagement)}
               onFocus={event => event.currentTarget.select()} spellCheck={false}
               onCommit={value => updateInline({ color: normalizePaintHex(value) })} />
             <span className="paint-inline-alpha">
-              <DraftInput aria-label={tr('填充不透明度 %')} diagnosticFamily={11}
+              <DraftInput aria-label={tr('填充不透明度')} diagnosticFamily={11}
                 value={formatPercent(p.opacity * 100)} inputMode="decimal"
                 onFocus={event => event.currentTarget.select()}
                 normalize={value => {

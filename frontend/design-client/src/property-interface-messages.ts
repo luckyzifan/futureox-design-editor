@@ -522,6 +522,7 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "原始颜色 / CSS": "Native color / CSS",
   "HEX 预览": "HEX preview",
   "颜色值": "Color value",
+  "填充颜色": "Fill color",
   "填充颜色值": "Fill color value",
   "填充不透明度滑块": "Fill opacity slider",
   "仅修改填充；图层不透明度与颜色自身 Alpha 保持独立。": "Only the fill is changed. Layer opacity and the color's own alpha remain independent.",
