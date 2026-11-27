@@ -876,7 +876,8 @@ export class ResidentPresenter {
     // A nonresident tile cannot occlude a valid lower-density source. Filter
     // before planning, not after covered rectangles have removed that source.
     const available = frame.items.filter(item => this.textures.has(item.tile.gpuTile))
-    const missing = strictSharpDiagnostics ? [...new Set(compositeDrawPlan(frame.items as CompositeItem[], view, width, height)
+    // The axis-aligned plan can hide a source the affine preview still needs.
+    const missing = strictSharpDiagnostics && !frame.affinePreview ? [...new Set(compositeDrawPlan(frame.items as CompositeItem[], view, width, height)
       .filter(planned => !this.textures.has((planned.item as ResidentItem).tile.gpuTile) &&
         compositeRasterQuad(planned.placement, planned.clip, width, height, dpr))
       .map(planned => (planned.item as ResidentItem).tile.gpuTile))] :
@@ -907,10 +908,12 @@ export class ResidentPresenter {
     // clearing or acknowledging this camera. Explicit empty interaction
     // captures retain their existing separate clear/background contract.
     let complete=physicalPixelCoverage(rows.map(row=>({...row.raster,blend:row.item.blend})),w,h),backgroundAdded=false
-    // A motion affine preview is an explicitly approximate reprojection of the
-    // cached pose. Its transformed quad is not an axis-aligned coverage proof,
-    // so it neither claims exact coverage nor defers on the native coverage gate.
-    if (frame.affinePreview) complete = true
+    // An ACK can replay a queued preview after one of its handles was retired.
+    // Keep the accepted image until the live sources can draw the approximation
+    // or a new exact frame arrives. Axis-aligned coverage alone cannot vouch
+    // for an affine draw that went missing or was clipped out.
+    const incompleteAffine = frame.affinePreview && (missing.length > 0 || !rows.some(row => row.item.affine))
+    if (frame.affinePreview && !incompleteAffine) complete = true
     let backgroundDecline=complete?0:1
     if(!complete&&frame.allowBackground&&!frame.linearBlend){
       // Draw order starts with overview/history. Those certificates describe
@@ -969,7 +972,7 @@ export class ResidentPresenter {
     const basisCamera = basis?.camera ?? previous
     const basisContent = basis?.content ?? (!this.drawnPreview ? this.drawnContent : undefined)
     const basisDensity = basisCamera ? basisCamera.view.zoom * basisCamera.dpr : 0
-    const underlay = frame.zoomUnderlay && !complete && !frame.interaction && !frame.linearBlend &&
+    const underlay = !incompleteAffine && frame.zoomUnderlay && !complete && !frame.interaction && !frame.linearBlend &&
       basisCamera && source && content && sameContent(basisContent, content) &&
       rows.some(row => row.item.tile.zoom > basisDensity * (1 + 1e-9))
       ? retainedPreviewUnderlay({
@@ -1025,7 +1028,7 @@ export class ResidentPresenter {
     // Empty background is intentional for isolated interaction layers, but a
     // missing source is never intentional transparency. Do not clear the
     // accepted backing when an imported/released interaction handle is absent.
-    if (!frame.allowEmpty && !complete && !preview || frame.allowEmpty && missing.length > 0) {
+    if (incompleteAffine || (!frame.allowEmpty && !complete && !preview) || (frame.allowEmpty && missing.length > 0)) {
       const densityProofs=rows.flatMap(row=>row.entry.background?.pixel&&row.entry.background.view.zoom===view.zoom*dpr?[row.entry.background]:[])
       const backgroundPhaseError=densityProofs.length?Math.min(...densityProofs.map(p=>{
         const dx=view.x*dpr-p.view.x,dy=view.y*dpr-p.view.y;return Math.max(Math.abs(dx-Math.round(dx)),Math.abs(dy-Math.round(dy)))
