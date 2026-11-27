@@ -57,6 +57,11 @@ The browser page does not listen on a port and cannot host stdio. The in-app Des
 | `download_assets` | `preview.capture`, `vector.export`, or `raster.sourceAssets` | Up to 20 local nodes as separate MCP resources. `png`, `jpeg`, `webp`, `svg`, or bitmap `pdf`. Use `rawImagesOnly` for the original embedded image sources. |
 | `use_figma` | `batch.apply` | Listed when the session can edit. One undo step for 1–40 structured operations. `description` is required. |
 | `open_document` | `workspace.open` | Listed when the session can edit and has a workspace write grant. Opens a saved local design and can end the automation session. |
+| `weave_list_tools`, `weave_get_tool_inputs`, `weave_run_tool`, `weave_get_tool_run_output`, `weave_cancel_tool_run`, `weave_upload_asset` | none | Listed for Figma clients. Every call returns `unsupported_remote_capability`; no Weave account, credits, hosted recipe catalog, upload ticket, or run queue exists locally. |
+| `weave_find_model`, `weave_run_model`, `weave_get_model_run_output` | none | Listed for Figma clients. Every call returns `unsupported_remote_capability`; no model catalog, pricing, or prediction queue exists locally. |
+| `weave_request_report` | none | Connected Figma server only; not in the public tools-and-prompts index. Listed and returns `unsupported_remote_capability`. |
+| `create_session` | `document.get` | Returns the active local automation session as `sessionId`, which other facade tools accept. Not a Figma cloud file session. |
+| `create_branch` | none | Connected Figma server only; not in the public index. Returns `unsupported_remote_capability`; Futureox has no branch or merge model. |
 
 Metadata cursors bind to the local editor session and document revision. Restart the outline without a cursor after `stale_cursor`. XML nests nodes shown on the current page. Use structured node `parentId` values to join relationships across pages. An unknown local node ID returns `not_found` with the current page list in `error.details.pages`.
 
@@ -80,6 +85,16 @@ run({ code, description, documentId, session, revision }, context) => Automation
 
 The MCP process does not eval `code`. The current desktop build does not register a bridge; the plugin host is a separate change.
 
+## Weave, sessions, and branches
+
+`frontend/design-mcp/src/figma-weave-tools.mjs` registers the connected server's Weave, session, and branch names so `tools/list` answers a Figma client instead of an unknown-tool error. Every call is explicit:
+
+- The nine `weave_*` names and `weave_request_report` return `unsupported_remote_capability` with `error.details.capability` and `error.details.docs`. Weave runs recipes and models on a Figma account with credits; Futureox hosts no account, credits, hosted catalog, upload ticket, job queue, or model gateway. No remote request is made. Advertised arguments follow the capability summary in [DESIGN_AUTOMATION_PARITY.zh-CN.md](DESIGN_AUTOMATION_PARITY.zh-CN.md) section 3.7 and are not interpreted; the connected server's exact published schemas were not available offline.
+- `weave_request_report`, `create_session`, and `create_branch` appear on the connected Figma MCP server but not in the public tools-and-prompts index. They are registered for comparison and labeled here rather than presented as documented public tools.
+- `create_session` is the one supported mapping. It returns the active local automation transport session (`Mcp-Session-Id` over HTTP, `FUTUREOX_DESIGN_SESSION` over packaged stdio) with the current `documentId` and `revision`. That value is exactly what other facade tools accept as `sessionId`. It does not create a Figma cloud file session. A transport with no session assertion returns `session_unavailable`.
+- `create_branch` returns `unsupported_remote_capability`. Futureox has no cloud branch or merge model; save a copy of the design and open it with `open_document`.
+- These names stay on the Figma-shaped entry. The shared `design_*` registry still advertises only `design_*` operations, so a native client never sees a name that always fails.
+
 ## Gaps versus the Figma MCP server
 
 Absent:
@@ -92,7 +107,15 @@ Absent:
 - `get_figjam`, `get_motion_context`, shader tools, and generative-plugin library tools
 - Remote `https://mcp.figma.com/mcp`, OAuth, and multi-user accounts
 
+Listed but unsupported:
+
+- `weave_list_tools`, `weave_get_tool_inputs`, `weave_upload_asset`, `weave_run_tool`, `weave_get_tool_run_output`, `weave_cancel_tool_run`, `weave_find_model`, `weave_run_model`, and `weave_get_model_run_output` are visible in `tools/list`; every call returns `unsupported_remote_capability`. No Weave account, credits, recipe catalog, upload store, model catalog, or job queue exists locally.
+- `weave_request_report` (connected server only) is visible and returns `unsupported_remote_capability`.
+- `create_branch` (connected server only) is visible and returns `unsupported_remote_capability`; Futureox has no branch or merge model.
+
 Partial:
+
+- `create_session` returns the active local automation transport session, which other facade tools accept as `sessionId`. It does not create a Figma cloud session and is not in the public tools-and-prompts index.
 
 - `use_figma` structured edits are real Design API batches. Plugin JavaScript is not run unless a host bridge is registered.
 - `download_assets` accepts up to 20 local node IDs in the active page at one editor revision. Download PNG, JPEG, WebP, SVG or bitmap PDF through `resources/read` in the same MCP client session. Render scales range from 0.01× to 4×. A separate `rawImagesOnly: true` call reads up to 20 distinct original embedded PNG, JPEG, GIF or WebP fills from the requested subtrees. Omit format and scale for originals. Truncation and unavailable sources are reported. Original bytes are delivered through the same MCP resource mechanism.
