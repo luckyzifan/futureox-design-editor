@@ -16,6 +16,10 @@ pub fn checkpoint() -> Result<(), String> {
     } else { Ok(()) }
 }
 
+pub(crate) fn is_cancellable() -> bool {
+    PROBE.with(|slot| slot.borrow().is_some()) || SHARED.with(|slot| slot.borrow().is_some())
+}
+
 /// Install `flag` on this thread until the guard drops. The parallel tile
 /// batch sets the flag when the calling thread's probe fires.
 pub struct SharedCancelGuard { previous: Option<Arc<AtomicBool>> }
