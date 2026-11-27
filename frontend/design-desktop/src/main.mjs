@@ -1607,6 +1607,7 @@ async function buildWindow() {
         label: 'Path',
         submenu: [
           { label: 'Close Path', click: () => sendCommand('close-path') },
+          { label: 'Join', click: () => sendCommand('join-paths') },
           { label: 'Reverse Order', click: () => sendCommand('reverse-order') },
           { label: 'Outline Stroke', accelerator: 'CmdOrCtrl+Alt+O', click: () => sendCommand('outline-stroke') },
           { label: 'Convert to Vector', click: () => sendCommand('convert-vector') },
