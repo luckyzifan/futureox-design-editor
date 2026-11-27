@@ -8,6 +8,7 @@ import { modalKeyDown } from './modal-keyboard'
 import { userPages } from './fig-document'
 import { requestAgentTarget } from './design-ai/target-event'
 import { clampAnchoredMenu } from './anchored-menu'
+import { dispatchEditorCommand } from './editor-commands'
 import './design-ai/design-agent.css'
 
 export function PageList({ editor, onRename, layerDropPage }: { editor: Editor; onRename: (id: string) => void; layerDropPage?: string }) {
@@ -62,7 +63,15 @@ export function PageList({ editor, onRename, layerDropPage }: { editor: Editor; 
   const resize = (height: number) => setPaneHeight(old => ({
     ...old, [uiMode]: Math.max(60, Math.min(maximum(), height)),
   }))
-  return <section ref={pane} className="layers-pages" data-pages-expanded={open}>
+  return <section ref={pane} className="layers-pages" data-pages-expanded={open}
+    onKeyDown={event => {
+      // Native Sketch switches pages with Fn↑/Fn↓; browsers report PageUp/PageDown.
+      // Handling it here keeps the page list usable when focus is outside the canvas.
+      if (uiMode !== 'sketch' || event.defaultPrevented || event.nativeEvent.isComposing || event.keyCode === 229 ||
+          (event.key !== 'PageUp' && event.key !== 'PageDown')) return
+      event.preventDefault(); event.stopPropagation()
+      void dispatchEditorCommand(editor, event.key === 'PageDown' ? 'next-page' : 'previous-page')
+    }}>
     <div className="pages-heading">
       <button type="button" className="pages-current" aria-expanded={open} aria-controls={listId} aria-label={open ? text.collapsePages : text.expandPages}
         onClick={() => setCollapsed(value => ({ ...value, [uiMode]: open }))}>

@@ -13,6 +13,10 @@ import { selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
 import { canMakeSketchGrid } from './sketch-make-grid'
 import { selectedPaintSwap } from './sketch-paint-commands'
 import { container } from './model'
+import { componentSourceId, containingSymbolId } from './component-navigation'
+import { commandRecentRank, recordCommandSearchUse } from './command-recent'
+import { canCloseSelectionPath, canReverseSelectionPath } from './sketch-path-commands'
+import { editableFrameCrop } from './selection-properties'
 import { commitPendingEdits } from './pending-edits'
 import { formatShortcutCombo, shortcutBindings, shortcutContextForLayout, type ShortcutContext } from './shortcut-profiles'
 import { localizedToolCommands, toolForCommand, unavailableReason } from './tool-registry'
@@ -22,10 +26,12 @@ export const commandSearchText = {
   'zh-CN': {
     title: '运行…', label: '运行命令', search: '搜索命令', placeholder: '搜索命令…',
     empty: '没有匹配的命令', close: '关闭命令搜索', unavailable: '当前不能运行',
+    filter: '筛选', allCommands: '全部命令', resultGroup: '命令分组',
   },
   en: {
     title: 'Run…', label: 'Run commands', search: 'Search for commands', placeholder: 'Search for commands…',
     empty: 'No matching commands', close: 'Close command search', unavailable: 'This command cannot run',
+    filter: 'Filter', allCommands: 'All commands', resultGroup: 'Command groups',
   },
 } as const
 
@@ -40,6 +46,19 @@ export type CommandSearchAction =
   | { kind: 'command'; command: EditorCommand }
   | { kind: 'align'; axis: 'x' | 'y'; mode: 'start' | 'center' | 'end' | 'distribute' }
   | { kind: 'geometry'; operation: 'union' | 'subtract' | 'intersect' | 'exclude' | 'divide' }
+
+const groupLabels: Readonly<Record<string, readonly [string, string]>> = {
+  history: ['历史', 'History'], clipboard: ['剪贴板', 'Clipboard'], order: ['顺序', 'Order'],
+  structure: ['结构', 'Structure'], layout: ['布局', 'Layout'], component: ['控件', 'Components'],
+  visibility: ['可见性', 'Visibility'], transform: ['变换', 'Transform'], geometry: ['形状', 'Geometry'],
+  naming: ['命名', 'Naming'], selection: ['选区', 'Selection'], view: ['视图', 'View'],
+  tools: ['工具', 'Tools'], arrange: ['排列', 'Arrange'], path: ['路径', 'Path'],
+}
+
+export function commandSearchGroupLabel(group: string, locale: InterfaceLocale): string {
+  const label = groupLabels[group]
+  return label ? label[locale === 'en' ? 1 : 0] : group
+}
 
 export type CommandSearchEntry = {
   id: string
@@ -68,6 +87,10 @@ const catalog: readonly Spec[] = [
   { command: 'paste-over-selection', zh: '覆盖粘贴（保留目标）', en: 'Paste over selection (keep targets)', group: 'clipboard' },
   { command: 'duplicate', zh: '创建副本', en: 'Duplicate', group: 'clipboard', aliases: ['duplicate', '副本'] },
   { command: 'make-grid', layout: 'sketch', zh: '制作网格', en: 'Make Grid', group: 'arrange' },
+  { command: 'edit-selection', layout: 'sketch', zh: '进入编辑', en: 'Edit selection', group: 'structure' },
+  { command: 'close-path', layout: 'sketch', zh: '闭合路径', en: 'Close Path', group: 'path' },
+  { command: 'reverse-order', layout: 'sketch', zh: '倒序', en: 'Reverse Order', group: 'path', aliases: ['reverse path', '反转路径'] },
+  { command: 'select-containing-symbol', layout: 'sketch', zh: '选择包含的控件', en: 'Select Containing Symbol', group: 'selection' },
   { command: 'fit-pixel-bounds', layout: 'sketch', zh: '使边界贴合像素', en: 'Fit to pixel bounds', group: 'transform' },
   { command: 'round-to-pixel', layout: 'sketch', zh: '舍入到像素', en: 'Round to pixel', group: 'transform' },
   { command: 'swap-fills-and-strokes', layout: 'sketch', zh: '交换填充和边框', en: 'Swap fills and borders', group: 'geometry' },
@@ -231,6 +254,21 @@ function explain(editor: Editor, action: CommandSearchAction, context: ShortcutC
   const command = action.command
   if (command === 'make-grid') return canMakeSketchGrid(editor) ? undefined :
     phrase(locale, '请选择同一容器内可移动且已排齐的图层', 'Select movable, aligned layers in the same container')
+  if (command === 'close-path') return canCloseSelectionPath(editor) ? undefined :
+    phrase(locale, '请选择一条含两个端点的开放矢量路径', 'Select one open vector path with two endpoints')
+  if (command === 'reverse-order') return canReverseSelectionPath(editor) ? undefined :
+    phrase(locale, '请选择一条矢量路径', 'Select a vector path')
+  if (command === 'select-containing-symbol') {
+    const target = nodes.length === 1 ? containingSymbolId(doc, nodes[0].id, editor.parentMap()) : undefined
+    return target ? undefined : phrase(locale, '当前图层不在控件内', 'The layer is not inside a component')
+  }
+  if (command === 'edit-selection') {
+    if (nodes.length !== 1) return phrase(locale, '请选择一个图层', 'Select one layer')
+    const node = nodes[0]
+    if (componentSourceId(doc, node.id, editor.parentMap()) || editableFrameCrop(editor) ||
+        (!container(node) && node.kind !== 'text' && node.kind !== 'slice') || node.children.length) return undefined
+    return phrase(locale, '该图层没有可进入的编辑上下文', 'This layer has no editable context')
+  }
   if (command.startsWith('set-tool-')) return unavailableReason(command, locale) ?? undefined
   if (command === 'undo') return editor.canUndo ? undefined : phrase(locale, '没有可撤销的操作', 'Nothing to undo')
   if (command === 'redo') return editor.canRedo ? undefined : phrase(locale, '没有可重做的操作', 'Nothing to redo')
@@ -401,7 +439,10 @@ export function commandSearchEntries(editor: Editor, context: ShortcutContext, l
 
 export function filterCommandSearch(entries: readonly CommandSearchEntry[], query: string): CommandSearchEntry[] {
   const normalized = fold(query)
-  if (!normalized) return [...entries]
+  if (!normalized) {
+    // Recently run rows come first on an empty query; the catalog order breaks ties.
+    return [...entries].sort((a, b) => commandRecentRank(a.id) - commandRecentRank(b.id) || a.order - b.order)
+  }
   const tokens = normalized.split(' ').filter(Boolean)
   const compact = normalized.replace(/ /g, '')
   const ranked: { entry: CommandSearchEntry; rank: number }[] = []
@@ -416,13 +457,14 @@ export function filterCommandSearch(entries: readonly CommandSearchEntry[], quer
     const rank = label.startsWith(normalized) ? 0 : label.includes(normalized) ? 1 : aliases.some(alias => alias.startsWith(normalized)) ? 2 : 3
     ranked.push({ entry, rank })
   }
-  ranked.sort((a, b) => a.rank - b.rank || a.entry.order - b.entry.order)
+  ranked.sort((a, b) => a.rank - b.rank || commandRecentRank(a.entry.id) - commandRecentRank(b.entry.id) || a.entry.order - b.entry.order)
   return ranked.map(item => item.entry)
 }
 
 /** Executes one admitted row. Disabled rows and failed pending drafts do not publish a search step. */
 export async function runCommandSearch(editor: Editor, entry: CommandSearchEntry, context: ShortcutContext): Promise<void> {
   if (entry.disabled) return
+  recordCommandSearchUse(entry.id)
   if (entry.action.kind === 'command') {
     const { uiMode } = interfacePreference.getSnapshot()
     const layout = shortcutContextForLayout({ ...context, uiMode })
