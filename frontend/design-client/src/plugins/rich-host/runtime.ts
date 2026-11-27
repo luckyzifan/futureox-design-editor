@@ -4,9 +4,11 @@ import type { PluginStorage, PluginStorageRequest } from './client-storage'
 import { PluginApiError, PluginClosed } from './errors'
 import { matchNetworkAccess, type PluginFetch } from './network'
 import { PLUGIN_LIMITS } from './limits'
-import { assertPluginBundle, pluginEditorType, type PluginBundle, type PluginLaunchMode } from './manifest'
+import { assertPluginBundle, pluginEditorType, pluginLaunchContext, type PluginBundle, type PluginEditorType, type PluginLaunchMode } from './manifest'
 import { PLUGIN_PRELUDE } from './prelude'
-import { createPluginSession, type PluginFontJob, type PluginSystemFonts, type PluginUiState } from './session'
+import {
+  createPluginSession, type PluginCodegenOutput, type PluginFontJob, type PluginSystemFonts, type PluginUiState,
+} from './session'
 import type { PluginDocumentChanges } from './document-changes'
 import type { PluginEditorEvent } from './ui-document'
 
@@ -43,8 +45,11 @@ export type PluginHooks = {
   onError?: (error: unknown) => void
   /** The guest finished itself with closePlugin. Host-initiated stop does not fire it. */
   onClose?: (message: string) => void
+  /** Codegen sections collected from a generate handler. */
+  onCodegen?: (output: PluginCodegenOutput) => void
   /** Manifest menu command. Omitted when the plugin has no menu. */
   command?: string
+  /** Launch context the editor asks for. The manifest and capabilities choose the final one. */
   mode?: PluginLaunchMode
   isModeCurrent?: () => boolean
   signal?: AbortSignal
@@ -90,10 +95,7 @@ export class PluginController {
 
   static async open(bundle: PluginBundle, editor: Parameters<typeof createPluginSession>[0], hooks?: PluginHooks) {
     assertPluginBundle(bundle)
-    const mode = hooks?.mode ?? 'default'
-    const editorType = pluginEditorType(mode)
-    if (!bundle.manifest.editorType.includes(editorType))
-      throw new PluginApiError('unsupported_editor_type', `Plugin does not support the ${editorType === 'dev' ? 'Dev inspection' : 'Figma design'} context`)
+    const launch = pluginLaunchContext(bundle.manifest, hooks?.mode ?? 'default')
     hooks?.signal?.throwIfAborted()
     const quick = await quickJs()
     hooks?.signal?.throwIfAborted()
@@ -107,7 +109,8 @@ export class PluginController {
       name: bundle.manifest.name,
       pluginId: bundle.manifest.id,
       command: hooks?.command,
-      mode,
+      mode: launch.mode,
+      codegenLanguages: bundle.manifest.codegenLanguages.map(language => language.value),
       isModeCurrent: hooks?.isModeCurrent,
       uiHtml: bundle.ui,
       storage: hooks?.storage,
@@ -153,6 +156,8 @@ export class PluginController {
       const pending = controller.evaluate(PLUGIN_PRELUDE + '\n;\n' + bundle.main)
       if (pending) await pending
       hooks?.signal?.throwIfAborted()
+      await controller.deliverRun()
+      hooks?.signal?.throwIfAborted()
       controller.finishTurn()
       return controller
     } catch (error) {
@@ -170,11 +175,39 @@ export class PluginController {
   get flushes() { return this.session.flushes }
   get pluginId() { return this.session.pluginId }
   get applying() { return this.session.applying }
+  /** Context this launch resolved to: default (design), inspect, or codegen. */
+  get mode(): PluginLaunchMode { return this.session.launchMode }
+  get editorType(): PluginEditorType { return pluginEditorType(this.session.launchMode) }
+  /** Sections from the latest codegen generate event. */
+  get codegen(): readonly PluginCodegenOutput[] { return this.session.codegenOutputs }
+  /** Ask the plugin's generate handler for code sections for the current selection.
+   * Resolves false when nothing is selected or the plugin has no runnable context. */
+  async requestCodegen(): Promise<boolean> {
+    if (this.session.launchMode !== 'codegen')
+      throw new PluginApiError('unsupported_codegen', 'Codegen events only run in codegen mode')
+    for (let round = 0; round < PLUGIN_LIMITS.codegenRefreshRounds; round++) {
+      if (!this.context || this.session.closed) return false
+      if (!this.session.codegenTarget()) return false
+      const pending = this.dispatch('globalThis.__deliverPluginCodegen()')
+      if (pending) await pending
+      if (!this.session.takeCodegenRefresh()) return true
+    }
+    return true
+  }
 
   watches(type: PluginEditorEvent) { return this.session.watches(type) }
 
   emit(type: PluginEditorEvent, change?: PluginDocumentChanges) {
     return this.dispatch(`globalThis.__deliverPluginEvent(${JSON.stringify(type)}, ${JSON.stringify(change ?? null)})`)
+  }
+
+  /** Figma fires `run` once when the plugin starts, after the main script registered
+   * its handlers. The host never collects quick-action parameters, so the event has
+   * no parameters property, the same shape Figma sends when the parameter UI was skipped. */
+  async deliverRun() {
+    if (!this.context || this.session.closed || !this.session.listensToRun()) return
+    const pending = this.evaluate('globalThis.__deliverPluginRun()')
+    if (pending) await pending
   }
 
   deliver(message: unknown) {

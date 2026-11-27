@@ -192,7 +192,10 @@ function wrap(id) {
         if (!host('isVectorNode', { id: nodeId })) return undefined
         return async function (network) { host('writeVectorNetwork', { id: nodeId, network: network }) }
       }
-      if (prop === 'setRelaunchData') return function () { unsupported('SceneNode.setRelaunchData') }
+      if (prop === 'annotations') return []
+      if (prop === 'setRelaunchData') return function () {
+        throw new Error('relaunch_unavailable: Relaunch buttons are not shown; the local host has no relaunch surface')
+      }
       const snap = read(nodeId)
       if (prop === 'vectorNetwork' && snap.type === 'VECTOR') return host('readVectorNetwork', { id: nodeId })
       if (Object.prototype.hasOwnProperty.call(snap, prop)) return snap[prop]
@@ -200,6 +203,8 @@ function wrap(id) {
     },
     set: function (target, prop, value) {
       if (value === figma.mixed) unsupported('figma.mixed')
+      if (prop === 'annotations')
+        throw new Error('annotations_unavailable: The local document has no annotation store')
       host('patch', { id: target.id, props: { [prop]: value } })
       return true
     },
@@ -300,7 +305,10 @@ function booleanOp(operation, nodes) {
   return wrap(host('boolean', { operation: operation, ids: nodes.map(function (node) { return node.id }) }).id)
 }
 const __pluginMeta = host('meta', null)
-const listeners = { selectionchange: [], currentpagechange: [], documentchange: [], close: [] }
+const listeners = { selectionchange: [], currentpagechange: [], documentchange: [], close: [], run: [] }
+const parameterListeners = []
+const codegenListeners = { generate: [], preferenceschange: [] }
+const codegenPreferences = Object.freeze({ unit: 'PIXEL', customSettings: Object.freeze({}) })
 let closing = false
 let skipInvisibleInstanceChildren = true
 function channel(value) {
@@ -331,6 +339,19 @@ globalThis.__finishPluginStorage = function (id, payload) {
   if (!waiter) return
   if (!payload.ok) waiter.reject(new Error(payload.code + ': ' + payload.message))
   else waiter.resolve(payload.value)
+}
+function parameterHandler(type, callback, once) {
+  if (type !== 'input') unsupported('figma.parameters.on(' + type + ')')
+  if (typeof callback !== 'function') throw new Error('invalid_value: figma.parameters handlers are functions')
+  parameterListeners.push({ callback: callback, once: once })
+}
+function codegenHandler(type, callback, once) {
+  if (!Object.prototype.hasOwnProperty.call(codegenListeners, type))
+    unsupported('figma.codegen.on(' + type + ')')
+  if (typeof callback !== 'function') throw new Error('invalid_value: figma.codegen handlers are functions')
+  if (type === 'generate' && figma.mode === 'codegen' && !codegenListeners[type].length)
+    host('listen', { type: 'codegen', active: true })
+  codegenListeners[type].push({ callback: callback, once: once })
 }
 const payments = Object.freeze({ status: Object.freeze({ type: 'NOT_SUPPORTED' }) })
 const figma = {
@@ -387,6 +408,46 @@ const figma = {
   get fileKey() { return null },
   get command() { return __pluginMeta.command == null ? undefined : __pluginMeta.command },
   get currentUser() { return null },
+  parameters: {
+    on: function (type, callback) { parameterHandler(type, callback, false) },
+    once: function (type, callback) { parameterHandler(type, callback, true) },
+    off: function (type, callback) {
+      if (type !== 'input') unsupported('figma.parameters.off(' + type + ')')
+      for (let i = parameterListeners.length - 1; i >= 0; i--) if (parameterListeners[i].callback === callback) parameterListeners.splice(i, 1)
+    },
+  },
+  teamLibrary: {
+    // Figma throws unless the manifest grants the teamlibrary permission. This
+    // host records permissions and never grants them, so both calls reject.
+    getAvailableLibraryVariableCollectionsAsync: function () {
+      return Promise.reject(new Error('permission_denied: figma.teamLibrary requires the teamlibrary permission, which this host does not grant'))
+    },
+    getVariablesInLibraryCollectionAsync: function () {
+      return Promise.reject(new Error('permission_denied: figma.teamLibrary requires the teamlibrary permission, which this host does not grant'))
+    },
+  },
+  annotations: {
+    getAnnotationCategoriesAsync: function () { return Promise.resolve([]) },
+    getAnnotationCategoryByIdAsync: function (id) {
+      if (typeof id !== 'string' || !id) return Promise.reject(new Error('invalid_value: annotation category id must be a string'))
+      return Promise.resolve(null)
+    },
+    addAnnotationCategoryAsync: function () {
+      return Promise.reject(new Error('annotations_unavailable: Futureox Design does not store annotation categories'))
+    },
+  },
+  codegen: {
+    on: function (type, callback) { codegenHandler(type, callback, false) },
+    once: function (type, callback) { codegenHandler(type, callback, true) },
+    off: function (type, callback) {
+      if (!Object.prototype.hasOwnProperty.call(codegenListeners, type)) unsupported('figma.codegen.off(' + type + ')')
+      const list = codegenListeners[type]
+      for (let i = list.length - 1; i >= 0; i--) if (list[i].callback === callback) list.splice(i, 1)
+      if (type === 'generate' && !list.length && figma.mode === 'codegen') host('listen', { type: 'codegen', active: false })
+    },
+    get preferences() { return codegenPreferences },
+    refresh: function () { host('codegenRefresh', null) },
+  },
   get skipInvisibleInstanceChildren() { return skipInvisibleInstanceChildren },
   set skipInvisibleInstanceChildren(value) { skipInvisibleInstanceChildren = !!value },
   notify: function (message) { host('notify', { message: String(message) }) },
@@ -586,9 +647,15 @@ const figma = {
   getLocalPaintStylesAsync: function () { return Promise.resolve(figma.getLocalPaintStyles()) },
   getLocalTextStylesAsync: function () { return Promise.resolve(figma.getLocalTextStyles()) },
   getLocalEffectStylesAsync: function () { return Promise.resolve(figma.getLocalEffectStyles()) },
-  importComponentByKeyAsync: function () { unsupported('figma.importComponentByKeyAsync') },
-  importStyleByKeyAsync: async function () { unsupported('figma.importStyleByKeyAsync') },
-  createGridStyle: function () { unsupported('figma.createGridStyle') },
+  importComponentByKeyAsync: function () {
+    throw new Error('library_unavailable: Remote component keys need a published Figma library; this host has no cloud library')
+  },
+  importStyleByKeyAsync: async function () {
+    throw new Error('library_unavailable: Remote style keys need a published Figma library; this host has no cloud library')
+  },
+  createGridStyle: function () {
+    throw new Error('grid_style_unavailable: The local document has no layout-grid style kind')
+  },
   ui: {
     onmessage: null,
     postMessage: function (message) { host('postMessage', { message: message }) },
@@ -604,6 +671,70 @@ const figma = {
 }
 globalThis.__deliverPluginMessage = function (message) {
   if (typeof figma.ui.onmessage === 'function') return figma.ui.onmessage(message)
+}
+globalThis.__deliverPluginRun = function () {
+  const list = listeners.run.slice()
+  for (let i = 0; i < list.length; i++) {
+    // Figma sends no parameters property when the parameter UI was skipped.
+    const event = { command: __pluginMeta.command == null ? undefined : __pluginMeta.command }
+    list[i](event)
+  }
+}
+globalThis.__deliverPluginCodegen = function () {
+  const entries = codegenListeners.generate.slice()
+  if (!entries.length) return
+  const target = host('codegenTarget', null)
+  if (!target) return
+  codegenListeners.generate = codegenListeners.generate.filter(function (entry) { return entries.indexOf(entry) < 0 || !entry.once })
+  if (!codegenListeners.generate.length) host('listen', { type: 'codegen', active: false })
+  const event = {
+    node: wrap(target.nodeId),
+    language: target.language,
+    codegenPreferences: target.preferences,
+  }
+  const results = new Array(entries.length)
+  let settled = 0
+  let done = false
+  let resolveWait
+  const report = function (payload) {
+    if (done) return
+    done = true
+    host('codegenResult', payload)
+    if (resolveWait) resolveWait()
+  }
+  const finish = function () {
+    if (done || settled < entries.length) return
+    const sections = []
+    for (let i = 0; i < results.length; i++) {
+      const list = results[i]
+      if (!Array.isArray(list)) continue
+      for (let j = 0; j < list.length; j++) {
+        const item = list[j]
+        if (!item || typeof item !== 'object') continue
+        const section = { language: String(item.language == null ? '' : item.language), code: item.code == null ? '' : String(item.code) }
+        if (item.title != null) section.title = String(item.title)
+        sections.push(section)
+      }
+    }
+    report({ sections: sections })
+  }
+  for (let i = 0; i < entries.length; i++) {
+    try {
+      const value = entries[i].callback(event)
+      if (value && typeof value.then === 'function') {
+        value.then(function (list) { results[i] = list; settled += 1; finish() }, function (error) {
+          report({ error: String(error && error.message || error) })
+        })
+      } else {
+        results[i] = value
+        settled += 1
+      }
+    } catch (error) {
+      report({ error: String(error && error.message || error) })
+    }
+  }
+  finish()
+  if (!done) return new Promise(function (resolve) { resolveWait = resolve })
 }
 globalThis.__deliverPluginEvent = function (type, changes) {
   const list = (listeners[type] || []).slice()
