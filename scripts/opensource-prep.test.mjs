@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
+import { readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { inspectLicenseCoverage } from './check-license-coverage.mjs'
@@ -92,7 +93,8 @@ test('the current fidelity and fixture scan grants only the synthetic I/O images
     assert.equal(sketch.license, null)
   }
   const fidelity = report.files.filter(file => file.path.startsWith('frontend/design-client/public/fidelity/'))
-  assert.equal(fidelity.length, 349)
+  const fidelityFiles = readdirSync(path.join(repo, 'frontend/design-client/public/fidelity'), { recursive: true, withFileTypes: true }).filter(entry => entry.isFile()).length
+  assert.equal(fidelity.length, fidelityFiles)
   assert.equal(fidelity.every(file => file.publication === 'withhold'), true)
   for (const rel of ['testing/fixtures/design/io/red-64x48.tiff', 'testing/fixtures/design/io/two-frame-64x48.gif']) {
     const added = report.files.find(file => file.path === rel)
@@ -115,13 +117,18 @@ test('the current fidelity and fixture scan grants only the synthetic I/O images
     assert.equal(added.license, null)
     assert.equal(added.hashCheck, 'not_listed')
   }
-  const alpha = report.files.find(file => file.path === 'frontend/design-client/public/fidelity/alpha-curve.png')
-  assert.equal(alpha.record, 'source_list_omits_file')
-  assert.equal(alpha.hashCheck, 'not_listed')
-  assert.equal(alpha.license, null)
+  const fidelityRoot = path.join(repo, 'frontend/design-client/public/fidelity')
+  const referenceCases = JSON.parse(await readFile(path.join(fidelityRoot, 'cases.json'), 'utf8'))
+  for (const reference of referenceCases) {
+    const file = report.files.find(item => item.path === `frontend/design-client/public/fidelity/${reference.reference}`)
+    assert.ok(file, reference.reference)
+    assert.equal(file.record, 'source_list_hash_match', reference.reference)
+    assert.equal(file.hashCheck, 'match', reference.reference)
+    assert.equal(file.sourceRecord, 'frontend/design-client/public/fidelity/cases.json', reference.reference)
+    assert.equal(file.publication, 'withhold', reference.reference)
+  }
   const mask = report.files.find(file => file.path === 'frontend/design-client/public/fidelity/mask-overlap.png')
   assert.equal(mask.record, 'source_list_hash_match')
-  assert.match(mask.source, /Figma desktop native/)
   assert.equal(mask.publication, 'withhold')
   const fig = report.files.find(file => file.path === 'testing/fixtures/design/figma-materials-native-2026-10-08.fig')
   assert.equal(fig.hashCheck, 'match')

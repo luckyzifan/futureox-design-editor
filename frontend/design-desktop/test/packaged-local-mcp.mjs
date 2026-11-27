@@ -62,6 +62,21 @@ try {
   const client = await start(config)
   const tools = (await client.rpc('tools/list')).result.tools
   for (const name of ['design_node_create', 'design_preview_capture', 'design_workspace_save', 'design_settings_update']) assert.ok(tools.some(t => t.name === name))
+  // Run the live clients before the native HTTP facade checks so a facade
+  // regression cannot hide the packaged stdio client result.
+  let liveClients = null
+  if (process.argv.includes('--live-clients')) {
+    const { runLiveExternalClients } = await import('./runtime/external-mcp-live.mjs')
+    liveClients = runLiveExternalClients(config, { tempDir: temp })
+    console.log(JSON.stringify({
+      liveClients: liveClients.clients.map(client => ({
+        id: client.id,
+        status: client.status,
+        evidence: client.evidence,
+        steps: client.steps.map(item => ({ id: item.id, status: item.status, evidence: item.evidence ?? null })),
+      })),
+    }))
+  }
   const invoke = async (name, params = {}, fence = {}) => {
     const r = await client.rpc('tools/call', { name, arguments: { params, ...fence } })
     assert.ok(!r.error && r.result?.isError === false, name + ': ' + (r.result?.structuredContent?.error?.code || r.error?.code || 'failure'))
@@ -105,10 +120,22 @@ try {
   await invoke('design_history_undo', {}, await fence())
   await dialog.getByRole('button', { name: /^(停用|Turn off)$/ }).click()
   await expect.poll(async () => (await client.rpc('resources/read', { uri })).error?.code).toBe(-32000)
+  let revokedConfig = null
+  if (liveClients) {
+    const { verifyOldConfigAfterRevoke } = await import('./runtime/external-mcp-live.mjs')
+    revokedConfig = verifyOldConfigAfterRevoke(config, { tempDir: temp })
+    if (revokedConfig.status === 'accepted') throw new Error('A revoked external client config still listed packaged tools')
+  }
   console.log(JSON.stringify({
     packagedGui: true,
     externalClientAcceptance: false,
     externalClients: externalClients?.clients.map(client => ({ id: client.id, status: client.status })) ?? 'not_requested',
+    liveClients: liveClients?.clients.map(client => ({
+      id: client.id,
+      status: client.status,
+      steps: client.steps.map(item => ({ id: item.id, status: item.status })),
+    })) ?? 'not_requested',
+    revokedExternalConfig: revokedConfig,
     readTools: rtools.length,
     fullGrantTools: tools.length,
     nativeMenu: true,
