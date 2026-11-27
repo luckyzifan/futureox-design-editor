@@ -400,6 +400,9 @@ export type DesignNode = {
   layoutGrid?: LayoutGrid
   layoutGrids?: LayoutGrid[]
   prototypeOverflow?: import('./prototype').PrototypeOverflow
+  /** Sketch's "fix position when scrolling": the layer stays pinned while a
+   * scrolling prototype frame pans. Schema 37. */
+  fixedToViewport?: boolean
 
   exportSettings?: ExportSetting[]
   arc?: EllipseArc
@@ -553,7 +556,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37
   id: string
   name: string
   pages: Page[]
@@ -757,6 +760,8 @@ const wellFormed = (value: string) => {
   return true
 }
 export const PROTOTYPE_FLOW_SCHEMA = 35
+/** Sketch "fix position when scrolling" layer flag. */
+export const PROTOTYPE_FIXED_SCHEMA = 37
 export const validFlowName = (name: string) => !!name.trim() && [...name].length <= 200 && wellFormed(name)
 export function validatePrototypeFlows(doc: DesignDocument, value: unknown) {
   if (value === undefined) return
@@ -901,7 +906,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1204,6 +1209,8 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     if (n?.prototypeOverflow !== undefined && (d.schemaVersion < 12 || n.kind !== 'frame' ||
       !['none','horizontal','vertical','both'].includes(n.prototypeOverflow)))
       throw new Error('原型溢出设置需要版本12，且只能属于画板')
+    if (n?.fixedToViewport !== undefined && (typeof n.fixedToViewport !== 'boolean' || d.schemaVersion < PROTOTYPE_FIXED_SCHEMA))
+      throw new Error('滚动固定图层需要设计文件版本 37')
     if (n?.exportSettings !== undefined) {
       const settings = n.exportSettings
       if (!Array.isArray(settings) || settings.length > 16 || new Set(settings.map(s => s?.id)).size !== settings.length || settings.some(s =>

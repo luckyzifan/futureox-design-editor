@@ -46,7 +46,7 @@ import { isMotionVariable, MOTION_VARIABLE_SCHEMA, remapDesignDependencies } fro
 import { pruneAnimations } from './animation'
 import { prunePrototypeReferences, prototypeNeedsSchema12 } from './prototype'
 import { invalidatedFlowStarts } from './prototype-flows'
-import { PROTOTYPE_FLOW_SCHEMA } from './model'
+import { PROTOTYPE_FIXED_SCHEMA, PROTOTYPE_FLOW_SCHEMA } from './model'
 import { applyClipboardSemantics, captureClipboardSemantics, clipboardDependencyNodes, hasClipboardSemantics } from './clipboard-semantics'
 import { editableNetwork } from './editable-network'
 import { defaultPencil, defaultBrush, defaultMarker, defaultTape, SKETCH_PENCIL_COLOR, type PencilSettings } from './freehand'
@@ -844,6 +844,8 @@ export class Editor {
         if (draft.schemaVersion < 33 && hasSchema33Features(featureDocOf(authored))) draft.schemaVersion = 33
         if (draft.schemaVersion < PROTOTYPE_FLOW_SCHEMA && draft.prototype?.flows !== undefined)
           draft.schemaVersion = PROTOTYPE_FLOW_SCHEMA
+        if (draft.schemaVersion < PROTOTYPE_FIXED_SCHEMA && featureNodesOf(authored).some(n => n.fixedToViewport !== undefined))
+          draft.schemaVersion = PROTOTYPE_FIXED_SCHEMA
         if (draft.schemaVersion < MOTION_VARIABLE_SCHEMA && authored.designSystem !== before.doc.designSystem &&
             Object.values(authored.designSystem?.variables ?? {}).some(variable => isMotionVariable(variable.kind)))
           draft.schemaVersion = MOTION_VARIABLE_SCHEMA

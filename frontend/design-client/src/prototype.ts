@@ -4,6 +4,7 @@ import type { DesignDocument } from './model'
 import { variableValue } from './design-system'
 import { evaluate, tick, validateLogicActions, type Expr } from './prototype-logic'
 import { defaultPrototypeStart, invalidatedFlowStarts, type PrototypeFlow } from './prototype-flows'
+import { allParents } from './geometry'
 export type PrototypeEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'spring' |
   import('./animation').NamedEasing | `cubic-bezier(${string})`
 export function parseBezierEasing(input: string): [number, number, number, number] | undefined {
@@ -267,6 +268,46 @@ export function prototypeFrameView(doc: DesignDocument, root: string, allowOverf
   if(!doc.pages.some(p=>p.id===at))throw new Error('原型目标不属于页面')
   return {document:{...doc,nodes},pageId:at}
 }
+/** Split a scrolling frame into a normal view and a pinned overlay view.
+ * Pinned roots are hidden in the normal view and drawn without the scroll
+ * offset; ancestors in the overlay lose their own paint so they do not cover
+ * the scrolling content behind it. */
+export function prototypeFixedViews(doc: DesignDocument, root: string, allowOverflow = false):
+  { main: DesignDocument; fixed: DesignDocument; pageId: string; ids: string[]; topIds: string[] } | null {
+  if (!doc.nodes[root]) throw new Error('原型目标已删除')
+  const fixed: string[] = []
+  const visit = (id: string) => {
+    const node = doc.nodes[id]
+    if (!node) return
+    if (node.fixedToViewport === true) fixed.push(id)
+    node.children.forEach(visit)
+  }
+  doc.nodes[root].children.forEach(visit)
+  if (!fixed.length) return null
+  const base = prototypeFrameView(doc, root, allowOverflow)
+  const parents = allParents(doc), chosen = new Set(fixed)
+  const top = fixed.filter(id => {
+    for (let at = parents.get(id); at && at !== root; at = parents.get(at))
+      if (chosen.has(at!)) return false
+    return true
+  })
+  const pinned = new Set<string>()
+  const collect = (id: string) => { pinned.add(id); doc.nodes[id]?.children.forEach(collect) }
+  top.forEach(collect)
+  const keep = new Set(pinned)
+  for (const id of top) for (let at = parents.get(id); at; at = parents.get(at)) keep.add(at!)
+  const fixedNodes = { ...base.document.nodes }, mainNodes = { ...base.document.nodes }
+  for (const id of Object.keys(fixedNodes)) {
+    if (!keep.has(id)) fixedNodes[id] = { ...fixedNodes[id], visible: false }
+    else if (!pinned.has(id)) fixedNodes[id] = { ...fixedNodes[id], fills: [], strokes: [], effects: [] }
+  }
+  for (const id of top) mainNodes[id] = { ...mainNodes[id], visible: false }
+  const fixedPages = base.document.pages.map(page => page.id === base.pageId
+    ? { ...page, background: 'rgba(0,0,0,0)' } : page)
+  return { main: { ...base.document, nodes: mainNodes }, fixed: { ...base.document, nodes: fixedNodes, pages: fixedPages },
+    pageId: base.pageId, ids: fixed, topIds: top }
+}
+
 export function initialPrototype(doc: DesignDocument, preferred?: string, pageId?: string): PrototypeState {
   const current = defaultPrototypeStart(doc, preferred, pageId)
   if (!current || !doc.nodes[current]) throw new Error('请先创建画板并设置原型起点')

@@ -78,6 +78,7 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
   const durationLabel = english ? 'Duration (ms)' : '时长（毫秒）'
   const easingLabel = english ? 'Easing' : '缓动'
   const delayLabel = english ? 'Delay (ms)' : '延迟（毫秒）'
+  const fixedLabel = english ? 'Fix position when scrolling' : '滚动时保持固定'
   const event = primaryInteraction(doc.prototype?.interactions[layer.id])
   const action = navigationAction(event)
   const target = action?.kind === 'back' ? previous : action?.target ?? ''
@@ -241,6 +242,16 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
       }}>
       {easings.map(item => <option key={item.value || 'default'} value={item.value}>{english ? item.en : item.zh}</option>)}
     </select></label>
+    <label>{fixedLabel}<input type="checkbox" aria-label={fixedLabel} disabled={layer.locked}
+      checked={layer.fixedToViewport === true} onChange={change => {
+        const pinned = change.currentTarget.checked
+        update('设置滚动固定', draft => {
+          const node = draft.nodes[layer.id]
+          if (!node || node.locked) return
+          if (pinned) node.fixedToViewport = true
+          else delete node.fixedToViewport
+        })
+      }} /></label>
     </section>
   </>
 }

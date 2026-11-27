@@ -135,6 +135,22 @@ test('Sketch frame settings and overlay links use the shared prototype and undo 
   ])
 })
 
+test('Fix position when scrolling pins the layer through one schema-37 undo step', async () => {
+  expect(editor.state.doc.schemaVersion).toBe(2)
+  await render()
+  const box = () => document.querySelector<HTMLInputElement>('[aria-label="滚动时保持固定"]')!
+  expect(box().checked).toBe(false)
+  await act(async () => { box().click() })
+  expect(editor.state.doc.nodes[rectangle.id].fixedToViewport).toBe(true)
+  expect(editor.state.doc.schemaVersion).toBe(37)
+  await render()
+  expect(box().checked).toBe(true)
+  await act(async () => { editor.undo() })
+  expect(editor.state.doc.nodes[rectangle.id].fixedToViewport).toBeUndefined()
+  expect(editor.state.doc.schemaVersion).toBe(2)
+  expect(editor.state.doc.nodes[frame.id].fixedToViewport).toBeUndefined()
+})
+
 test('one committed duration typing sequence has one undo step and Escape cancels a later draft', async () => {
   await render()
   await setSelect('链接到', frame.id)

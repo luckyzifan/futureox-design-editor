@@ -14,7 +14,7 @@ import {
 import { kernelLayout } from './kernel/picking'
 import { allParents, scene } from './geometry'
 import { createAnimationBakeSession, kernelBakeRevision, type KernelAnimationBakeSession } from './kernel/bake-session'
-import { initialPrototype, prototypeEase, prototypeEvent, prototypeDocument, type Interaction } from './prototype'
+import { initialPrototype, prototypeEase, prototypeEvent, prototypeFixedViews, prototypeDocument, type Interaction } from './prototype'
 import { animatePrototypeScroll } from './prototype-scroll'
 import { framesNeedLightweightMotion, lightenPrototypeMotion, reducedMotionRequested, startTransitionClock } from './prototype-motion'
 import { modalKeyDown, useModalOwnership } from './modal-keyboard'
@@ -215,7 +215,14 @@ export function PrototypePlayer({
     }
   }, [state.scrollTarget, state.current, state.scrollRequest])
   // Hide unrelated roots/siblings while retaining definitions for component resolution.
+  const scrolls = scrollX || scrollY || overflow === undefined
   const visibleDoc = useMemo(() => prototypeFrameView(doc, current, scrollX || scrollY).document, [doc, current, scrollX, scrollY])
+  // A fixed layer is drawn in a second, unscrolled surface. Its main-view copy
+  // is hidden so scrolling never moves it; hotspots follow the same split.
+  const fixedViews = useMemo(() => scrolls ? prototypeFixedViews(doc, current, scrollX || scrollY) : null,
+    [doc, current, scrollX, scrollY, scrolls])
+  const fixedIds = useMemo(() => new Set(fixedViews?.ids ?? []), [fixedViews])
+  const renderedDoc = fixedViews?.main ?? visibleDoc
   useEffect(() => () => {
     if (videoAsset) URL.revokeObjectURL(videoAsset.url)
   }, [videoAsset])
@@ -339,7 +346,7 @@ export function PrototypePlayer({
             >
               <div style={{ position: 'absolute', left: scrollPosition.left, top: scrollPosition.top, pointerEvents: 'none' }}>
                 <StillFrame
-                  document={visibleDoc}
+                  document={renderedDoc}
                   pageId={page.id}
                   width={width}
                   height={height}
@@ -349,7 +356,7 @@ export function PrototypePlayer({
                 />
               </div>
               {entries
-                .filter((e) => descendants.has(e.id) && doc.prototype?.interactions[e.id]?.length)
+                .filter((e) => descendants.has(e.id) && !fixedIds.has(e.id) && doc.prototype?.interactions[e.id]?.length)
                 .map((e) => {
                   return (
                     <button
@@ -374,6 +381,35 @@ export function PrototypePlayer({
                 })}
             </div>
           </div>
+          {fixedViews && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1 }}>
+            <div aria-hidden="true" style={{ position: 'absolute', inset: 0 }}>
+              <StillFrame document={fixedViews.fixed} pageId={page.id} width={width} height={height}
+                x={-frame.x * zoom} y={-frame.y * zoom} zoom={zoom} />
+            </div>
+            {entries
+              .filter((e) => fixedIds.has(e.id) && doc.prototype?.interactions[e.id]?.length)
+              .map((e) => (
+                <button
+                  type="button"
+                  key={`fixed-${e.id}`}
+                  aria-label={doc.nodes[e.id].name || tr('交互区域')}
+                  className="prototype-hotspot"
+                  style={{
+                    position: 'absolute',
+                    left: (e.bounds.x - frame.x) * zoom,
+                    top: (e.bounds.y - frame.y) * zoom,
+                    width: Math.max(1, e.bounds.width * zoom),
+                    height: Math.max(1, e.bounds.height * zoom),
+                    pointerEvents: 'auto',
+                    zIndex: 2,
+                  }}
+                  disabled={state.overlays.length > 0 || progress < 1}
+                  onClick={() => dispatch(e.id, 'click')}
+                  onPointerEnter={() => dispatch(e.id, 'hover')}
+                  onPointerLeave={() => dispatch(e.id, 'leave')}
+                />
+              ))}
+          </div>}
           {state.overlays.map((id, index) => {
             const position = state.overlayPositions?.[index]
             const box = entries.find(e => e.id === id)?.bounds || doc.nodes[id]
