@@ -14,7 +14,7 @@ import { bindSketchSymbolDialog, sketchSymbolSelection } from './sketch-symbol'
 import { keyboardPlacementPoint } from './keyboard-placement'
 import { defaultLayerExportSetting } from './export-metadata'
 import { SketchComponentsView, sketchComponentCategories, type SketchComponentCategory } from './SketchComponentsView'
-import { DrawPencilToolbar, FigmaToolbeltMode } from './FigmaDrawTools'
+import { DrawPencilToolbar, FigmaDevModeToggle, FigmaToolbeltMode } from './FigmaDrawTools'
 import { frameSizePresetGate } from './frame-presets'
 import { LocalHome, HomeCanvasGate } from './LocalHome'
 import { localHomeSource, admitHomeDocumentCommand } from './local-home-source'
@@ -53,6 +53,7 @@ import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootContr
 import { useShortcutProfile } from './shortcut-preference'
 import { getPrototypeTab, setPrototypeTab, subscribePrototypeTab } from './prototype-chrome'
 import { inlinePrototypePreviewChord, pageHasFrame, presentPrototypeChord, prototypePlaybackReady } from './prototype-playback-shortcut'
+import { prototypeFlowsOnPage } from './prototype-flows'
 import { shortcutPlatform, toolShortcutLabel, shortcutLabel, shortcutLabels, formatShortcutCombo, resolveShortcut } from './shortcut-profiles'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { NativeAutomationDialog } from './AutomationPanelLauncher'
@@ -81,7 +82,7 @@ import { PendingEditContext } from './pending-edit-context'
 import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, pendingEditsChanged, registerPendingEdit, subscribePendingEdits } from './pending-edits'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { DesignTools } from './DesignTools'
-import { VariablesPanel } from './VariablesPanel'
+import { VariablesWorkspace } from './VariablesWorkspace'
 import { SketchInteractionPanel } from './SketchInteractionPanel'
 import { WorkspaceRail, DesignToolbar, ToolPopover, type WorkspaceSection } from './EditorChrome'
 import { PrototypePlayer } from './PrototypePlayer'
@@ -228,7 +229,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [startupError, setStartupError] = useState('')
   const homeSettingsFocus = useRef<HTMLElement | null>(null)
   const [showTools, setShowTools] = useState(false)
-  const [variableWorkspace, setVariableWorkspace] = useState(false)
+  const [variableWorkspace, setVariableWorkspace] = useState<'expanded' | 'floating' | null>(null)
   const variablesTrigger = useRef<HTMLButtonElement>(null)
   const [showCatalog, setShowCatalog] = useState(false)
   const [showWorkspaceLibrary, setShowWorkspaceLibrary] = useState(false)
@@ -531,14 +532,15 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setDesktopStatus,
   ) : undefined)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
-  const variablesVisible = variableWorkspace && uiMode === 'figma' && !showHome
-  useLayoutEffect(() => { setVariableWorkspace(false) }, [uiMode, showHome, s.doc.id, editor.sessionGeneration])
+  const variablesVisible = variableWorkspace !== null && uiMode === 'figma' && !showHome
+  const variablesExpanded = variablesVisible && variableWorkspace === 'expanded'
+  useLayoutEffect(() => { setVariableWorkspace(null) }, [uiMode, showHome, s.doc.id, editor.sessionGeneration])
   const returnFromVariables = useCallback(() => {
-    setVariableWorkspace(false)
+    setVariableWorkspace(null)
     variablesTrigger.current?.focus({ preventScroll: true })
   }, [])
   useEffect(() => {
-    if (!variablesVisible) return
+    if (!variablesExpanded) return
     // Undo can disable its focused button. Escape still belongs to the
     // workspace when Chromium falls back to the body.
     const closeUnfocused = (event: KeyboardEvent) => {
@@ -550,7 +552,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     }
     window.addEventListener('keydown', closeUnfocused, true)
     return () => window.removeEventListener('keydown', closeUnfocused, true)
-  }, [editor, variablesVisible, returnFromVariables])
+  }, [editor, variablesExpanded, returnFromVariables])
   const sketchHotspotArmed = uiMode === 'sketch' && s.tool === 'hotspot'
   const activeProperties = uiMode === 'figma' ? propertiesTab : sketchHotspotArmed ? 'prototype' : sketchPropertiesTab
   useEffect(() => {
@@ -699,7 +701,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       event.stopPropagation()
       if (hideAll) { setUiHidden(value => !value); return }
       if (altPage![1] === '3') { setShowTools(true); return }
-      setVariableWorkspace(false)
+      setVariableWorkspace(null)
       setWorkspaceSection(altPage![1] === '2' ? 'assets' : 'layers')
       setShowLayers(true)
       setUiMinimized(false)
@@ -723,12 +725,12 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       if (present) {
         event.preventDefault()
         event.stopPropagation()
-        if (!event.repeat && prototypePlaybackReady(doc)) setShowPrototype(true)
+        if (!event.repeat && prototypePlaybackReady(doc, editor.state.page)) setShowPrototype(true)
         return
       }
       const canvas = document.querySelector<HTMLElement>('[data-testid="canvas"]')
       if (!canvas || (event.target !== canvas && document.activeElement !== canvas) ||
-          !pageHasFrame(doc, editor.state.page) || !prototypePlaybackReady(doc)) return
+          !pageHasFrame(doc, editor.state.page) || !prototypePlaybackReady(doc, editor.state.page)) return
       event.preventDefault()
       event.stopPropagation()
       if (!event.repeat) setShowPrototype(true)
@@ -1454,7 +1456,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     !!source?.openingPreview || (editor.interactionActive && !editor.propertyPreviewActive)
   const switchWorkspaceSection = (section: WorkspaceSection) => {
     if (editor.interactionActive || editor.state.busy || !commitPendingEdits(editor)) return
-    setVariableWorkspace(false)
+    setVariableWorkspace(null)
     setWorkspaceSection(section); setShowLayers(true); setUiMinimized(false)
   }
   const inlineFigmaTabs = uiMode === 'figma' && !source && !!desktopSession?.supportsWorkspace
@@ -1487,7 +1489,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             }
           />
   const previewPrototype = uiMode === 'figma' && <button type="button" className="prototype-preview-button" aria-label={locale === 'en' ? 'Preview prototype' : '预览原型'} title={locale === 'en' ? 'Preview prototype' : '预览原型'}
-            disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
+            disabled={!prototypePlaybackReady(s.doc, s.page)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
   const figmaZoom = <div ref={setFigmaZoomHost} className={figmaViewsFloat ? 'figma-view-zoom' : 'properties-zoom'}
     data-testid={figmaViewsFloat ? undefined : 'figma-view-tools'}
     onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}
@@ -1597,6 +1599,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('group')} onClick={() => { void dispatchEditorCommand(editor, 'group'); setShowCommands(false) }}>{toolbarText.group} <kbd>{shortcutLabel('group', shortcutContext)}</kbd></button>
                 <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('ungroup')} onClick={() => { void dispatchEditorCommand(editor, 'ungroup'); setShowCommands(false) }}>{toolbarText.ungroup} <kbd>{shortcutLabel('ungroup', shortcutContext)}</kbd></button>
                 <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setShowTools(true); setShowCommands(false) }}>{toolbarText.designSystems}</button>
+                <button type="button" role="menuitem" tabIndex={-1} onClick={() => {
+                  setShowCommands(false)
+                  requestCommandSearch(document.querySelector('[data-testid="canvas"]'), 'components')
+                }}>{locale === 'en' ? 'Quick insert' : '快速插入组件'} <kbd>Shift+I</kbd></button>
               </ToolPopover>
               <button type="button" className="command-search-trigger" aria-label={commandSearchLabels.label} aria-haspopup="dialog" aria-expanded={commandSearchOpen}
                 title={`${commandSearchLabels.label} (${shortcutLabels('open-command-search', shortcutContext)})`}
@@ -1604,12 +1610,15 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <Search size={18} />
               </button>
             </div>
-            <FigmaToolbeltMode draw={figmaDraw} onChange={next => {
-              if (toolbarDisabled || !commitPendingEdits(editor) || editor.interactionActive) return false
-              openToolbarMenu('drawing', false)
-              setFigmaDraw(next)
-              return true
-            }} />
+            <div className="tool-group">
+              <FigmaToolbeltMode draw={figmaDraw} onChange={next => {
+                if (toolbarDisabled || !commitPendingEdits(editor) || editor.interactionActive) return false
+                openToolbarMenu('drawing', false)
+                setFigmaDraw(next)
+                return true
+              }} />
+              <FigmaDevModeToggle editor={editor} disabled={toolbarDisabled} />
+            </div>
             {figmaViewsFloat && <div className="figma-view-tools" data-testid="figma-view-tools" role="group"
               aria-label={locale === 'en' ? 'Canvas navigation' : '画布导航'}>
               <button type="button" aria-label={handToolLabel} aria-pressed={s.tool === 'hand'}
@@ -2038,7 +2047,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       </div>}
       {showExport && <ExportPanel editor={editor} exportSelectedSketch={source?.exportSelectedSketch} initialTarget={exportEntry === 'merged' ? undefined : exportEntry} onClose={() => { setShowExport(false); setExportEntry('merged') }} />}
       {showTools&&<DesignTools editor={editor} allowPrototype={uiMode === 'figma'} onClose={()=>setShowTools(false)}/>}
-      {uiMode === 'figma' && showPrototype && <PrototypePlayer document={s.doc} onClose={() => setShowPrototype(false)} />}
+      {uiMode === 'figma' && showPrototype && <PrototypePlayer document={s.doc} pageId={s.page}
+        startNode={prototypeFlowsOnPage(s.doc, s.page).find(flow => flow.startNode === s.selection[0])?.startNode}
+        onClose={() => setShowPrototype(false)} />}
       {uiMode === 'sketch' && showSketchPreview && <PrototypePlayer document={s.doc} onClose={() => setShowSketchPreview(false)} />}
       {showWorkspaceLibrary && desktopSession && <WorkspaceLibrary session={desktopSession} onClose={() => setShowWorkspaceLibrary(false)} />}
       {showCloudWorkspace && cloudWorkspace && desktopSession && <CloudWorkspacePanel workspace={cloudWorkspace} status={cloudStatusInWorkspace} documentId={s.doc.id}
@@ -2084,8 +2095,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             if (switchSketchWorkspace(false)) editor.insertComponent(id)
           }} />
       </main> : <main className={`editor-workspace ${hideLeftChrome ? 'hide-layers' : ''} ${figmaChromeHidden || !selectionShowsInspector ? 'hide-inspector' : ''} ${uiMinimized ? 'ui-minimized' : ''}`}
-        data-variables-active={variablesVisible ? '' : undefined}>
-        <WorkspaceLayers panelRef={leftPanel} inactive={variablesVisible}
+        data-variables-active={variablesExpanded ? '' : undefined}>
+        <WorkspaceLayers panelRef={leftPanel} inactive={variablesExpanded}
           rail={<WorkspaceRail section={workspaceSection} onSection={switchWorkspaceSection}
             onFiles={libraryRailVisible(uiMode, libraryHostKind(desktopSession)) ? openPersistentLibrary : undefined}
             onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands}
@@ -2094,7 +2105,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               if (variablesVisible) returnFromVariables()
               else {
                 setShowCommands(false)
-                setVariableWorkspace(true)
+                setVariableWorkspace('expanded')
               }
             }} />}
           navigation={<>{source && !source.showLayers && sketchDocuments}{source?.navigation}</>}
@@ -2103,7 +2114,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             documents={sketchDocuments} drawThumbnails={uiMode === 'figma' && figmaDraw}
             documentTitle={figmaNameInSidebar ? documentNameField : undefined} />}
         </WorkspaceLayers>
-        <div className="canvas-workspace" ref={source?.canvas} inert={variablesVisible}>
+        <div className="canvas-workspace" ref={source?.canvas} inert={variablesExpanded}>
           {!showHome&&!uiMinimized&&!figmaChromeHidden&&<div className="canvas-panel-toggles" onKeyDown={event=>event.stopPropagation()}>
             <button type="button" ref={leftPanelToggle} className="canvas-panel-toggle left"
               title={`${showLayers?panelText.collapse:panelText.expand} · ${panelText.left}`} aria-label={panelText.left}
@@ -2128,17 +2139,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           {uiMode === 'sketch' ? null : designToolbar}
         </div>
         {uiMode === 'figma'
-          ? <FigmaPropertiesWorkspace {...propertyHost} inactive={variablesVisible} tab={propertiesTab} onTab={setPropertiesTab}
+          ? <FigmaPropertiesWorkspace {...propertyHost} inactive={variablesExpanded} tab={propertiesTab} onTab={setPropertiesTab}
               titles={panelText} zoom={figmaZoomDocked && figmaZoom} preview={figmaPreviewDocked && previewPrototype}>
               {inspectorContent}
             </FigmaPropertiesWorkspace>
           : <SketchPropertiesWorkspace {...propertyHost} tab={activeProperties} onTab={switchSketchProperties} titles={panelText}>
               {inspectorContent}
             </SketchPropertiesWorkspace>}
-        {variablesVisible && <section id="variables-workspace" className="variables-workspace"
-          aria-label={translateProfessional('本地变量', locale)}>
-          <VariablesPanel editor={editor} onReturnToCanvas={returnFromVariables} />
-        </section>}
+        {variablesVisible && <VariablesWorkspace editor={editor} floating={!variablesExpanded}
+          onToggleFloating={() => setVariableWorkspace(state => state === 'expanded' ? 'floating' : 'expanded')}
+          onClose={returnFromVariables} />}
       </main>}
       <BatchRenameDialog editor={editor} />
       <SketchMakeGridDialog editor={editor} />

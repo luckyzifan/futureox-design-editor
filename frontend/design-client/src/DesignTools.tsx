@@ -21,19 +21,21 @@ import { download } from './persistence'
 import type { Interaction, PrototypeAction, PrototypeOverflow } from './prototype'
 import { hasSchemaExtras } from './prototype'
 import { PrototypePlayer } from './PrototypePlayer'
+import { PrototypeFlowsPanel } from './PrototypeFlowsPanel'
+import { addPrototypeFlow, outerPrototypeFrame, prototypeFlowsOnPage } from './prototype-flows'
 import { jumpToNode } from './canvas-navigation'
 import { ImportOwner, importStep } from './import-ownership'
 
 export type DesignToolsTab = 'variables' | 'styles' | 'libraries' | 'prototype'
 export function DesignTools({ editor, onClose, initialTab = 'variables', embedded = false, allowPrototype = true }: { editor: Editor; onClose: () => void; initialTab?: DesignToolsTab; embedded?: boolean; allowPrototype?: boolean }) {
   const { locale, tr } = useProfessionalDialogText()
-  const { doc, selection } = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
+  const { doc, selection, page } = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     system = doc.designSystem || emptySystem(),
     n = doc.nodes[selection[0]]
   const [requestedTab, setTab] = useState<DesignToolsTab>(initialTab),
     [name, setName] = useState(''),
     [version, setVersion] = useState(1),
-    [preview, setPreview] = useState(false),
+    [preview, setPreview] = useState<{ startNode?: string } | null>(null),
     [error, setError] = useState('')
   const tab = !allowPrototype && requestedTab === 'prototype' ? 'variables' : requestedTab
   const file = useRef<HTMLInputElement>(null)
@@ -283,25 +285,8 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
           )}
           {tab === 'prototype' && (
             <section>
-              <button
-                type="button"
-                disabled={!n}
-                onClick={() =>
-                  editor.change('设置原型起点', (d) => {
-                    d.prototype ??= { interactions: {} }
-                    d.prototype.startNode = n.id
-                  })
-                }
-              >
-                {tr('将选中图层设为起点')}
-              </button>
-              <button
-                type="button"
-                disabled={!doc.pages.some((p) => p.children.length)}
-                onClick={() => setPreview(true)}
-              >
-                {tr('播放原型')}
-              </button>
+              <PrototypeFlowsPanel editor={editor} doc={doc} pageId={page} selection={selection}
+                onPreview={startNode => setPreview({ startNode })} />
               {n && (
                 <>
                   {selection.length === 1 && n.kind === 'frame' && <label className="labeled-select">
@@ -323,6 +308,9 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                     onClick={() =>
                       editor.change('添加交互', (d) => {
                         d.prototype ??= { interactions: {} }
+                          const start = outerPrototypeFrame(d, n.id)
+                          if (start && !d.nodes[start].locked && prototypeFlowsOnPage(d, page).length === 0)
+                            addPrototypeFlow(d, page, start)
                         ;(d.prototype.interactions[n.id] ??= []).push({
                           trigger: 'click',
                           actions: [
@@ -849,7 +837,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
           )}
         </div>
       </div>
-      {allowPrototype && preview && <PrototypePlayer document={doc} onClose={() => setPreview(false)} />}
+      {allowPrototype && preview && <PrototypePlayer document={doc} startNode={preview.startNode} pageId={page} onClose={() => setPreview(null)} />}
     </>
   )
 }

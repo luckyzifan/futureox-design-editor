@@ -22,13 +22,17 @@ import { downloadAsset, prototypeTitle, useProfessionalDialogText } from './prof
 
 export function PrototypePlayer({
   document: source,
+  startNode,
+  pageId: startPage,
   onClose,
 }: {
   document: DesignDocument
+  startNode?: string
+  pageId?: string
   onClose: () => void
 }) {
   const { locale, tr } = useProfessionalDialogText()
-  const [state, setState] = useState(() => initialPrototype(source)),
+  const [state, setState] = useState(() => initialPrototype(source, startNode, startPage)),
     [error, setError] = useState(''),
     [exporting, setExporting] = useState(false),
     [videoAsset, setVideoAsset] = useState<{ url: string; name: string } | null>(null)
@@ -252,7 +256,7 @@ export function PrototypePlayer({
       <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : lightweight ? 'fade' : state.transitionStyle === 'dissolve' ? 'dissolve' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={lightweight ? 'opacity' : transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-modal="true" aria-label={tr('交互原型预览')} tabIndex={-1}>
         <header>
           <strong>{prototypeTitle(n.name, locale)}</strong>
-          <button type="button" onClick={() => { setVideoAsset(null); setState(initialPrototype(snapshot.current)); setError(''); scroll.current?.scrollTo(0, 0); setScrollPosition({ left: 0, top: 0 }) }}>
+          <button type="button" onClick={() => { setVideoAsset(null); setState(initialPrototype(snapshot.current, startNode, startPage)); setError(''); scroll.current?.scrollTo(0, 0); setScrollPosition({ left: 0, top: 0 }) }}>
             {tr('重新开始')}
           </button>
           <button

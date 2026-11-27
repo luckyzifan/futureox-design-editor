@@ -1,5 +1,5 @@
 import { memo, useMemo, useState, useSyncExternalStore } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Check, Maximize2, Minimize2 } from 'lucide-react'
 import type { Editor } from './engine'
 import type { DesignDocument } from './model'
 import { DraftInput } from './DraftInput'
@@ -9,7 +9,7 @@ import { commitPendingEdits } from './pending-edits'
 import { emptySystem, effectiveNodeVariableModes, setEffectiveNodeVariableMode, setVariableMode } from './design-system'
 import {
   MODE_PAGE_SIZE, VARIABLE_PAGE_SIZE, addVariableMode, collectionReferences, createVariable,
-  createVariableCollection, deleteVariable, deleteVariableCollection, deleteVariableMode,
+  createVariableCollection, deleteVariable, deleteVariableCollection, deleteVariableMode, duplicateVariables,
   materializeVariableCell, modeReferences, parseVariableLiteral, renameVariable, renameVariableCollection,
   renameVariableMode, setVariableCell, setVariableDefaultMode, validVariableName, variableGroup,
   variableIndex, variableKinds, variableReferences, type Variable, type VariableKind,
@@ -63,7 +63,12 @@ const VariableCell = memo(function VariableCell({ editor, id, variable, mode, ca
   </div>
 })
 
-export function VariablesPanel({ editor, onReturnToCanvas }: { editor: Editor; onReturnToCanvas?: () => void }) {
+export function VariablesPanel({ editor, onReturnToCanvas, floating, toggleFloating }: {
+  editor: Editor
+  onReturnToCanvas?: () => void
+  floating?: boolean
+  toggleFloating?: () => void
+}) {
   const { locale, tr } = useProfessionalDialogText()
   const { doc, selection } = useSyncExternalStore(editor.subscribe, editor.panelSnapshot), system = doc.designSystem || EMPTY
   const index = useMemo(() => variableIndex(system), [system])
@@ -71,12 +76,15 @@ export function VariablesPanel({ editor, onReturnToCanvas }: { editor: Editor; o
   const [query, setQuery] = useState(''), [kind, setKind] = useState('all'), [rowPage, setRowPage] = useState(0), [modePage, setModePage] = useState(0)
   const [copyFrom, setCopyFrom] = useState<string | null>(null), [error, setError] = useState(''), [removal, setRemoval] = useState<Removal | null>(null)
   const [property, setProperty] = useState('fills.0.color'), [bindingQuery, setBindingQuery] = useState('')
+  const [rows, setRows] = useState<{ collection: string; ids: string[]; anchor: string } | null>(null)
   const collectionId = Object.hasOwn(system.collections, selected) ? selected : Object.keys(system.collections)[0]
   const collection = system.collections[collectionId], variables = index.byCollection.get(collectionId) || []
   const filtered = useMemo(() => variables.filter(([, v]) => (kind === 'all' || v.kind === kind) && v.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())), [variables, kind, query])
   const page = Math.min(rowPage, Math.max(0, Math.ceil(filtered.length / VARIABLE_PAGE_SIZE) - 1))
   const columnPage = Math.min(modePage, Math.max(0, Math.ceil((collection?.modes.length || 0) / MODE_PAGE_SIZE) - 1))
   const visible = filtered.slice(page * VARIABLE_PAGE_SIZE, (page + 1) * VARIABLE_PAGE_SIZE)
+  const selectionHere = rows?.collection === collectionId ? rows : null
+  const selectedRows = new Set(selectionHere?.ids.filter(id => system.variables[id]?.collection === collectionId))
   const modes = collection?.modes.slice(columnPage * MODE_PAGE_SIZE, (columnPage + 1) * MODE_PAGE_SIZE) || []
   const groups = new Map<string, [string, Variable][]>()
   for (const entry of visible) { const group = variableGroup(entry[1].name); const entries = groups.get(group) || []; entries.push(entry); groups.set(group, entries) }
@@ -89,6 +97,36 @@ export function VariablesPanel({ editor, onReturnToCanvas }: { editor: Editor; o
   }
   const run: Change = (label, edit) => commitPendingEdits(editor) && change(label, edit)
   const navigate = (next: () => void) => { if (commitPendingEdits(editor)) { setError(''); setRemoval(null); next() } else setError(editor.state.message) }
+  const pickRow = (id: string, event: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => navigate(() => {
+    const anchor = selectionHere?.anchor ?? id
+    const from = filtered.findIndex(([key]) => key === anchor)
+    const to = filtered.findIndex(([key]) => key === id)
+    if (event.shiftKey && from >= 0) {
+      setRows({ collection: collectionId, anchor, ids: filtered.slice(Math.min(from, to), Math.max(from, to) + 1).map(([key]) => key) })
+    } else if (event.ctrlKey || event.metaKey) {
+      if (selectedRows.has(id)) selectedRows.delete(id); else selectedRows.add(id)
+      setRows({ collection: collectionId, anchor: id, ids: [...selectedRows] })
+    } else setRows({ collection: collectionId, anchor: id, ids: [id] })
+  })
+  const revealVariable = (id: string) => {
+    const updated = variableIndex(editor.state.doc.designSystem ?? EMPTY).byCollection.get(collectionId)
+    const index = Math.max(0, updated?.findIndex(([key]) => key === id) ?? 0)
+    setQuery('')
+    setKind('all')
+    setRowPage(Math.floor(index / VARIABLE_PAGE_SIZE))
+  }
+  const duplicate = () => {
+    if (!selectedRows.size) return
+    let copies: string[] = []
+    if (run('复制所选变量', draft => { copies = duplicateVariables(draft, collectionId, [...selectedRows]) })) {
+      setRows({ collection: collectionId, ids: copies, anchor: copies[0] })
+      revealVariable(copies[0])
+    }
+  }
+  const create = (kind: VariableKind) => {
+    let id = ''
+    if (run('新建变量', draft => { id = createVariable(draft, collectionId, kind) })) revealVariable(id)
+  }
   const requestRemoval = (value: Removal) => navigate(() => setRemoval(value))
   const removalExists = removal && (removal.kind === 'variable' ? !!system.variables[removal.id] : !!system.collections[removal.id] && (removal.kind !== 'mode' || system.collections[removal.id].modes.includes(removal.mode!)))
   const references = useMemo(() => !removal || !removalExists ? [] : removal.kind === 'variable' ? variableReferences(doc, removal.id) : removal.kind === 'collection' ? collectionReferences(doc, removal.id) : modeReferences(doc, removal.id, removal.mode!), [doc, removal, removalExists])
@@ -105,6 +143,14 @@ export function VariablesPanel({ editor, onReturnToCanvas }: { editor: Editor; o
   const pageShown = filtered.length ? `${page * VARIABLE_PAGE_SIZE + 1}–${Math.min((page + 1) * VARIABLE_PAGE_SIZE, filtered.length)}` : '0'
   return <div className="variables-panel" onKeyDown={event => {
     if (onReturnToCanvas && !event.metaKey && !event.ctrlKey) event.stopPropagation()
+    if (event.key === 'Enter' && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey &&
+        !event.nativeEvent.isComposing && !(event.target as Element).closest('input,textarea,select,[contenteditable=true]') &&
+        selectedRows.size) {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!event.repeat) duplicate()
+      return
+    }
     if (event.key !== 'Escape') return
     if (onReturnToCanvas && !event.defaultPrevented && !event.nativeEvent.isComposing) {
       event.preventDefault()
@@ -120,7 +166,15 @@ export function VariablesPanel({ editor, onReturnToCanvas }: { editor: Editor; o
         <strong>{tr('本地变量')}</strong>
         {!onReturnToCanvas && <p>{tr('每次修改均可撤销，并随文档保存。名称使用 / 自动分组。')}</p>}
       </div>
-      <div className="variables-history"><button type="button" disabled={!editor.canUndo} onClick={() => navigate(() => editor.undo())}>{tr('撤销')}</button><button type="button" disabled={!editor.canRedo} onClick={() => navigate(() => editor.redo())}>{tr('重做')}</button></div>
+      <div className="variables-history">
+        {toggleFloating && <button type="button" className="variables-size-toggle"
+          aria-label={locale === 'en' ? (floating ? 'Expand variables' : 'Minimize variables') : (floating ? '展开变量工作区' : '缩小变量工作区')}
+          onClick={() => navigate(toggleFloating)}>
+          {floating ? <Maximize2 size={15} aria-hidden="true" /> : <Minimize2 size={15} aria-hidden="true" />}
+        </button>}
+        <button type="button" disabled={!editor.canUndo} onClick={() => navigate(() => editor.undo())}>{tr('撤销')}</button>
+        <button type="button" disabled={!editor.canRedo} onClick={() => navigate(() => editor.redo())}>{tr('重做')}</button>
+      </div>
     </div>
     {error && <p className="variables-error" role="alert">{tr(error)}</p>}
     <div className="variables-layout">
@@ -152,9 +206,15 @@ export function VariablesPanel({ editor, onReturnToCanvas }: { editor: Editor; o
           <div className="variables-search"><input type="search" aria-label={tr('搜索变量')} placeholder={tr('搜索变量名称或分组')} value={query} onChange={e => navigate(() => { setQuery(e.target.value); setRowPage(0) })} />
             <select aria-label={tr('变量类型筛选')} value={kind} onChange={e => navigate(() => { setKind(e.target.value); setRowPage(0) })}><option value="all">{tr('全部类型')}</option>{variableKinds.map(kind => <option key={kind} value={kind}>{tr(kindNames[kind])}</option>)}</select>
             <span role="status">{variableCountStatus(filtered.length, variables.length, locale)}</span></div>
-          <div className="variables-add">{variableKinds.map(kind => <button type="button" key={kind} onClick={() => {
-            if (run('新建变量', d => { createVariable(d, collectionId, kind) })) { setQuery(''); setKind('all'); setRowPage(0) }
-          }}>+ {kind}</button>)}</div>
+          <div className="variables-add">
+            {onReturnToCanvas ? <select value="" aria-label={locale === 'en' ? 'Create variable' : '创建变量'}
+              onChange={event => create(event.currentTarget.value as VariableKind)}>
+              <option value="" disabled>{locale === 'en' ? '+ Create variable' : '+ 创建变量'}</option>
+              {variableKinds.map(kind => <option key={kind} value={kind}>{tr(kindNames[kind])}</option>)}
+            </select> : variableKinds.map(kind => <button type="button" key={kind} onClick={() => create(kind)}>+ {kind}</button>)}
+            <button type="button" disabled={!selectedRows.size} aria-keyshortcuts="Shift+Enter"
+              onClick={duplicate}>{locale === 'en' ? 'Duplicate selected' : '复制所选变量'}</button>
+          </div>
           <div className="variables-pager"><span>{modePageStatus(columnPage * MODE_PAGE_SIZE + 1, Math.min((columnPage + 1) * MODE_PAGE_SIZE, collection.modes.length), collection.modes.length, locale)}</span>
             <button type="button" aria-label={tr('上一组模式')} disabled={columnPage === 0} onClick={() => navigate(() => setModePage(columnPage - 1))}>←</button>
             <button type="button" aria-label={tr('下一组模式')} disabled={(columnPage + 1) * MODE_PAGE_SIZE >= collection.modes.length} onClick={() => navigate(() => setModePage(columnPage + 1))}>→</button></div>
@@ -162,8 +222,17 @@ export function VariablesPanel({ editor, onReturnToCanvas }: { editor: Editor; o
             <DraftInput editor={editor} aria-label={renameModeLabel(mode, locale)} value={mode} normalize={value => value.trim()} validate={value => validVariableName(value) && (value === mode || !collection.modes.includes(value))} onCommit={value => change('重命名变量模式', d => renameVariableMode(d, collectionId, mode, value))} />
             <button type="button" aria-label={deleteModeLabel(mode, locale)} onClick={() => requestRemoval({ kind: 'mode', id: collectionId, mode })}>{tr('删除模式')}</button>
           </th>)}<th>{tr('管理')}</th></tr></thead>
-          {[...groups].map(([group, entries]) => <tbody key={group}><tr className="variables-group"><th colSpan={modes.length + 2}>{group === '未分组' ? tr('未分组') : group}</th></tr>{entries.map(([id, v]) => <tr key={id} data-variable-id={id}>
-            <td><DraftInput editor={editor} aria-label={tr('变量名称')} value={v.name} normalize={value => value.trim()} validate={validVariableName} onCommit={value => change('命名变量', d => renameVariable(d, id, value))} /><small>{tr(kindNames[v.kind])}</small></td>
+          {[...groups].map(([group, entries]) => <tbody key={group}><tr className="variables-group"><th colSpan={modes.length + 2}>{group === '未分组' ? tr('未分组') : group}</th></tr>{entries.map(([id, v]) => <tr key={id} data-variable-id={id}
+            data-selected={selectedRows.has(id)} onClick={event => {
+              if (!(event.target as Element).closest('button,input,textarea,select,option')) pickRow(id, event)
+            }}>
+            <td><div className="variables-name-cell">
+              <button type="button" className="variables-row-picker" aria-pressed={selectedRows.has(id)}
+                aria-label={locale === 'en' ? `Select variable ${v.name}` : `选择变量 ${v.name}`} onClick={event => pickRow(id, event)}>
+                {selectedRows.has(id) && <Check size={12} aria-hidden="true" />}
+              </button>
+              <div><DraftInput editor={editor} aria-label={tr('变量名称')} value={v.name} normalize={value => value.trim()} validate={validVariableName} onCommit={value => change('命名变量', d => renameVariable(d, id, value))} /><small>{tr(kindNames[v.kind])}</small></div>
+            </div></td>
             {modes.map(mode => <td key={mode}><VariableCell editor={editor} id={id} variable={v} mode={mode} candidates={index.byKind.get(v.kind) || []} managed={!!doc.colorManagement} change={change} run={run} locale={locale} /></td>)}
             <td><button type="button" aria-label={deleteVariableLabel(v.name, locale)} onClick={() => requestRemoval({ kind: 'variable', id })}>{tr('删除')}</button></td>
           </tr>)}</tbody>)}</table></div>

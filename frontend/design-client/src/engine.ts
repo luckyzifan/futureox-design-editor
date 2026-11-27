@@ -45,6 +45,8 @@ import { validStroke, validProfiles } from './stroke-profile'
 import { remapDesignDependencies } from './design-system'
 import { pruneAnimations } from './animation'
 import { prunePrototypeReferences, prototypeNeedsSchema12 } from './prototype'
+import { invalidatedFlowStarts } from './prototype-flows'
+import { PROTOTYPE_FLOW_SCHEMA } from './model'
 import { applyClipboardSemantics, captureClipboardSemantics, clipboardDependencyNodes, hasClipboardSemantics } from './clipboard-semantics'
 import { editableNetwork } from './editable-network'
 import { defaultPencil, defaultBrush, defaultMarker, defaultTape, SKETCH_PENCIL_COLOR, type PencilSettings } from './freehand'
@@ -811,7 +813,7 @@ export class Editor {
       // component/connector/layout walk from observing an invalid tree.
       const authored = produceDocumentDraft(before.doc, draft => { fn(draft as DesignDocument) })
       const local = proveLocalEdit(before.doc, authored)
-      const scope = local ? singlePageScope(before.doc, local.ids) : pageEditScope(before.doc, authored)
+      const scope = local ? singlePageScope(before.doc, local.ids) : invalidatedFlowStarts(before.doc, authored).length ? undefined : pageEditScope(before.doc, authored)
       if (!local && !scope) validateStructure(authored)
       const featureNodesOf = (doc: DesignDocument) => scope ? scope.ids.map(id => doc.nodes[id]).filter((n): n is DesignNode => !!n) : Object.values(doc.nodes)
       const featureDocOf = (doc: DesignDocument) => scope ? documentForSchema(doc, scope.ids) : doc
@@ -840,6 +842,8 @@ export class Editor {
         if (draft.schemaVersion < 31 && featureNodesOf(authored).some(n => n.layout?.stackingOrder)) draft.schemaVersion = 31
         if (draft.schemaVersion < 32 && featureNodesOf(authored).some(n => n.sketchTemplate)) draft.schemaVersion = 32
         if (draft.schemaVersion < 33 && hasSchema33Features(featureDocOf(authored))) draft.schemaVersion = 33
+        if (draft.schemaVersion < PROTOTYPE_FLOW_SCHEMA && draft.prototype?.flows !== undefined)
+          draft.schemaVersion = PROTOTYPE_FLOW_SCHEMA
         if(draft.schemaVersion < 19 && hasSchema19Features(featureDocOf(authored)))draft.schemaVersion=19
         draft.rasterProfile ??= before.doc.rasterProfile || (draft.colorManagement ? 'figma' : 'analytic')
         // Before component/dependency cleanup, only root schema/profile fields

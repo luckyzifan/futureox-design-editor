@@ -16,6 +16,7 @@ const copy = {
 const titles: Partial<Record<ShortcutAction, readonly [string, string]>> = {
   'open-shortcut-reference': ['键盘快捷键', 'Keyboard shortcuts'],
   'open-command-search': ['快速操作', 'Quick actions'],
+  'open-quick-insert': ['快速插入组件', 'Quick insert'],
   'open-layer-find': ['搜索图层', 'Find layers'],
   'toggle-layout-guides': ['布局参考线', 'Layout guides'],
   'toggle-pixel-grid': ['像素网格', 'Pixel grid'],

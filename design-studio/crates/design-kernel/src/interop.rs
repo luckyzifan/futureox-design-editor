@@ -4554,6 +4554,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
         doc.prototype = Some(crate::prototype::Prototype {
             start_node: start,
             interactions,
+            flows: None,
         });
     }
     // honest serialization version, mirroring the fig importer gates: the
@@ -7864,7 +7865,7 @@ fn export_layer_impl(
                 layer.insert(
                     "isFlowHome".into(),
                     json!(
-                        doc.prototype.as_ref().and_then(|p| p.start_node.as_ref()) == Some(&n.id)
+                        doc.prototype.as_ref().and_then(|p| p.default_start()) == Some(n.id.as_str())
                     ),
                 );
                 layer.insert("includeInCloudUpload".into(), json!(true));
@@ -12393,6 +12394,7 @@ mod tests {
         doc.schema_version = 12;
         doc.prototype = Some(crate::prototype::Prototype {
             start_node: Some("n1".into()),
+            flows: None,
             interactions: [(
                 "n2".to_string(),
                 vec![crate::prototype::Interaction {

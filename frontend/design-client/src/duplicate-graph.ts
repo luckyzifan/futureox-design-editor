@@ -2,6 +2,7 @@ import { cloneValue } from './draft'
 import { insertInstance, remapReferences } from './components'
 import { allParents, apply, inverse, multiply, worldMatrix } from './geometry'
 import { identity, node, uid, type DesignDocument, type DesignNode, type Matrix } from './model'
+import { allActions } from './prototype-logic'
 
 export type GraphCopy = { nodes: Record<string, DesignNode>; roots: string[]; document: DesignDocument }
 export type Duplication = { roots: string[]; ids: Map<string, string>; sourceRoots: string[]; reference: Map<string, Matrix> }
@@ -14,6 +15,7 @@ export function duplicateGraph(target: DesignDocument, content: GraphCopy,
   const siblingOffset = options.behindSource ? 0 : 1
   const master = content.roots.length === 1 ? source.nodes[content.roots[0]] : undefined
   const behavior = Object.keys(source.prototype?.interactions || {}).some(id => content.nodes[id]) ||
+    source.prototype?.flows?.some(flow => content.nodes[flow.startNode]) ||
     source.animations?.some(clip => clip.tracks.some(track => content.nodes[track.nodeId]))
   // Duplicating an ordinary master creates a linked instance. A page copy or a
   // master carrying authored motion/behavior keeps its complete definition.
@@ -77,10 +79,15 @@ export function duplicateGraph(target: DesignDocument, content: GraphCopy,
   }
   if (source.prototype) {
     target.prototype ??= { interactions: {} }
+    const flows = source.prototype.flows?.flatMap(flow => {
+      const startNode = ids.get(flow.startNode)
+      return startNode ? [{ ...cloneValue(flow), id: uid(), startNode }] : []
+    })
+    if (flows?.length) (target.prototype.flows ??= []).push(...flows)
     for (const [id, events] of Object.entries(source.prototype.interactions)) {
       if (!ids.has(id)) continue
       target.prototype.interactions[ids.get(id)!] = cloneValue(events).map(event => {
-        for (const action of event.actions)
+        for (const action of allActions(event.actions))
           if (action.target && ['navigate', 'overlay', 'scroll-to', 'change-to'].includes(action.kind))
             action.target = ids.get(action.target) || action.target
         return event

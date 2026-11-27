@@ -1,7 +1,7 @@
 /** Authored interaction data only. Uses the editor's atomic commit/validation boundary. */
 import { current, isDraft, type Draft } from 'immer'
 import { createClip, recordKeyframe, type AnimationClip, type Easing } from '../animation'
-import { uid, type DesignDocument, type LocalReview } from '../model'
+import { PROTOTYPE_FLOW_SCHEMA, uid, validatePrototypeFlows, type DesignDocument, type LocalReview } from '../model'
 import { type Prototype, isPrototypeEasing, hasSchemaExtras } from '../prototype'
 import { hasLogic, validateLogicActions } from '../prototype-logic'
 import type { AutomationExtension } from './types'
@@ -61,7 +61,8 @@ function reviews(d:DesignDocument,id:unknown) {
 }
 export function validatePrototype(d:DesignDocument, value:unknown): Prototype {
   const p=obj(value)
-  if(Object.keys(p).some(k=>!['startNode','interactions'].includes(k)))throw new Error('Unknown prototype field')
+  if(Object.keys(p).some(k=>!['startNode','interactions','flows'].includes(k)))throw new Error('Unknown prototype field')
+  validatePrototypeFlows(d, p.flows)
   if(p.startNode!==undefined && !d.nodes[str(p.startNode,'start node',128)])throw new Error('Start node not found')
   const interactions=obj(p.interactions)
   if(Object.keys(interactions).length>10000)throw new Error('Too many interaction owners')
@@ -94,7 +95,14 @@ export function validatePrototype(d:DesignDocument, value:unknown): Prototype {
 }
 export const interactionExtensions: AutomationExtension[] = [
   tool('prototype.get','Read authored prototype actions; does not execute navigation.',false,{},[],d=>copy(d.prototype??{interactions:{}})),
-  tool('prototype.set','Replace authored prototype graph atomically; validates targets. Does not launch URLs or execute actions.',true,{prototype:{type:'object'}},['prototype'],(d,p)=>{d.prototype=validatePrototype(d,p.prototype);const extended=Object.values(d.prototype.interactions).some(events=>events.some(e=>e.actions.some(a=>a.easingCurve!==undefined||a.overlayPosition!==undefined||hasSchemaExtras(a))));d.schemaVersion=Math.max(d.schemaVersion,Object.values(d.prototype.interactions).some(events=>events.some(e=>hasLogic(e.actions)))?15:extended?12:4) as DesignDocument['schemaVersion'];return copy(d.prototype)}),
+  tool('prototype.set','Replace authored prototype graph atomically; validates targets. Does not launch URLs or execute actions.',true,{prototype:{type:'object'}},['prototype'],(d,p)=>{
+    d.prototype=validatePrototype(d,p.prototype)
+    const events=Object.values(d.prototype.interactions)
+    const extended=events.some(events=>events.some(e=>e.actions.some(a=>a.easingCurve!==undefined||a.overlayPosition!==undefined||hasSchemaExtras(a))))
+    const required=d.prototype.flows!==undefined?PROTOTYPE_FLOW_SCHEMA:events.some(events=>events.some(e=>hasLogic(e.actions)))?15:extended?12:4
+    d.schemaVersion=Math.max(d.schemaVersion,required) as DesignDocument['schemaVersion']
+    return copy(d.prototype)
+  }),
   tool('prototype.interaction.set','Add or replace one interaction using the shared prototype validator. Undoable and batch-compatible.',true,{nodeId:S,index:{type:'integer',minimum:0,maximum:31},interaction:{type:'object'}},['nodeId','index','interaction'],(d,p)=>{
     const nodeId=str(p.nodeId,'node ID',128),index=num(p.index,'index',0,31)
     if(!Number.isInteger(index)||!d.nodes[nodeId])throw new Error('Invalid interaction index/owner')

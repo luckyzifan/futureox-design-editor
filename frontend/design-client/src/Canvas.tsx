@@ -2101,13 +2101,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       // Open command search before any pen commit. The chord itself must not edit the document.
-      if (shortcut?.command === 'open-command-search' || shortcut?.command === 'open-layer-find') {
+      if (shortcut?.command === 'open-command-search' || shortcut?.command === 'open-quick-insert' || shortcut?.command === 'open-layer-find') {
         // textEntryOwner is current; this listener is not rebound on each text-edit render.
         if (shortcut.command === 'open-layer-find' && ownsTextEntry(textEntryOwner.current)) return
         e.preventDefault()
         if (!e.repeat && !editor.interactionActive && !drag.current && !pencil.current) {
           if (mode === 'figma') recordShortcutUse(shortcut)
           if (shortcut.command === 'open-command-search') requestCommandSearch(e.target)
+          else if (shortcut.command === 'open-quick-insert') requestCommandSearch(e.target, 'components')
           else requestLayerFind(e.target)
         }
         return

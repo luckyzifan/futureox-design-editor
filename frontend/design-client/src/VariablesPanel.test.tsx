@@ -74,6 +74,20 @@ function choose(name: string, value: string) {
 }
 function finish(name: string, value: string) { const field = label(name); type(field, value); key(field, 'Enter') }
 
+test('keyboard duplication reveals the copy on its sorted variable page', async () => {
+  const { doc } = fixture(85), e = editor(doc)
+  await act(async () => root.render(<VariablesPanel editor={e} />))
+  const pick = label<HTMLButtonElement>('选择变量 Spacing/0000')
+  click(pick)
+  act(() => pick.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+    key: 'Enter', shiftKey: true, cancelable: true, bubbles: true,
+  })))
+  expect(Object.keys(e.state.doc.designSystem!.variables)).toHaveLength(86)
+  expect(label('选择变量 Spacing/0000 copy').getAttribute('aria-pressed')).toBe('true')
+  click(button('撤销'))
+  expect(Object.keys(e.state.doc.designSystem!.variables)).toHaveLength(85)
+})
+
  test('collection and typed variable controls commit atomic changes and UI edits survive binary disk reopen', async () => {
   const e = editor(); await act(async () => root.render(<VariablesPanel editor={e} />))
   type(label('集合名称'), 'Tokens'); click(button('新建集合')); click(button('+ number'))
@@ -229,7 +243,7 @@ test('valid input commits before switching tabs and nonvariable tabs keep their 
   expect(e.state.doc.designSystem!.variables.v0.values.Light).toBe(34.625)
   expect(hasPendingEdits(e)).toBe(false); expect(label('样式名称')).toBeTruthy()
   click(button('组件库')); expect(label('组件库版本')).toBeTruthy()
-  click(button('交互原型')); expect(button('将选中图层设为起点')).toBeTruthy()
+  click(button('交互原型')); expect(button('添加流程起点')).toBeTruthy()
   click(button('关闭')); expect(close).toHaveBeenCalledOnce()
 })
 

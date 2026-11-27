@@ -10,7 +10,7 @@ import { insertInstance, stampKeys } from './components'
 import { encodeDocumentBinary, decodeDocumentBinary } from './kernel/binfmt'
 import {
   addVariableMode, collectionReferences, createVariable, createVariableCollection,
-  deleteVariable, deleteVariableCollection, deleteVariableMode, materializeVariableCell,
+  deleteVariable, deleteVariableCollection, deleteVariableMode, duplicateVariables, materializeVariableCell,
   modeReferences, parseVariableLiteral, renameVariable, renameVariableCollection,
   renameVariableMode, setVariableCell, setVariableDefaultMode, validVariableName,
   variableGroup, variableIndex, variableReferences,
@@ -32,6 +32,22 @@ function fixture() {
   child.bindings = { width: 'alias', 'fills.0.color': 'color' }; child.fills = [paint('#ffffff')]
   return { doc, parent, child }
 }
+
+test('a variable batch duplicates authored modes and aliases in one history entry', () => {
+  const { doc } = fixture()
+  const editor = makeEditor(doc), initial = editor.state.doc
+  let ids: string[] = []
+  editor.change('Duplicate selected variables', draft => { ids = duplicateVariables(draft, 'theme', ['alias', 'color', 'alias']) })
+  const variables = editor.state.doc.designSystem!.variables
+  expect(ids).toHaveLength(2)
+  expect(variables[ids[0]]).toEqual({ ...variables.alias, name: 'Spacing/alias copy' })
+  expect(variables[ids[1]]).toEqual({ ...variables.color, name: 'Colors/brand copy' })
+  expect(editor.state.doc.designSystem!.activeModes).toEqual(initial.designSystem!.activeModes)
+  editor.undo()
+  expect(editor.state.doc).toEqual(initial)
+  editor.redo()
+  expect(editor.state.doc.designSystem!.variables).toEqual(variables)
+})
 
 test('editing an inactive alias cell materializes that column and leaves cross-collection context intact', () => {
   const { doc } = fixture(), s = doc.designSystem!

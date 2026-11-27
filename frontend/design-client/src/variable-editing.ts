@@ -1,6 +1,7 @@
 import { allActions, expressionVariables } from './prototype-logic'
 /** Authored variable edits. Call inside Editor.change for validation, undo and persistence. */
 import { validColor } from './color'
+import { cloneValue } from './draft'
 import { emptySystem, variableValue, type DesignSystem, type VariableValue } from './design-system'
 import { uid, type DesignDocument, type DesignNode } from './model'
 import type { PrototypeAction } from './prototype'
@@ -110,6 +111,33 @@ export function createVariable(doc: DesignDocument, collectionId: string, kind: 
   while (names.has(candidate)) candidate = `${base} ${suffix++}`
   s.variables[id] = { name: candidate, collection: collectionId, kind, values: Object.fromEntries(c.modes.map(mode => [mode, initial])) }
   return id
+}
+export function duplicateVariables(doc: DesignDocument, collectionId: string, ids: readonly string[]): string[] {
+  collection(doc, collectionId)
+  const source = [...new Set(ids)].map(id => variable(doc, id))
+  if (source.some(value => value.collection !== collectionId)) throw new Error('请选择同一集合内的变量')
+  const variables = doc.designSystem!.variables
+  const names = new Set(Object.values(variables).filter(value => value.collection === collectionId).map(value => value.name))
+  const encoder = new TextEncoder()
+  const copyName = (original: string, suffix: string) => {
+    let available = 512 - encoder.encode(suffix).length
+    let prefix = ''
+    for (const character of original) {
+      available -= encoder.encode(character).length
+      if (available < 0) break
+      prefix += character
+    }
+    return prefix + suffix
+  }
+  return source.map(value => {
+    let sequence = 1
+    let candidate = copyName(value.name, ' copy')
+    while (names.has(candidate)) candidate = copyName(value.name, ` copy ${++sequence}`)
+    names.add(candidate)
+    const id = uid()
+    variables[id] = { ...cloneValue(value), name: candidate }
+    return id
+  })
 }
 export function addVariableMode(doc: DesignDocument, id: string, value: string, copyFrom?: string) {
   const c = collection(doc, id), mode = name(value), from = copyFrom ?? c.defaultMode

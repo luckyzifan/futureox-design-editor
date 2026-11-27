@@ -401,6 +401,14 @@ html[data-reduced-motion="true"] .prototype-hotspot { transition: none; }
 .editor-shell .canvas-workspace > .floating-toolbar button:focus-visible {
   outline-color: var(--chrome-focus);
 }
+@media (max-width: 1120px) {
+  .editor-shell[data-ui-mode=figma] .canvas-workspace > .floating-toolbar .figma-toolbelt-mode > button {
+    width: 26px;
+  }
+  .editor-shell[data-ui-mode=figma] .canvas-workspace > .floating-toolbar > .tool-group {
+    gap: 1px;
+  }
+}
 .editor-shell .floating-toolbar .tool-popover-content {
   color: var(--workspace-text);
   background: var(--workspace-panel);
@@ -484,3 +492,19 @@ html[data-reduced-motion="true"] .prototype-hotspot { transition: none; }
   margin: 0;
   accent-color: var(--workspace-accent);
 }
+.prototype-flows { display: grid; gap: 8px; margin-bottom: 12px; }
+.prototype-flows > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
+.embedded-design-tools .prototype-flows > header { padding: 0 0 8px; }
+.prototype-flows h3 { margin: 0; }
+.prototype-flow {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 8px;
+  background: var(--workspace-field);
+}
+.prototype-flow > input, .prototype-flow select { min-width: 0; width: 100%; margin: 0; }
+.prototype-flow-start { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px; }
+.prototype-flow-actions { display: flex; gap: 4px; }
+.prototype-flow-actions button { display: inline-flex; align-items: center; gap: 4px; }

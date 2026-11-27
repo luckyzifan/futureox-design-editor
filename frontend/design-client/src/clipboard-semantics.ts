@@ -72,7 +72,9 @@ export function captureClipboardSemantics(
   // An internal duplicate does not create or replace a document-wide start.
   // Portable copies retain that semantic and still reject conflicting starts.
   const startNode = external && source.prototype?.startNode && selected.has(source.prototype.startNode) ? source.prototype.startNode : undefined
-  const prototype = startNode || Object.keys(interactions).length ? { ...(startNode ? { startNode } : {}), interactions } : undefined
+  const flows = source.prototype?.flows?.filter(flow => selected.has(flow.startNode))
+  const prototype = startNode || flows?.length || Object.keys(interactions).length ?
+    { ...(startNode ? { startNode } : {}), ...(flows?.length ? { flows: cloneValue(flows) } : {}), interactions } : undefined
   const animations = (source.animations || []).flatMap(clip => {
     const tracks = clip.tracks.filter(track => selected.has(track.nodeId))
     return tracks.length ? [{ ...cloneValue(clip), tracks: cloneValue(tracks) }] : []
@@ -90,7 +92,8 @@ export function captureClipboardSemantics(
   if (external) {
     const dependencies = componentDependencies(source, nodes)
     for (const id of dependencies) if (!selected.has(id) && (
-      source.prototype?.startNode === id || source.prototype?.interactions[id]?.length || animated.has(id)
+      source.prototype?.startNode === id || source.prototype?.flows?.some(flow => flow.startNode === id) ||
+      source.prototype?.interactions[id]?.length || animated.has(id)
     )) throw new Error('依赖的主组件带有原型或动画，请将主组件一并选中以保真复制')
   }
   return { prototype, animations, variables, retainedTargets }
@@ -131,6 +134,10 @@ export function applyClipboardSemantics(
       if (target.prototype?.startNode && target.prototype.startNode !== remapped.startNode)
         throw new Error('目标设计已有原型起点，无法同时保留两个起点；请粘贴到新设计')
     }
+    if (remapped.flows?.length) remapped.flows = [
+      ...(target.prototype?.flows ?? []),
+      ...remapped.flows.map(flow => ({ ...flow, id: uid(), startNode: ids.get(flow.startNode)! })),
+    ]
     remapped.interactions = Object.fromEntries(Object.entries(remapped.interactions).map(([id, events]) => [ids.get(id)!, events.map(event => {
       if (event.condition) event.condition.variable = design.variables.get(event.condition.variable) || event.condition.variable
       for (const action of allActions(event.actions)) {

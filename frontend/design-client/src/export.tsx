@@ -94,7 +94,8 @@ function closeVectorExportSnapshot(shifted: DesignDocument, repeatedVisual: bool
   if (shifted.prototype) {
     shifted.prototype = cloneValue(shifted.prototype)
     prunePrototypeReferences({ ...shifted, nodes: previousNodes }, shifted)
-    if (!shifted.prototype.startNode && Object.keys(shifted.prototype.interactions).length === 0) delete shifted.prototype
+    if (!shifted.prototype.startNode && !shifted.prototype.flows?.length && Object.keys(shifted.prototype.interactions).length === 0)
+      delete shifted.prototype
   }
   if (shifted.animations?.length) {
     const animations = cloneValue(shifted.animations)

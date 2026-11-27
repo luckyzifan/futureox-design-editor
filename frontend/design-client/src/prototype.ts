@@ -3,6 +3,7 @@ import { resolvePrototypeMotion } from './prototype-motion'
 import type { DesignDocument } from './model'
 import { variableValue } from './design-system'
 import { evaluate, tick, validateLogicActions, type Expr } from './prototype-logic'
+import { defaultPrototypeStart, invalidatedFlowStarts, type PrototypeFlow } from './prototype-flows'
 export type PrototypeEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'spring' | import('./animation').NamedEasing
 export function isPrototypeEasing(value: unknown): value is PrototypeEasing {
   return typeof value === 'string' && (/^(linear|ease-in|ease-out|ease-in-out|spring)$/.test(value) ||
@@ -116,12 +117,17 @@ export type Interaction = {
   condition?: { variable: string; equals: string | number | boolean }
 }
 export type PrototypeOverflow = 'none' | 'horizontal' | 'vertical' | 'both'
-export type Prototype = { startNode?: string; interactions: Record<string, Interaction[]> }
+export type Prototype = { startNode?: string; interactions: Record<string, Interaction[]>; flows?: PrototypeFlow[] }
 /** Remove only references invalidated by this edit; reject newly invalid input normally. */
 export function prunePrototypeReferences(before: DesignDocument, after: DesignDocument) {
   const p = after.prototype
   if (!p) return
   const removed = new Set(Object.keys(before.nodes).filter((id) => !after.nodes[id]))
+  const invalidated = new Set(invalidatedFlowStarts(before, after))
+  if (p.flows?.some(flow => invalidated.has(flow.startNode))) {
+    p.flows = p.flows.filter(flow => !invalidated.has(flow.startNode))
+    if (!p.flows.length) delete p.flows
+  }
   if (!removed.size) return
   if (p.startNode && removed.has(p.startNode)) delete p.startNode
   for (const [id, events] of Object.entries(p.interactions)) {
@@ -251,8 +257,8 @@ export function prototypeFrameView(doc: DesignDocument, root: string, allowOverf
   if(!doc.pages.some(p=>p.id===at))throw new Error('原型目标不属于页面')
   return {document:{...doc,nodes},pageId:at}
 }
-export function initialPrototype(doc: DesignDocument): PrototypeState {
-  const current = doc.prototype?.startNode || doc.pages[0].children[0]
+export function initialPrototype(doc: DesignDocument, preferred?: string, pageId?: string): PrototypeState {
+  const current = defaultPrototypeStart(doc, preferred, pageId)
   if (!current || !doc.nodes[current]) throw new Error('请先创建画板并设置原型起点')
   return { current, history: [], overlays: [], values: {}, transitionMs: 0 }
 }
