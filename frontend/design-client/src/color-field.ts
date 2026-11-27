@@ -5,6 +5,11 @@ import { validColor } from './color'
  * the Mac-style Hex / RGB / HSL / HSB fields. */
 export type ColorNotation = 'HEX' | 'RGB' | 'HSB' | 'HSL'
 
+export function normalizePaintHex(input: string) {
+  const value = input.trim()
+  return /^[0-9a-f]{6}(?:[0-9a-f]{2})?$/i.test(value) ? `#${value}` : input
+}
+
 export function parseHex(color: string): [number, number, number] | null {
   if (!/^#[0-9a-f]{6}$/i.test(color)) return null
   return [1, 3, 5].map(at => Number.parseInt(color.slice(at, at + 2), 16)) as [number, number, number]

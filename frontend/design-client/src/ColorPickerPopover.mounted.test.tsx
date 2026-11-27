@@ -47,14 +47,33 @@ function Fixture() {
 const field = (label: string) => document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!
 const button = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === label || b.getAttribute('aria-label') === label)!
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
-test('fill and stroke opacity rows render a compact percentage', async () => {
+test('Figma uses inline solid fill fields and retains the stroke opacity control', async () => {
   const border = stroke('#345678', 1)
   border.paint.opacity = .4
   editor.set({ doc: { ...editor.state.doc, nodes: { [id]: { ...editor.state.doc.nodes[id], strokes: [border] } } } })
   await act(async () => root.render(<PendingEditContext.Provider value={editor}><Inspector editor={editor} /></PendingEditContext.Provider>))
-  expect([...mount.querySelectorAll('.paint-opacity-trigger')].map(button => button.textContent)).toEqual(['60%', '40%'])
+  expect(mount.querySelector<HTMLInputElement>('.paint-inline-color')?.value).toBe('123456')
+  expect(mount.querySelector<HTMLInputElement>('.paint-inline-alpha input')?.value).toBe('60')
+  expect([...mount.querySelectorAll('.paint-opacity-trigger')].map(button => button.textContent)).toEqual(['40%'])
 })
 async function type(input: HTMLInputElement, value: string) { await act(async () => { input.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })) }) }
+test('inline fill fields commit native values with separate undo steps', async () => {
+  interfacePreference.set({ uiMode: 'figma', locale: 'zh-CN' })
+  await act(async () => root.render(<PendingEditContext.Provider value={editor}><Inspector editor={editor} /></PendingEditContext.Provider>))
+  const color = field('填充颜色')
+  await type(color, '386c99')
+  await act(async () => color.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(editor.authoredDocument.nodes[id].fills[0].color.toLowerCase()).toBe('#386c99')
+  const opacity = field('填充不透明度')
+  await type(opacity, '37.5%')
+  await act(async () => opacity.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(editor.authoredDocument.nodes[id].fills[0].opacity).toBe(.375)
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument.nodes[id].fills[0].opacity).toBe(.6)
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument.nodes[id].fills[0].color).toBe('#123456')
+})
+
 test('Figma solid fill previews immediately and closing writes one undoable edit', async () => {
   interfacePreference.set({ uiMode: 'figma', locale: 'zh-CN' })
   await act(async () => root.render(<PendingEditContext.Provider value={editor}><Inspector editor={editor} /></PendingEditContext.Provider>))

@@ -7,7 +7,7 @@ import { hasCanvasColorPicker, requestCanvasColor } from './canvas-color-picker'
 import type { SolidFillTarget } from './property-preview'
 import { paint, type Paint } from './model'
 import { validColor } from './color'
-import { applyNotationChannel, collectFileColors, formatHex, hsbToRgb, notationChannels, parseHex, rgbToHsb, type ColorNotation } from './color-field'
+import { applyNotationChannel, collectFileColors, formatHex, hsbToRgb, normalizePaintHex, notationChannels, parseHex, rgbToHsb, type ColorNotation } from './color-field'
 import { eyedropperChord, rememberPaintChannel, type PaintChannel } from './eyedropper-target'
 import { useInterfacePreferences } from './interface-preference'
 import { executeDesignSystemOperation } from './automation/design-system'
@@ -223,11 +223,7 @@ function MacColorDialog({ trigger, focusOpacity, preview, color: colorValue, opa
     return () => document.removeEventListener('pointerdown', outside, true)
   }, [editor, preview, valid, onCommit])
   const update = (next: Partial<ColorDraft>) => onUpdate(next)
-  const updateColorText = (text: string) => {
-    const trimmed = text.trim()
-    const bareHex = uiMode === 'figma' && /^[0-9a-f]{6}([0-9a-f]{2})?$/i.test(trimmed)
-    update({ color: bareHex ? `#${trimmed}` : text })
-  }
+  const updateColorText = (text: string) => update({ color: uiMode === 'figma' ? normalizePaintHex(text) : text })
   const cancelDrag = () => {
     const previous = drag.current; drag.current = null
     if (previous) update({ color: previous.color, opacity: previous.opacity })
