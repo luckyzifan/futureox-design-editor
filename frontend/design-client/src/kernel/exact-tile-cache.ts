@@ -10,8 +10,11 @@ export const compilationWitness = (raw: string) => encoder.encode(raw)
 
 const hexByte = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'))
 const littleEndian = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1
-/** The last encoded slot. Tiles of one frame repeat the same camera, so a
- * bitwise-equal lookup returns the identical string without re-encoding. */
+/** Small coordinate keys preserve the entire f64 camera/phase, including -0.
+ * JSON serialization is used only for compiler inputs exactly as production;
+ * its output, never a reserialized parsed scene, is the pixel witness.
+ * Tiles of one frame repeat the same camera, so a bitwise-equal lookup of the
+ * last encoding returns the identical string without re-encoding. */
 let memoValues: Float64Array | undefined
 let memoSlot = ''
 export function coordinateSlot(numbers: readonly number[]) {
