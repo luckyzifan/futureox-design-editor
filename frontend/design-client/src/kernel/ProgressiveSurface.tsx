@@ -35,7 +35,7 @@ import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
 import { inFlightPreviewCancelRatio, navigationPreviewDensity, zoomDetailInsteadOfViewportPreview } from './navigation-zoom'
 import { focusTileDuringZoom } from './zoom-underlay'
-import { captureMostlyOffscreen, liveNavigationCapture, navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, type NavigationCoverageFlight } from './navigation-coverage'
+import { captureMostlyOffscreen, deferCoveredOutwardPreview, liveNavigationCapture, navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, ZOOM_OUT_DETAIL_MIN_ZOOM, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
 import { panPrefetch } from './pan-prefetch'
@@ -54,7 +54,7 @@ import { progressiveTileLayer } from './progressive-quality'
 import { hasRetainedOverview, completeViewportBacking } from './overview-coverage'
 import { allowsReducedSampling } from './render-quality'
 import { sharpZoomScale, usesSharpZoom } from './gpu/sharp-zoom-policy'
-import { CoverageRetention } from './coverage-retention'
+import { CoverageRetention, hasNativeViewportSamples } from './coverage-retention'
 import { visibleCompositeContributors, touchCompositeContributors, type CompositeCacheFrame, type CompositeCacheOwner } from './composite-cache-use'
 import { isTileAdmissionBudgetError, planTileAdmission, retireRejectedTile, HandledTileDeliveryError,
   replacementTileBudget, tileAdmissionDiagnostic, type TileAdmissionDiagnostic } from './tile-admission'
@@ -567,8 +567,8 @@ export function ProgressiveSurfaceImpl(
         bounds: { x: -plan.view.x / plan.view.zoom, y: -plan.view.y / plan.view.zoom,
           width: plan.width / plan.view.zoom, height: plan.height / plan.view.zoom },
         keys: plan.ids, bytes: estimatedTileResidencyBytes(residents.values()),
-        native: residentDisplay && plan.samplingMode === 'native' &&
-          plan.rasterScale === plan.view.zoom * plan.dpr && [...residents.values()].every(tile => !tile.viewportPreview)
+        native: residentDisplay && hasNativeViewportSamples(plan, [...residents.values()],
+          progressiveNativeRepair && filteredContent && !cameraDependent && !props.animation)
           ? { view: plan.view, width: plan.width, height: plan.height, dpr: plan.dpr } : undefined,
       }, budget)
       const used = estimatedTileResidencyBytes(tileRef.current.values()) > budget ? compositeCacheUse() : new Set<PaintedTile>()
@@ -1131,7 +1131,7 @@ export function ProgressiveSurfaceImpl(
     // same-revision residents. Give exact tiles the raster turn instead of
     // starting a large filter graph for each intermediate viewport.
     const coveredHighZoomOut = movingDetailAvailable && zoomOutCoverage && filteredContent &&
-      requestedView.zoom >= 8 && hasContinuityBacking()
+      requestedView.zoom >= ZOOM_OUT_DETAIL_MIN_ZOOM && hasContinuityBacking()
     const detailInsteadOfPreview = coveredHighZoomOut || movingDetailAvailable && zoomDetailInsteadOfViewportPreview({
       navigating: true, displayedZoom: displayed?.view.zoom, requestedZoom: requestedView.zoom,
     }) && hasContinuityBacking()
@@ -2028,6 +2028,12 @@ focus?: SurfaceProps['overview'],
             // same camera, repeatedly starving detail during continuous zoom.
             if (previewAdmission.current.key !== 'covered-navigation') navigationIntentOwner.reset(c)
             previewAdmission.current = { contract, key: 'covered-navigation', active: true }
+            void navigationRefinement.request()
+            return
+          }
+          if (movingDetailAvailable && !cameraDependent && !props.panGestureActive &&
+              requestedView.x === view.x && requestedView.y === view.y && requestedView.zoom === view.zoom &&
+              deferCoveredOutwardPreview(retained, captureView.zoom, requestedView, width, height, navigationZoom.zoomingOut)) {
             void navigationRefinement.request()
             return
           }

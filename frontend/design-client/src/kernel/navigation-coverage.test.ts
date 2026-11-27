@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { captureMostlyOffscreen, captureVisibleFraction, liveNavigationCapture, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, viewportOverlapFraction } from './navigation-coverage'
+import { captureMostlyOffscreen, captureVisibleFraction, deferCoveredOutwardPreview, liveNavigationCapture, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, viewportOverlapFraction } from './navigation-coverage'
 import { navigationPreviewDensity } from './navigation-zoom'
 import { compositeDrawPlan, compositeRasterQuad } from './gpu/composite-draw-plan'
 import { physicalCoverage } from './gpu/physical-coverage'
@@ -126,6 +126,27 @@ const document = {}, client = {}
 const owner = { document, client, revision: 4, resident: true, device: '11/1/1' }
 const tile = { key: 'high-zoom', document, revision: 4, x: 0, y: 0, width: 1024, height: 512,
   zoom: 32, gutter: 0, gpuTile: 1, residentDevice: { client, key: '11/1/1' } }
+
+test('a ready viewport can defer the stale 1001% preview during outward motion at 751%', () => {
+  const sample = { x: -5122.8087351521445, y: -8601.714857963055, zoom: 10.014159084591377 }
+  const live = { x: -3740.789870899356, y: -6351.392210458063, zoom: 7.508231860198289 }
+  const width = 799, height = 782
+  const overview = { ...tile, key: 'startup-preview', x: -193.3766909469303, y: -55.06763787721127,
+    width, height, zoom: 0.3740894901144641 }
+  const ready = new Set([overview.key])
+  const residents = navigationCoverageTiles([overview], ready, owner)
+  const capture = liveNavigationCapture(sample, live, width, height)
+  expect(capture).toEqual(sample)
+  expect(navigationHasCoverage(residents, live, width, height, navigationReadyDensity(capture.zoom, 2, width, height))).toBe(false)
+  expect(deferCoveredOutwardPreview(residents, capture.zoom, live, width, height, true)).toBe(true)
+  const foreign = navigationCoverageTiles([overview], ready, { ...owner, device: '12/1/1' })
+  expect(deferCoveredOutwardPreview(foreign, capture.zoom, live, width, height, true)).toBe(false)
+  expect(deferCoveredOutwardPreview([{ ...overview, width: 1 }], capture.zoom, live, width, height, true)).toBe(false)
+  expect(deferCoveredOutwardPreview(residents, capture.zoom, live, width, height, false)).toBe(false)
+  expect(deferCoveredOutwardPreview(residents, 7.8, live, width, height, true)).toBe(false)
+  expect(deferCoveredOutwardPreview(residents, capture.zoom, { ...live, zoom: 0.8 }, width, height, true)).toBe(false)
+  expect(deferCoveredOutwardPreview(residents, capture.zoom, { ...live, zoom: 9 }, width, height, true)).toBe(false)
+})
 
 test.each([1, 2, 3, 4, 5])('32x dwell crop does not certify newly exposed %ix viewport', zoom => {
   const residents = navigationCoverageTiles([tile], new Set([tile.key]), owner)

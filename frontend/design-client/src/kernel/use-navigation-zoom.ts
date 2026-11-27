@@ -47,6 +47,7 @@ export function useNavigationZoom(view: CanvasCamera, identity: string, enabled:
     (published.active || state.current.inputChanged(view) || includeTranslation && pointerHeld)
   return { suspended: !visible, pendingAgeMs: enabled ? state.current.pendingAge(performance.now()) : 0, active,
     zoomingIn: active && state.current.isZoomingIn(view),
+    zoomingOut: active && state.current.isZoomingOut(view),
     panEnabled: enabled && includeTranslation,
     sample: active && published.active ? published : undefined }
 }
