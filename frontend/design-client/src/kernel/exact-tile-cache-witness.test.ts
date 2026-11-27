@@ -160,7 +160,8 @@ test('cache hits accept aligned, misaligned and segmented witness views without 
 })
 
 /* Paired interleaved A/B timing: each side runs the same loop, order flips per
- * repetition, and the reported value is the median of odd-sized samples. */
+ * repetition, and the reported value is the median of odd-sized samples.
+ * Interleaving and per-rep ratios cancel host load and thermal drift. */
 function median(values: number[]) {
   const sorted = [...values].sort((a, b) => a - b)
   return sorted[sorted.length >> 1]
@@ -210,7 +211,10 @@ test('microbenchmark: word witness comparison and lookup slot encoding beat the 
     return copy
   })
   let missCursor = 0
-  const nextMiss = () => earlyMisses[missCursor = (missCursor + 1) & 7]
+  const nextMiss = () => {
+    missCursor = (missCursor + 1) & 7
+    return earlyMisses[missCursor]
+  }
   speedups['witness-miss-first-4MB'] = ab(
     'witness compare 4MB first bytes differ',
     () => { if (referenceSameWitness(earlyOwned, nextMiss())) sink++ },
