@@ -4,10 +4,20 @@ import type { DesignDocument } from './model'
 import { variableValue } from './design-system'
 import { evaluate, tick, validateLogicActions, type Expr } from './prototype-logic'
 import { defaultPrototypeStart, invalidatedFlowStarts, type PrototypeFlow } from './prototype-flows'
-export type PrototypeEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'spring' | import('./animation').NamedEasing
+export type PrototypeEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'spring' |
+  import('./animation').NamedEasing | `cubic-bezier(${string})`
+export function parseBezierEasing(input: string): [number, number, number, number] | undefined {
+  const match = /^cubic-bezier\(([^)]+)\)$/.exec(input)
+  if (!match) return
+  const parts = match[1].split(',').map(part => part.trim())
+  if (parts.length !== 4 || !parts.every(part => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(part))) return
+  const values = parts.map(Number)
+  if (values.every((value, index) => Number.isFinite(value) &&
+    (index % 2 ? Math.abs(value) <= 10 : value >= 0 && value <= 1))) return values as [number, number, number, number]
+}
 export function isPrototypeEasing(value: unknown): value is PrototypeEasing {
   return typeof value === 'string' && (/^(linear|ease-in|ease-out|ease-in-out|spring)$/.test(value) ||
-    /^ease-(in|out|in-out)-(sine|quad|cubic|quart|quint|expo|circ)$/.test(value))
+    /^ease-(in|out|in-out)-(sine|quad|cubic|quart|quint|expo|circ)$/.test(value) || !!parseBezierEasing(value))
 }
 export type OverlayPosition = {
   origin:
@@ -229,8 +239,8 @@ export function prototypeEase(kind: PrototypeEasing | undefined, t: number): num
     return 3 * q * q * x * a + 3 * q * x * x * b + x * x * x
   }
   // anchors follow the kernel/animation defaults (CSS canonical curves)
-  const [x1, y1, x2, y2] =
-    kind === 'ease-in' ? [0.42, 0, 1, 1] : kind === 'ease-out' ? [0, 0, 0.58, 1] : [0.42, 0, 0.58, 1]
+  const [x1, y1, x2, y2] = parseBezierEasing(kind) ??
+    (kind === 'ease-in' ? [0.42, 0, 1, 1] : kind === 'ease-out' ? [0, 0, 0.58, 1] : [0.42, 0, 0.58, 1])
   let lo = 0,
     hi = 1
   for (let i = 0; i < 48; i++) {
@@ -375,6 +385,8 @@ export function prototypeEvent(
           if (!v || a.value === undefined)
             throw new Error('原型变量无效')
           if ((v.kind === 'number' && (typeof a.value !== 'number' || !Number.isFinite(a.value))) ||
+            (v.kind === 'timing' && (typeof a.value !== 'number' || !Number.isFinite(a.value) || a.value < 0 || a.value > 1e7)) ||
+            (v.kind === 'easing' && !isPrototypeEasing(a.value)) ||
             (v.kind === 'boolean' && typeof a.value !== 'boolean') ||
             (['string', 'color'].includes(v.kind) && typeof a.value !== 'string')) throw new Error('原型变量值类型不匹配')
           const mode = a.targetVariableModeId || a.targetVariableData?.modeId

@@ -14,7 +14,7 @@ export function VariablesWorkspace({ editor, floating, onToggleFloating, onClose
 }) {
   const { locale, tr } = useProfessionalDialogText()
   const host = useRef<HTMLElement>(null)
-  const [size, setSize] = useState({ width: 780, height: 560 })
+  const [size, setSize] = useState({ width: 642, height: 380 })
   const drag = useRef<{ pointer: number; x: number; y: number; width: number; height: number } | null>(null)
   const resize = (width: number, height: number) => {
     const bounds = host.current?.getBoundingClientRect()

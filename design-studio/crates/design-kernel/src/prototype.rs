@@ -201,6 +201,20 @@ pub struct OverlayPosition {
     #[serde(default)]
     pub background: bool,
 }
+fn valid_bezier_easing(curve: &str) -> bool {
+    let Some(parts) = curve.strip_prefix("cubic-bezier(").and_then(|s| s.strip_suffix(')')) else { return false; };
+    let mut components = parts.split(',');
+    for axis in 0..4 {
+        let Some(value) = components.next().and_then(|part| part.trim().parse::<f64>().ok()) else { return false; };
+        if axis % 2 == 0 {
+            if !(0. ..=1.).contains(&value) { return false; }
+        } else if !(-10. ..=10.).contains(&value) { return false; }
+    }
+    components.next().is_none()
+}
+pub fn valid_variable_easing(curve: &str) -> bool {
+    valid_easing(curve) && !matches!(curve, "gentle-spring" | "custom-spring" | "custom-cubic")
+}
 pub fn valid_easing(curve: &str) -> bool {
     matches!(
         curve,
@@ -214,7 +228,7 @@ pub fn valid_easing(curve: &str) -> bool {
             | "ease-in-circ" | "ease-out-circ" | "ease-in-out-circ"
             // Spring presets from its JS schema.
             | "gentle-spring" | "custom-spring" | "custom-cubic"
-    )
+    ) || valid_bezier_easing(curve)
 }
 pub fn valid_overlay_origin(origin: &str) -> bool {
     matches!(
@@ -274,8 +288,7 @@ fn validate_schema_extras(doc: &Document, a: &Action) -> Result<(), String> {
     }
     if let Some(id) = &a.transition_duration_var {
         let v = resolved_variable(doc, id).ok_or("Missing prototype duration variable")?;
-        // Figma binds transition durations to number variables only.
-        if v.kind != "number" {
+        if !matches!(v.kind.as_str(), "number" | "timing") {
             return Err("Prototype duration variable not a number".into());
         }
     }
@@ -416,6 +429,8 @@ pub fn validate(doc: &Document) -> Result<(), String> {
                         let x = a.value.as_ref().ok_or("Missing prototype value")?;
                         if !match v.kind.as_str() {
                             "number" => x.as_f64().is_some_and(f64::is_finite),
+                            "timing" => x.as_f64().is_some_and(|value| (0. ..=1e7).contains(&value)),
+                            "easing" => x.as_str().is_some_and(valid_variable_easing),
                             "boolean" => x.is_boolean(),
                             "color" => x.as_str().is_some_and(|c| {
                                 crate::color::pixel(doc.color_management, c, 1.).is_ok()

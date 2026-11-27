@@ -1,5 +1,7 @@
 import { expect, test } from 'vitest'
 import { blank, node } from './model'
+import { emptySystem } from './design-system'
+import { binfmt_decode, binfmt_encode } from './generated/design-kernel/design_kernel'
 import { prototypeEase, prototypeEvent, initialPrototype } from './prototype'
 
 test('prototype easing maps time through the kernel curve set', () => {
@@ -47,4 +49,27 @@ test('prototype events carry the easing curve into the transition state', () => 
   expect(state.transitionMs).toBe(400)
   expect(state.transitionEasing).toBe('ease-in-out')
   expect(state.current).toBe(b.id)
+})
+
+test('native documents preserve motion variables, and the player resolves their values', () => {
+  const d = blank()
+  const start = node('frame', 0, 0, 100, 100), end = node('frame', 120, 0, 100, 100)
+  d.nodes = { [start.id]: start, [end.id]: end }
+  d.pages[0].children = [start.id, end.id]
+  d.schemaVersion = 36
+  d.designSystem = emptySystem()
+  d.designSystem.collections.motion = { name: 'Motion', modes: ['Value'], defaultMode: 'Value' }
+  d.designSystem.variables.timing = { kind: 'timing', name: 'Timing', collection: 'motion', values: { Value: 240 } }
+  d.designSystem.variables.curve = { kind: 'easing', name: 'Easing', collection: 'motion', values: { Value: 'cubic-bezier(0.42, 0, 1, 1)' } }
+  d.prototype = { interactions: { [start.id]: [{ trigger: 'click', actions: [{
+    kind: 'navigate', target: end.id, transitionStyle: 'dissolve', transitionDurationVar: 'timing', transitionEasingVar: 'curve',
+  }] }] } }
+  const decoded = JSON.parse(binfmt_decode(binfmt_encode(JSON.stringify(d)))) as typeof d
+  expect(decoded.designSystem?.variables).toEqual(d.designSystem.variables)
+  const state = prototypeEvent(decoded, initialPrototype(decoded), start.id, 'click')
+  expect(state).toMatchObject({ current: end.id, transitionMs: 240, transitionEasing: 'cubic-bezier(0.42, 0, 1, 1)' })
+  expect(prototypeEase(state.transitionEasing, 0.5)).toBeCloseTo(prototypeEase('ease-in', 0.5), 4)
+  expect(() => binfmt_encode(JSON.stringify({ ...d, schemaVersion: 35 }))).toThrow()
+  d.designSystem.variables.curve.values.Value = 'cubic-bezier(2, 0, 1, 1)'
+  expect(() => binfmt_encode(JSON.stringify(d))).toThrow()
 })

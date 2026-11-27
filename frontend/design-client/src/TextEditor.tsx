@@ -143,9 +143,12 @@ export function TextInput({
         if (e.nativeEvent.isComposing || composing.current) return
         if (e.key === 'Escape') {
           e.preventDefault()
-          input.current!.value = original.current
-          value.current = original.current
-          finish(true)
+          const cancel = !canvas || interfacePreference.getSnapshot().uiMode !== 'figma'
+          if (cancel) {
+            input.current!.value = original.current
+            value.current = original.current
+          }
+          finish(cancel)
         }
         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
           e.preventDefault()
@@ -799,7 +802,7 @@ export function CanvasTextEditor({
           navigate(e)
           if (e.key === 'Escape') {
             e.preventDefault()
-            finish(true, true)
+            finish(interfacePreference.getSnapshot().uiMode !== 'figma', true)
           }
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
             e.preventDefault()

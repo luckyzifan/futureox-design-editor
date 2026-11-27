@@ -71,7 +71,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
     )
   }
   const parse = (kind: string, value: string) =>
-    kind === 'number' ? Number(value) : kind === 'boolean' ? value === 'true' : value
+    kind === 'number' || kind === 'timing' ? Number(value) : kind === 'boolean' ? value === 'true' : value
   const interaction = (index: number, fn: (e: Interaction) => void) =>
     editor.change('修改交互', (d) => {
       fn(d.prototype!.interactions[n.id][index])
@@ -484,7 +484,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             />
                           )}
                           {['navigate','back'].includes(a.kind) && <select aria-label={tr('过渡方式')} value={a.transitionStyle ?? ''} onChange={ev=>action(i,j,x=>{x.transitionStyle=(ev.target.value || undefined) as PrototypeAction['transitionStyle']})}>
-                            <option value="">{tr('智能动画')}</option><option value="dissolve">{tr('溶解（透明度）')}</option><option value="none">{tr('无动画')}</option><option value="slide-left">{tr('从左滑入')}</option><option value="slide-right">{tr('从右滑入')}</option><option value="slide-top">{tr('从上滑入')}</option><option value="slide-bottom">{tr('从下滑入')}</option>
+                            <option value="">{tr('智能动画')}</option><option value="dissolve">{tr('溶解（透明度）')}</option><option value="none">{locale === 'en' ? 'Instant' : '即时'}</option><option value="slide-left">{tr('从左滑入')}</option><option value="slide-right">{tr('从右滑入')}</option><option value="slide-top">{tr('从上滑入')}</option><option value="slide-bottom">{tr('从下滑入')}</option>
                           </select>}
                           <input
                             aria-label={tr('过渡毫秒')}
@@ -492,6 +492,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             min={0}
                             max={10000}
                             value={a.durationMs || 0}
+                            disabled={a.transitionStyle === 'none' || !!a.transitionDurationVar}
                             onChange={(ev) =>
                               interaction(i, (e) => {
                                 e.actions[j].durationMs = Number(ev.target.value)
@@ -501,6 +502,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                           <select
                             aria-label={tr('过渡曲线')}
                             value={a.easingCurve || ''}
+                            disabled={a.transitionStyle === 'none' || !!a.transitionEasingVar}
                             onChange={(ev) =>
                               interaction(i, (e) => {
                                 e.actions[j].easingCurve =
@@ -514,6 +516,19 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             <option value="ease-in-out">{tr('缓入缓出')}</option>
                             <option value="spring">{tr('弹簧')}</option>
                           </select>
+                          {a.transitionStyle !== 'none' && ['navigate', 'back', 'overlay', 'scroll-to'].includes(a.kind) &&
+                            ([
+                              ['timing', 'transitionDurationVar', locale === 'en' ? 'Timing variable' : '时长变量'],
+                              ['easing', 'transitionEasingVar', locale === 'en' ? 'Easing variable' : '缓动变量'],
+                            ] as const).map(([kind, key, label]) => {
+                              const compatible = Object.entries(system.variables).filter(([id, variable]) => variable.kind === kind || id === a[key])
+                              if (!compatible.length) return null
+                              return <select key={key} aria-label={label} value={a[key] || ''}
+                                onChange={event => action(i, j, x => setExtra(x, key, event.target.value))}>
+                                <option value="">{label}</option>
+                                {compatible.map(([id, variable]) => <option key={id} value={id}>{variable.name}</option>)}
+                              </select>
+                            })}
                           {a.kind === 'overlay' && (
                             <div className="overlay-position-editor">
                               <select
@@ -837,7 +852,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
           )}
         </div>
       </div>
-      {allowPrototype && preview && <PrototypePlayer document={doc} startNode={preview.startNode} pageId={page} onClose={() => setPreview(null)} />}
+      {allowPrototype && preview && <PrototypePlayer document={doc} inline={embedded} startNode={preview.startNode} pageId={page} onClose={() => setPreview(null)} />}
     </>
   )
 }

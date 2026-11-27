@@ -42,7 +42,7 @@ import { commitPendingEdits } from './pending-edits'
 import { cloneValue, produceDraft } from './draft'
 import { keepSketchLayerStyleEdit } from './sketch-layer-style'
 import { validStroke, validProfiles } from './stroke-profile'
-import { remapDesignDependencies } from './design-system'
+import { isMotionVariable, MOTION_VARIABLE_SCHEMA, remapDesignDependencies } from './design-system'
 import { pruneAnimations } from './animation'
 import { prunePrototypeReferences, prototypeNeedsSchema12 } from './prototype'
 import { invalidatedFlowStarts } from './prototype-flows'
@@ -844,6 +844,9 @@ export class Editor {
         if (draft.schemaVersion < 33 && hasSchema33Features(featureDocOf(authored))) draft.schemaVersion = 33
         if (draft.schemaVersion < PROTOTYPE_FLOW_SCHEMA && draft.prototype?.flows !== undefined)
           draft.schemaVersion = PROTOTYPE_FLOW_SCHEMA
+        if (draft.schemaVersion < MOTION_VARIABLE_SCHEMA && authored.designSystem !== before.doc.designSystem &&
+            Object.values(authored.designSystem?.variables ?? {}).some(variable => isMotionVariable(variable.kind)))
+          draft.schemaVersion = MOTION_VARIABLE_SCHEMA
         if(draft.schemaVersion < 19 && hasSchema19Features(featureDocOf(authored)))draft.schemaVersion=19
         draft.rasterProfile ??= before.doc.rasterProfile || (draft.colorManagement ? 'figma' : 'analytic')
         // Before component/dependency cleanup, only root schema/profile fields
@@ -1808,8 +1811,8 @@ export class Editor {
       if (doc.id !== documentId || this.sessionGeneration !== session || this.state.version !== revision) throw new Error('Layout command owner was superseded')
     }
     if (requestedMode === undefined) {
-      // Preserve the established inference input geometry, including its 16-unit
-      // wrapper outset. This strategy is not the explicit MCP add intent.
+      // Infer the layout from authored geometry. A new Figma wrapper has no
+      // outset, so an aligned selection starts with zero inferred padding.
       const admitted = layoutCommandAdmission(this.state.doc, ids), roots = admitted.ids
       if (roots.some(id => this.state.doc.nodes[id].booleanOperation || this.state.doc.nodes[id].mask)) throw new Error('Boolean and mask containers require dedicated operations')
       if (roots.length === 1 && container(this.state.doc.nodes[roots[0]])) {
@@ -1825,11 +1828,12 @@ export class Editor {
       }
       const parent = admitted.parents.get(roots[0])!
       if (roots.some(id => admitted.parents.get(id) !== parent)) throw new Error('请先选中同一容器中的图层')
+      const outset = interfacePreference.getSnapshot().uiMode === 'figma' ? 0 : 16
       const chosen = new Set(roots), box = unionBounds(this.entries().filter(entry => chosen.has(entry.id)).map(entry => entry.bounds)),
-        pm = worldMatrix(this.state.doc, parent), frame = node('frame', 0, 0, Math.max(1, box.width + 32), Math.max(1, box.height + 32))
+        pm = worldMatrix(this.state.doc, parent), frame = node('frame', 0, 0, Math.max(1, box.width + 2 * outset), Math.max(1, box.height + 2 * outset))
       frame.name = '自动布局'; frame.fills = []; frame.clip = false
       frame.layout = defaultLayout(); frame.sizing = { ...defaultSizing(), width: 'hug', height: 'hug' }
-      frame.transform = multiply(inverse(pm), translate(box.x - 16, box.y - 16))
+      frame.transform = multiply(inverse(pm), translate(box.x - outset, box.y - outset))
       const result = this.change('创建自动布局', doc => {
         assertOwner(doc); layoutCommandAdmission(doc, ids)
         const siblings = doc.nodes[parent]?.children || doc.pages.find(page => page.id === parent)!.children

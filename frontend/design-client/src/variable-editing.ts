@@ -2,13 +2,13 @@ import { allActions, expressionVariables } from './prototype-logic'
 /** Authored variable edits. Call inside Editor.change for validation, undo and persistence. */
 import { validColor } from './color'
 import { cloneValue } from './draft'
-import { emptySystem, variableValue, type DesignSystem, type VariableValue } from './design-system'
+import { emptySystem, isMotionVariable, MOTION_VARIABLE_SCHEMA, variableValue, type DesignSystem, type VariableValue } from './design-system'
 import { uid, type DesignDocument, type DesignNode } from './model'
-import type { PrototypeAction } from './prototype'
+import { isPrototypeEasing, type PrototypeAction } from './prototype'
 
 export type Variable = DesignSystem['variables'][string]
 export type VariableKind = Variable['kind']
-export const variableKinds: VariableKind[] = ['color', 'number', 'boolean', 'string']
+export const variableKinds: VariableKind[] = ['color', 'number', 'boolean', 'string', 'timing', 'easing']
 export const VARIABLE_PAGE_SIZE = 40
 export const MODE_PAGE_SIZE = 3
 const unsafe = new Set(['__proto__', 'constructor', 'prototype'])
@@ -95,24 +95,30 @@ export function prototypeVariableModeReferences(doc: DesignDocument, id: string,
 function unreferenced(references: string[]) {
   if (references.length) throw new Error(`仍有 ${references.length} 处引用；请先移除或改用其他资源：${references.slice(0, 3).join('；')}`)
 }
-export function createVariableCollection(doc: DesignDocument, value: string) {
+export function createVariableCollection(doc: DesignDocument, value: string, figma = false) {
   const s = doc.designSystem ??= emptySystem(), id = uid()
-  s.collections[id] = { name: name(value || '主题'), modes: ['Light', 'Dark'], defaultMode: 'Light' }
-  s.activeModes[id] = 'Light'
+  const [defaultMode, ...others] = figma ? ['Value'] : ['Light', 'Dark']
+  s.collections[id] = { name: name(value || (figma ? 'Collection' : '主题')), modes: [defaultMode, ...others], defaultMode }
+  s.activeModes[id] = defaultMode
   return id
 }
 export function renameVariableCollection(doc: DesignDocument, id: string, value: string) { collection(doc, id).name = name(value) }
 export function renameVariable(doc: DesignDocument, id: string, value: string) { variable(doc, id).name = name(value) }
-export function createVariable(doc: DesignDocument, collectionId: string, kind: VariableKind) {
+export function createVariable(doc: DesignDocument, collectionId: string, kind: VariableKind, figma = false) {
   const c = collection(doc, collectionId), s = doc.designSystem!, id = uid()
-  const initial = kind === 'color' ? '#7755dd' : kind === 'number' ? 16 : kind === 'boolean' ? true : '文字'
-  const base = `新${kind}变量`, names = new Set(Object.values(s.variables).filter(v => v.collection === collectionId).map(v => v.name))
+  const initial: Record<VariableKind, VariableValue> = {
+    color: figma ? '#ffffff' : '#7755dd', number: figma ? 0 : 16, boolean: !figma,
+    string: figma ? '' : '文字', timing: 0, easing: 'ease-in',
+  }
+  const base = figma ? kind[0].toUpperCase() + kind.slice(1) : `新${kind}变量`
+  const names = new Set(Object.values(s.variables).filter(v => v.collection === collectionId).map(v => v.name))
   let candidate = base, suffix = 2
   while (names.has(candidate)) candidate = `${base} ${suffix++}`
-  s.variables[id] = { name: candidate, collection: collectionId, kind, values: Object.fromEntries(c.modes.map(mode => [mode, initial])) }
+  s.variables[id] = { name: candidate, collection: collectionId, kind, values: Object.fromEntries(c.modes.map(mode => [mode, initial[kind]])) }
+  if (isMotionVariable(kind) && doc.schemaVersion < MOTION_VARIABLE_SCHEMA) doc.schemaVersion = MOTION_VARIABLE_SCHEMA
   return id
 }
-export function duplicateVariables(doc: DesignDocument, collectionId: string, ids: readonly string[]): string[] {
+export function duplicateVariables(doc: DesignDocument, collectionId: string, ids: readonly string[], figma = false): string[] {
   collection(doc, collectionId)
   const source = [...new Set(ids)].map(id => variable(doc, id))
   if (source.some(value => value.collection !== collectionId)) throw new Error('请选择同一集合内的变量')
@@ -130,9 +136,10 @@ export function duplicateVariables(doc: DesignDocument, collectionId: string, id
     return prefix + suffix
   }
   return source.map(value => {
-    let sequence = 1
-    let candidate = copyName(value.name, ' copy')
-    while (names.has(candidate)) candidate = copyName(value.name, ` copy ${++sequence}`)
+    const base = figma ? value.name.replace(/\s+\d+$/, '') : value.name
+    let sequence = figma ? 2 : 1
+    let candidate = copyName(base, figma ? ' 2' : ' copy')
+    while (names.has(candidate)) candidate = copyName(base, figma ? ` ${++sequence}` : ` copy ${++sequence}`)
     names.add(candidate)
     const id = uid()
     variables[id] = { ...cloneValue(value), name: candidate }
@@ -203,11 +210,15 @@ export function deleteVariableMode(doc: DesignDocument, id: string, mode: string
   for (const v of Object.values(doc.designSystem!.variables)) if (v.collection === id) delete v.values[mode]
 }
 export function parseVariableLiteral(kind: VariableKind, value: string, managed = false): string | number | boolean {
-  if (kind === 'number') {
-    if (!value.trim() || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim()) || !Number.isFinite(Number(value)) || Math.abs(Number(value)) > 1e7)
+  if (kind === 'number' || kind === 'timing') {
+    const text = kind === 'timing' ? value.trim().replace(/\s*ms$/i, '') : value.trim()
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text) || !Number.isFinite(Number(text)) ||
+        Math.abs(Number(text)) > 1e7 || (kind === 'timing' && Number(text) < 0))
       throw new Error('请输入 -10000000 至 10000000 的有限数值')
-    return Number(value)
+    return Number(text)
   }
+  if (kind === 'easing' && !isPrototypeEasing(value.trim())) throw new Error('请输入有效的缓动名称或贝塞尔曲线')
+  if (kind === 'easing') return value.trim()
   if (kind === 'boolean') { if (!['true', 'false'].includes(value)) throw new Error('布尔值必须为 true 或 false'); return value === 'true' }
   if (kind === 'color' && !validColor(value, managed)) throw new Error('请输入 #RRGGBB 或文档支持的 color() 颜色')
   if (new TextEncoder().encode(value).length > 100000) throw new Error('文字超过 100000 字节')
@@ -228,14 +239,14 @@ export function materializeVariableCell(doc: DesignDocument, id: string, mode: s
   const v = variable(doc, id), s = doc.designSystem!
   setVariableCell(doc, id, mode, variableValue(s, id, { ...s.activeModes, [v.collection]: mode }))
 }
-export function variableIndex(system: DesignSystem) {
+export function variableIndex(system: DesignSystem, inOrder = false) {
   const byCollection = new Map<string, [string, Variable][]>(), byKind = new Map<VariableKind, [string, Variable][]>()
   for (const entry of Object.entries(system.variables)) {
     const [, v] = entry
     const collection = byCollection.get(v.collection) || []; collection.push(entry); byCollection.set(v.collection, collection)
     const kind = byKind.get(v.kind) || []; kind.push(entry); byKind.set(v.kind, kind)
   }
-  for (const list of byCollection.values()) list.sort((a, b) => a[1].name.localeCompare(b[1].name) || a[0].localeCompare(b[0]))
+  if (!inOrder) for (const list of byCollection.values()) list.sort((a, b) => a[1].name.localeCompare(b[1].name) || a[0].localeCompare(b[0]))
   return { byCollection, byKind }
 }
 export function variableGroup(value: string) { const at = value.lastIndexOf('/'); return at < 0 ? '未分组' : value.slice(0, at) || '未分组' }

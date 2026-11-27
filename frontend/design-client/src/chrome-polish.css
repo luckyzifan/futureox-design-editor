@@ -508,3 +508,134 @@ html[data-reduced-motion="true"] .prototype-hotspot { transition: none; }
 .prototype-flow-start { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px; }
 .prototype-flow-actions { display: flex; gap: 4px; }
 .prototype-flow-actions button { display: inline-flex; align-items: center; gap: 4px; }
+.prototype-wire-layer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.prototype-wire-preview { position:absolute; inset:0; width:100%; height:100%; fill:none; stroke:var(--workspace-accent); stroke-width:2px; }
+.prototype-wire-preview rect { stroke-dasharray:4 3; }
+.prototype-wire-handle, .prototype-wire-choice { position:absolute; pointer-events:auto; }
+.prototype-wire-handle {
+  display:grid; place-items:center; width:18px; height:18px; padding:0;
+  transform:translate(-50%,-50%); cursor:crosshair; touch-action:none;
+  color:var(--workspace-accent); background:var(--workspace-panel);
+  border:1px solid currentColor; border-radius:50%;
+}
+.prototype-wire-choice { max-width:min(220px, 55%); }
+
+.editor-shell[data-ui-mode="figma"] {
+  --chrome-surface: #faf9f6;
+  --chrome-raised: #edeae4;
+  --chrome-line: #ddd9d1;
+  --chrome-text: #282720;
+  --chrome-muted: #5d5a51;
+  --chrome-focus: #326565;
+  --rail-heading: #f6f4f0;
+  --rail-line: #e5e0d7;
+  --inspector-field: #f4f1ec;
+}
+.editor-shell[data-ui-mode="figma"] > .editor-header {
+  background: var(--chrome-surface);
+  border-bottom-color: var(--chrome-line);
+}
+.editor-shell[data-ui-mode="figma"] .editor-header .ui-mode-switch { background: var(--rail-heading); }
+.editor-shell[data-ui-mode="figma"] .editor-header .ui-mode-switch > button[aria-pressed=true] {
+  box-shadow: inset 0 0 0 1px var(--chrome-focus);
+}
+.editor-shell[data-ui-mode="figma"] .editor-header .header-right .save-status.error { color: #a12036; }
+.editor-shell[data-ui-mode="figma"] .floating-toolbar.figma-workspace-tools {
+  background: #fcfbf9;
+  border-color: var(--rail-line);
+  color: var(--chrome-text);
+  gap: 4px;
+}
+.editor-shell[data-ui-mode="figma"] .figma-workspace-tools .tool-group { gap: 2px; }
+.editor-shell[data-ui-mode="figma"] .figma-workspace-tools .tool-group > button:not(:disabled) { color: var(--chrome-text); }
+.editor-shell[data-ui-mode="figma"] .figma-workspace-tools .tool-group > button[aria-pressed=true] {
+  background: var(--workspace-selected);
+  color: var(--workspace-accent);
+}
+.workspace-tool-panel {
+  height: 100%;
+  padding: 12px;
+  background: var(--workspace-panel);
+  color: var(--workspace-text);
+}
+.workspace-tool-panel .layers-document-title input {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  padding: 6px 0;
+}
+.workspace-tool-panel h2, .dev-inspector-title { font-size: 13px; font-weight: 650; margin: 8px 0; }
+.workspace-tool-panel button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 2px 0;
+}
+.workspace-tool-panel button, .dev-inspector button {
+  color: inherit;
+  background: var(--workspace-panel);
+  border: 1px solid var(--workspace-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.workspace-tool-panel button:hover, .dev-inspector button:hover { background: var(--workspace-hover); }
+.workspace-rail .design-agent-toggle span { white-space: normal; line-height: 1.1; }
+.dev-inspector-title { padding-inline: 12px; }
+.dev-inspector {
+  height: 100%;
+  overflow: auto;
+  background: var(--workspace-panel);
+  color: var(--workspace-text);
+}
+.dev-inspector > :is(p, section) { margin: 0; padding: 12px; }
+.dev-inspector section { border-bottom: 1px solid var(--workspace-border); }
+.dev-inspector h3 { margin: 0 0 8px; font-size: 13px; overflow-wrap: anywhere; }
+.dev-inspector dl { margin: 0; }
+.dev-inspector dl div { display: flex; gap: 12px; justify-content: space-between; padding-block: 4px; }
+.dev-inspector dt { color: var(--workspace-muted); }
+.dev-inspector dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.dev-inspector pre {
+  background: var(--inspector-field);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 20rem;
+  overflow: auto;
+  padding: 8px;
+  font-size: 11px;
+}
+.prototype-inline {
+  position: fixed;
+  z-index: 92;
+  inset-inline-end: clamp(12px, 17vw, 272px);
+  inset-block-end: 78px;
+  max-width: calc(100vw - 34px);
+}
+.prototype-inline .prototype-player {
+  padding: 12px;
+  max-width: min(570px, calc(100vw - 34px));
+  max-height: calc(100vh - 140px);
+  border: 1px solid var(--workspace-border);
+  border-radius: 12px;
+  box-shadow: var(--workspace-shadow);
+}
+.prototype-inline .prototype-player header { flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.prototype-inline .prototype-player header button { padding: 4px 6px; }
+@media (max-width: 600px) { .prototype-inline { inset-inline-end: 12px; } }
+.prototype-flow-badge {
+  position: absolute;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 140px;
+  padding: 3px 6px;
+  border: 1px solid var(--workspace-accent);
+  border-radius: 5px;
+  background: var(--workspace-panel);
+  color: var(--workspace-accent);
+  font-size: 11px;
+}
+.prototype-flow-badge span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

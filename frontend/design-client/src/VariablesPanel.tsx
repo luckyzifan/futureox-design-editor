@@ -19,7 +19,15 @@ import './VariablesPanel.css'
 type Change = (label: string, edit: (doc: DesignDocument) => void) => boolean
 type Removal = { kind: 'variable' | 'collection' | 'mode'; id: string; mode?: string }
 const EMPTY = emptySystem()
-const kindNames = { color: '颜色', number: '数值', boolean: '布尔', string: '文字' }
+const kindNames: Record<VariableKind, [string, string]> = {
+  color: ['颜色','Color'], number: ['数值','Number'], boolean: ['布尔','Boolean'], string: ['文字','String'],
+  timing: ['时长','Timing'], easing: ['缓动','Easing'],
+}
+const kindName = (kind: VariableKind, locale: InterfaceLocale) => kindNames[kind][locale === 'en' ? 1 : 0]
+const easingPresets = [
+  ['linear','线性','Linear'], ['ease-in','缓入','Ease in'], ['ease-out','缓出','Ease out'],
+  ['ease-in-out','缓入缓出','Ease in and out'], ['spring','弹簧','Spring'],
+]
 
 const VariableCell = memo(function VariableCell({ editor, id, variable, mode, candidates, managed, change, run, locale }: {
   editor: Editor; id: string; variable: Variable; mode: string; candidates: [string, Variable][];
@@ -56,7 +64,19 @@ const VariableCell = memo(function VariableCell({ editor, id, variable, mode, ca
     </> : variable.kind === 'boolean' ?
       <select aria-label={`${variable.name} ${mode}`} value={String(value)} onChange={e => run('修改变量值', doc => setVariableCell(doc, id, mode, e.target.value === 'true'))}>
         <option value="true">true</option><option value="false">false</option>
-      </select> : <DraftInput editor={editor} aria-label={`${variable.name} ${mode}`} value={String(value)} validate={literalValid}
+      </select> : variable.kind === 'easing' ? <>
+        <select aria-label={`${variable.name} ${mode}`} value={easingPresets.some(([key]) => key === value) ? String(value) : 'custom'} onChange={e => {
+          const next = e.target.value === 'custom' ? 'cubic-bezier(0.42, 0, 1, 1)' : e.target.value
+          run('修改变量值', doc => setVariableCell(doc, id, mode, next))
+        }}>
+          {easingPresets.map(([key, zh, en]) => <option key={key} value={key}>{locale === 'en' ? en : zh}</option>)}
+          <option value="custom">{locale === 'en' ? 'Custom curve' : '自定义曲线'}</option>
+        </select>
+        {!easingPresets.some(([key]) => key === value) && <DraftInput editor={editor}
+          aria-label={locale === 'en' ? `${variable.name} ${mode} curve` : `${variable.name} ${mode} 曲线`}
+          value={String(value)} normalize={text => text.trim()} validate={literalValid}
+          onCommit={text => change('修改变量值', doc => setVariableCell(doc, id, mode, text))} />}
+      </> : <DraftInput editor={editor} aria-label={`${variable.name} ${mode}`} value={variable.kind === 'timing' ? `${value}ms` : String(value)} validate={literalValid}
         normalize={text => { if (variable.kind !== 'number') return text; try { return String(parseVariableLiteral('number', text)) } catch { return text } }}
         title={tr(variable.kind === 'number' ? '支持有限小数与科学计数法；Enter 或失焦保存，Esc 取消' : variable.kind === 'color' ? '#RRGGBB 或受支持的 color()；Enter 或失焦保存，Esc 取消' : 'Enter 或失焦保存，Esc 取消')}
         onCommit={text => change('修改变量值', doc => setVariableCell(doc, id, mode, parseVariableLiteral(variable.kind, text, managed)))} />}
@@ -71,7 +91,8 @@ export function VariablesPanel({ editor, onReturnToCanvas, floating, toggleFloat
 }) {
   const { locale, tr } = useProfessionalDialogText()
   const { doc, selection } = useSyncExternalStore(editor.subscribe, editor.panelSnapshot), system = doc.designSystem || EMPTY
-  const index = useMemo(() => variableIndex(system), [system])
+  const figma = !!onReturnToCanvas
+  const index = useMemo(() => variableIndex(system, figma), [system, figma])
   const [selected, setSelected] = useState(''), [newName, setNewName] = useState(''), [newMode, setNewMode] = useState('')
   const [query, setQuery] = useState(''), [kind, setKind] = useState('all'), [rowPage, setRowPage] = useState(0), [modePage, setModePage] = useState(0)
   const [copyFrom, setCopyFrom] = useState<string | null>(null), [error, setError] = useState(''), [removal, setRemoval] = useState<Removal | null>(null)
@@ -109,7 +130,7 @@ export function VariablesPanel({ editor, onReturnToCanvas, floating, toggleFloat
     } else setRows({ collection: collectionId, anchor: id, ids: [id] })
   })
   const revealVariable = (id: string) => {
-    const updated = variableIndex(editor.state.doc.designSystem ?? EMPTY).byCollection.get(collectionId)
+    const updated = variableIndex(editor.state.doc.designSystem ?? EMPTY, figma).byCollection.get(collectionId)
     const index = Math.max(0, updated?.findIndex(([key]) => key === id) ?? 0)
     setQuery('')
     setKind('all')
@@ -118,14 +139,14 @@ export function VariablesPanel({ editor, onReturnToCanvas, floating, toggleFloat
   const duplicate = () => {
     if (!selectedRows.size) return
     let copies: string[] = []
-    if (run('复制所选变量', draft => { copies = duplicateVariables(draft, collectionId, [...selectedRows]) })) {
+    if (run('复制所选变量', draft => { copies = duplicateVariables(draft, collectionId, [...selectedRows], figma) })) {
       setRows({ collection: collectionId, ids: copies, anchor: copies[0] })
       revealVariable(copies[0])
     }
   }
   const create = (kind: VariableKind) => {
     let id = ''
-    if (run('新建变量', draft => { id = createVariable(draft, collectionId, kind) })) revealVariable(id)
+    if (run('新建变量', draft => { id = createVariable(draft, collectionId, kind, figma) })) revealVariable(id)
   }
   const requestRemoval = (value: Removal) => navigate(() => setRemoval(value))
   const removalExists = removal && (removal.kind === 'variable' ? !!system.variables[removal.id] : !!system.collections[removal.id] && (removal.kind !== 'mode' || system.collections[removal.id].modes.includes(removal.mode!)))
@@ -182,7 +203,7 @@ export function VariablesPanel({ editor, onReturnToCanvas, floating, toggleFloat
         <div className="variables-create"><input aria-label={tr('集合名称')} placeholder={tr('集合名称')} value={newName} onChange={e => setNewName(e.target.value)} />
           <button type="button" disabled={!!newName && !validVariableName(newName.trim())} onClick={() => {
             let id = ''
-            if (run('新建变量集合', d => { id = createVariableCollection(d, newName) })) { setSelected(id); setNewName(''); setQuery(''); setRowPage(0); setModePage(0); setRemoval(null) }
+            if (run('新建变量集合', d => { id = createVariableCollection(d, newName, figma) })) { setSelected(id); setNewName(''); setQuery(''); setRowPage(0); setModePage(0); setRemoval(null) }
           }}>{tr('新建集合')}</button></div>
         <div className="variables-collections">{Object.entries(system.collections).map(([id, c]) =>
           <button type="button" key={id} aria-pressed={id === collectionId} onClick={() => navigate(() => { setSelected(id); setRowPage(0); setModePage(0); setCopyFrom(null); setNewMode('') })}>
@@ -204,13 +225,13 @@ export function VariablesPanel({ editor, onReturnToCanvas, floating, toggleFloat
               if (run('新增变量模式', d => addVariableMode(d, collectionId, newMode, copyFrom !== null && collection.modes.includes(copyFrom) ? copyFrom : collection.defaultMode))) { setNewMode(''); setModePage(Math.floor(collection.modes.length / MODE_PAGE_SIZE)) }
             }}>{tr('添加模式')}</button><small>{modeCapacity(collection.modes.length, locale)}</small></div>
           <div className="variables-search"><input type="search" aria-label={tr('搜索变量')} placeholder={tr('搜索变量名称或分组')} value={query} onChange={e => navigate(() => { setQuery(e.target.value); setRowPage(0) })} />
-            <select aria-label={tr('变量类型筛选')} value={kind} onChange={e => navigate(() => { setKind(e.target.value); setRowPage(0) })}><option value="all">{tr('全部类型')}</option>{variableKinds.map(kind => <option key={kind} value={kind}>{tr(kindNames[kind])}</option>)}</select>
+            <select aria-label={tr('变量类型筛选')} value={kind} onChange={e => navigate(() => { setKind(e.target.value); setRowPage(0) })}><option value="all">{tr('全部类型')}</option>{variableKinds.map(kind => <option key={kind} value={kind}>{kindName(kind, locale)}</option>)}</select>
             <span role="status">{variableCountStatus(filtered.length, variables.length, locale)}</span></div>
           <div className="variables-add">
             {onReturnToCanvas ? <select value="" aria-label={locale === 'en' ? 'Create variable' : '创建变量'}
               onChange={event => create(event.currentTarget.value as VariableKind)}>
               <option value="" disabled>{locale === 'en' ? '+ Create variable' : '+ 创建变量'}</option>
-              {variableKinds.map(kind => <option key={kind} value={kind}>{tr(kindNames[kind])}</option>)}
+              {variableKinds.map(kind => <option key={kind} value={kind}>{kindName(kind, locale)}</option>)}
             </select> : variableKinds.map(kind => <button type="button" key={kind} onClick={() => create(kind)}>+ {kind}</button>)}
             <button type="button" disabled={!selectedRows.size} aria-keyshortcuts="Shift+Enter"
               onClick={duplicate}>{locale === 'en' ? 'Duplicate selected' : '复制所选变量'}</button>
@@ -231,7 +252,7 @@ export function VariablesPanel({ editor, onReturnToCanvas, floating, toggleFloat
                 aria-label={locale === 'en' ? `Select variable ${v.name}` : `选择变量 ${v.name}`} onClick={event => pickRow(id, event)}>
                 {selectedRows.has(id) && <Check size={12} aria-hidden="true" />}
               </button>
-              <div><DraftInput editor={editor} aria-label={tr('变量名称')} value={v.name} normalize={value => value.trim()} validate={validVariableName} onCommit={value => change('命名变量', d => renameVariable(d, id, value))} /><small>{tr(kindNames[v.kind])}</small></div>
+              <div><DraftInput editor={editor} aria-label={tr('变量名称')} value={v.name} normalize={value => value.trim()} validate={validVariableName} onCommit={value => change('命名变量', d => renameVariable(d, id, value))} /><small>{kindName(v.kind, locale)}</small></div>
             </div></td>
             {modes.map(mode => <td key={mode}><VariableCell editor={editor} id={id} variable={v} mode={mode} candidates={index.byKind.get(v.kind) || []} managed={!!doc.colorManagement} change={change} run={run} locale={locale} /></td>)}
             <td><button type="button" aria-label={deleteVariableLabel(v.name, locale)} onClick={() => requestRemoval({ kind: 'variable', id })}>{tr('删除')}</button></td>

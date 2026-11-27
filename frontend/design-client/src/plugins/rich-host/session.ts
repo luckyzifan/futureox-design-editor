@@ -1133,6 +1133,10 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   function variableKindOf(id: string) {
     return (execute('variable.get', { variableId: id }, false) as { kind: 'color' | 'number' | 'boolean' | 'string' }).kind
   }
+  const pluginVariableType = { color: 'COLOR', number: 'FLOAT', boolean: 'BOOLEAN', string: 'STRING' } as const
+  function exposedVariableKind(kind: string): kind is keyof typeof pluginVariableType {
+    return Object.hasOwn(pluginVariableType, kind)
+  }
   function collectionView(id: string) {
     const pending = commands.find(command => command.type === 'collectionCreate' && command.id === id)
     if (pending?.type === 'collectionCreate') {
@@ -1145,14 +1149,15 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     const listed = execute('collection.list', {}, false) as { id: string; name: string; modes: string[]; defaultMode: string }[]
     const found = listed.find(item => item.id === id)
     if (!found) return null
-    const variables = execute('variable.list', { collectionId: id }, false) as { id: string }[]
-    return { id, name: found.name, defaultModeId: found.defaultMode, modes: found.modes.map(name => ({ modeId: name, name })), variableIds: variables.map(item => item.id) }
+    const variables = execute('variable.list', { collectionId: id }, false) as { id: string; kind: string }[]
+    return { id, name: found.name, defaultModeId: found.defaultMode, modes: found.modes.map(name => ({ modeId: name, name })), variableIds: variables.filter(item => exposedVariableKind(item.kind)).map(item => item.id) }
   }
   function variableView(id: string, includeValues: boolean) {
     const variables = editor.authoredDocument.designSystem?.variables
     if (!variables || !Object.hasOwn(variables, id)) return null
     const record = execute('variable.get', { variableId: id }, false) as DesignSystem['variables'][string] & { id: string }
-    const resolvedType = { color: 'COLOR', number: 'FLOAT', boolean: 'BOOLEAN', string: 'STRING' }[record.kind]
+    if (!exposedVariableKind(record.kind)) return null
+    const resolvedType = pluginVariableType[record.kind]
     const info = { id: record.id, name: record.name, collectionId: record.collection, resolvedType }
     if (!includeValues) return info
     const valuesByMode = Object.fromEntries(Object.entries(record.values).map(([mode, value]) => {
@@ -1735,7 +1740,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         flush()
         const wanted = body.type == null ? null : variableKind(body.type)
         const listed = execute('variable.list', {}, false) as { id: string; kind: string }[]
-        return listed.filter(item => !wanted || item.kind === wanted).map(item => ({ id: item.id }))
+        return listed.filter(item => exposedVariableKind(item.kind) && (!wanted || item.kind === wanted)).map(item => ({ id: item.id }))
       }
       if (op === 'variableRead') {
         const id = body.id

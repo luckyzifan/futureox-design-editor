@@ -143,7 +143,7 @@ export function DesignToolbar({ children, disabled = false, className = '' }: { 
 }
 
 export type WorkspaceSection = 'layers' | 'assets'
-export function WorkspaceRail({ section, onSection, onFiles, onTools, onVariables, toolsOpen, variablesOpen, variablesTrigger }: {
+export function WorkspaceRail({ section, onSection, onFiles, onTools, onVariables, toolsOpen, variablesOpen, variablesTrigger, agents }: {
   section: WorkspaceSection
   onSection: (section: WorkspaceSection) => void
   /** Omitted when this control would repeat the header library entry. */
@@ -151,6 +151,7 @@ export function WorkspaceRail({ section, onSection, onFiles, onTools, onVariable
   onTools: () => void
   onVariables: () => void
   toolsOpen: boolean
+  agents?: ReactNode
   variablesOpen?: boolean
   variablesTrigger?: Ref<HTMLButtonElement>
 }) {
@@ -160,11 +161,12 @@ export function WorkspaceRail({ section, onSection, onFiles, onTools, onVariable
       <button type="button" onClick={onFiles} title={text.localDesignFiles}><FolderOpen size={19} aria-hidden="true" /><span>{text.files}</span></button>
       <div className="workspace-rail-divider" role="separator" />
     </>}
-    <button type="button" title={text.pagesAndLayers} aria-pressed={!variablesOpen && section === 'layers'} onClick={() => onSection('layers')}><Layers size={19} aria-hidden="true" /><span>{text.layers}</span></button>
-    <button type="button" title={text.componentsAndAssets} aria-pressed={!variablesOpen && section === 'assets'} onClick={() => onSection('assets')}><Shapes size={19} aria-hidden="true" /><span>{text.assets}</span></button>
+    <button type="button" title={text.pagesAndLayers} aria-pressed={!variablesOpen && !toolsOpen && section === 'layers'} onClick={() => onSection('layers')}><Layers size={19} aria-hidden="true" /><span>{text.layers}</span></button>
+    <button type="button" title={text.componentsAndAssets} aria-pressed={!variablesOpen && !toolsOpen && section === 'assets'} onClick={() => onSection('assets')}><Shapes size={19} aria-hidden="true" /><span>{text.assets}</span></button>
     <button type="button" title={text.designTools} aria-pressed={toolsOpen} onClick={onTools}><SlidersHorizontal size={19} aria-hidden="true" /><span>{text.tools}</span></button>
     <button type="button" ref={variablesTrigger} title={text.localDesignVariables} aria-pressed={!!variablesOpen}
       aria-controls={variablesOpen ? 'variables-workspace' : undefined} onClick={onVariables}><Variable size={19} aria-hidden="true" /><span>{text.variables}</span></button>
+    {agents}
   </nav>
 }
 

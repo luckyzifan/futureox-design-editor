@@ -50,19 +50,21 @@ function PropertyTabContent({ tab, children }: { tab: PropertiesTab; children: R
   </div>
 }
 
-export function FigmaPropertiesWorkspace({ panelRef, label, resize, children, agent, tab, onTab, titles, zoom, preview, inactive }: RightPanel & InspectorTabs & {
+export function FigmaPropertiesWorkspace({ panelRef, label, resize, children, agent, tab, onTab, titles, zoom, preview, inactive, inspect }: RightPanel & InspectorTabs & {
   zoom: ReactNode
   preview: ReactNode
   inactive?: boolean
+  inspect?: string
 }) {
   return <div ref={panelRef} className="properties-workspace" data-workspace-host="figma-inspector" inert={inactive}>
     {resize}
     {preview && <div className="figma-properties-actions">{preview}</div>}
     <div className="properties-tabs">
-      <PropertyTabs label={label} tab={tab} onTab={onTab} titles={titles} />
+      {inspect ? <h2 className="dev-inspector-title">{inspect}</h2> : <PropertyTabs label={label} tab={tab} onTab={onTab} titles={titles} />}
       {zoom}
     </div>
-    <PropertyTabContent tab={tab}>{children}</PropertyTabContent>
+    {inspect ? <div className="properties-content" aria-label={inspect}>{children}</div>
+      : <PropertyTabContent tab={tab}>{children}</PropertyTabContent>}
     {agent}
   </div>
 }
