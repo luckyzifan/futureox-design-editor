@@ -153,6 +153,7 @@ function median(values: number[]) {
   const sorted = [...values].sort((a, b) => a - b)
   return sorted[sorted.length >> 1]
 }
+const timings: Record<string, number> = {}
 function timePerOp(run: () => void, targetMs = 12) {
   let iterations = 1
   for (;;) {
@@ -163,22 +164,46 @@ function timePerOp(run: () => void, targetMs = 12) {
     iterations *= 2
   }
 }
-function ab(label: string, baseline: () => void, candidate: () => void, reps = 7) {
-  const base: number[] = [], cand: number[] = []
+function ab(label: string, baseline: () => void, candidate: () => void, reps = 9) {
+  const base: number[] = [], cand: number[] = [], ratios: number[] = []
   baseline(); candidate()
   for (let rep = 0; rep < reps; rep++) {
-    const sides = rep % 2 === 0 ? [baseline, candidate] : [candidate, baseline]
-    for (const side of sides) (side === baseline ? base : cand).push(timePerOp(side))
+    const baselineFirst = rep % 2 === 0
+    const first = timePerOp(baselineFirst ? baseline : candidate)
+    const second = timePerOp(baselineFirst ? candidate : baseline)
+    const baselineMedian = baselineFirst ? first : second
+    const candidateMedian = baselineFirst ? second : first
+    base.push(baselineMedian)
+    cand.push(candidateMedian)
+    ratios.push(baselineMedian / candidateMedian)
   }
   const baselineMedian = median(base), candidateMedian = median(cand)
-  const speedup = baselineMedian / candidateMedian
-  console.log(`${label}: baseline ${(baselineMedian * 1000).toFixed(1)} us, candidate ${(candidateMedian * 1000).toFixed(1)} us, ${speedup.toFixed(2)}x`)
+  const speedup = median(ratios)
+  timings[label] = candidateMedian
+  console.log(`${label}: baseline ${(baselineMedian * 1000).toFixed(1)} us, candidate ${(candidateMedian * 1000).toFixed(1)} us, pair median ${speedup.toFixed(2)}x`)
   return speedup
 }
 
 test('microbenchmark: word witness comparison and lookup slot encoding beat the reference', () => {
   let sink = 0
   const speedups: Record<string, number> = {}
+  /* Rotate the changed copies so the JIT cannot hoist the constant result out
+   * of the timing loop; both sides see the same rotating inputs. Early prefix
+   * differences are sub-0.1 us comparisons, so this case is measured first,
+   * before the large hit comparisons warm the call sites. */
+  const earlyOwned = filled(4 * 1024 * 1024, 4)
+  const earlyMisses = Array.from({ length: 8 }, (_, k) => {
+    const copy = earlyOwned.slice()
+    copy[k] ^= 1
+    return copy
+  })
+  let missCursor = 0
+  const nextMiss = () => earlyMisses[missCursor = (missCursor + 1) & 7]
+  speedups['witness-miss-first-4MB'] = ab(
+    'witness compare 4MB first bytes differ',
+    () => { if (referenceSameWitness(earlyOwned, nextMiss())) sink++ },
+    () => { if (sameWitness(earlyOwned, nextMiss())) sink++ },
+  )
   for (const megabytes of [1, 4, 8]) {
     const bytes = megabytes * 1024 * 1024
     const owned = filled(bytes, megabytes), next = owned.slice()
@@ -187,6 +212,15 @@ test('microbenchmark: word witness comparison and lookup slot encoding beat the 
       () => { if (referenceSameWitness(owned, next)) sink++ },
       () => { if (sameWitness(owned, next)) sink++ },
     )
+    if (megabytes === 4) {
+      const lateMiss = next.slice()
+      lateMiss[bytes - 3] ^= 1
+      speedups['witness-miss-late-4MB'] = ab(
+        'witness compare 4MB last word differs',
+        () => { if (referenceSameWitness(owned, lateMiss)) sink++ },
+        () => { if (sameWitness(owned, lateMiss)) sink++ },
+      )
+    }
   }
   const parts: Uint8Array[] = []
   for (const size of [1024 * 1024, 2 * 1024 * 1024, 1024 * 1024]) {
@@ -225,5 +259,10 @@ test('microbenchmark: word witness comparison and lookup slot encoding beat the 
   expect(speedups['witness-segmented-4MB']).toBeGreaterThan(1.5)
   expect(speedups['slot-cold-9']).toBeGreaterThan(1.5)
   expect(speedups['slot-repeat-3']).toBeGreaterThan(5)
-  for (const [label, value] of Object.entries(speedups)) expect(value, label).toBeGreaterThan(0.95)
+  /* A witness that diverges inside the first 128 bytes never allocates word
+   * views; its comparison stays a prefix scan. Pin that absolute cost below
+   * 1% of the same run's full 4MB hit so a load spike cannot hide a change. */
+  expect(timings['witness compare 4MB first bytes differ'] / timings['witness compare 4MB']).toBeLessThan(0.01)
+  for (const [label, value] of Object.entries(speedups))
+    if (label !== 'witness-miss-first-4MB') expect(value, label).toBeGreaterThan(0.95)
 }, 60_000)
