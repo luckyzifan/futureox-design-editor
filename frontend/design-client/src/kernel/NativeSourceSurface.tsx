@@ -101,6 +101,7 @@ export function NativeSourceSurface(props:Props){
     projection.history.bind(source)
     let backing:ResidentAcknowledgement|undefined,completeBacking:ResidentAcknowledgement|undefined
     let certifiedBacking: ResidentAcknowledgement | undefined
+    let retainedWorldScale=0
     let shownMaterials:readonly OverviewMaterial[]|undefined
     let partialMaterials:readonly OverviewMaterial[]|undefined
     let startupPreview: {scale:number} | undefined
@@ -131,13 +132,13 @@ export function NativeSourceSurface(props:Props){
         surface.style.backgroundColor=covers?'transparent':SOURCE_PASTEBOARD.backgroundColor
         surface.style.backgroundImage=covers?'none':SOURCE_PASTEBOARD.backgroundImage
       }
-      // A certified full-source bitmap can cover the entire inward viewport.
-      // Keep those texels visible while exact work runs when the decoded
-      // opening image is no denser in that viewport.
-      const finerNativeBacking=covers && backing && backing===certifiedBacking &&
+      // A complete full-source bitmap can cover the entire inward viewport.
+      // This includes an accepted mosaic from the turnaround. Compare the
+      // weakest actual raster density to the decoded source thumbnails.
+      const finerNativeBacking=covers && backing && retainedWorldScale>0 &&
         !source.materialKeys && !source.viewportSubset && p.view.zoom>backing.view.zoom &&
         backingCoversSettledSource(backing,p,density.current) &&
-        p.underlay?.current?.(p.view,p.width,p.height,'all',backing.view.zoom*backing.dpr)
+        p.underlay?.current?.(p.view,p.width,p.height,'all',retainedWorldScale)
       return projection.update(backing,p.view,p.width,p.height,!!bitmapContext,source.bounds,covers&&!finerNativeBacking)
     }
     badge.className='kernel-status';badge.setAttribute('role','status');badge.setAttribute('aria-label','完整画板显示状态')
@@ -898,7 +899,10 @@ export function NativeSourceSurface(props:Props){
         if(moving&&zoomingIn&&continuousZoom&&actual.view.zoom<=p.view.zoom&&quality.scale===undefined&&
             scale>0&&planner.presentedDetail(Math.min(scale,p.view.zoom*density.current))){schedulePaint();void run()}
       }
-      backing=actual;backingTiles=shownTiles;project()
+      backing=actual;backingTiles=shownTiles
+      retainedWorldScale=bitmapApplied&&shownTiles.length
+        ?shownTiles.reduce((scale,tile)=>Math.min(scale,tile.zoom),actual.view.zoom*actual.dpr):0
+      project()
       if(p.overviewBoxes&&!lastStatus.startsWith('error/')&&!lastStatus.startsWith('limited/'))badge.style.opacity='0'
       if (bitmapApplied && !seededOverview && actual.navigationBackingBytes===NAVIGATION_BACKING_BYTES) void requestOverview()
       if(bitmapApplied && client.copyNavigationTile) {
