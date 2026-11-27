@@ -102,13 +102,30 @@ try {
       packagedGuiToolsList: true,
     })
   }
+  let liveClients = null
+  if (process.argv.includes('--live-clients')) {
+    const { runLiveExternalClients } = await import('./runtime/external-mcp-live.mjs')
+    liveClients = runLiveExternalClients(config, { tempDir: temp })
+  }
   await invoke('design_history_undo', {}, await fence())
   await dialog.getByRole('button', { name: /^(停用|Turn off)$/ }).click()
   await expect.poll(async () => (await client.rpc('resources/read', { uri })).error?.code).toBe(-32000)
+  let revokedConfig = null
+  if (liveClients) {
+    const { verifyOldConfigAfterRevoke } = await import('./runtime/external-mcp-live.mjs')
+    revokedConfig = verifyOldConfigAfterRevoke(config, { tempDir: temp })
+    if (revokedConfig.status === 'accepted') throw new Error('A revoked external client config still listed packaged tools')
+  }
   console.log(JSON.stringify({
     packagedGui: true,
     externalClientAcceptance: false,
     externalClients: externalClients?.clients.map(client => ({ id: client.id, status: client.status })) ?? 'not_requested',
+    liveClients: liveClients?.clients.map(client => ({
+      id: client.id,
+      status: client.status,
+      steps: client.steps.map(item => ({ id: item.id, status: item.status })),
+    })) ?? 'not_requested',
+    revokedExternalConfig: revokedConfig,
     readTools: rtools.length,
     fullGrantTools: tools.length,
     nativeMenu: true,

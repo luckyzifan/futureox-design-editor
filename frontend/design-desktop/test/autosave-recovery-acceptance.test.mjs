@@ -64,3 +64,27 @@ test('zero selected packaged crash tests cannot pass merely by exiting successfu
   const report = buildReport({ packagedCrash: { identity: {}, cargo: { status: 0, stdout: 'running 0 tests' } } })
   assert.equal(report.faults.find(item => item.id === 'packaged_exit_during_save').status, 'not_run')
 })
+
+test('an unsigned release candidate keeps its own sidecar result and never closes release acceptance', () => {
+  const identity = { kind: 'unsigned_release_candidate', packageProfile: 'release', sidecarSha256: 'f'.repeat(64) }
+  const report = buildReport({
+    cargo: { status: 0, stdout: completed(EXPECTED_RECOVERY_TESTS) },
+    releasePackagePresent: true,
+    candidateCrash: {
+      identity,
+      cargo: { status: 0, stdout: completed(['autosave_recovery_killed_process_reopens_last_commit']) },
+    },
+  })
+  assert.deepEqual(report.candidateCrash.identity, identity)
+  assert.equal(report.faults.find(item => item.id === 'candidate_exit_during_save').status, 'passed')
+  assert.equal(report.faults.find(item => item.id === 'candidate_exit_during_save').scope, 'candidate_sidecar')
+  assert.equal(report.faults.some(item => item.id === 'packaged_exit_during_save'), false)
+  assert.equal(report.faults.find(item => item.id === 'install_release_package').status, 'not_run')
+  assert.equal(report.releaseAcceptance, 'not_closed')
+})
+
+test('an unsigned release candidate with zero selected crash tests stays not run', () => {
+  const report = buildReport({ candidateCrash: { identity: {}, cargo: { status: 0, stdout: 'running 0 tests' } } })
+  assert.equal(report.faults.find(item => item.id === 'candidate_exit_during_save').status, 'not_run')
+  assert.equal(report.releaseAcceptance, 'not_closed')
+})
