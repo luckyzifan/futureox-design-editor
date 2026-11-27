@@ -53,6 +53,11 @@ export class NavigationZoom {
     if (view.zoom !== this.target.zoom) return view.zoom < this.target.zoom
     return this.direction === 'out' && view.x === this.target.x && view.y === this.target.y
   }
+  isPanningAfterZoomOut(view: CanvasCamera) {
+    return this.active && view.zoom === this.target.zoom &&
+      (this.direction === 'pan-after-out' ||
+       this.direction === 'out' && (view.x !== this.target.x || view.y !== this.target.y))
+  }
   inputChanged(view: CanvasCamera) {
     return view.zoom !== this.target.zoom || !!this.options.includeTranslation &&
       (view.x !== this.target.x || view.y !== this.target.y)

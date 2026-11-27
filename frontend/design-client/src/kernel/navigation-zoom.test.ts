@@ -141,6 +141,26 @@ test.each([false, true])('outward preview deferral ends on pan and reversal with
   expect(owner.isZoomingOut(inward)).toBe(false)
 })
 
+test('only actual translation in an active outward gesture can yield its old capture', () => {
+  const owner = new NavigationZoom(camera(32), { includeTranslation: true })
+  const outward = camera(1, -151.5, -507), moved = camera(1, -111.625, -507)
+  owner.update(outward, 0)
+  owner.update(outward, 68, true)
+  expect(owner.isPanningAfterZoomOut(outward)).toBe(false)
+  expect(owner.isPanningAfterZoomOut(moved)).toBe(true)
+  owner.update(moved, 92, true)
+  expect(owner.isPanningAfterZoomOut(moved)).toBe(true)
+  expect(owner.isPanningAfterZoomOut(camera(2, moved.x, moved.y))).toBe(false)
+  owner.update(moved, 170)
+  expect(owner.isPanningAfterZoomOut(moved)).toBe(false)
+  owner.update(camera(32), 200)
+  owner.update(outward, 400)
+  owner.frame(550)
+  owner.frame(560)
+  expect(owner.active).toBe(false)
+  expect(owner.isPanningAfterZoomOut(moved)).toBe(false)
+})
+
 test('fixed-scale pans never enter the temporary zoom tier', () => {
   const owner = new NavigationZoom(camera(32)), original = owner.sample
   for (let index = 1; index <= 240; index++) {

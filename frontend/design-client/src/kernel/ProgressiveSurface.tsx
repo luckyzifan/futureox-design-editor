@@ -1132,7 +1132,13 @@ export function ProgressiveSurfaceImpl(
     // starting a large filter graph for each intermediate viewport.
     const coveredHighZoomOut = movingDetailAvailable && zoomOutCoverage && filteredContent &&
       requestedView.zoom >= ZOOM_OUT_DETAIL_MIN_ZOOM && hasContinuityBacking()
-    const detailInsteadOfPreview = coveredHighZoomOut || movingDetailAvailable && zoomDetailInsteadOfViewportPreview({
+    // After a real hand-pan displacement, an owned resident union can keep the
+    // live camera covered while one native tile starts instead of a stale crop.
+    const coveredOutwardPan = movingDetailAvailable && navigationZoom.panAfterZoomOut &&
+      filteredContent && !cameraDependent && syncedDoc.current === doc &&
+      view.x === requestedView.x && view.y === requestedView.y && view.zoom === requestedView.zoom &&
+      hasContinuityBacking()
+    const detailInsteadOfPreview = coveredHighZoomOut || coveredOutwardPan || movingDetailAvailable && zoomDetailInsteadOfViewportPreview({
       navigating: true, displayedZoom: displayed?.view.zoom, requestedZoom: requestedView.zoom,
     }) && hasContinuityBacking()
     // At quiet, a same-owner coarse image already supplies continuity. Spend
@@ -1161,6 +1167,7 @@ export function ProgressiveSurfaceImpl(
         if (coveredHighZoomOut) flight.cancelForNative()
         else if (navigationZoom.active && zoomOutCoverage)
           flight.cancelObsoleteZoomOut(requestedView, width, height, hasReadyCoverage() ? 2 : 4)
+        if (coveredOutwardPan) flight.cancelShiftedPan(requestedView, width, height)
         // A zoom-in capture more than the preview ratio behind the live camera
         // can only be stretched. Yield the raster channel to closer tiles.
         // A reverse tick can still need a wider capture to fill uncovered
@@ -2714,6 +2721,7 @@ focus?: SurfaceProps['overview'],
     renderPhase.y,
     nativeReturnReady,
     navigationZoom.active,
+    navigationZoom.panAfterZoomOut,
     navigationZoom.sample?.sequence,
     navigationZoom.suspended,
     mailbox,
