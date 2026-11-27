@@ -8,9 +8,12 @@ node /absolute/path/futureox-desgin/frontend/design-mcp/src/figma-cli.mjs
 
 # or loopback HTTP, after the desktop app has enabled local automation
 node /absolute/path/futureox-desgin/frontend/design-mcp/src/figma-http.mjs
+
+# published Figma desktop shape: loopback 3845, no Authorization header
+node /absolute/path/futureox-desgin/frontend/design-mcp/src/figma-http.mjs --figma-compatible
 ```
 
-`figma-http.mjs` listens on `127.0.0.1` and prints the URL to stderr. Send `Authorization: Bearer <FUTUREOX_DESIGN_BRIDGE_TOKEN>`. The desktop app starts that listener itself when automation is enabled. The browser editor does not open a port.
+`figma-http.mjs` listens on `127.0.0.1` and prints the URL to stderr. By default clients send `Authorization: Bearer <FUTUREOX_DESIGN_BRIDGE_TOKEN>`. The desktop app starts that listener itself when automation is enabled. The browser editor does not open a port. `--figma-compatible` (or `FUTUREOX_FIGMA_COMPATIBLE=1`) opts into the published Figma client shape on port 3845 without a bearer header; it stays loopback-only and Origin-checked. `--extensions` (or `FUTUREOX_FIGMA_EXTENSIONS=1`) additionally advertises the Futureox-only `get_selection` and `open_document` tools. Desktop Code Connect, FigJam, and shader names stay visible and return the documented `unsupported_remote_capability` error instead of becoming unknown tools.
 
 Local, dependency-free Node.js 22+ stdio adapter for the live editor's shared operation API. It owns no document store or independent mutation/history implementation. Production calls go through the explicitly enabled desktop bridge to `frontend/design-client/src/automation/` and the mounted `Editor`.
 
