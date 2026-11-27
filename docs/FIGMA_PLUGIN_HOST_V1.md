@@ -177,7 +177,7 @@ These calls still throw or are absent: vector networks, remote variable librarie
 | `SceneNode.appendChild` | supported | Preserves world position. |
 | `SceneNode.insertChild` | supported | Index is the final sibling index. |
 | `SceneNode.remove` | supported | Deletes the subtree. |
-| `SceneNode.clone` | partial | Uses editor duplicate. Figma places a page-level or free-section frame or section to the right by the world-bounds width plus 40, and uses +10,+10 for other selections. Sketch steps +10,+10. |
+| `SceneNode.clone` | partial | Uses editor duplicate. Figma places a page-level or free-section frame or section to the right by the world-bounds width plus 40, and leaves other selections in place above the source. Sketch steps +10,+10. |
 | `SceneNode.findAll` | partial | At most 2000 visited nodes. |
 | `SceneNode.findOne` | partial | At most 2000 visited nodes. |
 | `ComponentNode.createInstance` | supported | Local component only. No team library. |
