@@ -129,6 +129,18 @@ test('coordinate slots keep the exact reference bytes including signed zero and 
   expect(() => coordinateSlot([1, Infinity])).toThrow('Invalid exact tile coordinate')
   expect(() => coordinateSlot([1, -Infinity, 2])).toThrow('Invalid exact tile coordinate')
   expect(coordinateSlot([0])).not.toBe(coordinateSlot([-0]))
+
+  /* Random IEEE-754 bit patterns cover subnormals and every exponent, not
+   * just the friendly numbers above. */
+  const bits = new DataView(new ArrayBuffer(8)), random = pseudoRandom(99)
+  for (let trial = 0; trial < 256; trial++) {
+    for (let word = 0; word < 2; word++) bits.setUint32(word * 4, (random() << 24) | (random() << 16) | (random() << 8) | random(), true)
+    const value = bits.getFloat64(0, true)
+    if (!Number.isFinite(value)) continue
+    for (const numbers of [[value], [value, -0, 2.5], [0, value, value, 3]]) {
+      expect(coordinateSlot(numbers)).toBe(referenceCoordinateSlot(numbers))
+    }
+  }
 })
 
 test('cache hits accept aligned, misaligned and segmented witness views without hashing', () => {
