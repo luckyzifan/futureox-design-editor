@@ -624,9 +624,9 @@ test('Sketch Tidy previews its destination, then commits the same arrangement in
   applyInterfaceLayout('sketch')
   await render()
   const doc = blank('Tidy selection')
-  const first = node('rectangle', 50, 100, 50, 40)
-  const middle = node('rectangle', 140, 106, 50, 40)
-  const last = node('rectangle', 300, 104, 50, 40)
+  const first = node('rectangle', 0, 0, 10, 10)
+  const middle = node('rectangle', 4, 30, 10, 10)
+  const last = node('rectangle', 1, 50, 10, 10)
   for (const n of [first, middle, last]) doc.nodes[n.id] = n
   doc.pages[0].children = [first.id, middle.id, last.id]
   await act(async () => { editor!.load(doc); editor!.select([first.id]); canvas().focus() })
@@ -646,6 +646,7 @@ test('Sketch Tidy previews its destination, then commits the same arrangement in
   expect(editor!.state.selection).toEqual([first.id, middle.id, last.id])
   await hover()
   const destinations = previews().map(rect => [rect.getAttribute('data-node-id')!, Number(rect.getAttribute('x')), Number(rect.getAttribute('y'))] as const)
+  expect(destinations).toEqual([[first.id, 2, 0], [middle.id, 2, 25], [last.id, 2, 50]])
   await act(async () => tidy().click())
   expect(previews()).toHaveLength(0)
   for (const [id, x, y] of destinations) expect(editor!.state.doc.nodes[id].transform.slice(4)).toEqual([x, y])
