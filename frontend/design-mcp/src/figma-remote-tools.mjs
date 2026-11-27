@@ -22,6 +22,8 @@ export const UPLOAD_ASSET_BYTES = 10 * 1024 * 1024
 const COMMENT_SCAN_LIMIT = 2000
 const COMMENT_PAGE_LIMIT = 100
 const COMMENT_MESSAGE_LIMIT = 50
+const COMMENT_REPLY_LIMIT = 20
+const COMMENT_TEXT_LIMIT = 2000
 
 const FILE_KEY = {
   type: 'string', minLength: 1, maxLength: 256,
@@ -424,10 +426,20 @@ async function createNewFile(facade, args, context, { failure, done, identityOf 
   })
 }
 
+function commentText(value) {
+  const text = String(value ?? '')
+  return text.length > COMMENT_TEXT_LIMIT
+    ? { message: text.slice(0, COMMENT_TEXT_LIMIT), messageTruncated: true }
+    : { message: text, messageTruncated: false }
+}
+
 function commentThread(review) {
   const messages = Array.isArray(review.messages) ? review.messages : []
   const shown = messages.slice(0, COMMENT_MESSAGE_LIMIT)
-  const first = shown[0]
+  const first = shown[0] ?? {}
+  const replies = shown.slice(1, COMMENT_REPLY_LIMIT + 1).map(message => ({
+    id: message.id, parentId: review.id, author: message.author, createdAt: message.createdAt, ...commentText(message.text),
+  }))
   return {
     id: review.id,
     threadId: review.id,
@@ -437,13 +449,12 @@ function commentThread(review) {
     pageId: review.pageId,
     nodeId: review.nodeId ?? null,
     position: review.position,
-    author: first?.author ?? null,
-    createdAt: first?.createdAt ?? null,
-    message: first?.text ?? '',
-    messages: shown,
-    replies: shown.slice(1).map(message => ({
-      id: message.id, parentId: review.id, author: message.author, message: message.text, createdAt: message.createdAt,
-    })),
+    author: first.author ?? null,
+    createdAt: first.createdAt ?? null,
+    ...commentText(first.text),
+    totalMessages: messages.length,
+    replies,
+    repliesTruncated: messages.length - 1 > replies.length,
     messagesTruncated: messages.length > shown.length,
   }
 }
