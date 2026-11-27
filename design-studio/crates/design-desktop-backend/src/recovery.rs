@@ -353,7 +353,9 @@ impl RecoveryStore {
     /// a snapshot never deletes it or writes to its original sourcePath.
     pub fn remove(&self, id: &str) -> Result<bool> {
         let path = self.path(id)?;
-        let published = storage::checked_metadata(&path)?.is_some();
+        if storage::checked_metadata(&path)?.is_none() {
+            return Ok(false);
+        }
         let mut pending = Vec::new();
         for item in self.directory_entries()? {
             let candidate = item.path();
@@ -376,9 +378,6 @@ impl RecoveryStore {
             storage::sync_directory(&self.root).map_err(|e| {
                 BackendError::io("Cannot sync interrupted recovery snapshot removal", e)
             })?;
-        }
-        if !published {
-            return Ok(!pending.is_empty());
         }
         fs::remove_file(path)
             .map_err(|e| BackendError::io("Cannot remove selected recovery snapshot", e))?;
