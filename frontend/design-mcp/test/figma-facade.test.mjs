@@ -29,8 +29,14 @@ function facade(handlers, { scope = 'write', pluginBridge, methods = METHODS } =
 const ok = response => { assert.equal(response.ok, true, JSON.stringify(response.error)); return response }
 
 test('advertised tools match the Figma-shaped subset and do not invent registry aliases', () => {
-  assert.deepEqual(FIGMA_MCP_TOOLS.map(tool => tool.name), ['get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets', 'use_figma', 'open_document'])
-  assert.ok(FIGMA_MCP_GAPS.some(gap => gap.id === 'whoami' && gap.status === 'absent'))
+  assert.deepEqual(FIGMA_MCP_TOOLS.map(tool => tool.name), [
+    'get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets', 'use_figma', 'open_document',
+    'whoami', 'create_new_file', 'get_comments', 'get_libraries', 'search_design_system', 'get_context_for_code_connect', 'export_video', 'upload_assets',
+    'generate_figma_design', 'generate_diagram', 'generate_image', 'generate_vector_illustration', 'html_to_figma', 'send_code_to_figma',
+    'list_generative_plugins', 'get_generative_plugin', 'create_generative_plugin', 'update_generative_plugin',
+    'list_shaders', 'get_shader', 'list_file_shaders', 'create_shader', 'update_shader',
+  ])
+  assert.ok(FIGMA_MCP_GAPS.some(gap => gap.id === 'whoami' && gap.status === 'local'))
   assert.ok(FIGMA_MCP_GAPS.some(gap => gap.id === 'use_figma_plugin_javascript'))
   assert.equal(validateFigmaOperation({ op: 'create', kind: 'button' }), 'create kind must be one of slice, frame, section, group, rectangle, ellipse, polygon, star, line, vector, text')
 })
@@ -255,7 +261,11 @@ test('registered plugin bridge receives source and the facade does not eval it',
 
 test('read-only scope rejects writes before calling the Design API', async () => {
   const { api, calls } = facade({}, { scope: 'read' })
-  assert.deepEqual(api.listTools().map(tool => tool.name), ['get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets'])
+  assert.deepEqual(api.listTools().map(tool => tool.name), [
+    'get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets',
+    'whoami', 'get_comments', 'get_libraries', 'search_design_system', 'get_context_for_code_connect', 'export_video',
+    'list_generative_plugins', 'get_generative_plugin', 'list_shaders', 'get_shader', 'list_file_shaders',
+  ])
   const write = await api.callTool('use_figma', { description: 'Edit', operations: [{ op: 'delete', nodeId: 'a' }] }, {})
   const open = await api.callTool('open_document', { rootHandle: 'root', documentHandle: 'doc', mutationId: 'open-1' }, {})
   assert.equal(write.error.code, 'read_only')
