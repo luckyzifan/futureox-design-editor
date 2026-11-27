@@ -982,6 +982,9 @@ export class Editor {
       targets: targets.map(target => Object.freeze({ ...target })), document: this.state.doc, draft: {}, valid: true }
     return lease
   }
+  canEditSolidFill(target: SolidFillTarget) {
+    return this.propertyTargetCurrent(this.state.doc, target)
+  }
   private propertyTargetCurrent(document: DesignDocument, target: SolidFillTarget) {
     const n = document.nodes[target.nodeId], p = n?.fills[target.fillIndex]
     return !!n && n.kind !== 'slice' && p?.kind === 'solid' && p.id === target.fillId &&
