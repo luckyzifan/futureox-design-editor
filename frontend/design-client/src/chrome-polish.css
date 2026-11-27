@@ -184,17 +184,17 @@ html[data-reduced-motion="true"] .prototype-hotspot { transition: none; }
 
 /* Workspace context actions share the command tray palette. */
 .canvas-context-menu {
-  background: #222d42 !important;
-  color: #fff !important;
+  background: var(--context-menu-surface, #222d42) !important;
+  color: var(--context-menu-text, #fff) !important;
   border-color: #00000055;
 }
 .canvas-context-menu button {
   background: transparent;
-  color: #fff;
+  color: var(--context-menu-text, #fff);
 }
 .canvas-context-menu button:hover:not(:disabled),
 .canvas-context-menu button:focus-visible {
-  background: #3459d4 !important;
+  background: var(--context-menu-highlight, #3459d4) !important;
   color: #fff !important;
 }
 .canvas-context-menu button:disabled { color: #ffffff59; opacity: 1; }

@@ -5,6 +5,8 @@ import { propertyExpression, propertyUnit, type NumericUnit } from './numeric-ex
 import { useContext, useEffect, useMemo, useRef } from 'react'
 import { PendingEditContext } from './pending-edit-context'
 import { pendingEditsChanged, registerPendingEdit } from './pending-edits'
+import { interfacePreference } from './interface-preference'
+import { shortcutPlatform } from './shortcut-profiles'
 export function CalculatedDimension({ label, value }: { label: 'W' | 'H'; value: number | undefined }) {
   const { tr } = usePropertyText()
   return <label className="number-field calculated-dimension"><span>{label}</span>
@@ -190,7 +192,8 @@ export function NumberField({ label, value, onChange, resolveInput, min = -1e6, 
           draftRevision.current++
           diagnostic.start()
           try {
-            const next = Math.min(max, Math.max(min, propertyExpression(draft.current, original.current, unit) + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : e.altKey ? .1 : 1)))
+            const fineStep = e.altKey && (interfacePreference.getSnapshot().uiMode !== 'figma' || shortcutPlatform() !== 'mac')
+            const next = Math.min(max, Math.max(min, propertyExpression(draft.current, original.current, unit) + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : fineStep ? .1 : 1)))
             draft.current = shown(next); dirty.current = true; e.currentTarget.value = draft.current; changed()
           } catch { setValidity('请先修正数值表达式') }
         }

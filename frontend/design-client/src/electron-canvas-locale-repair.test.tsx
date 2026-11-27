@@ -65,11 +65,16 @@ test('open menu reclamps after longer translation without resetting focus, ident
   expect(copy.getAttribute('aria-label')).toBe('Copy')
   expect(menu().style.left).toBe('592px'); expect(menu().getAttribute('aria-label')).toBe('Canvas context menu')
   expect(close).not.toHaveBeenCalled(); expect(editor.state).toBe(before)
-  await act(async () => menu().querySelector<HTMLButtonElement>('[data-layer-picker]')!.click())
-  expect(menu().textContent).toContain('用户图层 Copy')
-  expect(menu().querySelector('[aria-label="Select layer 用户图层 Copy"]')).not.toBeNull()
+  const trigger = menu().querySelector<HTMLButtonElement>('[data-layer-picker]')!
+  await act(async () => trigger.click())
+  const layers = document.querySelector<HTMLElement>('.canvas-context-submenu')!
+  expect(menu()).toBe(originalMenu)
+  expect(trigger.getAttribute('aria-controls')).toBe(layers.id)
+  expect(layers.textContent).toContain('用户图层 Copy')
+  expect(layers.querySelector('[aria-label="Select layer 用户图层 Copy"]')).not.toBeNull()
   await switchLocale('zh-CN')
-  expect(menu().textContent).toContain('用户图层 Copy')
+  expect(document.querySelector('.canvas-context-submenu')).toBe(layers)
+  expect(layers.textContent).toContain('用户图层 Copy')
 })
 
 test('workspace rail switches accessible labels in place and keeps section/action routing', async () => {

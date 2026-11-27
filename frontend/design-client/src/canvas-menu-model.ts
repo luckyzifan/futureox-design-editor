@@ -164,7 +164,7 @@ export function sketchSelectionCommands(editor: Editor) {
  * Create component and Show/Hide. The menu component inserts those two rows. */
 const contextOrder: EditorCommand[] = [
   'copy', 'paste-here', 'paste-to-replace',
-  'copy-properties', 'paste-properties', 'copy-fills', 'copy-strokes', 'copy-effects', 'copy-as-png', 'copy-as-svg',
+  'copy-as-svg', 'copy-as-png', 'copy-properties', 'paste-properties', 'copy-fills', 'copy-strokes', 'copy-effects',
   'bring-to-front', 'send-to-back', 'convert-section',
   'group', 'frame-selection', 'ungroup', 'rename', 'flatten', 'outline-stroke', 'mask-selection',
   'auto-layout', 'remove-auto-layout',

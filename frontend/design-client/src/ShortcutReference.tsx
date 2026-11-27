@@ -24,6 +24,7 @@ const titles: Partial<Record<ShortcutAction, readonly [string, string]>> = {
   'toggle-outlines': ['显示轮廓', 'Show outlines'],
   'toggle-lock': ['锁定或解锁选区', 'Lock or unlock selection'],
   'toggle-visibility': ['显示或隐藏选区', 'Show or hide selection'],
+  'opacity-digit': ['用数字键设置不透明度', 'Set opacity with number keys'],
   'select-parent': ['选择父图层', 'Select parent'],
   'keyboard-box-select': ['键盘框选', 'Keyboard box selection'],
   'remove-fill': ['去掉填充', 'Remove fill'],
