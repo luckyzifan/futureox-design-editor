@@ -232,9 +232,11 @@ test('Sketch Interaction arms the prototype tool and preserves an invisible hots
   doc.pages[0].children = [frame.id]
   await act(async () => { editor!.load(doc); canvas().focus() })
   try {
+    expect(document.querySelector('#design-properties-tab')?.getAttribute('aria-selected')).toBe('true')
+    expect(document.querySelector('.sketch-interaction-panel')).toBeNull()
     await key('i', { code: 'KeyI' })
     expect(editor!.state.tool).toBe('hotspot')
-    expect(document.querySelector('#prototype-properties-tab')).toBeNull()
+    expect(document.querySelector('#prototype-properties-tab')?.getAttribute('aria-selected')).toBe('true')
     expect(document.querySelector('.sketch-interaction-panel')).not.toBeNull()
     const authored = editor!.authoredDocument
     const hotspot = node('rectangle', 20, 30, 80, 55)
@@ -2101,7 +2103,7 @@ test('layout switch keeps style ownership while Sketch and Figma edit it through
 })
 
 
-test('Sketch cannot inherit or toggle the Figma prototype inspector and restores Figma controls on return', async () => {
+test('Sketch keeps a separate prototype inspector and restores Figma controls on return', async () => {
   applyInterfaceLayout('figma')
   setPrototypeTab('design')
   await render()
@@ -2120,11 +2122,15 @@ test('Sketch cannot inherit or toggle the Figma prototype inspector and restores
   expect(preview()).not.toBeNull()
 
   await act(async () => applyInterfaceLayout('sketch'))
-  expect(document.querySelector('.properties-tabs')).toBeNull()
+  expect(document.querySelector('#design-properties-tab')?.getAttribute('aria-selected')).toBe('true')
   expect(document.querySelector('.embedded-design-tools')).toBeNull()
   expect(document.querySelector('[data-testid="prototype-link"]')).toBeNull()
   expect(document.querySelector('.properties-content .inspector')).not.toBeNull()
   expect(preview()).toBeNull()
+  await act(async () => prototype()!.click())
+  expect(prototype()?.getAttribute('aria-selected')).toBe('true')
+  expect(document.querySelector('.sketch-prototype-inspector .sketch-interaction-panel')).not.toBeNull()
+  expect(document.querySelector('.embedded-design-tools')).toBeNull()
   await act(async () => shortcutPreference.set('figma-like'))
   await key('End')
   await key('E', { code: 'KeyE', shiftKey: true })

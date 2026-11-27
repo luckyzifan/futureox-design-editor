@@ -1,4 +1,5 @@
 import { memo, useMemo, useState, useSyncExternalStore } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import type { Editor } from './engine'
 import type { DesignDocument } from './model'
 import { DraftInput } from './DraftInput'
@@ -62,7 +63,7 @@ const VariableCell = memo(function VariableCell({ editor, id, variable, mode, ca
   </div>
 })
 
-export function VariablesPanel({ editor }: { editor: Editor }) {
+export function VariablesPanel({ editor, onReturnToCanvas }: { editor: Editor; onReturnToCanvas?: () => void }) {
   const { locale, tr } = useProfessionalDialogText()
   const { doc, selection } = useSyncExternalStore(editor.subscribe, editor.panelSnapshot), system = doc.designSystem || EMPTY
   const index = useMemo(() => variableIndex(system), [system])
@@ -102,9 +103,23 @@ export function VariablesPanel({ editor }: { editor: Editor }) {
     if (selected) bindingOptions.unshift([binding, selected])
   }
   const pageShown = filtered.length ? `${page * VARIABLE_PAGE_SIZE + 1}–${Math.min((page + 1) * VARIABLE_PAGE_SIZE, filtered.length)}` : '0'
-  return <div className="variables-panel" onKeyDown={event => { if (event.key === 'Escape' && event.defaultPrevented) event.stopPropagation() }}>
+  return <div className="variables-panel" onKeyDown={event => {
+    if (onReturnToCanvas && !event.metaKey && !event.ctrlKey) event.stopPropagation()
+    if (event.key !== 'Escape') return
+    if (onReturnToCanvas && !event.defaultPrevented && !event.nativeEvent.isComposing) {
+      event.preventDefault()
+      navigate(onReturnToCanvas)
+    }
+    if (event.defaultPrevented) event.stopPropagation()
+  }}>
     <div className="variables-toolbar">
-      <div><strong>{tr('本地变量')}</strong><p>{tr('每次修改均可撤销，并随文档保存。名称使用 / 自动分组。')}</p></div>
+      <div className="variables-title">
+        {onReturnToCanvas && <button type="button" className="variables-return" autoFocus onClick={() => navigate(onReturnToCanvas)}>
+          <ArrowLeft size={15} aria-hidden="true" />{locale === 'en' ? 'Back to canvas' : '返回画布'}
+        </button>}
+        <strong>{tr('本地变量')}</strong>
+        {!onReturnToCanvas && <p>{tr('每次修改均可撤销，并随文档保存。名称使用 / 自动分组。')}</p>}
+      </div>
       <div className="variables-history"><button type="button" disabled={!editor.canUndo} onClick={() => navigate(() => editor.undo())}>{tr('撤销')}</button><button type="button" disabled={!editor.canRedo} onClick={() => navigate(() => editor.redo())}>{tr('重做')}</button></div>
     </div>
     {error && <p className="variables-error" role="alert">{tr(error)}</p>}

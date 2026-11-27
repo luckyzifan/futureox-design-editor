@@ -647,7 +647,7 @@ export function ProgressiveSurfaceImpl(
     !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles && !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview && !hdrCompositing,
     residentDisplay && filteredContent, props.panGestureActive === true, nativeNavigation,
     import.meta.env.VITE_DESIGN_NAVIGATION_ADAPTIVE_QUIET!=='0' && residentDisplay &&
-      (!filteredContent || (progressiveNativeRepair && !cameraDependent ? 'outward-pan' : false)))
+      (!filteredContent || (progressiveNativeRepair && !cameraDependent ? 'filtered' : false)))
   const frameZooming=useZoomActivity(view.zoom,identity)
   const sharpZooming=useSharpZoomActivity(sharpNavigation?view.zoom:1,sharpNavigation?identity:'sharp-disabled')
   const zooming=sharpNavigation?sharpZooming:frameZooming

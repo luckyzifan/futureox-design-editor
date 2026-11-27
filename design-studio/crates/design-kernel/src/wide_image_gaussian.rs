@@ -196,13 +196,13 @@ impl Projection {
     }
 }
 
-pub(crate) fn pixels(plan: Plan, matrix: Transform, size: [f64; 2], image: [u32; 2],
-    paint: &Paint, pixels: &[f32]) -> Result<Vec<f32>, String> {
+fn projection(plan: Plan, matrix: Transform, size: [f64; 2], image: [u32; 2],
+    paint: &Paint) -> Result<(BoxLattice, [Projection; 2]), String> {
     let output = plan.output;
     let input_len = (image[0] as usize).checked_mul(image[1] as usize).and_then(|n| n.checked_mul(4));
     // The renderer supplies bounded output stripes. The image itself is
     // already resident, and each source axis is processed in texel batches.
-    if image.contains(&0) || input_len != Some(pixels.len())
+    if image.contains(&0) || input_len.is_none()
         || !size.iter().all(|v| v.is_finite() && *v > 0.)
         || !simple_paint(paint) || output.empty() || output.w.max(output.h) > 1024
         || output.pixels() > MAX_OUTPUT_PIXELS || plan.radii.contains(&0) {
@@ -214,18 +214,40 @@ pub(crate) fn pixels(plan: Plan, matrix: Transform, size: [f64; 2], image: [u32;
     }
     let axes = crate::paint::image_gaussian_lattice(output, matrix, size, image, paint)?;
     let [w, h] = [output.w as usize, output.h as usize];
-    let [x, y] = std::array::from_fn(|index| Projection {
+    let axes = std::array::from_fn(|index| Projection {
         origin: axes[index][0], step: axes[index][1], output_count: [w, h][index], texels: image[index] as usize,
     });
-    if [&x, &y].into_iter().any(|axis| {
+    if axes.iter().any(|axis: &Projection| {
         let end = axis.origin + axis.step * (axis.output_count - 1) as f64;
         let reach = axis.step.abs() * taps.support as f64;
         !end.is_finite() || !reach.is_finite()
     }) {
         return Err("Invalid Gaussian image sample".into());
     }
+    Ok((taps, axes))
+}
+
+/// The decoded texels needed by the same projection that produces the pixels.
+pub(crate) fn source_window(plan: Plan, matrix: Transform, size: [f64; 2], image: [u32; 2],
+    paint: &Paint) -> Result<[u32; 4], String> {
+    let (taps, [x, y]) = projection(plan, matrix, size, image, paint)?;
+    let [xs, ys] = [x.range(taps.support), y.range(taps.support)];
+    Ok([xs.start as u32, ys.start as u32, xs.len() as u32, ys.len() as u32])
+}
+
+pub(crate) fn pixels(plan: Plan, matrix: Transform, size: [f64; 2], image: [u32; 2],
+    paint: &Paint, pixels: &[f32], window: Option<[u32; 4]>) -> Result<Vec<f32>, String> {
+    let (taps, [x, y]) = projection(plan, matrix, size, image, paint)?;
     let xs = x.range(taps.support);
     let ys = y.range(taps.support);
+    let [left, top, width, height] = window.unwrap_or([0, 0, image[0], image[1]]).map(|value| value as usize);
+    if left > xs.start || top > ys.start
+        || width > image[0] as usize - left || height > image[1] as usize - top
+        || left + width < xs.end || top + height < ys.end
+        || width * height * 4 != pixels.len() {
+        return Err("Invalid image Gaussian source window".into());
+    }
+    let [w, h] = [x.output_count, y.output_count];
     let mut result = vec![[0.; 4]; w * h];
     for y_start in ys.clone().step_by(SOURCE_TEXEL_BATCH) {
         let y_band = y_start..(y_start + SOURCE_TEXEL_BATCH).min(ys.end);
@@ -235,7 +257,7 @@ pub(crate) fn pixels(plan: Plan, matrix: Transform, size: [f64; 2], image: [u32;
             let weights = x.basis(&taps, x_band.clone())?;
             for (row, result_row) in y_band.clone().zip(horizontal.chunks_exact_mut(w)) {
                 crate::render_cancellation::checkpoint()?;
-                let base = (row * image[0] as usize + x_start) * 4;
+                let base = ((row - top) * width + x_start - left) * 4;
                 let texels = &pixels[base..base + 4 * x_band.len()];
                 if texels.chunks_exact(4).any(|p| !p.iter().all(|x| (0. ..=1.).contains(x))
                     || p[..3].iter().any(|c| *c > p[3])) {
@@ -310,7 +332,15 @@ mod tests {
                     reference = next;
                 }
             }
-            let actual = pixels(plan, matrix, size, image, &paint, &texture).unwrap();
+            let actual = pixels(plan, matrix, size, image, &paint, &texture, None).unwrap();
+            let window @ [left, top, width, height] = source_window(plan, matrix, size, image, &paint).unwrap();
+            let compact: Vec<_> = (top..top + height).flat_map(|row| {
+                let first = ((row * image[0] + left) * 4) as usize;
+                texture[first..first + (width * 4) as usize].iter().copied()
+            }).collect();
+            assert_eq!(pixels(plan, matrix, size, image, &paint, &compact, Some(window)).unwrap(), actual);
+            assert!(pixels(plan, matrix, size, image, &paint, &compact[..compact.len() - 4], Some(window)).is_err());
+            assert!(pixels(plan, matrix, size, image, &paint, &compact, Some([left + 1, top, width, height])).is_err());
             for y in plan.output.y..plan.output.bottom() { for x in plan.output.x..plan.output.right() {
                 let ref_pixel = reference.at(x, y);
                 let at = plan.output.index(x,y).unwrap()*4;
@@ -341,14 +371,14 @@ mod tests {
         assert_eq!(plan.radii, crate::effects::gaussian_box_radii_bounded(4897.21435546875, 5000.).unwrap());
         assert!(plan.radii.iter().all(|r| *r > 4096));
         let color = [0.125, 0.25, 0.375, 0.5];
-        let actual = pixels(plan, camera, [1920., 1080.], [4, 3], &node.fills[0], &color.repeat(12)).unwrap();
+        let actual = pixels(plan, camera, [1920., 1080.], [4, 3], &node.fills[0], &color.repeat(12), None).unwrap();
         assert!(actual.chunks_exact(4).all(|pixel| pixel == color));
         let mut deeper = doc.clone();
         deeper.nodes.get_mut("bitmap").unwrap().effects[0].radius = 16000. / 512.;
         let node = &deeper.nodes["bitmap"];
         let wider = super::plan(&deeper, node, camera, output).unwrap();
         assert!(wider.radii.iter().all(|&radius| (15999..=16000).contains(&radius)));
-        let wide_pixels = pixels(wider, camera, [1920., 1080.], [4, 3], &node.fills[0], &color.repeat(12)).unwrap();
+        let wide_pixels = pixels(wider, camera, [1920., 1080.], [4, 3], &node.fills[0], &color.repeat(12), None).unwrap();
         assert_eq!(wide_pixels, actual);
     }
 
@@ -358,7 +388,7 @@ mod tests {
         let paint: Paint = serde_json::from_value(json!({"kind":"image","color":"#000000","fit":"stretch"})).unwrap();
         let matrix = Transform([2., 0., 0., 2., 0., 0.]);
         let color = [0.125, 0.25, 0.375, 0.5];
-        let actual = pixels(plan, matrix, [512., 512.], [128, 128], &paint, &color.repeat(128 * 128)).unwrap();
+        let actual = pixels(plan, matrix, [512., 512.], [128, 128], &paint, &color.repeat(128 * 128), None).unwrap();
         assert!(actual.chunks_exact(4).all(|pixel| pixel == color));
     }
 
@@ -368,7 +398,7 @@ mod tests {
         let paint: Paint = serde_json::from_value(json!({"kind":"image","color":"#000000","fit":"stretch"})).unwrap();
         let color = [0.0625, 0.125, 0.25, 0.5];
         let actual = pixels(plan, Transform([150.6, 0., 0., -150.6, -10_000., 10_000.]),
-            [140., 140.], [32, 31], &paint, &color.repeat(32*31)).unwrap();
+            [140., 140.], [32, 31], &paint, &color.repeat(32*31), None).unwrap();
         assert!(actual.chunks_exact(4).all(|pixel| pixel == color));
     }
 }

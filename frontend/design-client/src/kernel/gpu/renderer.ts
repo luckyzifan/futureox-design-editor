@@ -1,5 +1,5 @@
 import sketchGradientRanks from '../../../../../design-studio/crates/design-kernel/shaders/sketch-gradient-noise.json'
-import { wide_image_gaussian_pixels } from '../../generated/design-kernel/design_kernel'
+import { wide_image_gaussian_pixels, wide_image_gaussian_source_window } from '../../generated/design-kernel/design_kernel'
 import {compactSourceAxes,hostedDenseByteFrame,readSourceGrid,readDenseSourceGrid,readDenseSourceGridBytes} from './source-bitmap-grid'
 import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
@@ -8520,8 +8520,24 @@ export class GpuRenderer {
     try {
       const upload = (region: Rect) => {
         const stripe = { ...plan, output: region }
-        const project = () => wide_image_gaussian_pixels(JSON.stringify(stripe), new Float64Array(n.matrix),
-          new Float64Array(n.size), new Uint32Array([source.width, source.height]), JSON.stringify(placement), source.pixels)
+        const project = () => {
+          const geometry = [JSON.stringify(stripe), new Float64Array(n.matrix), new Float64Array(n.size),
+            new Uint32Array([source.width, source.height]), JSON.stringify(placement)] as const
+          const window = wide_image_gaussian_source_window(...geometry)
+          const [left, top, width, height] = window
+          const stride = source.width * 4
+          const start = top * stride + left * 4
+          if (width === source.width) {
+            return wide_image_gaussian_pixels(...geometry, source.pixels.subarray(start, start + height * stride), window)
+          }
+          const rowLength = width * 4
+          const compact = new Float32Array(rowLength * height)
+          for (let row = 0; row < height; row++) {
+            const input = start + row * stride
+            compact.set(source.pixels.subarray(input, input + rowLength), row * rowLength)
+          }
+          return wide_image_gaussian_pixels(...geometry, compact, window)
+        }
         const parameters = exactFilterKey([stripe, n.matrix, n.size, placement])
         const pixels = parameters && this.managedImageLoader!.projectGaussian
           ? this.managedImageLoader!.projectGaussian(uri, source.pixels, region, parameters, project)
