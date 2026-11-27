@@ -85,6 +85,22 @@ fn stale() -> BackendError {
         "This font changed or is no longer available. Refresh the font list before importing.",
     )
 }
+fn checked_name(value: &str) -> Option<&str> {
+    let text = value.trim();
+    (!text.is_empty() && !text.chars().any(char::is_control) && text.chars().count() <= 200)
+        .then_some(text)
+}
+
+fn ascii_mac_roman_name(name: ttf_parser::name::Name<'_>) -> Option<&str> {
+    if name.platform_id != ttf_parser::PlatformId::Macintosh
+        || name.encoding_id != 0
+        || !name.name.iter().all(|byte| matches!(*byte, b' '..=b'~'))
+    {
+        return None;
+    }
+    checked_name(std::str::from_utf8(name.name).ok()?)
+}
+
 fn name(face: &ttf_parser::Face<'_>, ids: &[u16]) -> Option<String> {
     for id in ids {
         let mut fallback = None;
@@ -92,10 +108,9 @@ fn name(face: &ttf_parser::Face<'_>, ids: &[u16]) -> Option<String> {
             let Some(text) = name.to_string() else {
                 continue;
             };
-            let text = text.trim();
-            if text.is_empty() || text.chars().any(char::is_control) || text.chars().count() > 200 {
+            let Some(text) = checked_name(&text) else {
                 continue;
-            }
+            };
             if name.language_id == 0x0409 {
                 return Some(text.into());
             }
@@ -105,6 +120,18 @@ fn name(face: &ttf_parser::Face<'_>, ids: &[u16]) -> Option<String> {
         }
         if fallback.is_some() {
             return fallback;
+        }
+    }
+    // Installed faces such as macOS Helvetica keep some names in Mac Roman.
+    // Read its printable ASCII subset after looking for Unicode names.
+    for id in ids {
+        if let Some(text) = face
+            .names()
+            .into_iter()
+            .filter(|name| name.name_id == *id)
+            .find_map(ascii_mac_roman_name)
+        {
+            return Some(text.into());
         }
     }
     None
@@ -524,6 +551,51 @@ mod tests {
             let _ = fs::remove_dir_all(&self.0);
         }
     }
+    #[test]
+    fn mac_roman_names_require_printable_ascii_and_the_exact_platform() {
+        use ttf_parser::{PlatformId, name::Name};
+
+        let record = Name {
+            platform_id: PlatformId::Macintosh,
+            encoding_id: 0,
+            language_id: 0,
+            name_id: ttf_parser::name_id::FAMILY,
+            name: b"  Helvetica  ",
+        };
+        assert_eq!(ascii_mac_roman_name(record), Some("Helvetica"));
+        assert_eq!(
+            ascii_mac_roman_name(Name {
+                platform_id: PlatformId::Windows,
+                ..record
+            }),
+            None
+        );
+        assert_eq!(
+            ascii_mac_roman_name(Name {
+                encoding_id: 1,
+                ..record
+            }),
+            None
+        );
+        for bytes in [
+            b"".as_slice(),
+            b"   ",
+            b"Helvetica\x80",
+            b"Hel\0vetica",
+            b"\nHelvetica",
+            b"Helvetica\x7f",
+            &[b'A'; 201],
+        ] {
+            assert_eq!(
+                ascii_mac_roman_name(Name {
+                    name: bytes,
+                    ..record
+                }),
+                None
+            );
+        }
+    }
+
     #[test]
     fn listed_font_bytes_are_exact_and_paths_are_not_renderer_capabilities() {
         let f = Fixture::new();
