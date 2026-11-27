@@ -5,7 +5,7 @@ import React, { act } from 'react'
 import type { Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { CommandSearch } from './CommandSearch'
-import { commandSearchEntries, commandSearchText, filterCommandSearch, runCommandSearch } from './command-search'
+import { commandSearchEntries, commandSearchText, filterCommandSearch, quickInsertEntries, runCommandSearch } from './command-search'
 import { recordCommandSearchUse, resetCommandSearchRecent } from './command-recent'
 import { closeCommandSearch, commandSearchSnapshot, requestCommandSearch } from './command-search-session'
 import { canvasMenuItems, sketchCommandLabel } from './canvas-menu-model'
@@ -84,6 +84,32 @@ async function setQuery(input: HTMLInputElement, value: string) {
   })
 }
 const option = (id: string) => document.querySelector<HTMLButtonElement>(`[data-command="${id}"]`)!
+
+test('Shift+I searches insertable components and uses the existing instance transaction', async () => {
+  interfacePreference.set({ uiMode: 'figma', locale: 'en' })
+  shortcutPreference.set('figma-like')
+  const shape = node('rectangle')
+  const editor = editorWith([shape])
+  editor.select([shape.id])
+  const component = editor.createComponent()
+  editor.change('Name component', draft => { draft.nodes[component].name = 'Billing card' })
+  const before = editor.state.doc
+  const entry = quickInsertEntries(editor, 'en')[0]
+  await act(async () => {
+    root.render(<CommandSearch editor={editor} />)
+    expect(await dispatchEditorShortcut(editor, press(canvas, 'I', { shiftKey: true }), figma)).toBe(true)
+  })
+  const input = document.querySelector<HTMLInputElement>('[role=combobox]')!
+  await setQuery(input, 'billing')
+  expect(input.getAttribute('aria-label')).toBe('Search components')
+  expect(option(entry.id).textContent).toContain('Billing card')
+  expect(option('copy')).toBeNull()
+  await act(async () => { press(input, 'Enter') })
+  await flush()
+  expect(editor.state.doc.nodes[editor.state.selection[0]].instance?.componentId).toBe(component)
+  editor.undo()
+  expect(editor.state.doc).toEqual(before)
+})
 
 test('entries reuse menu admission, names, aliases and profile shortcuts without a second operation model', () => {
   const a = node('rectangle', 10, 20, 30, 40), b = node('rectangle', 80, 90, 30, 40)

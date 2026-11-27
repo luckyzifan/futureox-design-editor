@@ -21,14 +21,22 @@ import { modalKeyDown, useModalOwnership } from './modal-keyboard'
 import { downloadAsset, prototypeTitle, useProfessionalDialogText } from './professional-dialog-messages'
 
 export function PrototypePlayer({
-  document: source,
+  document: liveDocument,
+  inline = false,
+  startNode,
+  pageId: startPage,
   onClose,
 }: {
   document: DesignDocument
+  inline?: boolean
+  startNode?: string
+  pageId?: string
   onClose: () => void
 }) {
   const { locale, tr } = useProfessionalDialogText()
-  const [state, setState] = useState(() => initialPrototype(source)),
+  const [openingDocument] = useState(liveDocument)
+  const source = inline ? openingDocument : liveDocument
+  const [state, setState] = useState(() => initialPrototype(source, startNode, startPage)),
     [error, setError] = useState(''),
     [exporting, setExporting] = useState(false),
     [videoAsset, setVideoAsset] = useState<{ url: string; name: string } | null>(null)
@@ -41,6 +49,18 @@ export function PrototypePlayer({
   const [scrollPosition, setScrollPosition] = useState({ left: 0, top: 0 })
   exportingRef.current = exporting
   useModalOwnership(backdrop, closeButton)
+  useLayoutEffect(() => {
+    if (!inline) return
+    const opener = document.activeElement
+    const close = closeButton.current
+    const dialog = close?.closest('[role="dialog"]')
+    close?.focus({ preventScroll: true })
+    return () => {
+      if (opener instanceof HTMLElement && opener.isConnected &&
+          (dialog?.contains(document.activeElement) || document.activeElement === document.body))
+        opener.focus({ preventScroll: true })
+    }
+  }, [inline])
   snapshot.current = source
   // Preview deliberately owns an immutable design version and temporary values.
   const [progress, setProgress] = useState(1)
@@ -248,11 +268,19 @@ export function PrototypePlayer({
     }
   }
   return (
-    <div ref={backdrop} className="feature-backdrop" onKeyDown={event => modalKeyDown(event, () => { if (!exportingRef.current) onClose() })}>
-      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : lightweight ? 'fade' : state.transitionStyle === 'dissolve' ? 'dissolve' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={lightweight ? 'opacity' : transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-modal="true" aria-label={tr('交互原型预览')} tabIndex={-1}>
+    <div ref={inline ? null : backdrop} className={inline ? 'prototype-inline' : 'feature-backdrop'} onKeyDown={event => {
+      if (!inline) {
+        modalKeyDown(event, () => { if (!exportingRef.current) onClose() })
+      } else if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
+        event.stopPropagation()
+        event.preventDefault()
+        if (!event.repeat && !exportingRef.current) onClose()
+      }
+    }}>
+      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : lightweight ? 'fade' : state.transitionStyle === 'dissolve' ? 'dissolve' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={lightweight ? 'opacity' : transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-modal={inline ? undefined : true} aria-label={tr('交互原型预览')} tabIndex={-1}>
         <header>
           <strong>{prototypeTitle(n.name, locale)}</strong>
-          <button type="button" onClick={() => { setVideoAsset(null); setState(initialPrototype(snapshot.current)); setError(''); scroll.current?.scrollTo(0, 0); setScrollPosition({ left: 0, top: 0 }) }}>
+          <button type="button" onClick={() => { setVideoAsset(null); setState(initialPrototype(snapshot.current, startNode, startPage)); setError(''); scroll.current?.scrollTo(0, 0); setScrollPosition({ left: 0, top: 0 }) }}>
             {tr('重新开始')}
           </button>
           <button

@@ -21,19 +21,21 @@ import { download } from './persistence'
 import type { Interaction, PrototypeAction, PrototypeOverflow } from './prototype'
 import { hasSchemaExtras } from './prototype'
 import { PrototypePlayer } from './PrototypePlayer'
+import { PrototypeFlowsPanel } from './PrototypeFlowsPanel'
+import { addPrototypeFlow, outerPrototypeFrame, prototypeFlowsOnPage } from './prototype-flows'
 import { jumpToNode } from './canvas-navigation'
 import { ImportOwner, importStep } from './import-ownership'
 
 export type DesignToolsTab = 'variables' | 'styles' | 'libraries' | 'prototype'
 export function DesignTools({ editor, onClose, initialTab = 'variables', embedded = false, allowPrototype = true }: { editor: Editor; onClose: () => void; initialTab?: DesignToolsTab; embedded?: boolean; allowPrototype?: boolean }) {
   const { locale, tr } = useProfessionalDialogText()
-  const { doc, selection } = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
+  const { doc, selection, page } = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     system = doc.designSystem || emptySystem(),
     n = doc.nodes[selection[0]]
   const [requestedTab, setTab] = useState<DesignToolsTab>(initialTab),
     [name, setName] = useState(''),
     [version, setVersion] = useState(1),
-    [preview, setPreview] = useState(false),
+    [preview, setPreview] = useState<{ startNode?: string } | null>(null),
     [error, setError] = useState('')
   const tab = !allowPrototype && requestedTab === 'prototype' ? 'variables' : requestedTab
   const file = useRef<HTMLInputElement>(null)
@@ -69,7 +71,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
     )
   }
   const parse = (kind: string, value: string) =>
-    kind === 'number' ? Number(value) : kind === 'boolean' ? value === 'true' : value
+    kind === 'number' || kind === 'timing' ? Number(value) : kind === 'boolean' ? value === 'true' : value
   const interaction = (index: number, fn: (e: Interaction) => void) =>
     editor.change('修改交互', (d) => {
       fn(d.prototype!.interactions[n.id][index])
@@ -283,25 +285,8 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
           )}
           {tab === 'prototype' && (
             <section>
-              <button
-                type="button"
-                disabled={!n}
-                onClick={() =>
-                  editor.change('设置原型起点', (d) => {
-                    d.prototype ??= { interactions: {} }
-                    d.prototype.startNode = n.id
-                  })
-                }
-              >
-                {tr('将选中图层设为起点')}
-              </button>
-              <button
-                type="button"
-                disabled={!doc.pages.some((p) => p.children.length)}
-                onClick={() => setPreview(true)}
-              >
-                {tr('播放原型')}
-              </button>
+              <PrototypeFlowsPanel editor={editor} doc={doc} pageId={page} selection={selection}
+                onPreview={startNode => setPreview({ startNode })} />
               {n && (
                 <>
                   {selection.length === 1 && n.kind === 'frame' && <label className="labeled-select">
@@ -323,6 +308,9 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                     onClick={() =>
                       editor.change('添加交互', (d) => {
                         d.prototype ??= { interactions: {} }
+                          const start = outerPrototypeFrame(d, n.id)
+                          if (start && !d.nodes[start].locked && prototypeFlowsOnPage(d, page).length === 0)
+                            addPrototypeFlow(d, page, start)
                         ;(d.prototype.interactions[n.id] ??= []).push({
                           trigger: 'click',
                           actions: [
@@ -496,7 +484,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             />
                           )}
                           {['navigate','back'].includes(a.kind) && <select aria-label={tr('过渡方式')} value={a.transitionStyle ?? ''} onChange={ev=>action(i,j,x=>{x.transitionStyle=(ev.target.value || undefined) as PrototypeAction['transitionStyle']})}>
-                            <option value="">{tr('智能动画')}</option><option value="dissolve">{tr('溶解（透明度）')}</option><option value="none">{tr('无动画')}</option><option value="slide-left">{tr('从左滑入')}</option><option value="slide-right">{tr('从右滑入')}</option><option value="slide-top">{tr('从上滑入')}</option><option value="slide-bottom">{tr('从下滑入')}</option>
+                            <option value="">{tr('智能动画')}</option><option value="dissolve">{tr('溶解（透明度）')}</option><option value="none">{locale === 'en' ? 'Instant' : '即时'}</option><option value="slide-left">{tr('从左滑入')}</option><option value="slide-right">{tr('从右滑入')}</option><option value="slide-top">{tr('从上滑入')}</option><option value="slide-bottom">{tr('从下滑入')}</option>
                           </select>}
                           <input
                             aria-label={tr('过渡毫秒')}
@@ -504,6 +492,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             min={0}
                             max={10000}
                             value={a.durationMs || 0}
+                            disabled={a.transitionStyle === 'none' || !!a.transitionDurationVar}
                             onChange={(ev) =>
                               interaction(i, (e) => {
                                 e.actions[j].durationMs = Number(ev.target.value)
@@ -513,6 +502,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                           <select
                             aria-label={tr('过渡曲线')}
                             value={a.easingCurve || ''}
+                            disabled={a.transitionStyle === 'none' || !!a.transitionEasingVar}
                             onChange={(ev) =>
                               interaction(i, (e) => {
                                 e.actions[j].easingCurve =
@@ -526,6 +516,19 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             <option value="ease-in-out">{tr('缓入缓出')}</option>
                             <option value="spring">{tr('弹簧')}</option>
                           </select>
+                          {a.transitionStyle !== 'none' && ['navigate', 'back', 'overlay', 'scroll-to'].includes(a.kind) &&
+                            ([
+                              ['timing', 'transitionDurationVar', locale === 'en' ? 'Timing variable' : '时长变量'],
+                              ['easing', 'transitionEasingVar', locale === 'en' ? 'Easing variable' : '缓动变量'],
+                            ] as const).map(([kind, key, label]) => {
+                              const compatible = Object.entries(system.variables).filter(([id, variable]) => variable.kind === kind || id === a[key])
+                              if (!compatible.length) return null
+                              return <select key={key} aria-label={label} value={a[key] || ''}
+                                onChange={event => action(i, j, x => setExtra(x, key, event.target.value))}>
+                                <option value="">{label}</option>
+                                {compatible.map(([id, variable]) => <option key={id} value={id}>{variable.name}</option>)}
+                              </select>
+                            })}
                           {a.kind === 'overlay' && (
                             <div className="overlay-position-editor">
                               <select
@@ -849,7 +852,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
           )}
         </div>
       </div>
-      {allowPrototype && preview && <PrototypePlayer document={doc} onClose={() => setPreview(false)} />}
+      {allowPrototype && preview && <PrototypePlayer document={doc} inline={embedded} startNode={preview.startNode} pageId={page} onClose={() => setPreview(null)} />}
     </>
   )
 }

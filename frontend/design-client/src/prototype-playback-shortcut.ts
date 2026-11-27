@@ -1,4 +1,5 @@
 import type { DesignDocument } from './model'
+import { defaultPrototypeStart } from './prototype-flows'
 
 type ChordEvent = {
   key: string
@@ -49,7 +50,7 @@ export function pageHasFrame(doc: DesignDocument, pageId: string): boolean {
 }
 
 /** Same start-node check the player uses, so the shortcut does not mount a throw. */
-export function prototypePlaybackReady(doc: DesignDocument): boolean {
-  const current = doc.prototype?.startNode || doc.pages[0]?.children[0]
+export function prototypePlaybackReady(doc: DesignDocument, pageId?: string): boolean {
+  const current = defaultPrototypeStart(doc, undefined, pageId)
   return !!current && !!doc.nodes[current]
 }

@@ -124,6 +124,8 @@ test('Figma Shift+Space opens the inline preview only from the focused canvas wh
   const preview = await press(canvas(), ' ', { code: 'Space', shiftKey: true })
   expect(preview.defaultPrevented).toBe(true)
   expect(player()).not.toBeNull()
+  expect(player()?.getAttribute('aria-modal')).toBeNull()
+  expect(canvas().closest('[inert]')).toBeNull()
   expect(canvas().classList.contains('canvas-space-held')).toBe(false)
   unchanged(before, version, selection)
   await press(canvas(), ' ', { code: 'Space', shiftKey: true, repeat: true })

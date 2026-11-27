@@ -6,8 +6,9 @@ import {
   type GpuDriverMemoryStats,
   type GpuMemorySnapshot,
 } from './kernel/client'
-import { modalOwnsKeyboard } from './modal-keyboard'
+import { editableOwnsKeyboard, modalOwnsKeyboard } from './modal-keyboard'
 import { useProfessionalDialogText } from './professional-dialog-messages'
+import { formatShortcutCombo, shortcutPlatform } from './shortcut-profiles'
 
 /** Mirrors design-kernel memory.rs DEFAULT_GPU_MEMORY_LIMIT_BYTES; the
  * kernel breakdown carries its own limitBytes, which wins when present. */
@@ -162,7 +163,7 @@ function DriverStatsTable({ stats }: { stats: GpuDriverMemoryStats }) {
   )
 }
 
-/** 应用内 GPU 内存调试面板。⌘/Ctrl+Shift+G 切换；仅在打开时轮询，关闭时不
+/** 应用内 GPU 内存调试面板。⌘/Ctrl+Alt+Shift+G 切换；仅在打开时轮询，关闭时不
  * 保留任何定时器或订阅之外的运行状态。 */
 export function GpuMemoryPanel() {
   const { locale, tr } = useProfessionalDialogText()
@@ -174,10 +175,11 @@ export function GpuMemoryPanel() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.key.toLowerCase() !== 'g') return
-      if (modalOwnsKeyboard(event.target)) return
+      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || !event.altKey || event.code !== 'KeyG' ||
+          event.getModifierState('AltGraph') || event.isComposing || event.defaultPrevented ||
+          editableOwnsKeyboard(event.target) || modalOwnsKeyboard(event.target)) return
       event.preventDefault()
-      setOpen((value) => !value)
+      if (!event.repeat) setOpen((value) => !value)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -232,7 +234,7 @@ export function GpuMemoryPanel() {
         </button>
       </div>
       <div style={noteStyle}>
-        {tr('工作集预算')} {formatBytes(workingBudget)} · ⌘⇧G · {POLL_MS / 1000}s
+        {tr('工作集预算')} {formatBytes(workingBudget)} · {formatShortcutCombo('Mod+Alt+Shift+G', shortcutPlatform())} · {POLL_MS / 1000}s
         <div>{tr('预算是本程序准入策略；WebGPU 不提供剩余显存查询。')}</div>
         <div>{tr('交互驻留预算')} {formatBytes(snapshot?.rendererPolicy?.interactionBudgetBytes)}</div>
       </div>

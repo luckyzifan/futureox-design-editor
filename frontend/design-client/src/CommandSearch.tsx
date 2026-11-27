@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import { commandSearchEntries, commandSearchCopy, commandSearchGroupLabel, filterCommandSearch, runCommandSearch, type CommandSearchEntry } from './command-search'
-import { closeCommandSearch, commandSearchReturnTarget, commandSearchSnapshot, requestCommandSearch, subscribeCommandSearch } from './command-search-session'
+import { commandSearchEntries, commandSearchCopy, commandSearchGroupLabel, filterCommandSearch, quickInsertEntries, runCommandSearch, type CommandSearchEntry } from './command-search'
+import { closeCommandSearch, commandSearchReturnTarget, commandSearchScope, commandSearchSnapshot, requestCommandSearch, subscribeCommandSearch, type CommandSearchScope } from './command-search-session'
 import { desktopBridge } from './desktop'
 import type { Editor } from './engine'
 import { useInterfacePreferences } from './interface-preference'
@@ -15,13 +15,21 @@ import './command-search.css'
 export function CommandSearch({ editor }: { editor: Editor }) {
   const token = useSyncExternalStore(subscribeCommandSearch, commandSearchSnapshot, () => 0)
   if (!token) return null
-  return createPortal(<CommandSearchDialog key={token} editor={editor} />, document.body)
+  return createPortal(<CommandSearchDialog key={token} editor={editor} scope={commandSearchScope()} />, document.body)
 }
 
-function CommandSearchDialog({ editor }: { editor: Editor }) {
+function CommandSearchDialog({ editor, scope }: { editor: Editor; scope: CommandSearchScope }) {
   const { locale, uiMode } = useInterfacePreferences()
   const profile = useShortcutProfile()
-  const text = commandSearchCopy(uiMode, locale)
+  const inserting = scope === 'components'
+  const commandText = commandSearchCopy(uiMode, locale)
+  const text = inserting ? {
+    ...commandText,
+    title: locale === 'en' ? 'Quick insert' : '快速插入组件',
+    search: locale === 'en' ? 'Search components' : '搜索可插入组件',
+    placeholder: locale === 'en' ? 'Find a component or library…' : '搜索组件或组件库…',
+    empty: locale === 'en' ? 'No matching components' : '没有匹配的组件',
+  } : commandText
   const listId = useId()
   const dialog = useRef<HTMLElement>(null)
   const input = useRef<HTMLInputElement>(null)
@@ -32,11 +40,12 @@ function CommandSearchDialog({ editor }: { editor: Editor }) {
   const [group, setGroup] = useState<string | null>(null)
   const [filterOpen, setFilterOpen] = useState(false)
   const revision = useSyncExternalStore(editor.subscribe, () => [
-    editor.state.version, editor.state.selection.join('\n'), editor.state.tool, editor.state.page,
+    editor.sessionGeneration, editor.state.version, editor.state.selection.join('\n'), editor.state.tool, editor.state.page,
     editor.state.busy, editor.interactionActive, editor.canUndo, editor.canRedo,
   ].join('|'), () => '')
   const context = useMemo(() => ({ profile, platform: shortcutPlatform(), desktop: !!desktopBridge(), uiMode }), [profile, uiMode])
-  const entries = useMemo(() => commandSearchEntries(editor, context, locale), [editor, context, locale, revision])
+  const entries = useMemo(() => inserting ? quickInsertEntries(editor, locale) : commandSearchEntries(editor, context, locale),
+    [editor, context, locale, revision, inserting])
   const groups = useMemo(() => [...new Set(entries.map(entry => entry.group))], [entries])
   const scoped = useMemo(() => group ? entries.filter(entry => entry.group === group) : entries, [entries, group])
   const filtered = useMemo(() => filterCommandSearch(scoped, query), [scoped, query])
@@ -67,7 +76,7 @@ function CommandSearchDialog({ editor }: { editor: Editor }) {
     flushSync(() => closeCommandSearch())
     try { await runCommandSearch(editor, entry, context) }
     finally { running.current = false }
-    if (pending && hasPendingEdits(editor) && editor.state.doc === before) requestCommandSearch(reopen)
+    if (pending && hasPendingEdits(editor) && editor.state.doc === before) requestCommandSearch(reopen, scope)
   }
   return <div className="command-search-backdrop" onPointerDown={event => { if (event.target === event.currentTarget) { event.preventDefault(); closeCommandSearch() } }}>
     <section ref={dialog} className="command-search-dialog" role="dialog" aria-modal="true" aria-labelledby={`${listId}-title`}
@@ -75,7 +84,7 @@ function CommandSearchDialog({ editor }: { editor: Editor }) {
         event.stopPropagation()
         if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
         const primary = shortcutPlatform() === 'mac' ? event.metaKey : event.ctrlKey
-        if (primary && !event.shiftKey && event.key.toLowerCase() === 'f') {
+        if (!inserting && primary && !event.shiftKey && event.key.toLowerCase() === 'f') {
           event.preventDefault()
           if (!event.repeat) {
             if (filterOpen) closeFilter()
@@ -85,13 +94,13 @@ function CommandSearchDialog({ editor }: { editor: Editor }) {
         }
         // Sketch Command Bar: ⌘↑ enters the selected group or goes back to all
         // commands; ⌥⌘↑ always returns to all commands.
-        if (primary && event.altKey && event.key === 'ArrowUp') {
+        if (!inserting && primary && event.altKey && event.key === 'ArrowUp') {
           event.preventDefault()
           if (event.repeat) return
           setGroup(null); setActive(0); closeFilter()
           return
         }
-        if (primary && !event.altKey && event.key === 'ArrowUp') {
+        if (!inserting && primary && !event.altKey && event.key === 'ArrowUp') {
           event.preventDefault()
           if (event.repeat) return
           setGroup(current => current ? null : selected?.group ?? current)
@@ -134,10 +143,10 @@ function CommandSearchDialog({ editor }: { editor: Editor }) {
       }}>
       <header>
         <h2 id={`${listId}-title`}>{text.title}</h2>
-        <button type="button" className="command-search-filter" aria-haspopup="menu" aria-expanded={filterOpen}
+        {!inserting && <button type="button" className="command-search-filter" aria-haspopup="menu" aria-expanded={filterOpen}
           aria-label={text.filter} onClick={() => setFilterOpen(open => !open)}>
           {group ? commandSearchGroupLabel(group, locale) : text.filter}
-        </button>
+        </button>}
         <button type="button" aria-label={text.close} onClick={() => closeCommandSearch()}>×</button>
       </header>
       {filterOpen && <div ref={filterMenu} className="command-search-filter-menu" role="menu" aria-label={text.resultGroup}
@@ -160,7 +169,7 @@ function CommandSearchDialog({ editor }: { editor: Editor }) {
           onClick={() => void activate(entry)}>
           <b>{entry.label}</b>
           {entry.shortcut ? <kbd>{entry.shortcut}</kbd> : <span />}
-          {entry.reason ? <span className="command-search-reason">{entry.reason}</span> : null}
+          {entry.reason || entry.detail ? <span className="command-search-reason">{entry.reason || entry.detail}</span> : null}
         </button>)}
       </div> : <p className="command-search-empty" role="status">{text.empty}</p>}
     </section>

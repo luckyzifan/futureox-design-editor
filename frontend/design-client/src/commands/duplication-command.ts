@@ -19,8 +19,8 @@ export type DuplicationIntent = { kind: 'default' } | { kind: 'world-offset'; x:
  * Frames (a frame duplicated inside a section grows that section). Desktop
  * reports from 2021 through 2024 measure 40px between the frames. This
  * environment did not run Figma 126.10.13 and does not substitute another gap.
- * Ordinary objects, nested frames, groups, mixed selections, and Sketch layout
- * keep the +10,+10 step. */
+ * The first ordinary Figma canvas copy stays in place. Sketch uses its
+ * existing +10,+10 step. */
 export const FIGMA_TOP_LEVEL_FRAME_DUPLICATE_GAP = 40
 export function duplicationCanvas(uiMode: string | undefined): 'figma' | 'ordinary' {
   return uiMode === 'sketch' ? 'ordinary' : 'figma'
@@ -92,8 +92,8 @@ export function prepareDuplication(doc: DesignDocument, selected: readonly strin
   const repeat = intent.kind === 'default' && repeatMatches(state.repeat, index.ids) ? state.repeat : null
   if (repeat && !state.singleStep) reject('unsupported_duplicate_repeat_batch', 'Implicit duplicate repeat requires one normalized operation, not a multi-operation batch')
   // Bounds run only when every root is a page-level frame/section or a direct
-  // child of a non-flow section. A group, shape, nested frame, or mixed
-  // selection stops at the first miss and keeps translate(10, 10).
+  // child of a non-flow section. Other Figma canvas selections duplicate
+  // in place, including ordinary rectangles in the live comparison.
   const rightDuplicate = state.canvas === 'figma' && intent.kind === 'default' && !repeat
     && index.ids.every(id => figmaRightDuplicate(doc, id, index))
   const frameShift = rightDuplicate ? unionBounds(index.ids.map(id => {
@@ -104,7 +104,7 @@ export function prepareDuplication(doc: DesignDocument, selected: readonly strin
   for (const id of index.ids) {
     const delta = intent.kind === 'world-offset' ? translate(intent.x, intent.y) : repeat
       ? supportedRepeatDelta(worldMatrix(doc, id, index.parents), repeat.reference.get(id)!)
-      : frameShift !== null ? translate(frameShift, 0) : translate(10, 10)
+      : frameShift !== null ? translate(frameShift, 0) : state.canvas === 'figma' ? identity() : translate(10, 10)
     if (!delta || !finite(delta)) throw new SelectionCommandError('unsupported_duplicate_transform', 'Duplicate repeat supports finite translation and rotation only')
     transforms.set(id, delta)
   }

@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import { Editor } from '../engine'
+import { interfacePreference } from '../interface-preference'
 import { blank, defaultLayout, defaultSizing, LAYOUT_GAP_LIMIT, node, type DesignDocument } from '../model'
 import { createEditorDesignAutomation } from '../automation/index'
 import { prepareLayoutAdd, prepareLayoutRemove } from './layout-command'
@@ -205,7 +206,9 @@ test.each(['alignSelf', 'overrideStart', 'absolute', 'hidden'] as const)('remove
   expect([result.transform, result.width, result.height]).toEqual([original.transform, original.width, original.height])
   expect(result.sizing!.width).toBe(behavior === 'alignSelf' ? 'fixed' : 'hug')
 })
-test('no-argument UI inference preserves its historical 16-unit wrapper outset and inferred spacing', () => {
+test.each([['figma', 0], ['sketch', 16]] as const)('inferred %s wrapper respects its default padding and measured spacing', (uiMode, padding) => {
+  const previousMode = interfacePreference.getSnapshot().uiMode
+  interfacePreference.set({ uiMode })
   const doc = blank(), a = node('rectangle', 10, 10, 30, 20), b = node('rectangle', 80, 10, 40, 20)
   doc.nodes = { [a.id]: a, [b.id]: b }; doc.pages[0].children = [a.id, b.id]
   const e = new Editor(doc)
@@ -213,11 +216,11 @@ test('no-argument UI inference preserves its historical 16-unit wrapper outset a
     e.select([a.id, b.id]); const before = e.state.doc
     e.autoLayout()
     const frame = e.state.doc.nodes[e.state.selection[0]]
-    expect(frame.layout).toMatchObject({ mode: 'horizontal', gap: 40, padding: [16, 16, 16, 16] })
-    expect(frame.transform).toEqual([1, 0, 0, 1, -6, -6])
-    expect(e.state.doc.nodes[a.id].transform).toEqual([1, 0, 0, 1, 16, 16])
+    expect(frame.layout).toMatchObject({ mode: 'horizontal', gap: 40, padding: [padding, padding, padding, padding] })
+    expect(frame.transform).toEqual([1, 0, 0, 1, 10 - padding, 10 - padding])
+    expect(e.state.doc.nodes[a.id].transform).toEqual([1, 0, 0, 1, padding, padding])
     e.undo(); expect(e.state.doc).toEqual(before)
-  } finally { e.dispose() }
+  } finally { e.dispose(); interfacePreference.set({ uiMode: previousMode }) }
 })
 test.each([
   ['horizontal', 0], ['vertical', 0], ['horizontal', 1e-10], ['vertical', 1e-10],

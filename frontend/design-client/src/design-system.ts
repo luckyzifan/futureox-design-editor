@@ -10,6 +10,9 @@ import { cloneValue } from './draft'
 import { importFonts } from './text'
 import { remapReferences } from './components'
 export type VariableValue = string | number | boolean | { alias: string }
+export const MOTION_VARIABLE_SCHEMA = 36
+export type VariableKind = 'color' | 'number' | 'boolean' | 'string' | 'timing' | 'easing'
+export const isMotionVariable = (kind: unknown) => kind === 'timing' || kind === 'easing'
 export type DesignSystem = {
   fontSources?: Record<string, { style?: string; runs?: Record<string, string>; resolved?: string[]; digest?: string; runDigests?: Record<string, string> }>
   /** Format metadata is preserved separately from executable variable bindings. */
@@ -20,7 +23,7 @@ export type DesignSystem = {
     {
       name: string
       collection: string
-      kind: 'color' | 'number' | 'boolean' | 'string'
+      kind: VariableKind
       values: Record<string, VariableValue>
     }
   >

@@ -18,6 +18,7 @@ import { commandRecentRank, recordCommandSearchUse } from './command-recent'
 import { canCloseSelectionPath, canJoinSelectionPaths, canReverseSelectionPath } from './sketch-path-commands'
 import { editableFrameCrop } from './selection-properties'
 import { commitPendingEdits } from './pending-edits'
+import { componentSources } from './components'
 import { formatShortcutCombo, shortcutBindings, shortcutContextForLayout, type ShortcutContext } from './shortcut-profiles'
 import { localizedToolCommands, toolForCommand, unavailableReason } from './tool-registry'
 
@@ -44,6 +45,7 @@ export function commandSearchCopy(mode: UiMode, locale: InterfaceLocale) {
 
 export type CommandSearchAction =
   | { kind: 'command'; command: EditorCommand }
+  | { kind: 'insert-component'; id: string; session: number; page: string }
   | { kind: 'align'; axis: 'x' | 'y'; mode: 'start' | 'center' | 'end' | 'distribute' }
   | { kind: 'geometry'; operation: 'union' | 'subtract' | 'intersect' | 'exclude' | 'divide' }
 
@@ -69,6 +71,7 @@ export type CommandSearchEntry = {
   group: string
   disabled: boolean
   reason?: string
+  detail?: string
   action: CommandSearchAction
   order: number
 }
@@ -221,6 +224,7 @@ function explain(editor: Editor, action: CommandSearchAction, context: ShortcutC
   const block = editor.state.busy ? phrase(locale, '正在处理其他操作', 'Another operation is still running')
     : editor.interactionActive ? phrase(locale, '请先结束拖动，或按 Esc 取消', 'Finish the drag or press Esc') : undefined
   if (block) return block
+  if (action.kind === 'insert-component') return undefined
   const doc = editor.state.doc
   const nodes = editor.state.selection.map(id => doc.nodes[id]).filter(Boolean)
   const page = doc.pages.find(item => item.id === editor.state.page)
@@ -441,6 +445,26 @@ export function commandSearchEntries(editor: Editor, context: ShortcutContext, l
   return entries
 }
 
+export function quickInsertEntries(editor: Editor, locale: InterfaceLocale): CommandSearchEntry[] {
+  const { doc, page, busy } = editor.state
+  const parents = editor.parentMap()
+  const libraries = new Map<string, string>()
+  for (const library of Object.values(doc.designSystem?.libraries ?? {})) {
+    for (const id of [...library.componentIds, ...Object.values(library.nodeMap)]) libraries.set(id, library.name)
+  }
+  return componentSources(doc).map((node, order) => {
+    const parent = doc.nodes[parents.get(node.id) ?? '']
+    const source = libraries.get(node.id) || phrase(locale, '本地组件', 'Local component')
+    const variant = Object.values(node.component!.variants).join(' / ')
+    return {
+      id: `insert-${node.id}`, label: node.name, aliases: [source, parent?.componentSet ? parent.name : '', variant],
+      detail: variant ? `${source} · ${variant}` : source, group: 'component', order,
+      disabled: busy || editor.interactionActive,
+      action: { kind: 'insert-component', id: node.id, session: editor.sessionGeneration, page },
+    }
+  })
+}
+
 export function filterCommandSearch(entries: readonly CommandSearchEntry[], query: string): CommandSearchEntry[] {
   const normalized = fold(query)
   if (!normalized) {
@@ -469,6 +493,12 @@ export function filterCommandSearch(entries: readonly CommandSearchEntry[], quer
 export async function runCommandSearch(editor: Editor, entry: CommandSearchEntry, context: ShortcutContext): Promise<void> {
   if (entry.disabled) return
   recordCommandSearchUse(entry.id)
+  if (entry.action.kind === 'insert-component') {
+    const { id, page, session } = entry.action
+    if (editor.sessionGeneration === session && editor.state.page === page && editor.state.doc.nodes[id]?.component &&
+        !editor.state.busy && !editor.interactionActive && commitPendingEdits(editor)) editor.insertComponent(id)
+    return
+  }
   if (entry.action.kind === 'command') {
     const { uiMode } = interfacePreference.getSnapshot()
     const layout = shortcutContextForLayout({ ...context, uiMode })

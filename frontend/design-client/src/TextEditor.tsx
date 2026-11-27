@@ -20,6 +20,16 @@ import { matchesTypefaceShortcut, openTypefaceSelect } from './typeface-shortcut
 import { resolveShortcut, shortcutPlatform, shortcutProfileForUiMode } from './shortcut-profiles'
 import { commitFigmaTextCommand, commitListIndent, figmaTextCommandRepeats, isFigmaTextCommand, textSelectionIsList } from './figma-text-shortcuts'
 
+function textLayerTitle(text: string) {
+  return text.split(/\r?\n/, 1)[0].trim()
+}
+
+function updateTextLayerTitle(node: DesignNode, value: string) {
+  if (interfacePreference.getSnapshot().uiMode !== 'figma' || node.text === value) return
+  const placeholder = node.name === '文字' && (!node.text || node.text === '双击编辑文字')
+  if (placeholder || node.name === textLayerTitle(node.text)) node.name = textLayerTitle(value) || '文字'
+}
+
 function comparableRuns(runs: DesignNode['textRuns']) {
   // Native layout may reorder fields and omit defaults when it returns runs.
   return (runs ?? []).map(run => Object.fromEntries(Object.entries(run).filter(([name, value]) =>
@@ -63,6 +73,7 @@ export function TextInput({
         return false
       }
       const replace = (n: DesignNode, doc: DesignDocument) => {
+        updateTextLayerTitle(n, value.current)
         const source = replaceText(n, value.current, sourceFonts(doc, n))
         storeRemappedSourceFonts(doc, n.id, source)
       }
@@ -143,9 +154,12 @@ export function TextInput({
         if (e.nativeEvent.isComposing || composing.current) return
         if (e.key === 'Escape') {
           e.preventDefault()
-          input.current!.value = original.current
-          value.current = original.current
-          finish(true)
+          const cancel = !canvas || interfacePreference.getSnapshot().uiMode !== 'figma'
+          if (cancel) {
+            input.current!.value = original.current
+            value.current = original.current
+          }
+          if (!finish(cancel) && !cancel) finish(true)
         }
         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
           e.preventDefault()
@@ -288,6 +302,7 @@ export function CanvasTextEditor({
             const resource = id && draftFonts.current?.[id]
             if (resource) doc.fonts = withFontResource(doc.fonts, id, resource)
           }
+          updateTextLayerTitle(n, latest.current.text)
           n.text = latest.current.text
           n.fontSize = latest.current.fontSize
           if (latest.current.textStyle) n.textStyle = latest.current.textStyle
@@ -753,6 +768,7 @@ export function CanvasTextEditor({
                 const resource = id && draftFonts.current?.[id]
                 if (resource) doc.fonts = withFontResource(doc.fonts, id, resource)
               }
+              updateTextLayerTitle(n, latest.current.text)
               n.text = latest.current.text
               n.fontSize = latest.current.fontSize
               if (latest.current.textStyle) n.textStyle = latest.current.textStyle
@@ -799,7 +815,8 @@ export function CanvasTextEditor({
           navigate(e)
           if (e.key === 'Escape') {
             e.preventDefault()
-            finish(true, true)
+            const cancel = interfacePreference.getSnapshot().uiMode !== 'figma'
+            if (!finish(cancel, true) && !cancel && !pendingFont.current) finish(true, true)
           }
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
             e.preventDefault()

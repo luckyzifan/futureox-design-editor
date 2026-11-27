@@ -2,7 +2,7 @@
 use crate::scene::Document;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Overflow {
@@ -16,6 +16,21 @@ pub enum Overflow {
 pub struct Prototype {
     pub start_node: Option<String>,
     pub interactions: BTreeMap<String, Vec<Interaction>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flows: Option<Vec<Flow>>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Flow {
+    pub id: String,
+    pub name: String,
+    pub start_node: String,
+}
+impl Prototype {
+    pub fn default_start(&self) -> Option<&str> {
+        self.start_node.as_deref()
+            .or_else(|| self.flows.as_ref()?.first().map(|flow| flow.start_node.as_str()))
+    }
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -186,6 +201,20 @@ pub struct OverlayPosition {
     #[serde(default)]
     pub background: bool,
 }
+fn valid_bezier_easing(curve: &str) -> bool {
+    let Some(parts) = curve.strip_prefix("cubic-bezier(").and_then(|s| s.strip_suffix(')')) else { return false; };
+    let mut components = parts.split(',');
+    for axis in 0..4 {
+        let Some(value) = components.next().and_then(|part| part.trim().parse::<f64>().ok()) else { return false; };
+        if axis % 2 == 0 {
+            if !(0. ..=1.).contains(&value) { return false; }
+        } else if !(-10. ..=10.).contains(&value) { return false; }
+    }
+    components.next().is_none()
+}
+pub fn valid_variable_easing(curve: &str) -> bool {
+    valid_easing(curve) && !matches!(curve, "gentle-spring" | "custom-spring" | "custom-cubic")
+}
 pub fn valid_easing(curve: &str) -> bool {
     matches!(
         curve,
@@ -199,7 +228,7 @@ pub fn valid_easing(curve: &str) -> bool {
             | "ease-in-circ" | "ease-out-circ" | "ease-in-out-circ"
             // Spring presets from its JS schema.
             | "gentle-spring" | "custom-spring" | "custom-cubic"
-    )
+    ) || valid_bezier_easing(curve)
 }
 pub fn valid_overlay_origin(origin: &str) -> bool {
     matches!(
@@ -259,8 +288,7 @@ fn validate_schema_extras(doc: &Document, a: &Action) -> Result<(), String> {
     }
     if let Some(id) = &a.transition_duration_var {
         let v = resolved_variable(doc, id).ok_or("Missing prototype duration variable")?;
-        // Figma binds transition durations to number variables only.
-        if v.kind != "number" {
+        if !matches!(v.kind.as_str(), "number" | "timing") {
             return Err("Prototype duration variable not a number".into());
         }
     }
@@ -316,6 +344,22 @@ pub fn validate(doc: &Document) -> Result<(), String> {
         || p.interactions.len() > 20000
     {
         return Err("Invalid prototype start or budget".into());
+    }
+    if let Some(flows) = &p.flows {
+        if doc.schema_version < 35 {
+            return Err("Prototype flows require document schema 35".into());
+        }
+        let mut ids = BTreeSet::new();
+        let mut starts = BTreeSet::new();
+        for flow in flows {
+            if flow.id.trim().is_empty() || flow.id.len() > 128 || !ids.insert(&flow.id)
+                || flow.name.trim().is_empty() || flow.name.chars().count() > 200
+                || !starts.insert(&flow.start_node)
+                || !doc.nodes.get(&flow.start_node).is_some_and(|node| node.kind == "frame" && node.instance_origin.is_none())
+            {
+                return Err("Invalid or duplicate prototype flow".into());
+            }
+        }
     }
     for (id, events) in &p.interactions {
         if !doc.nodes.contains_key(id) || events.len() > 32 {
@@ -385,6 +429,8 @@ pub fn validate(doc: &Document) -> Result<(), String> {
                         let x = a.value.as_ref().ok_or("Missing prototype value")?;
                         if !match v.kind.as_str() {
                             "number" => x.as_f64().is_some_and(f64::is_finite),
+                            "timing" => x.as_f64().is_some_and(|value| (0. ..=1e7).contains(&value)),
+                            "easing" => x.as_str().is_some_and(valid_variable_easing),
                             "boolean" => x.is_boolean(),
                             "color" => x.as_str().is_some_and(|c| {
                                 crate::color::pixel(doc.color_management, c, 1.).is_ok()
@@ -434,6 +480,27 @@ mod tests {
         let mut d = doc(12);
         d.prototype.as_mut().unwrap().start_node = Some("a".into());
         assert!(validate(&d).is_ok(), "{:?}", validate(&d).err());
+    }
+
+    #[test]
+    fn named_flows_require_schema_35_and_keep_distinct_starts() {
+        let mut d = doc(34);
+        d.prototype.as_mut().unwrap().flows = Some(vec![
+            Flow { id: "one".into(), name: "Onboarding".into(), start_node: "a".into() },
+            Flow { id: "two".into(), name: "Checkout".into(), start_node: "o".into() },
+        ]);
+        assert!(validate(&d).unwrap_err().contains("schema 35"));
+        d.schema_version = 35;
+        let round_trip = crate::binfmt::decode(&crate::binfmt::encode_authored_json(&serde_json::to_string(&d).unwrap()).unwrap())
+            .unwrap();
+        assert_eq!(round_trip.prototype, d.prototype);
+        assert!(d.validate().is_ok(), "{:?}", d.validate());
+        assert_eq!(d.prototype.as_ref().unwrap().default_start(), Some("a"));
+        let flows = d.prototype.as_mut().unwrap().flows.as_mut().unwrap();
+        flows[1].start_node = "a".into();
+        assert_eq!(validate(&d).unwrap_err(), "Invalid or duplicate prototype flow");
+        d.prototype.as_mut().unwrap().flows.as_mut().unwrap()[1].start_node = "deleted".into();
+        assert_eq!(validate(&d).unwrap_err(), "Invalid or duplicate prototype flow");
     }
 
     #[test]

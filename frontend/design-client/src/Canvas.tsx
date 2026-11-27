@@ -107,6 +107,7 @@ import {
   node,
   identity,
   defaultSizing,
+  defaultTextStyle,
 } from './model'
 import {
   apply,
@@ -162,6 +163,7 @@ import { interactivePath, navigateSelection } from './selection-hierarchy'
 import { presentedPenVertex, remapPointerAnchor } from './canvas-published-input'
 import { constrainAngle, penHandle } from './pen-constraints'
 import { hitPrototypeHead, hitPrototypeLink, jumpToNode, prototypeLinks } from './canvas-navigation'
+import { PrototypeFlowBadges, PrototypeWire } from './PrototypeWire'
 import { usePrototypeTab } from './prototype-chrome'
 import { authorSketchHotspot, isSketchHotspot } from './sketch-hotspot'
 import { canvasLayerFeedback } from './canvas-layer-feedback'
@@ -400,11 +402,12 @@ function MoveGapGuides({ gaps, zoom, crisp }: { gaps: NonNullable<SmartSnapResul
     testId="canvas-gap-snap" pillPrefix="canvas-gap-pill" />
 }
 
-export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, prepareSourceDisplay, nativeSource, openingSource, openingPage, focusedMaterial, onSourceDetail, onSourceViewport, hideNative, parkNative, sourcePageBoxes, onSourcePresented, onNativeSourceStatus, onOpenSourcePoint, pickSourceMaterial, onSelectSourcePoint, selectedMaterialBox, blurEffectIndex, blurStopIndex, onSelectBlurStop, onExitBlurEdit, editTextRef, onToggleUi }: {
+export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, prepareSourceDisplay, nativeSource, openingSource, openingPage, focusedMaterial, onSourceDetail, onSourceViewport, hideNative, parkNative, sourcePageBoxes, onSourcePresented, onNativeSourceStatus, onOpenSourcePoint, pickSourceMaterial, onSelectSourcePoint, selectedMaterialBox, blurEffectIndex, blurStopIndex, onSelectBlurStop, onExitBlurEdit, editTextRef, onToggleUi, onPreviewFlow }: {
   editor: Editor; peers?:LocalPeer[]; zoomControlsTarget?: HTMLElement | null; compactChrome?: boolean
   blurEffectIndex?: number; blurStopIndex?: number; onSelectBlurStop?: (index: number) => void; onExitBlurEdit?: () => void
   editTextRef?: React.Ref<(id: string) => void>
   onToggleUi?: () => void
+  onPreviewFlow?: (startNode: string) => void
   startupPreview?: StartupPixels; loading?: boolean
   focusedMaterial?:number;onSourceDetail?:(roots:number[])=>void;onSourceViewport?:(box:import('./desktop').SourceCanvasBox,anchor?:Point,density?:number)=>void;hideNative?:boolean;parkNative?:boolean
   openingPage?:string
@@ -913,6 +916,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }
   const seedForTool = (kind: ShapeCreationKind | 'graphic') => {
     const seed = createShapeSeed(kind)
+    if (kind === 'text' && interfacePreference.getSnapshot().uiMode === 'figma') {
+      seed.fontSize = 12
+      seed.fills[0].color = '#000000'
+      seed.textStyle = { ...defaultTextStyle(), lineHeightAuto: true }
+    }
     const remembered = lastPrimitive.current
     if (interfacePreference.getSnapshot().uiMode === 'figma' && remembered?.session === editor.sessionGeneration &&
         (kind === 'polygon' || kind === 'star')) {
@@ -1406,7 +1414,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     (state.tool === 'polygon' || state.tool === 'star') &&
     lastPrimitive.current?.session === editor.sessionGeneration &&
     lastPrimitive.current[state.tool]?.id === selected[0].id
-  const canTransform = capturedTransform || ((['select','multiselect','scale'].includes(state.tool) || justCreatedPrimitive) && !spaceHeld && !textEdit &&
+  const canTransform = capturedTransform || (!devInspect && (['select','multiselect','scale'].includes(state.tool) || justCreatedPrimitive) && !spaceHeld && !textEdit &&
     !selectionFeedback.readOnly && state.selection.length > 0)
   const editingBlur = blurEffectIndex !== undefined
   const zoomFocusTarget = focusEffect?.zoomBlur && (zoomFocusCanvas || !editor.interactionActive)
@@ -1749,7 +1757,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (shortcutTargetOwnsKeyboard(e.target)) { nudge.finish(); return }
       if (e.code === 'KeyD' && e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.repeat &&
           interfacePreference.getSnapshot().uiMode === 'figma') {
+        if (drag.current || pencil.current || penRef.current || editor.interactionActive || editor.state.busy || !commitPendingEdits(editor)) return
         e.preventDefault()
+        if (!figmaDevMode()) cancelComponentPlacement(editor)
         setFigmaDevMode(!figmaDevMode())
         return
       }
@@ -1767,6 +1777,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }
       if (e.key === 'Escape' && cancelComponentPlacement(editor)) { e.preventDefault(); return }
       if (handleKeyboardBox.current(e)) return
+      if (figmaDevMode() && interfacePreference.getSnapshot().uiMode === 'figma' && (e.target === host.current || e.target === window)) {
+        if (e.code === 'Space' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+          space.current = true
+          setSpaceHeld(true)
+          e.preventDefault()
+        } else if (e.key === 'Escape' && !drag.current) {
+          if (!e.repeat) editor.select([])
+          e.preventDefault()
+        }
+        return
+      }
       if (nudge.active && e.key === 'Escape') { e.preventDefault(); if (!e.repeat) nudge.finish(true); return }
       if (nudge.active && !arrows.includes(e.key) && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key)) nudge.finish()
       if(e.key==='Escape')cancelToolActivation(editor)
@@ -2101,13 +2122,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       // Open command search before any pen commit. The chord itself must not edit the document.
-      if (shortcut?.command === 'open-command-search' || shortcut?.command === 'open-layer-find') {
+      if (shortcut?.command === 'open-command-search' || shortcut?.command === 'open-quick-insert' || shortcut?.command === 'open-layer-find') {
         // textEntryOwner is current; this listener is not rebound on each text-edit render.
         if (shortcut.command === 'open-layer-find' && ownsTextEntry(textEntryOwner.current)) return
         e.preventDefault()
         if (!e.repeat && !editor.interactionActive && !drag.current && !pencil.current) {
           if (mode === 'figma') recordShortcutUse(shortcut)
           if (shortcut.command === 'open-command-search') requestCommandSearch(e.target)
+          else if (shortcut.command === 'open-quick-insert') requestCommandSearch(e.target, 'components')
           else requestLayerFind(e.target)
         }
         return
@@ -2414,6 +2436,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // displayed camera; selection uses the displayed snapshot and live IDs.
     // A different page/session is a separate loading boundary, never a target.
     if (!displayedSnapshot && editor.state.tool !== 'hand' && !space.current && e.button !== 1) return
+    if (devInspect && !navigation) {
+      if (!kind && displayedSnapshot && e.button === 0) {
+        const hit = displayedHoverHit(screenToWorld(displayViewRef.current, screenPoint(e)), true)
+        const ids = editor.state.selection
+        editor.select(e.shiftKey && hit ? (ids.includes(hit) ? ids.filter(id => id !== hit) : [...ids, hit]) : hit ? [hit] : [])
+      }
+      return
+    }
     if (uiMode === 'figma' && !kind && !navigation && e.button === 0) {
       const component = takeComponentPlacement(editor)
       if (component) {
@@ -3879,7 +3909,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }
   async function drop(e: React.DragEvent) {
     e.preventDefault()
-    if (!displayedSnapshot || !geometryReady) return
+    if (devInspect || !displayedSnapshot || !geometryReady) return
     const p = world(e)
     const generation = editor.sessionGeneration, page = editor.state.page, epoch = pendingOperationEpoch(editor)
     let pageChanged = false
@@ -4009,7 +4039,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (!host.current?.contains(e.target as Node)) return
         if (shortcutTargetOwnsKeyboard(e.target)) return
         e.preventDefault()
-        if (drag.current || pencil.current || !geometryReady || !displayedSnapshot) return
+        if (devInspect || drag.current || pencil.current || !geometryReady || !displayedSnapshot) return
         const displayedIndex = getDisplayedIndex()
         if (!displayedIndex) return
         host.current?.focus({ preventScroll: true })
@@ -4045,7 +4075,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           if(e.button===0)onOpenSourcePoint?.(screenToWorld(editor.flushPendingView(),{x:e.clientX-e.currentTarget.getBoundingClientRect().left,y:e.clientY-e.currentTarget.getBoundingClientRect().top}))
           return
         }
-        if (!displayedSnapshot || ['pencil', 'brush', 'marker', 'washi-tape', 'hand'].includes(editor.state.tool) || space.current) return
+        if (devInspect || !displayedSnapshot || ['pencil', 'brush', 'marker', 'washi-tape', 'hand'].includes(editor.state.tool) || space.current) return
         const displayedIndex = getDisplayedIndex()
         if (!displayedIndex) return
         if (penRef.current) {
@@ -4975,6 +5005,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           </g>
         </g>}
       </svg>
+      {figmaPrototype && state.tool === 'select' && !drag.current && !textEdit && !devMode &&
+        displayedSnapshot?.document === state.doc && <>
+          {onPreviewFlow && <PrototypeFlowBadges document={state.doc} page={state.page} entries={entries}
+            view={displayView} size={size} locale={locale} onPreview={onPreviewFlow} />}
+          <PrototypeWire editor={editor} entries={entries} view={displayView} locale={locale} />
+        </>}
       {selectionFeedback.message && <div role="status" data-testid="canvas-selection-reason"
         style={{position:'absolute',left:12,top:12,zIndex:4,pointerEvents:'none',padding:'5px 8px',borderRadius:4,background:'#ffffffeb',color:'#616675',fontSize:11}}>
         {selectionFeedback.message}

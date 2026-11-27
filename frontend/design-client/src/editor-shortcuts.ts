@@ -31,9 +31,10 @@ export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey 
   if (action === 'keyboard-box-select' || binding.preserveFrameContents && !editableFrameCrop(editor)) return false
   event.preventDefault()
   if (!event.repeat && !editor.interactionActive && !editor.state.busy && layout.profile === 'figma-like') recordShortcutUse(binding)
-  if (action === 'open-command-search' || action === 'open-layer-find' || action === 'open-shortcut-reference') {
+  if (action === 'open-command-search' || action === 'open-quick-insert' || action === 'open-layer-find' || action === 'open-shortcut-reference') {
     if (!event.repeat && !editor.interactionActive) {
       if (action === 'open-command-search') requestCommandSearch(event.target)
+      else if (action === 'open-quick-insert') requestCommandSearch(event.target, 'components')
       else if (action === 'open-layer-find') requestLayerFind(event.target)
       else requestShortcutReference(event.target)
     }

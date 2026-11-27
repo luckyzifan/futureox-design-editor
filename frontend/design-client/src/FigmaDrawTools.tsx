@@ -1,8 +1,21 @@
-import { Frame, PenLine, Pencil } from 'lucide-react'
+import { CodeXml, Frame, PenLine, Pencil } from 'lucide-react'
 import { PendingEditContext } from './pending-edit-context'
 import { NumberField } from './fields'
 import type { Editor } from './engine'
 import { useInterfacePreferences } from './interface-preference'
+import { setFigmaDevMode, useFigmaDevMode } from './figma-dev-mode'
+import { commitPendingEdits } from './pending-edits'
+
+export function FigmaDevModeToggle({ editor, disabled }: { editor: Editor; disabled: boolean }) {
+  const { locale } = useInterfacePreferences()
+  const dev = useFigmaDevMode()
+  const label = locale === 'en' ? 'Dev Mode' : '开发模式'
+  return <button type="button" data-testid="dev-mode-toggle" aria-label={label}
+    aria-pressed={dev} aria-keyshortcuts="Shift+D" data-tooltip={`${label} (Shift+D)`}
+    disabled={disabled} onClick={() => {
+      if (commitPendingEdits(editor)) setFigmaDevMode(!dev)
+    }}><CodeXml size={17} aria-hidden="true" /></button>
+}
 
 export function FigmaToolbeltMode({ draw, onChange }: { draw: boolean; onChange: (draw: boolean) => boolean }) {
   const { locale } = useInterfacePreferences()

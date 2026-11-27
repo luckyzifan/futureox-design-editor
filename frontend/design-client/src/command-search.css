@@ -39,6 +39,7 @@
   height: 28px;
   font-size: 18px;
 }
+.command-search-dialog header button:only-of-type { margin-left: auto; }
 .command-search-dialog header .command-search-filter {
   width: auto;
   max-width: 190px;

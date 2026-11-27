@@ -3,10 +3,21 @@ import { resolvePrototypeMotion } from './prototype-motion'
 import type { DesignDocument } from './model'
 import { variableValue } from './design-system'
 import { evaluate, tick, validateLogicActions, type Expr } from './prototype-logic'
-export type PrototypeEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'spring' | import('./animation').NamedEasing
+import { defaultPrototypeStart, invalidatedFlowStarts, type PrototypeFlow } from './prototype-flows'
+export type PrototypeEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'spring' |
+  import('./animation').NamedEasing | `cubic-bezier(${string})`
+export function parseBezierEasing(input: string): [number, number, number, number] | undefined {
+  const match = /^cubic-bezier\(([^)]+)\)$/.exec(input)
+  if (!match) return
+  const parts = match[1].split(',').map(part => part.trim())
+  if (parts.length !== 4 || !parts.every(part => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(part))) return
+  const values = parts.map(Number)
+  if (values.every((value, index) => Number.isFinite(value) &&
+    (index % 2 ? Math.abs(value) <= 10 : value >= 0 && value <= 1))) return values as [number, number, number, number]
+}
 export function isPrototypeEasing(value: unknown): value is PrototypeEasing {
   return typeof value === 'string' && (/^(linear|ease-in|ease-out|ease-in-out|spring)$/.test(value) ||
-    /^ease-(in|out|in-out)-(sine|quad|cubic|quart|quint|expo|circ)$/.test(value))
+    /^ease-(in|out|in-out)-(sine|quad|cubic|quart|quint|expo|circ)$/.test(value) || !!parseBezierEasing(value))
 }
 export type OverlayPosition = {
   origin:
@@ -116,12 +127,17 @@ export type Interaction = {
   condition?: { variable: string; equals: string | number | boolean }
 }
 export type PrototypeOverflow = 'none' | 'horizontal' | 'vertical' | 'both'
-export type Prototype = { startNode?: string; interactions: Record<string, Interaction[]> }
+export type Prototype = { startNode?: string; interactions: Record<string, Interaction[]>; flows?: PrototypeFlow[] }
 /** Remove only references invalidated by this edit; reject newly invalid input normally. */
 export function prunePrototypeReferences(before: DesignDocument, after: DesignDocument) {
   const p = after.prototype
   if (!p) return
   const removed = new Set(Object.keys(before.nodes).filter((id) => !after.nodes[id]))
+  const invalidated = new Set(invalidatedFlowStarts(before, after))
+  if (p.flows?.some(flow => invalidated.has(flow.startNode))) {
+    p.flows = p.flows.filter(flow => !invalidated.has(flow.startNode))
+    if (!p.flows.length) delete p.flows
+  }
   if (!removed.size) return
   if (p.startNode && removed.has(p.startNode)) delete p.startNode
   for (const [id, events] of Object.entries(p.interactions)) {
@@ -223,8 +239,8 @@ export function prototypeEase(kind: PrototypeEasing | undefined, t: number): num
     return 3 * q * q * x * a + 3 * q * x * x * b + x * x * x
   }
   // anchors follow the kernel/animation defaults (CSS canonical curves)
-  const [x1, y1, x2, y2] =
-    kind === 'ease-in' ? [0.42, 0, 1, 1] : kind === 'ease-out' ? [0, 0, 0.58, 1] : [0.42, 0, 0.58, 1]
+  const [x1, y1, x2, y2] = parseBezierEasing(kind) ??
+    (kind === 'ease-in' ? [0.42, 0, 1, 1] : kind === 'ease-out' ? [0, 0, 0.58, 1] : [0.42, 0, 0.58, 1])
   let lo = 0,
     hi = 1
   for (let i = 0; i < 48; i++) {
@@ -251,8 +267,8 @@ export function prototypeFrameView(doc: DesignDocument, root: string, allowOverf
   if(!doc.pages.some(p=>p.id===at))throw new Error('原型目标不属于页面')
   return {document:{...doc,nodes},pageId:at}
 }
-export function initialPrototype(doc: DesignDocument): PrototypeState {
-  const current = doc.prototype?.startNode || doc.pages[0].children[0]
+export function initialPrototype(doc: DesignDocument, preferred?: string, pageId?: string): PrototypeState {
+  const current = defaultPrototypeStart(doc, preferred, pageId)
   if (!current || !doc.nodes[current]) throw new Error('请先创建画板并设置原型起点')
   return { current, history: [], overlays: [], values: {}, transitionMs: 0 }
 }
@@ -369,6 +385,8 @@ export function prototypeEvent(
           if (!v || a.value === undefined)
             throw new Error('原型变量无效')
           if ((v.kind === 'number' && (typeof a.value !== 'number' || !Number.isFinite(a.value))) ||
+            (v.kind === 'timing' && (typeof a.value !== 'number' || !Number.isFinite(a.value) || a.value < 0 || a.value > 1e7)) ||
+            (v.kind === 'easing' && !isPrototypeEasing(a.value)) ||
             (v.kind === 'boolean' && typeof a.value !== 'boolean') ||
             (['string', 'color'].includes(v.kind) && typeof a.value !== 'string')) throw new Error('原型变量值类型不匹配')
           const mode = a.targetVariableModeId || a.targetVariableData?.modeId

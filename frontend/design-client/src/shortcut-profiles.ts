@@ -5,7 +5,7 @@ import { sketchBooleanCommands, sketchBooleanCommandIds } from './sketch-boolean
 
 export type ShortcutProfile = 'figma-like' | 'sketch-like'
 export type ShortcutPlatform = 'mac' | 'windows' | 'linux'
-export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-layer-find' | 'toggle-layout-guides' | 'toggle-pixel-grid' | 'toggle-pixel-snapping' | 'select-parent' | 'open-shortcut-reference' | 'keyboard-box-select' | 'decrease-font-size' | 'increase-font-size' | 'decrease-font-weight' | 'increase-font-weight' | 'decrease-letter-spacing' | 'increase-letter-spacing' | 'decrease-line-height' | 'increase-line-height' | 'toggle-text-underline' | 'text-bullet-list' | 'text-numbered-list'
+export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-quick-insert' | 'open-layer-find' | 'toggle-layout-guides' | 'toggle-pixel-grid' | 'toggle-pixel-snapping' | 'select-parent' | 'open-shortcut-reference' | 'keyboard-box-select' | 'decrease-font-size' | 'increase-font-size' | 'decrease-font-weight' | 'increase-font-weight' | 'decrease-letter-spacing' | 'increase-letter-spacing' | 'decrease-line-height' | 'increase-line-height' | 'toggle-text-underline' | 'text-bullet-list' | 'text-numbered-list'
 export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean; uiMode?: UiMode; keyboardLayout?: FigmaKeyboardLayout }
 export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean; preserveFrameContents?: true; physicalCode?: string }
 export type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'isComposing' | 'defaultPrevented'> & { keyCode?: number; getModifierState?: (key: string) => boolean }
@@ -114,6 +114,7 @@ export function shortcutBindings(context: ShortcutContext): readonly ShortcutBin
   } else {
     bindings.push(
       { command: 'auto-layout', combo: 'Shift+A' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+A' },
+      { command: 'open-quick-insert', combo: 'Shift+I' },
       { command: 'zoom-next-frame', combo: 'N' }, { command: 'zoom-previous-frame', combo: 'Shift+N' },
       { command: 'next-page', combo: 'PageDown' }, { command: 'previous-page', combo: 'PageUp' },
       // Mac desktop Figma: Shift+E toggles Design and Prototype outside vector

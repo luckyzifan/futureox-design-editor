@@ -2,7 +2,7 @@ import * as ComponentSlots from '../component-slots'
 /** Local document design-system automation. No network, renderer, or editor state. */
 import * as Components from '../components'
 import {
-  emptySystem, setEffectiveNodeVariableMode, setVariableMode, variableValue,
+  emptySystem, isMotionVariable, MOTION_VARIABLE_SCHEMA, setEffectiveNodeVariableMode, setVariableMode, variableValue,
   type DesignSystem, type VariableValue,
 } from '../design-system'
 import {
@@ -10,7 +10,8 @@ import {
   type ComponentProperty, type DesignDocument, type DesignNode,
 } from '../model'
 import { validColor } from '../color'
-import { prototypeVariableModeReferences, remapVariableModeReferences } from '../variable-editing'
+import { prototypeVariableModeReferences, remapVariableModeReferences, variableKinds } from '../variable-editing'
+import { isPrototypeEasing } from '../prototype'
 import { allParents } from '../geometry'
 import { unmatchedSourceFonts } from '../font-matching'
 import { applyWholeTextStyle } from '../text'
@@ -163,6 +164,8 @@ function validateVariableValue(d: DesignDocument, v: Variable, value: unknown): 
   }
   const valid = v.kind === 'color' ? validColor(value, !!d.colorManagement)
     : v.kind === 'number' ? typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e7
+    : v.kind === 'timing' ? typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1e7
+    : v.kind === 'easing' ? isPrototypeEasing(value)
     : v.kind === 'boolean' ? typeof value === 'boolean'
     : v.kind === 'string' && typeof value === 'string' && value.length <= 100000
   if (!valid) throw new Error(`Invalid ${v.kind} variable value`)
@@ -268,7 +271,8 @@ export function validateDesignSystemDocument(d: DesignDocument): void {
     for (const [id, v] of Object.entries(s.variables)) {
       key(id); key(v.name, 'variable name', 512)
       const c = resource(s.collections, v.collection, 'collection')
-      if (!['color', 'number', 'boolean', 'string'].includes(v.kind)) throw new Error('Unknown variable kind')
+      if (!variableKinds.includes(v.kind)) throw new Error('Unknown variable kind')
+      if (isMotionVariable(v.kind) && d.schemaVersion < MOTION_VARIABLE_SCHEMA) throw new Error('Motion variable requires document schema 36')
       if (Object.keys(object(v.values, 'values')).length !== c.modes.length || c.modes.some(m => !Object.hasOwn(v.values, m))) throw new Error('Variable requires exactly one value for every collection mode')
       Object.values(v.values).forEach(value => validateVariableValue(d, v, value))
     }
@@ -693,8 +697,9 @@ export const designSystemExtensions: AutomationExtension[] = [
     return list(d.designSystem?.variables).filter(v => p.collectionId === undefined || v.collection === p.collectionId)
   }),
   extension('variable.get', 'Read a local variable and its mode values.', { variableId: str }, ['variableId'], false, (d, p) => ({ id: p.variableId, ...resource(d.designSystem?.variables, p.variableId, 'variable') })),
-  extension('variable.create', 'Create a typed variable with a value for every collection mode.', { id: str, name: str, collectionId: str, kind: { enum: ['color', 'number', 'boolean', 'string'] }, values: obj }, ['name', 'collectionId', 'kind', 'values'], true, (d, p) => {
+  extension('variable.create', 'Create a typed variable with a value for every collection mode.', { id: str, name: str, collectionId: str, kind: { enum: variableKinds }, values: obj }, ['name', 'collectionId', 'kind', 'values'], true, (d, p) => {
     const s = system(d), id = newId(s.variables, p.id), collectionId = key(p.collectionId); resource(s.collections, collectionId, 'collection')
+    if (isMotionVariable(p.kind) && d.schemaVersion < MOTION_VARIABLE_SCHEMA) d.schemaVersion = MOTION_VARIABLE_SCHEMA
     s.variables[id] = { name: key(p.name, 'name', 512), collection: collectionId, kind: p.kind as Variable['kind'], values: copy(object(p.values, 'values')) as Variable['values'] }
     return { id }
   }),

@@ -407,10 +407,13 @@ pub fn validate(doc: &Document) -> Result<(), String> {
             .collections
             .get(&v.collection)
             .ok_or("Missing variable collection")?;
+        if doc.schema_version < 36 && matches!(v.kind.as_str(), "timing" | "easing") {
+            return Err("Motion variables require document schema 36".into());
+        }
         if id.is_empty()
             || v.name.len() > 512
             || v.values.len() != c.modes.len()
-            || !matches!(v.kind.as_str(), "color" | "number" | "boolean" | "string")
+            || !matches!(v.kind.as_str(), "color" | "number" | "boolean" | "string" | "timing" | "easing")
         {
             return Err("Invalid variable".into());
         }
@@ -423,6 +426,8 @@ pub fn validate(doc: &Document) -> Result<(), String> {
                     .as_str()
                     .is_some_and(|c| crate::color::pixel(doc.color_management, c, 1.).is_ok()),
                 "number" => x.as_f64().is_some_and(|v| v.is_finite() && v.abs() <= 1e7),
+                "timing" => x.as_f64().is_some_and(|v| (0. ..=1e7).contains(&v)),
+                "easing" => x.as_str().is_some_and(crate::prototype::valid_variable_easing),
                 "boolean" => x.is_boolean(),
                 _ => x.as_str().is_some_and(|s| s.len() <= 100000),
             };

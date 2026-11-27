@@ -553,7 +553,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36
   id: string
   name: string
   pages: Page[]
@@ -756,6 +756,24 @@ const wellFormed = (value: string) => {
   }
   return true
 }
+export const PROTOTYPE_FLOW_SCHEMA = 35
+export const validFlowName = (name: string) => !!name.trim() && [...name].length <= 200 && wellFormed(name)
+export function validatePrototypeFlows(doc: DesignDocument, value: unknown) {
+  if (value === undefined) return
+  if (!Array.isArray(value)) throw new Error('无效的原型流程')
+  const ids = new Set<string>(), starts = new Set<string>()
+  const bytes = new TextEncoder()
+  for (const flow of value) {
+    if (!isObject(flow) || Object.keys(flow).some(key => !['id', 'name', 'startNode'].includes(key)) ||
+        typeof flow.id !== 'string' || !flow.id.trim() || !wellFormed(flow.id) || bytes.encode(flow.id).length > 128 || ids.has(flow.id) ||
+        typeof flow.name !== 'string' || !validFlowName(flow.name) ||
+        typeof flow.startNode !== 'string' || starts.has(flow.startNode) ||
+        !Object.hasOwn(doc.nodes, flow.startNode) || doc.nodes[flow.startNode].kind !== 'frame' || doc.nodes[flow.startNode].instanceOrigin)
+      throw new Error('无效或重复的原型流程')
+    ids.add(flow.id)
+    starts.add(flow.startNode)
+  }
+}
 export function copyName(name: string, suffix: string) {
   let result = ''
   for (const character of name) {
@@ -883,7 +901,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -892,6 +910,10 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     throw new Error('无效的设计文件或不支持的格式版本')
   validateFdCompatibility(value.fdCompatibility)
   const d = value as unknown as DesignDocument
+  if (d.prototype?.flows !== undefined) {
+    if (d.schemaVersion < PROTOTYPE_FLOW_SCHEMA) throw new Error('多原型流程需要设计文件版本 35')
+    validatePrototypeFlows(d, d.prototype.flows)
+  }
   // Reuse one local enumeration while retaining every validation below.
   // This is not a cached validity certificate for mutable document objects.
   // A page scope validates the edited nodes only. The caller has already proved
