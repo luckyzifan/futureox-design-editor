@@ -1,25 +1,48 @@
 /** One complete immutable compilation witness per coordinate
  * slot. No approximate hashes or geometry canonicalization participate in hits. */
-import {copyWitness,sameWitness,type CompilationWitness,type WitnessLookup} from './compilation-witness'
+import {copyWitness,sameByteSpan,sameWitness,type CompilationWitness,type WitnessLookup} from './compilation-witness'
 export function sameBytes(a: Uint8Array, b: Uint8Array) {
-  if (a.byteLength !== b.byteLength) return false
-  for (let i = 0; i < a.byteLength; i++) if (a[i] !== b[i]) return false
-  return true
+  return a.byteLength === b.byteLength && sameByteSpan(a, 0, b)
 }
 
 const encoder = new TextEncoder()
 export const compilationWitness = (raw: string) => encoder.encode(raw)
 
-/** Small coordinate keys preserve the entire f64 camera/phase, including -0.
- * JSON serialization is used only for compiler inputs exactly as production;
- * its output, never a reserialized parsed scene, is the pixel witness. */
+const hexByte = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'))
+const littleEndian = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1
+/** The last encoded slot. Tiles of one frame repeat the same camera, so a
+ * bitwise-equal lookup returns the identical string without re-encoding. */
+let memoValues: Float64Array | undefined
+let memoSlot = ''
 export function coordinateSlot(numbers: readonly number[]) {
-  const data = new DataView(new ArrayBuffer(numbers.length * 8))
-  numbers.forEach((n, i) => {
+  const memo = memoValues
+  if (memo && memo.length === numbers.length) {
+    let equal = true
+    for (let i = 0; i < numbers.length; i++) {
+      const n = numbers[i]
+      if (!Number.isFinite(n)) throw new Error('Invalid exact tile coordinate')
+      if (!Object.is(memo[i], n)) { equal = false; break }
+    }
+    if (equal) return memoSlot
+  }
+  const values = new Float64Array(numbers.length)
+  for (let i = 0; i < numbers.length; i++) {
+    const n = numbers[i]
     if (!Number.isFinite(n)) throw new Error('Invalid exact tile coordinate')
-    data.setFloat64(i * 8, n, true)
-  })
-  return [...new Uint8Array(data.buffer)].map((b) => b.toString(16).padStart(2, '0')).join('')
+    values[i] = n
+  }
+  let bytes: Uint8Array
+  if (littleEndian) bytes = new Uint8Array(values.buffer)
+  else {
+    const data = new DataView(new ArrayBuffer(numbers.length * 8))
+    values.forEach((n, i) => data.setFloat64(i * 8, n, true))
+    bytes = new Uint8Array(data.buffer)
+  }
+  let slot = ''
+  for (let i = 0; i < bytes.length; i++) slot += hexByte[bytes[i]]
+  memoValues = values
+  memoSlot = slot
+  return slot
 }
 
 export class ExactTileCache<T> {
