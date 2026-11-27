@@ -50,9 +50,10 @@ fn rgb(scene: &GpuScene, color: &str) -> Result<[f32; 3], String> {
     let p = Pixel::hex(color, 1.)?;
     Ok([p.0[0], p.0[1], p.0[2]])
 }
-fn batchable(n: &GpuNode) -> bool {
+fn batchable(scene: &GpuScene, n: &GpuNode) -> bool {
     n.opacity == 1.
         && n.blend == "normal"
+        && !n.passthrough
         && n.children.is_empty()
         && n.effects.is_empty()
         && n.strokes.is_empty()
@@ -60,8 +61,50 @@ fn batchable(n: &GpuNode) -> bool {
         && n.fills[0].visible
         && n.fills[0].kind == "solid"
         && n.fills[0].blend == "normal"
-                && n.fills[0].stops.len() <= 32
-        && n.fill.analytic.is_some()
+        && n.fills[0].stops.len() <= 32
+        && (n.fill.analytic.is_some() || rect_box(scene, n).is_some())
+}
+/// Local rectangle edges of a mask whose stored program is the four-sample
+/// rectangle record (`AreaProgram::samples_at_rect`) with whole-device-pixel
+/// edges. The instanced shader tests the same four sample offsets directly, and
+/// for integer edges its f32 compare answers exactly like the program's exact
+/// binary64 compare: every remainder word is zero and the edges reduce to the
+/// integer floor/up offsets. Any fractional edge keeps the mask's exact
+/// analytic compare, so those leaves keep their ordinary draws.
+fn rect_box(scene: &GpuScene, n: &GpuNode) -> Option<[f32; 4]> {
+    let paint = n.fills.first()?;
+    if paint.kind != "solid" || paint.opacity != 1. {
+        return None;
+    }
+    let area = n.fill.area.as_ref()?;
+    if area.count != 7 {
+        return None;
+    }
+    let rect = n.fill.rect;
+    let base = area.first as usize * 4;
+    let words = scene.curves.get(base..base + 28)?;
+    // Header 4 is the sampled rectangle program. Headers 0/1/3/5 carry
+    // continuous coverage or general scanlines and must keep their masks.
+    if words[0] != 4. || words[2] != rect.w as f32 || words[3] != rect.h as f32 {
+        return None;
+    }
+    if words[12..28].iter().any(|word| *word != 0.) {
+        return None;
+    }
+    let box = [
+        words[4] + words[6],
+        words[8] + words[10],
+        words[5] + words[7],
+        words[9] + words[11],
+    ];
+    (box[0] >= 0.
+        && box[1] >= 0.
+        && box[2] > box[0]
+        && box[3] > box[1]
+        && box[2] <= rect.w as f32
+        && box[3] <= rect.h as f32
+        && box.iter().all(|v| v.abs() <= 16_777_216.))
+        .then_some(box)
 }
 pub(crate) fn render(
     frame: &mut Frame<'_>,
@@ -1632,28 +1675,47 @@ impl Compositor<'_, '_, '_> {
         let mut data = Vec::with_capacity(nodes.len() * 20);
         for n in nodes {
             let p = &n.fill;
-            let a = p.analytic.as_ref().unwrap();
             let r = p.rect;
             let b = r.intersect(targets[0].rect);
-            if b.empty() || a.count == 0 {
+            if b.empty() {
                 continue;
             }
-            let color = Pixel::hex(&n.fills[0].color, n.fills[0].opacity as f32)?
-                .rgba8_quantized()
-                .0;
+            let (first, count, bands, flags, box) = match (&p.analytic, rect_box(self.scene, n)) {
+                (Some(a), _) => {
+                    if a.count == 0 {
+                        continue;
+                    }
+                    (
+                        a.first as f32,
+                        a.count as f32,
+                        a.bands.map_or(-1., |b| b as f32),
+                        f32::from(p.rule == "evenodd"),
+                        [0.; 4],
+                    )
+                }
+                // Flag 2 selects the exact axis-aligned rectangle test; bit 0
+                // still records the fill rule the single-path shader shares.
+                (None, Some(box)) => (0., 0., -1., 2. + f32::from(p.rule == "evenodd"), box),
+                (None, None) => continue,
+            };
+            let color = futureox_design_kernel::paint::solid_rgba8(
+                &n.fills[0].color,
+                n.fills[0].opacity as f32,
+            )?
+            .0;
             data.extend([
                 r.x as f32,
                 r.y as f32,
                 r.w as f32,
                 r.h as f32,
-                a.first as f32,
-                a.count as f32,
-                a.bands.map_or(-1., |b| b as f32),
-                f32::from(p.rule == "evenodd"),
-                0.,
-                0.,
-                0.,
-                0.,
+                first,
+                count,
+                bands,
+                flags,
+                box[0],
+                box[1],
+                box[2],
+                box[3],
                 color[0],
                 color[1],
                 color[2],
@@ -1764,9 +1826,14 @@ impl Compositor<'_, '_, '_> {
             if self.replay_texture(n, &mut targets, clip)? {
                 continue;
             }
-            if !scene.float_compositing && batchable(n) {
+            if !scene.float_compositing && batchable(scene, n) {
                 let mut end = at;
-                while end < ids.len() && scene.nodes.get(&ids[end]).is_some_and(batchable) {
+                while end < ids.len()
+                    && scene
+                        .nodes
+                        .get(&ids[end])
+                        .is_some_and(|n| batchable(scene, n))
+                {
                     end += 1;
                 }
                 if end - at + 1 >= 8 {
@@ -2801,5 +2868,147 @@ impl Compositor<'_, '_, '_> {
             self.release_except(basis, &planes);
         }
         Ok(planes)
+    }
+}
+
+#[cfg(test)]
+mod solid_batch_admission_tests {
+    use super::*;
+    use futureox_design_kernel::{Engine, RenderOptions};
+    use serde_json::{Value, json};
+
+    fn compile(children: Value, nodes: Value) -> GpuScene {
+        let document = json!({
+            "schemaVersion": 1, "id": "d", "name": "solid batch admission",
+            "pages": [{"id": "p", "name": "p", "children": children, "background": "#ffffff"}],
+            "nodes": nodes
+        });
+        let options: RenderOptions = serde_json::from_value(json!({
+            "pageId": "p", "width": 240, "height": 160, "transparent": true,
+            "rasterProfile": "figma", "view": {"x": 0, "y": 0, "zoom": 1}
+        }))
+        .unwrap();
+        let mut engine = Engine::new();
+        engine.load_document(&document.to_string()).unwrap();
+        engine.compile_gpu(&options).unwrap()
+    }
+    fn solid(id: &str, x: f64, y: f64, w: f64, h: f64) -> Value {
+        json!({"id":id,"kind":"rectangle","transform":[1,0,0,1,x,y],"width":w,"height":h,
+            "fills":[{"kind":"solid","color":"#336699"}]})
+    }
+    fn node(scene: &GpuScene, id: &str) -> &GpuNode {
+        &scene.nodes[id]
+    }
+
+    #[test]
+    fn whole_pixel_rectangle_runs_on_one_instanced_draw() {
+        let scene = compile(json!(["a"]), json!({"a": solid("a", 10., 12., 40., 24.)}));
+        let n = node(&scene, "a");
+        assert_eq!(rect_box(&scene, n), Some([0., 0., 40., 24.]));
+        assert!(batchable(&scene, n));
+    }
+
+    #[test]
+    fn fractional_edges_keep_the_exact_analytic_mask() {
+        let scene = compile(json!(["a"]), json!({"a": solid("a", 10.5, 12.25, 40., 24.)}));
+        let n = node(&scene, "a");
+        assert_eq!(rect_box(&scene, n), None);
+        assert!(!batchable(&scene, n));
+        // The same leaf keeps its area program, so the ordinary mask draws stay.
+        assert!(n.fill.area.is_some());
+    }
+
+    #[test]
+    fn rounded_and_rotated_rectangles_keep_the_analytic_mask() {
+        let mut rounded = solid("a", 10., 12., 40., 24.);
+        rounded["radii"] = json!([6, 6, 6, 6]);
+        let mut rotated = solid("b", 10., 12., 40., 24.);
+        let (sin, cos) = 0.5_f64.sin_cos();
+        rotated["transform"] = json!([cos, sin, -sin, cos, 10., 12.]);
+        let scene = compile(
+            json!(["a", "b"]),
+            json!({"a": rounded, "b": rotated}),
+        );
+        for id in ["a", "b"] {
+            let n = node(&scene, id);
+            assert_eq!(rect_box(&scene, n), None, "{id}");
+            assert!(!batchable(&scene, n), "{id}");
+        }
+    }
+
+    #[test]
+    fn translucent_solid_fill_keeps_its_layered_draw() {
+        let mut painted = solid("a", 10., 12., 40., 24.);
+        painted["fills"] = json!([{"kind":"solid","color":"#336699","opacity":0.5}]);
+        let scene = compile(json!(["a"]), json!({"a": painted}));
+        let n = node(&scene, "a");
+        assert_eq!(rect_box(&scene, n), None);
+        assert!(!batchable(&scene, n));
+    }
+
+    #[test]
+    fn gradients_images_and_multiple_fills_are_not_solid_instances() {
+        let mut gradient = solid("a", 10., 12., 40., 24.);
+        gradient["fills"] = json!([{"kind":"linear","color":"#336699","angle":0.,
+            "stops":[{"offset":0.,"color":"#336699"},{"offset":1.,"color":"#ffffff"}]}]);
+        let mut two = solid("b", 10., 12., 40., 24.);
+        two["fills"] = json!([
+            {"kind":"solid","color":"#336699"},
+            {"kind":"solid","color":"#ffffff"}
+        ]);
+        let scene = compile(json!(["a", "b"]), json!({"a": gradient, "b": two}));
+        for id in ["a", "b"] {
+            assert!(!batchable(&scene, node(&scene, id)), "{id}");
+        }
+    }
+
+    #[test]
+    fn strokes_effects_opacity_and_blend_keep_their_draws() {
+        let mut stroked = solid("a", 10., 12., 40., 24.);
+        stroked["strokes"] = json!([{"kind":"solid","color":"#000000","width":2.}]);
+        let mut shadowed = solid("b", 10., 12., 40., 24.);
+        shadowed["effects"] = json!([{"kind":"shadow","radius":4.,"color":"#000000"}]);
+        let mut translucent = solid("c", 10., 12., 40., 24.);
+        translucent["opacity"] = json!(0.5);
+        let mut blended = solid("d", 10., 12., 40., 24.);
+        blended["blend"] = json!("multiply");
+        let scene = compile(
+            json!(["a", "b", "c", "d"]),
+            json!({"a": stroked, "b": shadowed, "c": translucent, "d": blended}),
+        );
+        for id in ["a", "b", "c", "d"] {
+            assert!(!batchable(&scene, node(&scene, id)), "{id}");
+        }
+    }
+
+    #[test]
+    fn plain_rectangles_inside_a_clipping_frame_stay_batched() {
+        let frame = json!({"id":"frame","kind":"frame","clip":true,
+            "transform":[1,0,0,1,4,4],"width":80,"height":60,
+            "fills":[{"kind":"solid","color":"#ffffff"}]});
+        let scene = compile(
+            json!(["frame"]),
+            json!({"frame": frame, "a": solid("a", 10., 12., 40., 24.),
+                "b": solid("b", 60., 12., 20., 24.)}),
+        );
+        assert!(node(&scene, "frame").clip);
+        for id in ["a", "b"] {
+            assert!(batchable(&scene, node(&scene, id)), "{id}");
+        }
+        // The frame itself owns children and a fill, so it keeps its draws.
+        assert!(!batchable(&scene, node(&scene, "frame")));
+    }
+
+    #[test]
+    fn rectangles_below_a_rotated_parent_keep_the_analytic_mask() {
+        let (sin, cos) = 0.25_f64.sin_cos();
+        let frame = json!({"id":"frame","kind":"frame","clip":true,
+            "transform":[cos, sin, -sin, cos, 40., 40.],"width":80,"height":60,
+            "fills":[{"kind":"solid","color":"#ffffff"}]});
+        let scene = compile(
+            json!(["frame"]),
+            json!({"frame": frame, "a": solid("a", 10., 12., 40., 24.)}),
+        );
+        assert_eq!(rect_box(&scene, node(&scene, "a")), None);
     }
 }
