@@ -63,3 +63,44 @@ test('an irregular one-dimensional selection can be respaced without moving its 
   const patches = smartSpacing(doc, model, 'x', 24)
   expect(ids.map(id => patches[id].transform.slice(4))).toEqual([[0, 0], [44, 2], [88, 1]])
 })
+
+test('an irregular column respaces on the vertical axis and keeps its first edge', () => {
+  const doc = blank()
+  const column = [0, 50, 90].map((y, index) => node('rectangle', [0, 2, 1][index], y, 20, 20))
+  const ids = column.map(shape => shape.id)
+  for (const shape of column) doc.nodes[shape.id] = shape
+  const page = doc.pages[0]
+  page.children = ids
+  expect(smartSelection(doc, page.id, ids)).toBeNull()
+  const model = smartSelection(doc, page.id, ids, undefined, true)!
+  expect(model.unevenAxis).toBe('y')
+  expect([model.x.length, model.y.length]).toEqual([1, 3])
+  const patches = smartSpacing(doc, model, 'y', 15)
+  expect(ids.map(id => patches[id].transform.slice(4))).toEqual([[0, 0], [2, 35], [1, 70]])
+})
+
+test('an evenly spaced row stays editable with the uneven-line allowance', () => {
+  const doc = blank()
+  const row = [0, 40, 80].map(x => node('rectangle', x, 10, 20, 20))
+  const ids = row.map(shape => shape.id)
+  for (const shape of row) doc.nodes[shape.id] = shape
+  const page = doc.pages[0]
+  page.children = ids
+  const model = smartSelection(doc, page.id, ids, undefined, true)!
+  expect(model.unevenAxis).toBeUndefined()
+  expect(model.gapX).toBe(20)
+  expect(model.y).toHaveLength(1)
+  const patches = smartSpacing(doc, model, 'x', 30)
+  expect(ids.map(id => patches[id].transform.slice(4))).toEqual([[0, 10], [50, 10], [100, 10]])
+})
+
+test('an irregular two-dimensional selection is not treated as a line', () => {
+  const doc = blank()
+  const cells = [0, 40].flatMap(y => [0, 30, 80].map(x => node('rectangle', x, y, 20, 20)))
+  const ids = cells.map(shape => shape.id)
+  for (const shape of cells) doc.nodes[shape.id] = shape
+  const page = doc.pages[0]
+  page.children = ids
+  expect(smartSelection(doc, page.id, ids)).toBeNull()
+  expect(smartSelection(doc, page.id, ids, undefined, true)).toBeNull()
+})
