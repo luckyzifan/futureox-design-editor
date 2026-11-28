@@ -670,7 +670,8 @@ test('a certified clipped crop suppresses the wide page fill while it covers the
   // Leaving the certified window still hands the pose to the live scene on the
   // original lattice; suppression never turns into a lost frame.
   const leaving: typeof board.transform = [1, 0, 0, 1, -400, 30]
-  expect(movement.control.apply(doc, { [board.id]: { transform: leaving } })).toBeNull()
+  // Rebase forwards the native callback's feedback for the new pose.
+  expect(movement.control.apply(doc, { [board.id]: { transform: leaving } })).toEqual({ x: .2, y: 0 })
   expect(native).toHaveBeenCalledOnce()
   expect(native.mock.calls[0][1][board.id].transform).toEqual(leaving)
   expect(fill).not.toHaveBeenCalled()
