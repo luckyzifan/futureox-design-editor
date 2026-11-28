@@ -205,7 +205,7 @@ test('interaction pose damage keeps the shared diagnostic code', async () => {
   expect(rows.find(row => row.phase === 2)).toMatchObject({ methodCode: 18, channel: 1 })
 })
 
-test('native pose port shares the physical queue, ignores foreign replies and drains cancellation',async()=>{
+test.each(['canvas', 'interaction'] as const)('native %s port shares the physical queue and drains cancellation',async(lane)=>{
   const {client,server}=fixture(), direct=new MessageChannel()
   const wait=(port:MessagePort)=>new Promise<MessageEvent>(resolve=>port.addEventListener('message',resolve,{once:true}))
   server.start();server.postMessage({terminalPort:direct.port1},[direct.port1]);direct.port2.start()
@@ -214,7 +214,7 @@ test('native pose port shares the physical queue, ignores foreign replies and dr
   const request=wait(server), initial=client.request('canvas','stats')
   const initialId=(await request).data.id;server.postMessage({id:initialId,value:0});await initial
   const controller=new AbortController(), packet=wait(direct.port2)
-  const aborted=expect(client.withPoseTransport(()=>client.request('interaction','compile_gpu_packet',['pose'],controller.signal))).rejects.toThrow('PREVIEW_CANCELLED')
+  const aborted=expect(client.withTerminalTransport(lane,()=>client.request(lane,'compile_gpu_packet',['packet'],controller.signal))).rejects.toThrow('PREVIEW_CANCELLED')
   const id=(await packet).data.id, cancel=wait(direct.port2)
   controller.abort();expect((await cancel).data.cancel).toBe(id);await aborted
   let published=false
@@ -223,7 +223,7 @@ test('native pose port shares the physical queue, ignores foreign replies and dr
   await new Promise(resolve=>setTimeout(resolve,10));expect(published).toBe(false)
   direct.port2.postMessage({id,value:new Uint8Array([1])});await expect(next).resolves.toMatchObject({value:'live'})
   const patchRequest = wait(direct.port2)
-  const patch = client.withPoseTransport(() => client.request(
+  const patch = client.withTerminalTransport('interaction', () => client.request(
     'interaction', 'apply_document_patch_with_damage', ['{"fields":{},"nodes":{}}'],
   ))
   const patchEnvelope = (await patchRequest).data

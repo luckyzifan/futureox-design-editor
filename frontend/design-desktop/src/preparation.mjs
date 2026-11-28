@@ -159,8 +159,9 @@ export function bindPosePreparationPort(port,worker,current,retire){
   if(!current()||worker.closed){fatal('Terminal preparation session closed');return}
   if(data?.cancel!==undefined){if(active&&data.cancel===active)worker.cancel(active);return}
   const {id,lane,method,args,cancellable,diagnostics}=data??{}
-  if(active||!Number.isSafeInteger(id)||id<=last||lane!=='interaction'||
-     !['apply_interaction_transforms','apply_document_patch_with_damage','compile_gpu_packet'].includes(method)||
+  const admitted = lane === 'canvas' && method === 'compile_gpu_packet' ||
+    lane === 'interaction' && ['apply_interaction_transforms','apply_document_patch_with_damage','compile_gpu_packet'].includes(method)
+  if(active||!Number.isSafeInteger(id)||id<=last||!admitted||
      !Array.isArray(args)||args.length!==1||typeof args[0]!=='string'){
    port.postMessage({id,error:'Invalid terminal preparation request'});return
   }
@@ -172,7 +173,7 @@ export function bindPosePreparationPort(port,worker,current,retire){
     ...(method==='compile_gpu_packet'&&cancellable?{cancellationId:id}:{})})
    if(!closed&&current()){
     const plan=poseReplyPlan(reply)
-    const message={...plan.reply,id}
+    const message={...plan.reply,id,...(diagnostics && {bridgeBoundaryAt:performance.timeOrigin+performance.now()})}
     if(!plan.transfers.length||movesBuffers===false)port.postMessage(message)
     else try{
      port.postMessage(message,plan.transfers);movesBuffers=true

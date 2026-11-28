@@ -54,12 +54,12 @@ export class PreparationChannel {
   private queued: Job[] = []
   private terminalPort?: MessagePort
   private terminalReady=false
-  private terminalDepth=0
-  // The GPU work queue owns this pose. PreparationChannel still dispatches only
+  private terminalDepth = { canvas: 0, interaction: 0 }
+  // The GPU work queue owns this work. PreparationChannel still dispatches only
   // one physical call at a time across both ports, including aborted packets.
-  async withPoseTransport<T>(work:()=>Promise<T>):Promise<T> {
-    this.terminalDepth++
-    try {return await work()} finally {this.terminalDepth--}
+  async withTerminalTransport<T>(lane: 'canvas' | 'interaction', work: () => Promise<T>): Promise<T> {
+    this.terminalDepth[lane]++
+    try { return await work() } finally { this.terminalDepth[lane]-- }
   }
   constructor(private port: MessagePort, private diagnostics?: Diagnostics) {
     const receive=(event:MessageEvent,source:MessagePort)=>{
@@ -135,9 +135,12 @@ export class PreparationChannel {
     if (this.queued.length + Number(!!this.active) >= 128) return Promise.reject(new Error('CPU preparation request budget exceeded'))
     return new Promise((resolve, reject) => {
       const job: Job = { id: ++this.sequence, lane, method, args, resolve, reject, cancellable: !!signal }
-      if(this.terminalDepth && this.terminalReady && lane==='interaction' &&
-          (method==='apply_interaction_transforms'||method==='compile_gpu_packet'||
-           method==='apply_document_patch_with_damage'&&args.length===1))job.terminal=this.terminalPort
+      if (this.terminalReady && (
+        lane === 'canvas' && this.terminalDepth.canvas > 0 && method === 'compile_gpu_packet' ||
+        lane === 'interaction' && this.terminalDepth.interaction > 0 &&
+          (method === 'apply_interaction_transforms' || method === 'compile_gpu_packet' ||
+            method === 'apply_document_patch_with_damage' && args.length === 1)
+      )) job.terminal = this.terminalPort
       if (signal && !job.terminal && typeof SharedArrayBuffer !== 'undefined') job.cancellation = new Int32Array(new SharedArrayBuffer(4))
       if (this.diagnostics?.enabled()) { job.owner = this.diagnostics.owner(); job.queuedAt = performance.now() }
       this.trace(job, 1)
