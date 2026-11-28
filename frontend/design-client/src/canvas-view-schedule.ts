@@ -1,4 +1,4 @@
-import { MAX_CANVAS_ZOOM, type CanvasCamera } from './canvas-camera'
+import type { CanvasCamera } from './canvas-camera'
 import type { Editor } from './engine'
 
 /** Publish a parked zoom before a same-zoom pan is folded into that frame.
@@ -13,20 +13,10 @@ export function scheduleCanvasView(
   next: CanvasCamera,
   flush: (run: () => void) => void,
   leadingPan = true,
-  commitMaximumZoom = false,
 ) {
   const parked = editor.effectiveView()
   const committed = editor.state.view
   const finite = [next.x, next.y, next.zoom, parked.x, parked.y, parked.zoom, committed.x, committed.y, committed.zoom].every(Number.isFinite)
-  if (finite && commitMaximumZoom && next.zoom === MAX_CANVAS_ZOOM && parked.zoom < next.zoom) {
-    // The inward wheel burst can no longer change this endpoint. Publish
-    // its camera in this input turn so native preparation can start.
-    flush(() => {
-      editor.setViewCoalesced(next)
-      editor.flushPendingView()
-    })
-    return
-  }
   const sameZoomPan = next.zoom === parked.zoom && (next.x !== parked.x || next.y !== parked.y)
   if (finite && editor.cameraCommitPending() && sameZoomPan && parked.zoom !== committed.zoom) {
     // Two flushes: the zoom render has to install the pin before the pan
