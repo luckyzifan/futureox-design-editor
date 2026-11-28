@@ -1,7 +1,10 @@
 import { strFromU8, unzipSync } from 'fflate'
 import { PluginApiError } from './errors'
 import { PLUGIN_LIMITS } from './limits'
-import { assertPluginSource, missingPluginSource, parsePluginManifest, pluginBundleFromSources, pluginUiPaths, type PluginBundle } from './manifest'
+import {
+  assertPluginSource, missingPluginSource, parsePluginManifest, pluginBundleFromSources, pluginEntryFlavor,
+  pluginEntrySourcePaths, pluginSourceUnsupported, pluginUiPaths, pluginUiSourcePaths, type PluginBundle,
+} from './manifest'
 
 function safeZipPath(name: string): string | null {
   const path = name.replaceAll('\\', '/').replace(/^\.\//, '')
@@ -92,20 +95,26 @@ function decodeArchive(bytes: Uint8Array, compile?: CompileTypeScript): PluginBu
     if (error instanceof PluginApiError) throw error
     throw new PluginApiError('invalid_manifest', 'manifest.json is not valid JSON')
   }
-  const typedPath = manifest.main.slice(0, -3) + '.ts'
   const built = files.has(root + manifest.main)
-  const typeSource = !built && compile && files.has(root + typedPath)
-  const main = typeSource ? read(typedPath, PLUGIN_LIMITS.typeSourceBytes) : read(manifest.main, PLUGIN_LIMITS.mainBytes)
+  const entryPath = built ? manifest.main : pluginEntrySourcePaths(manifest.main).find(path => files.has(root + path))
+  if (!entryPath) throw missingPluginSource(manifest, manifest.main)
+  const flavor = pluginEntryFlavor(entryPath)
+  if (flavor === 'tsx') throw pluginSourceUnsupported(entryPath, 'tsx')
+  if (flavor === 'typescript' && !compile) throw pluginSourceUnsupported(entryPath, 'compiler')
+  const source = read(entryPath, flavor === 'javascript' ? PLUGIN_LIMITS.mainBytes : PLUGIN_LIMITS.typeSourceBytes)
   const sources = new Map<string, string>()
   let remaining = PLUGIN_LIMITS.uiBytes
-  for (const path of pluginUiPaths(manifest)) {
-    const source = read(path, remaining)
-    remaining -= assertPluginSource(source, path, remaining)
-    sources.set(path, source)
+  for (const declared of pluginUiPaths(manifest)) {
+    const uiPath = pluginUiSourcePaths(declared).find(path => files.has(root + path))
+    if (!uiPath) throw missingPluginSource(manifest, declared)
+    const ui = read(uiPath, remaining)
+    remaining -= assertPluginSource(ui, uiPath, remaining)
+    sources.set(declared, ui)
   }
   const finish = (script: string) => {
     sources.set(manifest.main, script)
     return pluginBundleFromSources(manifest, sources)
   }
-  return typeSource && compile ? compile(main).then(finish) : finish(main)
+  if (flavor === 'javascript') return finish(source)
+  return compile!(source).then(finish)
 }

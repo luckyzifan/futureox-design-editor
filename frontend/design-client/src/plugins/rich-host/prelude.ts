@@ -16,7 +16,7 @@ function host(op, payload) {
     timerSchedule: 1, timerCancel: 1, textSegments: 1,
     showUI: 1, uiResize: 1, uiShow: 1, uiHide: 1, uiClose: 1, loadFont: 1, meta: 1, listen: 1,
     viewportRead: 1, clientStorageGet: 1, clientStorageKeys: 1,
-    pluginDataGet: 1, pluginDataKeys: 1, sharedPluginDataGet: 1, sharedPluginDataKeys: 1,
+    pluginDataGet: 1, pluginDataKeys: 1, sharedPluginDataGet: 1, sharedPluginDataKeys: 1, relaunchDataGet: 1,
   }
   if (!reading[op]) { cache.clear(); documentCache = null }
   const raw = __bridge(op, JSON.stringify(payload === undefined ? null : payload))
@@ -62,8 +62,15 @@ function pluginDataMethods(scope, id) {
     getSharedPluginDataKeys: function (namespace) { return host('sharedPluginDataKeys', { scope: scope, id: id, namespace: String(namespace) }) },
   }
 }
+function relaunchMethods(scope, id) {
+  return {
+    getRelaunchData: function () { return host('relaunchDataGet', { scope: scope, id: id }) },
+    setRelaunchData: function (data) { host('relaunchDataSet', { scope: scope, id: id, data: data }) },
+  }
+}
 function pageProxy(id) {
   const data = pluginDataMethods('page', id)
+  const relaunch = relaunchMethods('page', id)
   return {
     get id() { return id },
     get type() { return 'PAGE' },
@@ -90,6 +97,8 @@ function pageProxy(id) {
     getSharedPluginData: data.getSharedPluginData,
     setSharedPluginData: data.setSharedPluginData,
     getSharedPluginDataKeys: data.getSharedPluginDataKeys,
+    getRelaunchData: relaunch.getRelaunchData,
+    setRelaunchData: relaunch.setRelaunchData,
   }
 }
 function visit(id, callback, into, state) {
@@ -126,7 +135,7 @@ function wrap(id) {
       if (prop === 'removed') return dead.has(nodeId)
       if (prop === 'reactions') {
         if (dead.has(nodeId)) throw new Error('Node has been removed')
-        return host('readReactions', { id: nodeId }) ?? undefined
+        return host('readReactions', { id: nodeId }) || []
       }
       if (prop === 'parent') {
         const snap = read(nodeId)
@@ -193,9 +202,8 @@ function wrap(id) {
         return async function (network) { host('writeVectorNetwork', { id: nodeId, network: network }) }
       }
       if (prop === 'annotations') return []
-      if (prop === 'setRelaunchData') return function () {
-        throw new Error('relaunch_unavailable: Relaunch buttons are not shown; the local host has no relaunch surface')
-      }
+      if (prop === 'getRelaunchData' || prop === 'setRelaunchData')
+        return relaunchMethods('node', nodeId)[prop]
       const snap = read(nodeId)
       if (prop === 'vectorNetwork' && snap.type === 'VECTOR') return host('readVectorNetwork', { id: nodeId })
       if (Object.prototype.hasOwnProperty.call(snap, prop)) return snap[prop]
@@ -353,6 +361,13 @@ function codegenHandler(type, callback, once) {
     host('listen', { type: 'codegen', active: true })
   codegenListeners[type].push({ callback: callback, once: once })
 }
+function permissionGranted(name) {
+  const list = __pluginMeta.permissions
+  return Array.isArray(list) && list.indexOf(name) >= 0
+}
+function teamLibraryDenied() {
+  return Promise.reject(new Error('permission_denied: figma.teamLibrary requires the teamlibrary permission, which this host does not grant'))
+}
 const payments = Object.freeze({ status: Object.freeze({ type: 'NOT_SUPPORTED' }) })
 const figma = {
   get payments() { return payments },
@@ -389,6 +404,7 @@ const figma = {
   get root() {
     const id = readDocument().id
     const data = pluginDataMethods('root', id)
+    const relaunch = relaunchMethods('root', id)
     return {
       get type() { return 'DOCUMENT' },
       get id() { return id },
@@ -400,14 +416,18 @@ const figma = {
       getSharedPluginData: data.getSharedPluginData,
       setSharedPluginData: data.setSharedPluginData,
       getSharedPluginDataKeys: data.getSharedPluginDataKeys,
+      getRelaunchData: relaunch.getRelaunchData,
+      setRelaunchData: relaunch.setRelaunchData,
     }
   },
   get editorType() { return host('meta', null).editorType },
   get mode() { return host('meta', null).mode },
   get pluginId() { return __pluginMeta.pluginId },
-  get fileKey() { return null },
+  get fileKey() { return __pluginMeta.fileKey == null ? null : String(__pluginMeta.fileKey) },
   get command() { return __pluginMeta.command == null ? undefined : __pluginMeta.command },
-  get currentUser() { return null },
+  get currentUser() {
+    return __pluginMeta.currentUser ? Object.freeze(Object.assign({}, __pluginMeta.currentUser)) : null
+  },
   parameters: {
     on: function (type, callback) { parameterHandler(type, callback, false) },
     once: function (type, callback) { parameterHandler(type, callback, true) },
@@ -417,13 +437,13 @@ const figma = {
     },
   },
   teamLibrary: {
-    // Figma throws unless the manifest grants the teamlibrary permission. This
-    // host records permissions and never grants them, so both calls reject.
+    // A declared teamlibrary permission sees this host's real catalog: no
+    // cloud libraries adjacent to the local document. Figma throws without it.
     getAvailableLibraryVariableCollectionsAsync: function () {
-      return Promise.reject(new Error('permission_denied: figma.teamLibrary requires the teamlibrary permission, which this host does not grant'))
+      return permissionGranted('teamlibrary') ? Promise.resolve([]) : teamLibraryDenied()
     },
     getVariablesInLibraryCollectionAsync: function () {
-      return Promise.reject(new Error('permission_denied: figma.teamLibrary requires the teamlibrary permission, which this host does not grant'))
+      return permissionGranted('teamlibrary') ? Promise.resolve([]) : teamLibraryDenied()
     },
   },
   annotations: {
@@ -675,8 +695,10 @@ globalThis.__deliverPluginMessage = function (message) {
 globalThis.__deliverPluginRun = function () {
   const list = listeners.run.slice()
   for (let i = 0; i < list.length; i++) {
-    // Figma sends no parameters property when the parameter UI was skipped.
+    // Figma omits parameters when the parameter UI was skipped. This host has no
+    // prompt, so the property appears only when the launcher supplied values.
     const event = { command: __pluginMeta.command == null ? undefined : __pluginMeta.command }
+    if (__pluginMeta.parameters != null) event.parameters = __pluginMeta.parameters
     list[i](event)
   }
 }

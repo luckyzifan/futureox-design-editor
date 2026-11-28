@@ -261,7 +261,8 @@ describe('Figma plugin host', () => {
     await expect(openPlugin(current, bundle('Image', `
       if (typeof figma.variables === 'undefined' || typeof figma.createImage !== 'function') throw new Error('host api missing')
       if (!figma.viewport || typeof figma.viewport.zoom !== 'number') throw new Error('viewport missing')
-      if (figma.currentUser !== null) throw new Error('user leaked')
+      if (!figma.currentUser || figma.currentUser.id !== 'local' || figma.currentUser.name !== 'Local user') throw new Error('local user missing')
+      if (figma.currentUser.photoUrl !== null || figma.currentUser.color !== '#0D99FF') throw new Error('local user shape')
       figma.createGridStyle()
     `))).rejects.toMatchObject({ code: 'grid_style_unavailable' })
     expect(current.state.version).toBe(version + 1)
@@ -786,16 +787,46 @@ describe('Figma plugin host', () => {
     run.close()
   })
 
-  it('identifies a missing bundle entry without reading its uncompiled source', async () => {
-    const manifest = JSON.stringify({ name: 'Source only', id: 'source-only.plugin', api: '1.0.0', main: 'dist/code.js' })
+  it('resolves bounded unbuilt sample sources and reports when no type stripper exists', async () => {
+    const manifest = JSON.stringify({ name: 'Source only', id: 'source-only.plugin', api: '1.0.0', main: 'dist/code.js', ui: 'dist/ui.html' })
     const readTypeScript = vi.fn(async () => 'const name: string = "uncompiled"')
     await expect(pluginBundleFromFiles([
       { name: 'manifest.json', size: manifest.length, text: async () => manifest },
       { name: 'code.ts', size: 32, text: readTypeScript },
-    ])).rejects.toThrow(/Missing built plugin entry dist\/code\.js/)
+      { name: 'ui-src/ui.html', size: 12, text: async () => '<p>From src</p>' },
+    ])).rejects.toThrow(/uncompiled TypeScript entry/)
     expect(readTypeScript).not.toHaveBeenCalled()
-    expect(() => pluginBundleFromZip(zipSync({ 'manifest.json': strToU8(manifest), 'code.ts': strToU8('let value: boolean') })))
+    expect(() => pluginBundleFromZip(zipSync({
+      'manifest.json': strToU8(manifest), 'plugin-src/code.ts': strToU8('let value: boolean'), 'ui-src/ui.html': strToU8('<p>From src</p>'),
+    }))).toThrow(/uncompiled TypeScript entry/)
+    expect(() => pluginBundleFromZip(zipSync({ 'manifest.json': strToU8(manifest), 'README.md': strToU8('nothing') })))
       .toThrow(/Missing built plugin entry dist\/code\.js/)
+
+    const compile = vi.fn(async (source: string) => source.replace(/: string/g, ''))
+    const loaded = await pluginBundleFromZip(zipSync({
+      'manifest.json': strToU8(manifest),
+      'plugin-src/code.ts': strToU8("const name: string = 'From plugin-src'; figma.createRectangle().name = name"),
+      'ui-src/ui.html': strToU8('<p>From ui-src</p>'),
+    }), compile)
+    expect(loaded.main).toContain('From plugin-src')
+    expect(loaded.ui).toBe('<p>From ui-src</p>')
+    expect(compile).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts a TypeScript main and reports JSX as unsupported', async () => {
+    expect(parsePluginManifest({ name: 'Typed main', id: 'typed.main', api: '1.0.0', main: 'src/code.ts' }).main).toBe('src/code.ts')
+    expect(parsePluginManifest({ name: 'Typed entry', id: 'typed.entry', api: '1.0.0', main: 'src/code.tsx' }).main).toBe('src/code.tsx')
+    expect(() => parsePluginManifest({ name: 'Bad main', id: 'bad.main', api: '1.0.0', main: 'code.txt' })).toThrow(/\.js, \.mjs, \.ts, or \.tsx/)
+    expect(() => pluginBundleFromZip(zipSync({
+      'manifest.json': strToU8(JSON.stringify({ name: 'JSX', id: 'jsx.plugin', api: '1.0.0', main: 'code.tsx' })),
+      'code.tsx': strToU8('const label = <div/>'),
+    }), async source => source)).toThrow(/TSX\/JSX/)
+
+    const typedMain = await pluginBundleFromZip(zipSync({
+      'manifest.json': strToU8(JSON.stringify({ name: 'Typed main', id: 'typed.archive', api: '1.0.0', main: 'code.ts' })),
+      'code.ts': strToU8("const name: string = 'Typed main'; figma.createRectangle().name = name"),
+    }), async source => source.replace(/: string/g, ''))
+    expect(typedMain.main).toContain('Typed main')
   })
 
   it('runs a desktop standalone TypeScript entry after bounded type stripping', async () => {
@@ -1668,6 +1699,12 @@ describe('Figma Plugin API surface', () => {
             annotationHandlers: [figma.annotations && typeof figma.annotations.getAnnotationCategoriesAsync, figma.annotations && typeof figma.annotations.getAnnotationCategoryByIdAsync, figma.annotations && typeof figma.annotations.addAnnotationCategoryAsync],
             currentUser: figma.currentUser,
             fileKey: figma.fileKey,
+            relaunch: (function () {
+              rect.setRelaunchData({ edit: 'Edit' })
+              const stored = rect.getRelaunchData()
+              rect.setRelaunchData({})
+              return { stored: stored, cleared: rect.getRelaunchData() }
+            })(),
             createVector: typeof figma.createVector,
             createGridStyle: typeof figma.createGridStyle,
             createImageAsync: typeof figma.createImageAsync,
@@ -1693,7 +1730,6 @@ describe('Figma Plugin API surface', () => {
           await code('gridStyle', function () { return figma.createGridStyle() })
           await code('importStyle', function () { return figma.importStyleByKeyAsync('abc') })
           await code('importComponent', function () { return figma.importComponentByKeyAsync('abc') })
-          await code('relaunch', function () { return rect.setRelaunchData({ edit: 'Edit' }) })
           await code('annotate', function () { return figma.annotations.addAnnotationCategoryAsync({ label: 'A', color: 'RED' }) })
           await code('teamLibrary', function () { return figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync() })
           console.log('codes')
@@ -1713,7 +1749,8 @@ describe('Figma Plugin API surface', () => {
       parameters: 'object', parameterHandlers: ['function', 'function', 'function'],
       codegen: 'object', codegenHandlers: ['function', 'function', 'function', 'function'], codegenUnit: 'PIXEL',
       annotations: 'object', annotationHandlers: ['function', 'function', 'function'],
-      currentUser: null, fileKey: null,
+      currentUser: { id: 'local', name: 'Local user', color: '#0D99FF', photoUrl: null }, fileKey: null,
+      relaunch: { stored: { edit: 'Edit' }, cleared: {} },
       createVector: 'function', createGridStyle: 'function', createImageAsync: 'function',
       importStyleByKeyAsync: 'function', importComponentByKeyAsync: 'function', getVariableByIdAsync: 'function',
       numberOfFixedChildren: 0, setRelaunchData: 'function', styledSegments: 'function',
@@ -1722,9 +1759,79 @@ describe('Figma Plugin API surface', () => {
     const codes = JSON.parse(run.logs.slice(marker + 1).join(''))
     expect(codes).toEqual({
       gridStyle: 'grid_style_unavailable', importStyle: 'library_unavailable', importComponent: 'library_unavailable',
-      relaunch: 'relaunch_unavailable', annotate: 'annotations_unavailable', teamLibrary: 'permission_denied',
+      annotate: 'annotations_unavailable', teamLibrary: 'permission_denied',
     })
     run.close()
+  })
+
+  it('reads an empty team library only when the manifest declares its permission', async () => {
+    const current = editor()
+    const granted = await openPlugin(current, {
+      manifest: parsePluginManifest({
+        name: 'Team reader', id: 'team.reader', api: '1.0.0', main: 'code.js', editorType: ['figma'],
+        permissions: ['teamlibrary'],
+      }),
+      main: `
+        Promise.all([
+          figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync(),
+          figma.teamLibrary.getVariablesInLibraryCollectionAsync(),
+        ]).then(function (values) {
+          figma.closePlugin(JSON.stringify(values))
+        }, function (error) { figma.closePlugin('failed: ' + error.message) })
+      `,
+      ui: null,
+    })
+    expect(granted.closeMessage).toBe('[[],[]]')
+    granted.close()
+
+    const denied = await openPlugin(current, {
+      manifest: parsePluginManifest({ name: 'No team', id: 'no.team', api: '1.0.0', main: 'code.js', editorType: ['figma'] }),
+      main: `
+        figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync().then(
+          function () { figma.closePlugin('resolved') },
+          function (error) { figma.closePlugin(error.message.split(':')[0]) },
+        )
+      `,
+      ui: null,
+    })
+    expect(denied.closeMessage).toBe('permission_denied')
+    denied.close()
+  })
+
+  it('stores, reads, clears, and undoes node relaunch data', async () => {
+    const current = editor()
+    const before = current.authoredDocument
+    const run = await openPlugin(current, bundle('Relaunch', `
+      const rect = figma.createRectangle()
+      rect.name = 'Relaunch target'
+      if (JSON.stringify(rect.getRelaunchData()) !== '{}') throw new Error('initial data')
+      rect.setRelaunchData({ edit: 'Edit this shape', open: '' })
+      const stored = rect.getRelaunchData()
+      figma.closePlugin(JSON.stringify({ stored: stored, again: rect.getRelaunchData() }))
+    `))
+    expect(JSON.parse(run.closeMessage!)).toEqual({
+      stored: { edit: 'Edit this shape', open: '' },
+      again: { edit: 'Edit this shape', open: '' },
+    })
+    run.close()
+    const target = named(current, 'Relaunch target')!
+    expect(current.authoredDocument.fdCompatibility?.extensions?.['design.futureox/plugin-data']).toMatchObject({
+      relaunch: { nodes: { [target.id]: { 'Relaunch.plugin': { edit: 'Edit this shape', open: '' } } } },
+    })
+    current.undo()
+    expect(current.authoredDocument).toEqual(before)
+
+    const clear = await openPlugin(current, bundle('Clear relaunch', `
+      const rect = figma.createRectangle()
+      rect.name = 'Cleared target'
+      rect.setRelaunchData({ temporary: 'Temporary action' })
+      rect.setRelaunchData({})
+      figma.closePlugin(JSON.stringify(rect.getRelaunchData()))
+    `))
+    expect(clear.closeMessage).toBe('{}')
+    clear.close()
+    expect(JSON.stringify(current.authoredDocument.fdCompatibility ?? null)).not.toContain('Temporary action')
+    expect(current.authoredDocument.fdCompatibility ?? null).toBeNull()
   })
 
   it('runs a codegen Dev plugin in codegen mode and reports its sections for the selection', async () => {
@@ -1834,5 +1941,24 @@ describe('Figma Plugin API surface', () => {
     }, { command: 'resize' })
     expect(JSON.parse(run.closeMessage!)).toEqual({ command: 'resize', parameters: 'undefined' })
     run.close()
+
+    const parameterManifest = parsePluginManifest({
+      name: 'Run with parameters', id: 'run.parameters', api: '1.0.0', main: 'code.js', editorType: ['figma'],
+      parameters: [{ name: 'Country', key: 'country', description: 'Country to look up' }],
+    })
+    expect(parameterManifest.parameters).toEqual([
+      { name: 'Country', key: 'country', description: 'Country to look up', type: 'string' },
+    ])
+    const supplied = await openPlugin(current, {
+      manifest: parameterManifest,
+      main: `
+        figma.on('run', function (event) {
+          figma.closePlugin(JSON.stringify(event.parameters || null))
+        })
+      `,
+      ui: null,
+    }, { parameters: { country: 'France' } })
+    expect(JSON.parse(supplied.closeMessage!)).toEqual({ country: 'France' })
+    supplied.close()
   })
 })

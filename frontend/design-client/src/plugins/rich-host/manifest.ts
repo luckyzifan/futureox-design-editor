@@ -15,6 +15,8 @@ export function pluginEditorType(mode: PluginLaunchMode): PluginEditorType {
 const LOCAL_FOLDER_ID_PREFIX = 'futureox.local.folder:'
 
 export type PluginCodegenLanguage = { label: string; value: string }
+/** One quick-action parameter declared by the manifest. The host has no prompt; values may come from a launcher. */
+export type PluginParameter = { name: string; key: string; description?: string; type: 'string' | 'boolean' }
 export type PluginManifest = {
   name: string
   id: string
@@ -27,6 +29,8 @@ export type PluginManifest = {
   capabilities: string[]
   /** Codegen languages from the manifest. The first value is the event language. */
   codegenLanguages: PluginCodegenLanguage[]
+  /** Quick-action parameters from the manifest, validated but not prompted. */
+  parameters: PluginParameter[]
   commands: PluginCommand[]
   /** True when the manifest asked for domains other than none. Fetch is limited to these origins. */
   networkIgnored: boolean
@@ -52,16 +56,61 @@ function text(value: unknown, label: string, max: number): string {
 }
 
 /** Relative file inside the plugin folder. `..`, absolute paths, and empty segments reject. */
-export function pluginRelativePath(value: unknown, extension: string): string {
+function pluginRelativeFile(value: unknown): string {
   const path = text(value, 'path', 180)
   if (path.includes('\\') || path.startsWith('/') || path.includes(':'))
     throw new PluginApiError('invalid_manifest', 'Plugin files must be relative paths inside the plugin folder')
   const parts = path.split('/')
   if (parts.some(part => !part || part === '.' || part === '..'))
     throw new PluginApiError('invalid_manifest', 'Plugin files cannot climb out of the plugin folder')
+  return path
+}
+export function pluginRelativePath(value: unknown, extension: string): string {
+  const path = pluginRelativeFile(value)
   if (!path.endsWith(extension))
     throw new PluginApiError('invalid_manifest', `Plugin file must end with ${extension}`)
   return path
+}
+/** A manifest main entry: built JavaScript, or TypeScript the desktop host can strip. */
+export function pluginEntryPath(value: unknown): string {
+  const path = pluginRelativeFile(value)
+  if (!/\.(?:m?js|tsx?)$/.test(path))
+    throw new PluginApiError('invalid_manifest', 'Plugin main must end with .js, .mjs, .ts, or .tsx')
+  return path
+}
+
+type EntryKind = 'javascript' | 'typescript' | 'tsx'
+function entryKind(path: string): EntryKind {
+  return path.endsWith('.ts') ? 'typescript' : path.endsWith('.tsx') ? 'tsx' : 'javascript'
+}
+function stemOf(path: string): string {
+  const base = path.slice(path.lastIndexOf('/') + 1)
+  return base.replace(/\.(?:m?js|tsx?)$/, '')
+}
+function dirOf(path: string): string {
+  const index = path.lastIndexOf('/')
+  return index < 0 ? '' : path.slice(0, index + 1)
+}
+/** Bounded fallback list for an unbuilt sample whose declared main and UI are absent. */
+export function pluginEntrySourcePaths(main: string): string[] {
+  if (entryKind(main) !== 'javascript') return [main]
+  const stem = stemOf(main), dir = dirOf(main)
+  const paths = [`${dir}${stem}.ts`, `${dir}${stem}.tsx`]
+  if (dir) paths.push(`${stem}.ts`, `${stem}.tsx`)
+  for (const source of ['src/', 'plugin-src/', 'source/']) {
+    paths.push(`${source}${stem}.ts`, `${source}${stem}.tsx`, `${source}${stem}.js`)
+  }
+  return [...new Set(paths)]
+}
+export function pluginUiSourcePaths(ui: string): string[] {
+  const base = ui.slice(ui.lastIndexOf('/') + 1)
+  const paths = [ui]
+  if (dirOf(ui)) paths.push(base)
+  for (const source of ['src/', 'ui-src/', 'plugin-src/', 'source/']) paths.push(`${source}${base}`)
+  return [...new Set(paths)]
+}
+export function pluginEntryFlavor(path: string): EntryKind {
+  return entryKind(path)
 }
 
 function domainList(value: unknown, label: string): string[] {
@@ -132,6 +181,27 @@ function codegenLanguageList(value: unknown, capabilities: string[]): PluginCode
   })
 }
 
+function parameterList(value: unknown): PluginParameter[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > 16)
+    throw new PluginApiError('invalid_manifest', 'parameters must be an array of at most 16 entries')
+  const seen = new Set<string>()
+  return value.map(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item))
+      throw new PluginApiError('invalid_manifest', 'parameter entries must be objects')
+    const entry = item as Record<string, unknown>
+    const name = text(entry.name, 'parameter name', 80)
+    const key = text(entry.key, 'parameter key', 80)
+    if (seen.has(key)) throw new PluginApiError('invalid_manifest', 'parameters must not repeat a key')
+    seen.add(key)
+    const description = entry.description === undefined ? undefined : text(entry.description, 'parameter description', 500)
+    const type = entry.type === undefined ? 'string' : entry.type
+    if (type !== 'string' && type !== 'boolean')
+      throw new PluginApiError('invalid_manifest', 'parameter type must be string or boolean')
+    return { name, key, ...(description === undefined ? {} : { description }), type }
+  })
+}
+
 function namedUiFiles(value: unknown) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const entries = Object.entries(value)
@@ -154,12 +224,13 @@ export function parsePluginManifest(value: unknown, { desktopFolder = false } = 
   if (id.startsWith(LOCAL_FOLDER_ID_PREFIX) && (!desktopFolder || !/^[0-9a-f]{64}$/.test(id.slice(LOCAL_FOLDER_ID_PREFIX.length))))
     throw new PluginApiError('invalid_manifest', 'This plugin id is reserved for an installed local folder')
   if (record.api !== '1.0.0') throw new PluginApiError('invalid_manifest', 'api must be "1.0.0"')
-  const main = pluginRelativePath(record.main, '.js')
+  const main = pluginEntryPath(record.main)
   const uiFiles = namedUiFiles(record.ui)
   const ui = uiFiles ? uiFiles.main ?? null : record.ui === undefined ? null : pluginRelativePath(record.ui, '.html')
   const editorType = record.editorType === undefined ? ['figma'] as PluginEditorType[] : editorTypeList(record.editorType)
   const capabilities = capabilityList(record.capabilities)
   const codegenLanguages = codegenLanguageList(record.codegenLanguages, capabilities)
+  const parameters = parameterList(record.parameters)
   if (record.documentAccess !== undefined && typeof record.documentAccess !== 'string')
     throw new PluginApiError('invalid_manifest', 'documentAccess must be a string. The open document is already local.')
   let networkDomains: string[] = []
@@ -185,7 +256,7 @@ export function parsePluginManifest(value: unknown, { desktopFolder = false } = 
   const commands: PluginCommand[] = []
   menuCommands(record.menu, commands, 0)
   return {
-    name, id, api: '1.0.0', main, ui, ...(uiFiles ? { uiFiles } : {}), editorType, capabilities, codegenLanguages, commands,
+    name, id, api: '1.0.0', main, ui, ...(uiFiles ? { uiFiles } : {}), editorType, capabilities, codegenLanguages, parameters, commands,
     networkIgnored, networkDomains, permissionsIgnored,
     ...(uiNetworkDomains.length ? { uiNetworkDomains } : {}),
   }
@@ -255,6 +326,13 @@ export function missingPluginSource(manifest: PluginManifest, path: string) {
   return new PluginApiError('invalid_plugin', path === manifest.main
     ? `Missing built plugin entry ${path}. Build the plugin to generate the JavaScript named by main.`
     : `Missing plugin UI file ${path}`)
+}
+
+/** A source entry exists, but this runtime has no type stripper (or the entry uses JSX). */
+export function pluginSourceUnsupported(path: string, reason: 'compiler' | 'tsx') {
+  return new PluginApiError('invalid_plugin', reason === 'tsx'
+    ? `${path} contains TSX/JSX or another form the bounded type stripper cannot load. Build the plugin to generate the JavaScript named by main.`
+    : `${path} is an uncompiled TypeScript entry. Open the plugin folder in the desktop app, which type-strips it inside QuickJS limits, or build the JavaScript named by main.`)
 }
 
 export function pluginBundleFromSources(manifest: PluginManifest, files: ReadonlyMap<string, string>): PluginBundle {

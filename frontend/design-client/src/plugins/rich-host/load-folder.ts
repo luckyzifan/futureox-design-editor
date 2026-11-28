@@ -1,6 +1,9 @@
 import { PluginApiError } from './errors'
 import { PLUGIN_LIMITS } from './limits'
-import { assertPluginSource, missingPluginSource, parsePluginManifest, pluginBundleFromSources, pluginUiPaths, type PluginBundle } from './manifest'
+import {
+  assertPluginSource, missingPluginSource, parsePluginManifest, pluginBundleFromSources, pluginEntryFlavor,
+  pluginEntrySourcePaths, pluginSourceUnsupported, pluginUiPaths, pluginUiSourcePaths, type PluginBundle,
+} from './manifest'
 
 export type PluginFile = {
   name: string
@@ -14,8 +17,11 @@ function relativePath(file: PluginFile): string {
   return path.replaceAll('\\', '/')
 }
 
-/** Read only the manifest, entry point, and declared UI files from a user-picked folder. */
-export async function pluginBundleFromFiles(files: Iterable<PluginFile>): Promise<PluginBundle> {
+type CompileTypeScript = (source: string) => Promise<string>
+
+/** Read only the manifest, entry point, and declared UI files from a user-picked folder.
+ * A missing built entry may resolve to a bounded TypeScript/JavaScript source sibling. */
+export async function pluginBundleFromFiles(files: Iterable<PluginFile>, compile?: CompileTypeScript): Promise<PluginBundle> {
   const list = [...files]
   if (!list.length) throw new PluginApiError('invalid_plugin', 'Choose a plugin folder')
   if (list.length > 200) throw new PluginApiError('invalid_plugin', 'A plugin folder can contain at most 200 files')
@@ -33,11 +39,21 @@ export async function pluginBundleFromFiles(files: Iterable<PluginFile>): Promis
     if (file.size > limit) throw new PluginApiError('plugin_too_large', `${path} is too large`)
     return file.text()
   }
-  const sources = new Map([[manifest.main, await read(manifest.main, PLUGIN_LIMITS.mainBytes)]])
+  const has = (path: string) => list.some(item => relativePath(item) === `${root}${path}`)
+  const entryPath = has(manifest.main) ? manifest.main : pluginEntrySourcePaths(manifest.main).find(has)
+  if (!entryPath) throw missingPluginSource(manifest, manifest.main)
+  const flavor = pluginEntryFlavor(entryPath)
+  if (flavor === 'tsx') throw pluginSourceUnsupported(entryPath, 'tsx')
+  if (flavor === 'typescript' && !compile) throw pluginSourceUnsupported(entryPath, 'compiler')
+  let main = await read(entryPath, flavor === 'javascript' ? PLUGIN_LIMITS.mainBytes : PLUGIN_LIMITS.typeSourceBytes)
+  if (flavor === 'typescript') main = await compile!(main)
+  const sources = new Map([[manifest.main, main]])
   let remaining = PLUGIN_LIMITS.uiBytes
   for (const path of pluginUiPaths(manifest)) {
-    const source = await read(path, remaining)
-    remaining -= assertPluginSource(source, path, remaining)
+    const uiPath = pluginUiSourcePaths(path).find(has)
+    if (!uiPath) throw missingPluginSource(manifest, path)
+    const source = await read(uiPath, remaining)
+    remaining -= assertPluginSource(source, uiPath, remaining)
     sources.set(path, source)
   }
   return pluginBundleFromSources(manifest, sources)

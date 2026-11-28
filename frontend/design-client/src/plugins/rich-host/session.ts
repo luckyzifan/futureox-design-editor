@@ -24,6 +24,7 @@ import { fitVectorNetwork, readVectorNetwork, type FittedVectorNetwork } from '.
 import type { PluginEditorEvent } from './ui-document'
 import {
   pluginDataEmpty, pluginDataGet, pluginDataKeys, pluginDataSet, readPluginData, sharedPluginDataGet, sharedPluginDataKeys, sharedPluginDataSet,
+  relaunchDataGet, relaunchDataSet,
   pluginDataExtension, type PluginDataScope, type PluginDataStore,
 } from './plugin-data'
 
@@ -96,6 +97,10 @@ export type PluginSessionOptions = {
   storage?: PluginStorage
   storageRequest?: PluginStorageRequest
   networkDomains?: readonly string[]
+  /** Manifest permission names. They are recorded, and only teamlibrary reads an empty local catalog. */
+  permissions?: readonly string[]
+  /** Values supplied by the host for a quick-action run. No parameter prompt is opened. */
+  parameters?: Readonly<Record<string, string | boolean>> | null
   fetch?: PluginFetch
   hooks?: Hooks
   systemFonts?: PluginSystemFonts
@@ -129,6 +134,21 @@ const WEIGHTS: Record<string, number> = {
   'semi bold': 600, semibold: 600, bold: 700, 'extra bold': 800, extrabold: 800, black: 900,
 }
 const WEIGHT_NAMES: [number, string][] = [[100, 'Thin'], [200, 'Extra Light'], [300, 'Light'], [400, 'Regular'], [500, 'Medium'], [600, 'Semi Bold'], [700, 'Bold'], [800, 'Extra Bold'], [900, 'Black']]
+/** There is no account or collaboration session; the plugin still sees a stable local identity. */
+const LOCAL_USER = Object.freeze({ id: 'local', name: 'Local user', color: '#0D99FF', photoUrl: null })
+
+function parameterValues(value: PluginSessionOptions['parameters']) {
+  if (value == null) return null
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new PluginApiError('invalid_value', 'Plugin parameters must be an object')
+  const result: Record<string, string | boolean> = {}
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry !== 'string' && typeof entry !== 'boolean')
+      throw new PluginApiError('invalid_value', 'Plugin parameter values must be strings or booleans')
+    result[key] = entry
+  }
+  return result
+}
 
 function finite(value: unknown, label: string, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max)
@@ -346,6 +366,8 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   let storageBytes = 0
   let storageSerial = 0
   const networkDomains = options.networkDomains ?? []
+  const permissions = [...(options.permissions ?? [])]
+  const parameters = parameterValues(options.parameters)
   const images = new Map<string, PluginImage>()
   const imageUrls = new Map<string, string>()
   const networkJobs: { id: number; url: string; method: string; headers: Record<string, string>; body: string | null }[] = []
@@ -983,7 +1005,8 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     const align = (value: string | undefined, fallback: string) => ALIGN_TO_FIGMA[value || ''] || fallback
     return {
       id: node.id, type, name: node.name, x: node.transform[4], y: node.transform[5],
-      ...(type === 'FRAME' ? { numberOfFixedChildren: fixedChildCount(node) } : {}),
+      ...(type === 'FRAME' || type === 'COMPONENT' || type === 'INSTANCE'
+        ? { numberOfFixedChildren: fixedChildCount(node) } : {}),
       width: node.width, height: node.height, rotation: rotationOf(node.transform),
       relativeTransform: toTransform(node.transform),
       absoluteTransform: toTransform(worldMatrix(editor.authoredDocument, id)),
@@ -1328,9 +1351,9 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       if (op === 'readReactions') {
         flush()
         const id = shortText(body.id, 'id', 80)
-        const result = execute('node.get', { id }, false) as { node: DesignNode }
-        const type = figmaType(result.node)
-        if (type === 'SECTION' || type === 'SLICE' || type === 'COMPONENT_SET') return null
+        execute('node.get', { id }, false)
+        // Figma exposes reactions on every scene node; a node without authored
+        // interactions has an empty list, not a missing property.
         return readNavigationReactions(editor.authoredDocument.prototype?.interactions[id] ?? [])
       }
       if (op === 'textSegments') {
@@ -1377,6 +1400,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       }
       if (op === 'meta') return {
         pluginId, command: options.command ?? null, editorType: pluginEditorType(mode), mode, fileKey: null,
+        currentUser: LOCAL_USER, permissions, parameters,
       }
       if (op === 'listen') {
         const type = body.type
@@ -1493,6 +1517,19 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         if (op === 'pluginDataKeys') return pluginDataKeys(stored, scope, id, pluginId)
         if (op === 'sharedPluginDataGet') return sharedPluginDataGet(stored, scope, id, body.namespace, body.key)
         return sharedPluginDataKeys(stored, scope, id, body.namespace)
+      }
+      if (op === 'relaunchDataGet' || op === 'relaunchDataSet') {
+        const scope = dataScope(body.scope)
+        const id = shortText(body.id, 'id', 80)
+        assertDataTarget(scope, id)
+        if (op === 'relaunchDataSet') {
+          loadPluginStore()
+          relaunchDataSet(pluginStore, scope, id, pluginId, body.data)
+          pluginStoreDirty = true
+          return null
+        }
+        const stored = pluginStoreDirty ? pluginStore : readPluginData(editor.authoredDocument)
+        return relaunchDataGet(stored, scope, id, pluginId)
       }
       if (op === 'readDocument') { flush(); return documentView() }
       if (op === 'readNode') {

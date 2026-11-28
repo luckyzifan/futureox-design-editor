@@ -20,7 +20,7 @@ export function pluginRelativeParts(value, typeSource = false) {
   const parts = value.split('/')
   if (parts.some(part => part === '' || part === '.' || part === '..')) throw new Error('Invalid plugin file')
   const suffix = parts.at(-1).split('.').pop().toLowerCase()
-  if (!(suffixes.has(suffix) || typeSource && suffix === 'ts')) throw new Error('Invalid plugin file')
+  if (!(suffixes.has(suffix) || typeSource && (suffix === 'ts' || suffix === 'tsx'))) throw new Error('Invalid plugin file')
   return parts
 }
 
@@ -63,7 +63,7 @@ export function parseDeclaredPluginManifest(text) {
     ? String(value.id) : requiredText(value.id, 128)
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id)) throw new Error('Invalid plugin manifest')
   requiredText(value.api, 32)
-  const main = pluginRelativeParts(value.main).join('/')
+  const main = pluginRelativeParts(value.main, true).join('/')
   const uiFiles = namedUiFiles(value.ui)
   const ui = uiFiles ? uiFiles.main : value.ui === undefined ? undefined : uiPath(value.ui)
   const editorType = value.editorType === undefined ? ['figma'] : value.editorType
@@ -138,14 +138,14 @@ export async function scanDeclaredPlugins(root, options = {}) {
       if (seen.has(manifest.id)) { skipped += 1; continue }
       if (options.watchFolders) {
         for (const file of [manifest.main, ...Object.values(manifest.uiFiles ?? (manifest.ui ? { main: manifest.ui } : {}))]) {
-          await watchSourceParent(folderReal, file, options.watchFolders)
+          await watchSourceParent(folderReal, file, options.watchFolders, file === manifest.main)
         }
       }
       await readPluginEntry(folderReal, manifest.main, false)
       const uiFiles = manifest.uiFiles ? Object.values(manifest.uiFiles) : manifest.ui ? [manifest.ui] : []
       let remaining = PLUGIN_UI_BYTES
       for (const ui of uiFiles) {
-        remaining -= Buffer.byteLength(await readPluginFile(folderReal, ui), 'utf8')
+        remaining -= Buffer.byteLength(await readPluginUiEntry(folderReal, ui), 'utf8')
         if (remaining < 0) throw new Error('Plugin UI is too large')
       }
       seen.add(manifest.id)
@@ -155,9 +155,9 @@ export async function scanDeclaredPlugins(root, options = {}) {
   return { plugins, skipped, truncated: names.length > scanLimit }
 }
 
-async function watchSourceParent(folder, relative, folders) {
+async function watchSourceParent(folder, relative, folders, typeSource = false) {
   if (folders.size >= LOCAL_PLUGIN_WATCH_LIMIT) return
-  let parent = path.dirname(path.resolve(folder, ...pluginRelativeParts(relative)))
+  let parent = path.dirname(path.resolve(folder, ...pluginRelativeParts(relative, typeSource)))
   while (parent !== folder) {
     try {
       const stat = await lstat(parent)
@@ -218,18 +218,76 @@ export function createPluginCatalogWatcher(profile, refresh) {
   }
 }
 
+function entryFlavor(relative) {
+  return /\.tsx$/.test(relative) ? 'tsx' : /\.ts$/.test(relative) ? 'typescript' : 'javascript'
+}
+function entryStem(relative) {
+  const base = relative.slice(relative.lastIndexOf('/') + 1)
+  return base.replace(/\.(?:m?js|tsx?)$/, '')
+}
+function entryDir(relative) {
+  const index = relative.lastIndexOf('/')
+  return index < 0 ? '' : relative.slice(0, index + 1)
+}
+/** Bounded source names for an unbuilt official sample. Nothing outside these is read. */
+export function pluginEntrySourcePaths(main) {
+  if (entryFlavor(main) !== 'javascript') return [main]
+  const stem = entryStem(main), dir = entryDir(main)
+  const paths = [`${dir}${stem}.ts`, `${dir}${stem}.tsx`]
+  if (dir) paths.push(`${stem}.ts`, `${stem}.tsx`)
+  for (const source of ['src/', 'plugin-src/', 'source/'])
+    paths.push(`${source}${stem}.ts`, `${source}${stem}.tsx`, `${source}${stem}.js`)
+  return [...new Set(paths)]
+}
+export function pluginUiSourcePaths(ui) {
+  const base = ui.slice(ui.lastIndexOf('/') + 1)
+  const paths = [ui]
+  if (entryDir(ui)) paths.push(base)
+  for (const source of ['src/', 'ui-src/', 'plugin-src/', 'source/']) paths.push(`${source}${base}`)
+  return [...new Set(paths)]
+}
+
+async function readFirstPluginFile(root, paths, typeSource) {
+  let missing
+  for (const candidate of paths) {
+    try { return await readPackageFile(root, candidate, typeSource) }
+    catch (error) {
+      if (error?.code !== 'PLUGIN_FILE_MISSING') throw error
+      missing ??= error
+    }
+  }
+  throw missing
+}
+
 async function readPluginEntry(root, main, compile) {
-  try { return await readPluginFile(root, main) }
-  catch (error) {
-    if (error?.code !== 'PLUGIN_FILE_MISSING' || !main.endsWith('.js')) throw error
-    let source
-    try { source = await readPackageFile(root, main.slice(0, -3) + '.ts', true) }
-    catch (sourceError) {
-      if (sourceError?.code === 'PLUGIN_FILE_MISSING') throw error
-      throw sourceError
+  if (entryFlavor(main) !== 'javascript') {
+    const source = await readPackageFile(root, main, true)
+    if (entryFlavor(main) === 'tsx') {
+      if (!compile) return source
+      throw Object.assign(new Error(`${main} uses TSX/JSX, which the bounded type stripper cannot load`), { code: 'PLUGIN_SOURCE_UNSUPPORTED' })
     }
     return compile ? compilePluginTypeScript(source) : source
   }
+  try { return await readPluginFile(root, main) }
+  catch (error) {
+    if (error?.code !== 'PLUGIN_FILE_MISSING') throw error
+    for (const candidate of pluginEntrySourcePaths(main)) {
+      if (candidate === main) continue
+      let source
+      try { source = await readPackageFile(root, candidate, entryFlavor(candidate) !== 'javascript') }
+      catch (candidateError) { if (candidateError?.code !== 'PLUGIN_FILE_MISSING') throw candidateError; continue }
+      if (entryFlavor(candidate) === 'tsx') {
+        if (!compile) return source
+        throw Object.assign(new Error(`${candidate} uses TSX/JSX, which the bounded type stripper cannot load`), { code: 'PLUGIN_SOURCE_UNSUPPORTED' })
+      }
+      return compile && entryFlavor(candidate) === 'typescript' ? compilePluginTypeScript(source) : source
+    }
+    throw error
+  }
+}
+
+async function readPluginUiEntry(root, ui) {
+  return readFirstPluginFile(root, pluginUiSourcePaths(ui), false)
 }
 
 export function readPluginFile(root, relative) {
@@ -318,7 +376,9 @@ export function createPluginDirectoryHost() {
       const files = {}
       for (const relative of paths) files[relative] = relative === main
         ? await readPluginEntry(entry.root, relative, true)
-        : await readPluginFile(entry.root, relative)
+        : relative.endsWith('.html')
+          ? await readPluginUiEntry(entry.root, relative)
+          : await readPluginFile(entry.root, relative)
       if (grants.get(id) !== entry) throw Object.assign(new Error('Plugin folder is no longer authorized'), { code: 'PLUGIN_GRANT' })
       return { files }
     },

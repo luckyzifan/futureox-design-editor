@@ -49,6 +49,8 @@ export type PluginHooks = {
   onCodegen?: (output: PluginCodegenOutput) => void
   /** Manifest menu command. Omitted when the plugin has no menu. */
   command?: string
+  /** Quick-action values supplied by the host. Without a prompt the run event omits parameters. */
+  parameters?: Readonly<Record<string, string | boolean>>
   /** Launch context the editor asks for. The manifest and capabilities choose the final one. */
   mode?: PluginLaunchMode
   isModeCurrent?: () => boolean
@@ -116,6 +118,8 @@ export class PluginController {
       storage: hooks?.storage,
       storageRequest: hooks?.storageRequest,
       networkDomains: bundle.manifest.networkDomains,
+      permissions: bundle.manifest.permissionsIgnored,
+      parameters: hooks?.parameters ?? null,
       fetch: hooks?.fetch,
       systemFonts: hooks?.systemFonts,
       hooks,

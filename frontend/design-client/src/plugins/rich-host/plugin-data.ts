@@ -12,11 +12,17 @@ type ByPlugin = Record<string, Bucket>
 type ByTarget = Record<string, ByPlugin>
 type SharedGroup = { nodes?: Record<string, Bucket>; pages?: Record<string, Bucket>; root?: Bucket }
 
+/** Relaunch descriptions are per plugin and per command, like Figma's node buttons. */
+type RelaunchBucket = Record<string, string>
+type RelaunchTarget = Record<string, Record<string, RelaunchBucket>>
+type RelaunchStore = { nodes?: RelaunchTarget; pages?: RelaunchTarget; root?: Record<string, RelaunchBucket> }
+
 export type PluginDataStore = {
   nodes?: ByTarget
   pages?: ByTarget
   root?: ByPlugin
   shared?: Record<string, SharedGroup>
+  relaunch?: RelaunchStore
 }
 
 export type PluginDataScope = 'node' | 'page' | 'root'
@@ -68,6 +74,57 @@ export function sharedPluginDataGet(store: PluginDataStore, scope: PluginDataSco
 
 export function sharedPluginDataKeys(store: PluginDataStore, scope: PluginDataScope, id: string, namespace: unknown): string[] {
   return Object.keys(sharedBucket(store, scope, id, namespaceKey(namespace)))
+}
+
+function relaunchBucket(store: PluginDataStore, scope: PluginDataScope, id: string, pluginId: string): RelaunchBucket {
+  const group = store.relaunch
+  if (!group) return {}
+  if (scope === 'root') return group.root?.[pluginId] ?? {}
+  return (scope === 'page' ? group.pages : group.nodes)?.[id]?.[pluginId] ?? {}
+}
+
+/** Figma exposes relaunch descriptions as a command → description map on nodes and pages. */
+export function relaunchDataGet(store: PluginDataStore, scope: PluginDataScope, id: string, pluginId: string): RelaunchBucket {
+  return { ...relaunchBucket(store, scope, id, pluginId) }
+}
+
+function relaunchValue(value: unknown): RelaunchBucket {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new PluginApiError('invalid_value', 'setRelaunchData expects an object of command descriptions')
+  const entries = Object.entries(value as Record<string, unknown>)
+  if (entries.length > 20) throw new PluginApiError('plugin_limit', 'setRelaunchData accepts at most 20 commands')
+  const next: RelaunchBucket = {}
+  for (const [command, description] of entries) {
+    dataKey(command, 'relaunch command')
+    if (command.length > 80) throw new PluginApiError('invalid_value', 'relaunch commands are at most 80 characters')
+    if (typeof description !== 'string')
+      throw new PluginApiError('invalid_value', 'relaunch descriptions must be strings')
+    if (description.length > 1000)
+      throw new PluginApiError('invalid_value', 'relaunch descriptions are at most 1000 characters')
+    next[command] = description
+  }
+  return next
+}
+
+export function relaunchDataSet(store: PluginDataStore, scope: PluginDataScope, id: string, pluginId: string, value: unknown) {
+  const bucket = relaunchValue(value)
+  const group = store.relaunch ? structuredClone(store.relaunch) : {}
+  if (scope === 'root') {
+    const root = { ...group.root }
+    if (Object.keys(bucket).length) root[pluginId] = bucket
+    else delete root[pluginId]
+    group.root = Object.keys(root).length ? root : undefined
+  } else {
+    const field = scope === 'page' ? 'pages' : 'nodes'
+    const table = { ...group[field] }
+    const target = { ...table[id] }
+    if (Object.keys(bucket).length) target[pluginId] = bucket
+    else delete target[pluginId]
+    if (Object.keys(target).length) table[id] = target
+    else delete table[id]
+    group[field] = Object.keys(table).length ? table : undefined
+  }
+  store.relaunch = group.nodes || group.pages || group.root ? group : undefined
 }
 
 function writeBucket(current: Bucket, key: string, value: string): Bucket | undefined {
@@ -136,7 +193,7 @@ export function sharedPluginDataSet(store: PluginDataStore, scope: PluginDataSco
 }
 
 export function pluginDataEmpty(store: PluginDataStore) {
-  return !store.nodes && !store.pages && !store.root && !store.shared
+  return !store.nodes && !store.pages && !store.root && !store.shared && !store.relaunch
 }
 
 function dropMissing(document: DesignDocument, store: PluginDataStore): PluginDataStore {
@@ -151,6 +208,19 @@ function dropMissing(document: DesignDocument, store: PluginDataStore): PluginDa
     if (Object.keys(kept).length) next.pages = kept
   }
   if (store.root && Object.keys(store.root).length) next.root = store.root
+  if (store.relaunch) {
+    const relaunch: RelaunchStore = {}
+    if (store.relaunch.nodes) {
+      const nodes = Object.fromEntries(Object.entries(store.relaunch.nodes).filter(([id]) => document.nodes[id]))
+      if (Object.keys(nodes).length) relaunch.nodes = nodes
+    }
+    if (store.relaunch.pages) {
+      const pagesTable = Object.fromEntries(Object.entries(store.relaunch.pages).filter(([id]) => pages.has(id)))
+      if (Object.keys(pagesTable).length) relaunch.pages = pagesTable
+    }
+    if (store.relaunch.root && Object.keys(store.relaunch.root).length) relaunch.root = store.relaunch.root
+    if (relaunch.nodes || relaunch.pages || relaunch.root) next.relaunch = relaunch
+  }
   if (store.shared) {
     const shared: NonNullable<PluginDataStore['shared']> = {}
     for (const [space, group] of Object.entries(store.shared)) {
