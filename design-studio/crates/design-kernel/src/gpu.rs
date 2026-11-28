@@ -2901,7 +2901,13 @@ impl Engine {
                 .and_then(|cache| cache.zoom_bounds.clone());
             let bounds = match cached {
                 Some(bounds) => bounds,
-                None => Arc::new(crate::dirty_region::render_bounds_map(doc, &page.children, camera, &self.fonts)?),
+                None => {
+                    let paths = (self.source_compile_context.is_none() && options.animation.is_none())
+                        .then_some(&self.paths);
+                    Arc::new(crate::dirty_region::render_bounds_map_with_paths(
+                        doc, &page.children, camera, &self.fonts, paths,
+                    )?)
+                }
             };
             let plan = |r| crate::zoom_support::scene_plan_with_bounds(doc, &page.children, r, &bounds, project_images);
             match plan(viewport) {
