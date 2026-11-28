@@ -1,27 +1,35 @@
 import { createHash } from 'node:crypto'
 import { isRecord } from './framing.mjs'
 import { FIGMA_COMPATIBILITY_GAPS, FIGMA_COMPATIBILITY_TOOLS, callCompatibilityTool, isCompatibilityTool } from './figma-weave-tools.mjs'
+import { FIGMA_DESKTOP_TOOL_SPECS, FIGMA_DESKTOP_WRITE_TOOLS, callFigmaDesktopTool, isFigmaDesktopTool } from './figma-desktop-tools.mjs'
 
 /** Explicit compatibility surface for AI clients that already speak Figma MCP.
  * These names are not added to the shared Design API registry. Every call is
  * translated into that API. This module does not store a document, eval plugin
  * code, or claim Figma account, library, or pixel parity. */
-export const FIGMA_MCP_INSTRUCTIONS = 'Futureox Design Figma-shaped MCP facade for the document whose desktop automation bridge is enabled. Tools call the existing Design API; this server applies document/session/revision fences itself. get_metadata, get_selection, get_design_context, get_screenshot, get_variable_defs and download_assets read. use_figma writes structured create/update/delete/move/select operations as one undo step. Plugin JavaScript in use_figma code is forwarded only when the host registered a plugin bridge; otherwise the tool returns plugin_host_unavailable and does not eval. open_document is a local workspace open, not a Figma cloud file. fileKey is ignored. Screenshots are CPU exports of design content, not GPU or window captures. Cancellation cannot undo a committed edit.'
+export const FIGMA_MCP_INSTRUCTIONS = 'Futureox Design Figma-shaped MCP facade for the document whose desktop automation bridge is enabled. Tools call the existing Design API; this server applies document/session/revision fences itself. get_metadata, get_design_context, get_screenshot, get_variable_defs and download_assets read. The desktop/Dev Mode names get_code_connect_map, get_code_connect_suggestions, get_figjam, get_motion_context, get_shader and list_shaders are listed: motion reads authored local animation and prototype data, Code Connect reads and writes a bounded process-local map, and FigJam/shader calls return unsupported_remote_capability because no local model exists. add_code_connect_map and send_code_connect_mappings write only that process-local map at the current document revision; they do not modify the design document. use_figma writes structured create/update/delete/move/select operations as one undo step. Plugin JavaScript in use_figma code is forwarded only when the host registered a plugin bridge; otherwise the tool returns plugin_host_unavailable and does not eval. get_selection and open_document are Futureox extension tools, not names in the Figma tools index; they are labeled [Futureox extension] and listed by default. Set FUTUREOX_FIGMA_STRICT_TOOLS=1 to omit those two from tools/list; calls stay available. open_document is a local workspace open, not a Figma cloud file. fileKey is ignored. Screenshots are CPU exports of design content, not GPU or window captures. Cancellation cannot undo a committed edit.'
 export const FIGMA_ASSET_LIMIT = 20
+export const FIGMA_EXTENSION_TOOLS = Object.freeze(['get_selection', 'open_document'])
+export const FUTUREOX_FIGMA_STRICT_TOOLS_ENV = 'FUTUREOX_FIGMA_STRICT_TOOLS'
+const EXTENSION_TOOL_NAMES = new Set(FIGMA_EXTENSION_TOOLS)
 const ASSET_BATCH_BYTES = 32 * 1024 * 1024
 const ASSET_MIN_SCALE = 0.01
 
 export const FIGMA_MCP_GAPS = Object.freeze([
   { id: 'whoami', tool: 'whoami', status: 'absent', detail: 'No Figma account, plan, seat, or identity.' },
-  { id: 'create_new_file', tool: 'create_new_file', status: 'absent', detail: 'No cloud file creation. open_document opens a saved local design when workspace.open is granted.' },
+  { id: 'create_new_file', tool: 'create_new_file', status: 'absent', detail: 'No cloud file creation. open_document (a labeled Futureox extension) opens a saved local design when workspace.open is granted.' },
   { id: 'generate_figma_design', tool: 'generate_figma_design', status: 'absent', detail: 'No live-site capture into design layers.' },
   { id: 'generate_diagram', tool: 'generate_diagram', status: 'absent', detail: 'No FigJam or Mermaid diagram generator.' },
   { id: 'generate_image', tool: 'generate_image', status: 'absent', detail: 'No image generation or AI-credit placement.' },
   { id: 'html_to_figma', tool: 'html_to_figma', status: 'absent', detail: 'HTML import is not a Design API operation.' },
   { id: 'upload_assets', tool: 'upload_assets', status: 'absent', detail: 'No multi-file image/SVG upload tool. svg.import remains on the design_* catalog.' },
   { id: 'send_code_to_figma', tool: 'send_code_to_figma', status: 'absent', detail: 'No Figma Make or code-layer import.' },
-  { id: 'libraries_and_code_connect', tool: 'get_libraries, search_design_system, get_code_connect_map, add_code_connect_map', status: 'absent', detail: 'No team libraries or Code Connect. clientFrameworks and clientLanguages are ignored.' },
-  { id: 'figjam_motion_shaders', tool: 'get_figjam, get_motion_context, shader and generative-plugin tools', status: 'absent', detail: 'No FigJam, motion keyframes, shaders, or generative-plugin library.' },
+  { id: 'libraries_and_code_connect', tool: 'get_libraries, search_design_system', status: 'absent', detail: 'No team libraries or Figma design-system search. clientFrameworks and clientLanguages are ignored.' },
+  { id: 'local_code_connect_map', tool: 'get_code_connect_map, get_code_connect_suggestions, add_code_connect_map, send_code_connect_mappings', status: 'partial', detail: 'Listed desktop/Dev Mode names. Reads and writes a bounded process-local Code Connect map keyed by the live document revision and validated against local component/instance identity. Not the Figma cloud Code Connect store, not durable across MCP processes, and it never modifies the design document. Requests with no local mapping return unsupported_remote_capability.' },
+  { id: 'figjam', tool: 'get_figjam', status: 'absent', detail: 'Listed and discoverable, but Futureox has no FigJam board model or connectors. Every call returns unsupported_remote_capability.' },
+  { id: 'motion_context', tool: 'get_motion_context', status: 'partial', detail: 'Reads authored local animation clips and keyframes plus authored prototype interactions, and derives a CSS snippet. Not Figma timeline playback, Motion code generation, or a rendered animation.' },
+  { id: 'shaders', tool: 'get_shader, list_shaders', status: 'absent', detail: 'Listed and discoverable, but Futureox has no shader library or shader source model. Every call returns unsupported_remote_capability.' },
+  { id: 'futureox_extension_tools', tool: 'get_selection, open_document', status: 'partial', detail: 'Futureox extension tools, not names in the Figma tools index. Descriptions are prefixed [Futureox extension] and the names are listed by default so existing clients keep working. FUTUREOX_FIGMA_STRICT_TOOLS=1 omits them from tools/list only; calls remain available.' },
   { id: 'use_figma_plugin_javascript', tool: 'use_figma', status: 'partial', detail: 'Structured operations map to Design API batches. code is forwarded only through a host-registered plugin bridge. Without that bridge the call returns plugin_host_unavailable and is not evaluated.' },
   { id: 'download_assets_urls_pdf_raw', tool: 'download_assets', status: 'partial', detail: 'PNG, JPEG, WebP, SVG or bitmap PDF for up to 20 local nodes uses MCP resources. rawImagesOnly reads the original embedded image fills. External fetch URLs and external image sources are unavailable.' },
   { id: 'design_context_not_react', tool: 'get_design_context', status: 'partial', detail: 'Returns Design API context and, when advertised, HTML/CSS from code.export. Not Figma React + Tailwind.' },
@@ -47,13 +55,13 @@ export function registerFigmaPluginBridge(bridge) {
 }
 export function figmaPluginBridge() { return registeredBridge }
 
-const tool = (name, description, properties, required = []) => ({
+const tool = (name, description, properties, required = [], annotations) => ({
   name,
   description,
   inputSchema: { type: 'object', additionalProperties: false, properties: { ...properties,
     sessionId: { type: 'string', minLength: 1, maxLength: 256, description: 'Optional Futureox session assertion. Use the current HTTP Mcp-Session-Id or the packaged Figma stdio desktop grant session.' },
     fileKey: { type: 'string', ...LOOSE }, clientFrameworks: LOOSE, clientLanguages: LOOSE, skillNames: LOOSE }, required },
-  annotations: { readOnlyHint: name !== 'use_figma' && name !== 'open_document', destructiveHint: name === 'use_figma' || name === 'open_document', idempotentHint: name !== 'use_figma' && name !== 'open_document', openWorldHint: false },
+  annotations: annotations ?? { readOnlyHint: name !== 'use_figma' && name !== 'open_document', destructiveHint: name === 'use_figma' || name === 'open_document', idempotentHint: name !== 'use_figma' && name !== 'open_document', openWorldHint: false },
 })
 
 export const FIGMA_MCP_TOOLS = Object.freeze([
@@ -62,13 +70,13 @@ export const FIGMA_MCP_TOOLS = Object.freeze([
     limit: { type: 'integer', minimum: 1, maximum: NODE_LIMIT, description: 'Nodes per outline page. Defaults to 100.' },
     cursor: { type: 'string', minLength: 46, maxLength: 215, description: 'nextCursor from the same nodeId, editor session, and revision.' },
   }),
-  tool('get_selection', 'Read the active page and current selection. Up to 20 nodes include id, name, kind, size, and world bounds. Desktop Figma MCP often implies this selection; call this tool to read it.', {}),
+  tool('get_selection', '[Futureox extension] Read the active page and current selection. Up to 20 nodes include id, name, kind, size, and world bounds. This is not a name in the Figma MCP tools index; the Figma desktop server implies selection in other tools. Listed by default and omitted from tools/list when FUTUREOX_FIGMA_STRICT_TOOLS=1.', {}),
   tool('get_design_context', 'Bounded design context for nodeId or the current selection, from context.get. When code.export is available, HTML/CSS is attached as resources. Output is Futureox HTML/CSS, not Figma React and Tailwind. clientFrameworks is ignored.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
   tool('get_screenshot', 'CPU PNG of the local node, selection or active page. maxDimension fits the rendered size. Set contentsOnly to false to include background and other page layers inside the crop. Set enableBase64Response to false for a resource link without inline image content.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, scale: { type: 'number', minimum: 0.1, maximum: 4 }, maxDimension: { type: 'integer', minimum: 1, maximum: 65536 }, contentsOnly: { type: 'boolean' }, enableBase64Response: { type: 'boolean' } }),
   tool('get_variable_defs', 'Local variable definitions and their alias dependencies, plus shared styles referenced by nodeId or the first 20 selected nodes. An empty selection returns a bounded document catalog.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
   tool('download_assets', 'Export up to 20 local nodes as individual MCP resources in png, jpeg, webp, svg, or bitmap pdf. Set rawImagesOnly to read up to 20 original embedded image fills in the selected subtrees instead.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, nodeIds: { type: 'array', minItems: 1, maxItems: FIGMA_ASSET_LIMIT, items: { type: 'string', minLength: 1, maxLength: 128 } }, defaultFormat: { type: 'string', enum: ['png', 'jpeg', 'jpg', 'webp', 'svg', 'pdf'] }, defaultScale: { type: 'number', minimum: ASSET_MIN_SCALE, maximum: 4 }, rawImagesOnly: { type: 'boolean' } }),
   tool('use_figma', 'Write the open document. Preferred input is operations (at most 40), applied as one Design API batch and one undo step: create {kind,parentId?,x?,y?,width?,height?,name?,text?,fontSize?,fill?}, update {nodeId,name?,x?,y?,width?,height?,text?,fill?,transform?}, delete {nodeId|nodeIds}, select {nodeIds}, move {nodeId,parentId,index?}. fill is #RRGGBB. Coordinates are parent-local document units. code is plugin JavaScript and runs only when a plugin bridge is registered; otherwise the result is plugin_host_unavailable and the source is not evaluated. description is required.', { description: { type: 'string', minLength: 1, maxLength: 400 }, operations: { type: 'array', maxItems: 40 }, code: { type: 'string', maxLength: 100000 }, mutationId: { type: 'string', minLength: 1, maxLength: 128 } }, ['description']),
-  tool('open_document', 'Open a saved local design through workspace.open. Requires rootHandle, documentHandle, and mutationId from a workspace grant. This is not Figma create_new_file. A successful open can end this automation session.', { rootHandle: { type: 'string', minLength: 1, maxLength: 512 }, documentHandle: { type: 'string', minLength: 1, maxLength: 512 }, mutationId: { type: 'string', minLength: 1, maxLength: 128 } }, ['rootHandle', 'documentHandle', 'mutationId']),
+  tool('open_document', '[Futureox extension] Open a saved local design through workspace.open. Requires rootHandle, documentHandle, and mutationId from a workspace grant. This is not Figma create_new_file or a Figma URL open, and it is not in the Figma MCP tools index. Listed by default and omitted from tools/list when FUTUREOX_FIGMA_STRICT_TOOLS=1. A successful open can end this automation session.', { rootHandle: { type: 'string', minLength: 1, maxLength: 512 }, documentHandle: { type: 'string', minLength: 1, maxLength: 512 }, mutationId: { type: 'string', minLength: 1, maxLength: 128 } }, ['rootHandle', 'documentHandle', 'mutationId']),
 ])
 
 const failure = (method, code, message, identity = {}) => ({
@@ -199,7 +207,7 @@ function patchFrom(operation) {
 }
 
 export class FigmaFacade {
-  constructor({ execute, methods, scope = 'write', pluginBridge = undefined, target, terminalSignal, localSessionId } = {}) {
+  constructor({ execute, methods, scope = 'write', pluginBridge = undefined, target, terminalSignal, localSessionId, strictFigmaTools } = {}) {
     if (typeof execute !== 'function') throw new TypeError('FigmaFacade requires the Design API execute function')
     if (!Array.isArray(methods) || methods.some(method => !isRecord(method) || typeof method.name !== 'string')) throw new TypeError('FigmaFacade requires Design API method descriptors')
     if (!['read', 'write'].includes(scope)) throw new TypeError('FigmaFacade scope must be read or write')
@@ -210,6 +218,11 @@ export class FigmaFacade {
     this.target = target
     this.terminalSignal = terminalSignal
     this.localSessionId = localSessionId
+    // Tools/list presentation only. Calls remain available, and the default
+    // keeps the existing Futureox extension tools listed.
+    this.strictFigmaTools = strictFigmaTools === undefined
+      ? process.env[FUTUREOX_FIGMA_STRICT_TOOLS_ENV] === '1' || process.env[FUTUREOX_FIGMA_STRICT_TOOLS_ENV] === 'true'
+      : strictFigmaTools === true
   }
 
   listTools() {
@@ -221,7 +234,12 @@ export class FigmaFacade {
       (canUseFigma && entry.name === 'use_figma') ||
       (canOpenDocument && entry.name === 'open_document')
     )
-    return [...base, ...FIGMA_COMPATIBILITY_TOOLS].map(entry => ({ ...entry }))
+    const desktop = FIGMA_DESKTOP_TOOL_SPECS
+      .filter(spec => !spec.mutates || canWrite)
+      .map(spec => tool(spec.name, spec.description, spec.properties, spec.required, spec.annotations))
+    const catalog = [...base, ...desktop, ...FIGMA_COMPATIBILITY_TOOLS]
+    const listed = this.strictFigmaTools ? catalog.filter(entry => !EXTENSION_TOOL_NAMES.has(entry.name)) : catalog
+    return listed.map(entry => ({ ...entry }))
   }
 
   async callTool(name, args, context = {}) {
@@ -242,6 +260,7 @@ export class FigmaFacade {
       if (name === 'download_assets') return await this.download(toolArgs, context)
       if (name === 'use_figma') return await this.useFigma(toolArgs, context)
       if (name === 'open_document') return await this.openDocument(toolArgs, context)
+      if (isFigmaDesktopTool(name)) return await callFigmaDesktopTool(this, name, toolArgs, context)
       if (isCompatibilityTool(name)) {
         return await callCompatibilityTool({
           name, args: toolArgs,

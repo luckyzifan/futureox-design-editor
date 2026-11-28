@@ -50,13 +50,21 @@ The browser page does not listen on a port and cannot host stdio. The in-app Des
 | Tool | Design API | Notes |
 |---|---|---|
 | `get_metadata` | `page.list`, `node.find` | Omit `nodeId` to list pages. Pass a local page or node ID for an XML outline and structured nodes. Use `limit` from 1 to 100 and return `nextCursor` as `cursor` with the same `nodeId` to continue. |
-| `get_selection` | `selection.get`, `node.get` | Active page and selection. At most 20 node summaries. |
+| `get_selection` | `selection.get`, `node.get` | `[Futureox extension]` Active page and selection. At most 20 node summaries. Not a Figma tools-index name; listed by default. |
 | `get_design_context` | `context.get`, `code.export` | Futureox HTML/CSS when `code.export` is available. Not Figma React + Tailwind. `clientFrameworks` is ignored. |
 | `get_screenshot` | `preview.capture` | PNG of the node, selection or active page. `maxDimension` limits the rendered size. `contentsOnly: false` includes surrounding page content inside the crop. `enableBase64Response: false` requests a resource link without inline image content. |
 | `get_variable_defs` | `variable.list`, `style.list`, `node.get` | Local variables, their alias dependencies across modes, and shared styles on the specified node or first 20 selected nodes. An empty selection returns a bounded document catalog. |
 | `download_assets` | `preview.capture`, `vector.export`, or `raster.sourceAssets` | Up to 20 local nodes as separate MCP resources. `png`, `jpeg`, `webp`, `svg`, or bitmap `pdf`. Use `rawImagesOnly` for the original embedded image sources. |
 | `use_figma` | `batch.apply` | Listed when the session can edit. One undo step for 1–40 structured operations. `description` is required. |
-| `open_document` | `workspace.open` | Listed when the session can edit and has a workspace write grant. Opens a saved local design and can end the automation session. |
+| `open_document` | `workspace.open` | `[Futureox extension]` Listed when the session can edit and has a workspace write grant. Opens a saved local design and can end the automation session. Not a Figma tools-index name; listed by default. |
+| `get_code_connect_map` | process-local Code Connect map, `node.get`, `selection.get` | Read mappings for `nodeId`, `nodeIds`, or the selection. Empty results return `unsupported_remote_capability`. |
+| `get_code_connect_suggestions` | local component identity, process-local Code Connect map | Suggest unconfirmed mappings and report unmapped local components without inventing a source. |
+| `get_figjam` | none | Listed; every call returns `unsupported_remote_capability`. Futureox has no FigJam board model. |
+| `get_motion_context` | `animation.list`, `animation.get`, `prototype.get`, `node.find` | Authored local clips, keyframes, derived CSS, and prototype interactions for `nodeId`. Not Figma timeline playback. |
+| `get_shader` | none | Listed; every call returns `unsupported_remote_capability`. Futureox has no shader source model. |
+| `list_shaders` | none | Listed; every call returns `unsupported_remote_capability`. Futureox has no shader library. |
+| `add_code_connect_map` | local component identity, process-local Code Connect map | Write scope only. Stores one mapping at the current document revision; never edits the design document. |
+| `send_code_connect_mappings` | process-local Code Connect map | Write scope only. Confirms stored mappings at the same document revision; stale mappings return `stale_revision`. |
 | `weave_list_tools`, `weave_get_tool_inputs`, `weave_run_tool`, `weave_get_tool_run_output`, `weave_cancel_tool_run`, `weave_upload_asset` | none | Listed for Figma clients. Every call returns `unsupported_remote_capability`; this document session exposes no Weave account, credits, hosted recipe catalog, upload ticket, or run queue. |
 | `weave_find_model`, `weave_run_model`, `weave_get_model_run_output` | none | Listed for Figma clients. Every call returns `unsupported_remote_capability`; this document session exposes no Weave-compatible model catalog, pricing, or prediction service. |
 | `weave_request_report` | none | Connected Figma server only; not in the public tools-and-prompts index. Listed and returns `unsupported_remote_capability`. |
@@ -95,16 +103,46 @@ The MCP process does not eval `code`. The current desktop build does not registe
 - `create_branch` returns `unsupported_remote_capability`. Futureox has no cloud branch or merge model; save a copy of the design and open it with `open_document`.
 - These names stay on the Figma-shaped entry. The shared `design_*` registry still advertises only `design_*` operations, so a native client never sees a name that always fails.
 
+## Desktop and Dev Mode tools
+
+The eight desktop/Dev Mode names are listed so a Figma client gets a translated result instead of `unknown_tool`. They call the live Design API or return a typed boundary; no name contacts Figma, evaluates plugin code, or stores a design document.
+
+### Motion
+
+`get_motion_context` requires `nodeId` and `fileKey` (the Figma-shaped schema requires both; `fileKey` is accepted and ignored) and accepts optional `recursive`. It reads `animation.list`, `animation.get`, and authored `prototype.get` interactions for the node, or for readable descendants with `recursive: true`. The result is `futureox.figma-motion.v1` with bounded clips, keyframes, prototype interactions, and a derived CSS `@keyframes` snippet. Spring easing has no CSS equivalent and is copied, not converted. This is not Figma timeline playback, Motion (motion.dev) code generation, or a rendered animation. A session without `animation.list`/`animation.get` and `prototype.get` returns `unsupported_remote_capability`.
+
+### Code Connect
+
+`get_code_connect_map`, `get_code_connect_suggestions`, `add_code_connect_map`, and `send_code_connect_mappings` use a bounded process-local Code Connect map keyed by the live `documentId`. This is not the Figma cloud Code Connect service and the map is not durable across MCP processes.
+
+- `add_code_connect_map` requires `nodeId`, `fileKey`, `source`, `componentName`, and `label`; `snippet`, `version`, `mutationId`, and `replace` are optional. `nodeId` must identify a local main component or instance (`not_a_component` otherwise); instances resolve to their main component id. The mapping records the document revision at write time. A second mapping for the same `nodeId` and `label` with a different source returns `mapping_conflict` unless `replace: true`. The design document is not modified.
+- `get_code_connect_map` resolves `nodeId`/`nodeIds` or the current selection, follows instances to their main component, and returns stored mappings with `confirmed`, `documentRevision`, and a `stale` flag. When no local mapping exists it returns `unsupported_remote_capability` with `details.mappingCount: 0` instead of an empty or invented map.
+- `get_code_connect_suggestions` returns stored unconfirmed mappings as `suggested`, and local components without a mapping as `unmapped` with `source: null`. It does not invent code sources. A request whose nodes contain no component or instance returns `unsupported_remote_capability`.
+- `send_code_connect_mappings` confirms stored mappings. Every entry must match a mapping added at the same document revision; otherwise the call returns `not_found`, `mapping_conflict`, or `stale_revision` and confirms nothing. Re-adding at the current revision is the recovery path.
+- `mutationId` is idempotent: replaying the same payload returns the earlier result with `replayed: true`; reusing the id with another payload returns `mutation_conflict`.
+
+All four tools accept the common local `sessionId` assertion. Code Connect write tools are listed only in a write-scope catalog.
+
+### FigJam and shaders
+
+`get_figjam`, `get_shader`, and `list_shaders` are discoverable, validate their advertised arguments, and then return `unsupported_remote_capability` with `error.details.capability` and `error.details.docs`. Futureox has no FigJam board model or connectors and no shader library or shader source model. They do not call the Design API and do not modify the document.
+
+## Futureox extension tools
+
+`get_selection` and `open_document` are Futureox extension tools. Neither name is in the Figma tools-and-prompts index or the connected Figma server catalog. They remain listed by default so existing Futureox clients keep working; their descriptions start with `[Futureox extension]` so a strict client can identify them without a hidden catalog change.
+
+Set `FUTUREOX_FIGMA_STRICT_TOOLS=1` (or `true`) to omit exactly those two names from `tools/list`. The switch affects presentation only: `tools/call` still resolves both names, all other tools stay listed, and authentication/authorization is unchanged. The loopback HTTP listener still requires its bearer token; there is no new unauthenticated access path.
+
 ## Gaps versus the Figma MCP server
 
 Absent:
 
 - `whoami` (no account, plan, or seat)
-- `create_new_file` (no cloud file; `open_document` opens a saved local design)
+- `create_new_file` (no cloud file; the labeled Futureox extension `open_document` opens a saved local design)
 - `generate_figma_design`, `generate_diagram`, `generate_image`, `html_to_figma`
 - `upload_assets`, `send_code_to_figma`
-- `get_libraries`, `search_design_system`, and Code Connect tools
-- `get_figjam`, `get_motion_context`, shader tools, and generative-plugin library tools
+- `get_libraries`, `search_design_system`, and generative-plugin library tools
+- A Figma cloud Code Connect store, FigJam boards, and shaders; the names are listed with typed boundaries below
 - Remote `https://mcp.figma.com/mcp`, OAuth, and multi-user accounts
 
 Listed but unsupported:
@@ -112,10 +150,14 @@ Listed but unsupported:
 - `weave_list_tools`, `weave_get_tool_inputs`, `weave_upload_asset`, `weave_run_tool`, `weave_get_tool_run_output`, `weave_cancel_tool_run`, `weave_find_model`, `weave_run_model`, and `weave_get_model_run_output` are visible in `tools/list`; every call returns `unsupported_remote_capability`. This document session exposes no Weave account, credits, recipe catalog, upload store, model catalog, or job queue.
 - `weave_request_report` (connected server only) is visible and returns `unsupported_remote_capability`.
 - `create_branch` (connected server only) is visible and returns `unsupported_remote_capability`; Futureox has no branch or merge model.
+- `get_figjam`, `get_shader`, and `list_shaders` are visible in `tools/list`; every call returns `unsupported_remote_capability` and does not call the Design API.
 
 Partial:
 
 - `create_session` returns the active local automation transport session, which other facade tools accept as `sessionId`. It does not create a Figma cloud session and is not in the public tools-and-prompts index.
+- Code Connect tools read and write a bounded process-local map keyed by the live document revision and local component identity. There is no Figma cloud Code Connect store, no team library, and no persistence across MCP processes. The map is not part of the design document and `send_code_connect_mappings` does not modify the document.
+- `get_motion_context` reads authored local animation and prototype data and derives CSS. It is not Figma timeline playback, Motion (motion.dev) generation, or rendered output.
+- `get_selection` and `open_document` are labeled Futureox extension tools, listed by default; `FUTUREOX_FIGMA_STRICT_TOOLS=1` removes them from `tools/list` only.
 
 - `use_figma` structured edits are real Design API batches. Plugin JavaScript is not run unless a host bridge is registered.
 - `download_assets` accepts up to 20 local node IDs in the active page at one editor revision. Download PNG, JPEG, WebP, SVG or bitmap PDF through `resources/read` in the same MCP client session. Render scales range from 0.01× to 4×. A separate `rawImagesOnly: true` call reads up to 20 distinct original embedded PNG, JPEG, GIF or WebP fills from the requested subtrees. Omit format and scale for originals. Truncation and unavailable sources are reported. Original bytes are delivered through the same MCP resource mechanism.

@@ -5,6 +5,9 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { DesignMcpServer, PROTOCOL_VERSION } from '../src/server.mjs'
 import { FIGMA_MCP_GAPS, FIGMA_MCP_INSTRUCTIONS, FIGMA_MCP_TOOLS, FigmaFacade, metadataXml, registerFigmaPluginBridge, validateFigmaOperation } from '../src/figma-facade.mjs'
 import { FIGMA_COMPATIBILITY_TOOLS } from '../src/figma-weave-tools.mjs'
+import { FIGMA_DESKTOP_TOOL_NAMES, FIGMA_DESKTOP_WRITE_TOOLS } from '../src/figma-desktop-tools.mjs'
+
+const READ_DESKTOP_TOOL_NAMES = FIGMA_DESKTOP_TOOL_NAMES.filter(name => !FIGMA_DESKTOP_WRITE_TOOLS.has(name))
 
 const METHODS = ['document.get', 'page.list', 'node.find', 'node.get', 'selection.get', 'context.get', 'code.export', 'preview.capture', 'variable.list', 'style.list', 'vector.export', 'batch.apply', 'workspace.open']
 
@@ -256,7 +259,7 @@ test('registered plugin bridge receives source and the facade does not eval it',
 
 test('read-only scope rejects writes before calling the Design API', async () => {
   const { api, calls } = facade({}, { scope: 'read' })
-  assert.deepEqual(api.listTools().map(tool => tool.name), ['get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets', ...FIGMA_COMPATIBILITY_TOOLS.map(entry => entry.name)])
+  assert.deepEqual(api.listTools().map(tool => tool.name), ['get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets', ...READ_DESKTOP_TOOL_NAMES, ...FIGMA_COMPATIBILITY_TOOLS.map(entry => entry.name)])
   const write = await api.callTool('use_figma', { description: 'Edit', operations: [{ op: 'delete', nodeId: 'a' }] }, {})
   const open = await api.callTool('open_document', { rootHandle: 'root', documentHandle: 'doc', mutationId: 'open-1' }, {})
   assert.equal(write.error.code, 'read_only')
