@@ -690,6 +690,73 @@ test('Sketch Tidy exposes the uneven row spacing beside its button with one-step
   await act(async () => applyInterfaceLayout('figma'))
 })
 
+test('Sketch Tidy spacing exposes an uneven column on the vertical axis', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Tidy column spacing')
+  const column = [0, 50, 90].map((y, index) => node('rectangle', [0, 2, 1][index], y, 20, 20))
+  doc.nodes = Object.fromEntries(column.map(layer => [layer.id, layer]))
+  doc.pages[0].children = column.map(layer => layer.id)
+  await act(async () => { editor!.load(doc); editor!.select(column.map(layer => layer.id)); canvas().focus() })
+  const alignment = document.querySelector('.sketch-inspector-alignment')!
+  const spacing = alignment.querySelector<HTMLInputElement>('input[aria-label="垂直间距"]')!
+  expect(spacing).not.toBeNull()
+  expect(alignment.querySelector('input[aria-label="水平间距"]')).toBeNull()
+  expect(document.querySelector('.inspector-scroll .selection-spacing-fields')).toBeNull()
+  const before = editor!.authoredDocument
+  const revision = editor!.state.version
+  await act(async () => {
+    spacing.focus()
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(spacing, '24')
+    spacing.dispatchEvent(new Event('input', { bubbles: true }))
+    spacing.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+  })
+  expect(column.map(layer => editor!.state.doc.nodes[layer.id].transform.slice(4))).toEqual([[0, 0], [2, 44], [1, 88]])
+  expect(editor!.state.version).toBe(revision + 1)
+  expect(editor!.state.message).toBe('调整智能选区间距')
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+  await act(async () => applyInterfaceLayout('figma'))
+})
+
+test('Sketch Tidy spacing keeps an even row editable and holds the zero lower bound', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Tidy even spacing')
+  const row = [0, 40, 80].map(x => node('rectangle', x, 10, 20, 20))
+  doc.nodes = Object.fromEntries(row.map(layer => [layer.id, layer]))
+  doc.pages[0].children = row.map(layer => layer.id)
+  await act(async () => { editor!.load(doc); editor!.select(row.map(layer => layer.id)); canvas().focus() })
+  const alignment = document.querySelector('.sketch-inspector-alignment')!
+  const spacing = alignment.querySelector<HTMLInputElement>('input[aria-label="水平间距"]')!
+  expect(spacing.value).toBe('20')
+  expect(spacing.getAttribute('aria-valuemin')).toBe('0')
+  expect(document.querySelector('.inspector-scroll .selection-spacing-fields')).toBeNull()
+  const before = editor!.authoredDocument
+  const revision = editor!.state.version
+  const enter = async (value: string) => act(async () => {
+    spacing.focus()
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(spacing, value)
+    spacing.dispatchEvent(new Event('input', { bubbles: true }))
+    spacing.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+  })
+  // Negative gaps stay rejected until a Mac Sketch comparison proves native
+  // behavior; the field never mutates the document through the 0 lower bound.
+  await enter('-5')
+  expect(editor!.state.version).toBe(revision)
+  expect(row.map(layer => editor!.state.doc.nodes[layer.id].transform[4])).toEqual([0, 40, 80])
+  await act(async () => spacing.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
+  await enter('30')
+  expect(row.map(layer => editor!.state.doc.nodes[layer.id].transform[4])).toEqual([0, 50, 100])
+  expect(editor!.state.version).toBe(revision + 1)
+  expect(editor!.state.message).toBe('调整智能选区间距')
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+  await act(async () => applyInterfaceLayout('figma'))
+})
+
 test('Sketch Shift+Command+D duplicates directly behind the original and preserves undo', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')
