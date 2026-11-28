@@ -58,9 +58,11 @@ fn legacy_fixed_and_flexible_axes_match_native_and_retain_the_mask() {
     for (mask, expected) in [
         (45, [60., 56.25, 40., 10.]),
         (47, [40., 56.25, 80., 10.]),
-        (27, [20., 30., 90., 22.]),
-        (11, [20., 30., 90., 10.]),
-        (54, [160. / 3., 75., 320. / 3., 25.]),
+        // Masks 3/6 pin one margin and let the size follow the parent's
+        // proportion. The pinned edge stays, the opposite edge moves.
+        (27, [20., 30., 80., 17.5]),
+        (11, [20., 30., 80., 10.]),
+        (54, [80., 82.5, 80., 17.5]),
     ] {
         let archive = legacy_frame(mask);
         let native = SketchDocument::from_sketch(&archive).unwrap();
@@ -90,7 +92,9 @@ fn editing_one_pin_keeps_the_other_imported_legacy_axis() {
     layout::resolve(&mut doc, &fonts).unwrap();
     doc.nodes.get_mut("child").unwrap().constraints.as_mut().unwrap().horizontal = layout::Anchor::End;
     resize_parent(&mut doc, "frame", Size { width: 200., height: 140. }, &fonts);
-    assert_box(&doc, "child", [120., 30., 40., 22.]);
+    // The untouched vertical legacy bits stay 3, so its size follows the
+    // parent's 100->140 ratio while the leading edge stays at 30.
+    assert_box(&doc, "child", [120., 30., 40., 17.5]);
     let fields = export_sketch_layer_fields(&doc, "child").unwrap();
     assert_eq!(fields["resizingConstraint"], 28);
     assert_eq!(fields["horizontalPins"], 4);
@@ -299,7 +303,7 @@ fn default_futureox_pins_and_a_nondefault_saved_sketch_mask_keep_their_behavior(
     for (producer, mask, expected) in [
         ("com.futureox.design-kernel", 63, [20., 30., 40., 10.]),
         ("", 63, [20., 30., 40., 10.]),
-        ("com.bohemiancoding.sketch3", 27, [20., 30., 90., 22.]),
+        ("com.bohemiancoding.sketch3", 27, [20., 30., 80., 17.5]),
     ] {
         let bytes = unpinned_fixed_frame(producer, 0, mask);
         let mut doc = import_sketch_report(&bytes).unwrap().document;

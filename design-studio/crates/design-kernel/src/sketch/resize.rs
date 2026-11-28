@@ -2,6 +2,8 @@
 //!
 //! Set bits mean FLEXIBLE:
 //! 4 = leading margin, 2 = size, 1 = trailing margin (Y uses the next three bits).
+//! A flexible size follows the parent's extent proportionally (Sketch 2026
+//! Relative sizing), so a lone pinned edge stays while the opposite edge moves.
 //! This bounded subset excludes degenerate/outside/overconstrained rectangles
 //! rather than guessing native minimum-size, migration or transformed-layout rules.
 use crate::sketch::{Error, Layer, Result};
@@ -134,14 +136,13 @@ pub(crate) fn axis(start: f64, size: f64, old: f64, new: f64, bits: u8) -> Resul
         0 => return Err(Error::Unsupported("overconstrained legacy axis".into())),
         1 => (start, size),                   // leading edge + fixed size
         2 => (start, new - start - trailing), // both edges
-        3 => (start, size * (new - start) / (old - start)),
+        3 => (start, size * new / old),       // leading edge + proportional size
         4 => (new - trailing - size, size), // trailing edge + fixed size
         5 => ((start + size / 2.0) * new / old - size / 2.0, size),
         6 => {
-            // trailing edge, flexible size
-            let new_end = new - trailing;
-            let new_start = start * new_end / end;
-            (new_start, new_end - new_start)
+            // trailing edge + proportional size
+            let extent = size * new / old;
+            (new - trailing - extent, extent)
         }
         7 => (start * new / old, size * new / old), // fully proportional
         _ => return Err(Error::Invalid("invalid axis constraint bits".into())),

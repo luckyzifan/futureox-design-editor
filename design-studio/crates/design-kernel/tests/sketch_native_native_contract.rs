@@ -316,13 +316,15 @@ fn legacy_parent_resize_proposes_native_edges_sizes_and_relative_centers() {
     use futureox_design_kernel::sketch::Size;
     // Asymmetric frame distinguishes center-proportional from free-margin-ratio
     // positioning, and single-pin sizing from whole-parent proportional sizing.
+    // Bits 3/6 pin one margin: the size follows the parent's 100→200 ratio and
+    // the unpinned edge moves (leading stays at 20 / trailing stays at 50).
     let expected = [
         (1, 20.0, 30.0),
         (2, 20.0, 130.0),
-        (3, 20.0, 67.5),
+        (3, 20.0, 60.0),
         (4, 120.0, 30.0),
         (5, 55.0, 30.0),
-        (6, 60.0, 90.0),
+        (6, 90.0, 60.0),
         (7, 40.0, 60.0),
     ];
     for (bits, position, extent) in expected {

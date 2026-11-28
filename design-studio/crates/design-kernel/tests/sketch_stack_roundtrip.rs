@@ -389,6 +389,43 @@ fn sketch_start_center_end_and_distribution_keep_their_geometry() {
 }
 
 #[test]
+fn sketch_center_keeps_overflow_at_the_leading_edge_after_reopen() {
+    let fonts = Fonts::new();
+    let mut doc: Document = serde_json::from_value(json!({
+        "schemaVersion": 29, "id": "d", "name": "Sketch overflow center",
+        "pages": [{"id":"p","name":"Page","background":"#ffffff","children":["stack"]}],
+        "nodes": {
+            "stack": {"id":"stack","kind":"frame","width":100,"height":40,"children":["a","b"],
+                "layout":{"mode":"horizontal","gap":10,"padding":[0,0,0,0],
+                    "justify":"unsafe-center","align":"unsafe-center"}},
+            "a": {"id":"a","kind":"rectangle","width":80,"height":10},
+            "b": {"id":"b","kind":"rectangle","width":80,"height":10}
+        }
+    })).unwrap();
+    layout::resolve(&mut doc, &fonts).unwrap();
+    // The layout model can still carry the Figma allow-overflow option, but a
+    // Sketch stack export/reopen clamps it to the leading edge.
+    let archive = export_sketch(&doc).unwrap();
+    let layer = first_sketch_layer(&archive);
+    assert_eq!(layer["groupLayout"]["justifyContent"], 1);
+    assert_eq!(layer["groupLayout"]["alignItems"], 1);
+    assert_eq!(layer["userInfo"]["com.futureox.design-kernel"]["stackAlignment"]["justify"], "unsafe-center");
+    let mut reopened = import_sketch_report(&archive).unwrap();
+    assert!(!reopened.warnings.iter().any(|warning| warning.contains("stack-align-not-supported")));
+    let layout = reopened.document.nodes["stack"].layout.as_ref().unwrap();
+    assert_eq!(layout.justify, layout::Align::Center);
+    assert_eq!(layout.align, layout::Align::Center);
+    layout::resolve(&mut reopened.document, &fonts).unwrap();
+    assert_eq!(box_at(&reopened.document, "a"), [0., 15., 80., 10.]);
+    assert_eq!(box_at(&reopened.document, "b"), [90., 15., 80., 10.]);
+
+    reopened.document.nodes.get_mut("stack").unwrap().width = 200.;
+    layout::resolve(&mut reopened.document, &fonts).unwrap();
+    assert_eq!(box_at(&reopened.document, "a"), [15., 15., 80., 10.]);
+    assert_eq!(box_at(&reopened.document, "b"), [105., 15., 80., 10.]);
+}
+
+#[test]
 fn native_unwrapped_archive_stretch_code_executes_without_an_export_receipt() {
     let fonts = Fonts::new();
     let archive = export_sketch(&aligned_stack("start", "start", false)).unwrap();

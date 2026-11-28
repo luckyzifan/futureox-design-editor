@@ -660,6 +660,36 @@ test('Sketch Tidy previews its destination, then commits the same arrangement in
   expect(tidy()).toBeNull()
 })
 
+test('Sketch Tidy exposes the uneven row spacing beside its button with one-step undo', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Tidy spacing')
+  const row = [0, 50, 90].map((x, index) => node('rectangle', x, [0, 2, 1][index], 20, 20))
+  doc.nodes = Object.fromEntries(row.map(layer => [layer.id, layer]))
+  doc.pages[0].children = row.map(layer => layer.id)
+  await act(async () => { editor!.load(doc); editor!.select(row.map(layer => layer.id)); canvas().focus() })
+  const tidy = document.querySelector<HTMLButtonElement>('[aria-label="整理"]')!
+  expect(tidy.disabled).toBe(false)
+  const alignment = document.querySelector('.sketch-inspector-alignment')!
+  const spacing = alignment.querySelector<HTMLInputElement>('input[aria-label="水平间距"]')!
+  expect(spacing).not.toBeNull()
+  expect(document.querySelector('.inspector-scroll .selection-spacing-fields')).toBeNull()
+  const before = editor!.authoredDocument
+  const revision = editor!.state.version
+  await act(async () => {
+    spacing.focus()
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(spacing, '24')
+    spacing.dispatchEvent(new Event('input', { bubbles: true }))
+    spacing.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+  })
+  expect(row.map(layer => editor!.state.doc.nodes[layer.id].transform[4])).toEqual([0, 44, 88])
+  expect(editor!.state.version).toBe(revision + 1)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+  await act(async () => applyInterfaceLayout('figma'))
+})
+
 test('Sketch Shift+Command+D duplicates directly behind the original and preserves undo', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')
