@@ -24,7 +24,7 @@ import { InitializationGate, readKernelAsset } from './initialization'
 import { loadKernelResourcePair } from './kernel-resources'
 import type { DesignNode, Point, DesignDocument, Bounds, Matrix } from '../model'
 import { defaultLayout, defaultSizing, validateVariableModes, validateDocument } from '../model'
-import { pageEditScope, snapshotParent, type PageEditScope } from '../page-edit-scope'
+import { hasSketchSmartLayout, pageEditScope, snapshotParent, type PageEditScope } from '../page-edit-scope'
 import { translationOnlyChanges } from './translation-preview'
 export function kernelNoiseFillPreset(): import('../model').Paint {
   if(!ready)throw Error('编辑内核尚未就绪')
@@ -646,7 +646,8 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument, r
     )
   if (
     !components && !connectors &&
-    !documentNodes.some((n) => n.graphic || n.layout || n.sizing || n.constraints)
+    !documentNodes.some((n) => n.graphic || n.layout || n.sizing || n.constraints ||
+      hasSketchSmartLayout(document, n))
   )
     return document
   if (

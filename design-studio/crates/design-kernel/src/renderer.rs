@@ -3249,7 +3249,7 @@ if retain_translated_roots {
                 } else {
                     crate::fidelity::resolve_sample_planes_2x(samples, w, h)
                 };
-                if options.raster_profile == crate::fidelity::RasterProfile::Figma {
+                if source.raster_profile == crate::fidelity::RasterProfile::Figma {
                     crate::fidelity::apply_false_half_fixes(
                         &mut bytes,
                         [&planes[0], &planes[1], &planes[2], &planes[3]],

@@ -2261,9 +2261,14 @@ impl<'a> Importer<'a> {
             let axis = |value: crate::layout::Align, key: &str| {
                 use crate::layout::Align::*;
                 let hint = saved.and_then(|v| v.get(key)).and_then(Value::as_str);
+                // Sketch's own stacks keep overflowing content at the leading
+                // edge even under a middle anchor (the official smart-layout
+                // fixtures show x=0 for an oversized child). The allow-overflow
+                // variants are Figma-only; honoring the saved hint on an
+                // unwrapped Sketch stack puts children outside the frame.
                 match value {
-                    Center if hint == Some("unsafe-center") || (wrap && hint != Some("center")) => UnsafeCenter,
-                    End if hint == Some("unsafe-end") || (wrap && hint != Some("end")) => UnsafeEnd,
+                    Center if wrap && hint != Some("center") => UnsafeCenter,
+                    End if wrap && hint != Some("end") => UnsafeEnd,
                     value => value,
                 }
             };
@@ -2313,7 +2318,17 @@ impl<'a> Importer<'a> {
                 "sketchInferredGroupLayout".into(),
                 serde_json::to_string(&payload).unwrap_or_default(),
             );
-            import_lossy.push("inferred-group-layout-not-modeled;static-frames-preserved".into());
+            // Smart Layout keeps the authored frames until a direct child
+            // changes. Record the static baseline and inferred main-axis
+            // spacing so layout::resolve can reflow that bounded edit.
+            if let Some(model) = crate::sketch_smart_layout::model_from_layer(layer) {
+                node.bindings.insert(
+                    crate::sketch_smart_layout::MODEL_BINDING.into(),
+                    model,
+                );
+            } else {
+                import_lossy.push("inferred-group-layout-not-modeled;static-frames-preserved".into());
+            }
         }
 
         // Export-lossy notes travel in userInfo so round-trip callers see an
@@ -8576,9 +8591,7 @@ fn export_layer_impl(
                 }),
             );
         } else if n.layout.is_none()
-            && let Some(mut payload) = n
-                .bindings
-                .get("sketchInferredGroupLayout")
+            && let Some(mut payload) = sketch_binding(doc, n, "sketchInferredGroupLayout")
                 .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
         {
             // Older FD bindings stored absent sizes as JSON null, which Sketch's
@@ -12985,9 +12998,10 @@ mod tests {
         assert_eq!(inferred["_class"], json!("MSImmutableInferredGroupLayout"));
         assert_eq!(inferred["axis"], json!(1));
         assert!(group.layout.is_none(), "static frames, no stack");
-        assert!(import_lossy_of(group)
+        assert!(!import_lossy_of(group)
             .iter()
-            .any(|n| n.contains("inferred-group-layout")));
+            .any(|n| n.contains("inferred-group-layout")), "modeled Smart Layout is not lossy");
+        assert!(group.bindings.contains_key(crate::sketch_smart_layout::MODEL_BINDING));
         let child = &back.nodes["n1"];
         let modern = child
             .bindings

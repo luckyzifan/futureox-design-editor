@@ -348,6 +348,10 @@ export function bindSourceLists(drafts, entries, dirSource) {
   for (const entry of hashOnly) {
     const owners = drafts.filter(draft => !draft.lfs && !draft.selfProvenance && draft.checkoutSha256 === entry.sha256)
     const unboundOwners = owners.filter(owner => !byPath.has(owner.path))
+    // A storedSha256 comparison can repeat a file that a stronger named source
+    // already binds, for example the reference manifest added for the PNG gate.
+    // It is not an unbound source entry when every owner already has a source.
+    if (unboundOwners.length === 0 && owners.length > 0) continue
     if (unboundOwners.length !== 1) {
       unbound.push({
         sha256: entry.sha256,

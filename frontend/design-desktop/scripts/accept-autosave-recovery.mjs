@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { hashReadonlyFile, verifyPublishedInstallerFile } from './release-package-resources.mjs'
+import { describePackage, hashReadonlyFile, verifyPublishedInstallerFile } from './release-package-resources.mjs'
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repo = path.resolve(desktop, '../..')
@@ -56,7 +56,7 @@ function passedCargoTests(cargo) {
   }))
 }
 
-export function buildReport({ cargo, releasePackagePresent = false, packagedCrash, platform = process.platform, arch = process.arch }) {
+export function buildReport({ cargo, releasePackagePresent = false, packagedCrash, candidateCrash, platform = process.platform, arch = process.arch }) {
   const passedTests = passedCargoTests(cargo)
   const missingTests = EXPECTED_RECOVERY_TESTS.filter(name => !passedTests.has(name))
   const unitPassed = cargo?.status === 0 && missingTests.length === 0
@@ -113,6 +113,17 @@ export function buildReport({ cargo, releasePackagePresent = false, packagedCras
       scope: 'packaged_sidecar',
     })
   }
+  const candidateStatus = candidateCrash && (candidateCrash.cargo?.status === 0
+    ? passedCargoTests(candidateCrash.cargo).has(packagedCrashTest) ? 'passed' : 'not_run'
+    : 'failed')
+  if (candidateCrash) {
+    faults.push({
+      id: 'candidate_exit_during_save',
+      evidence: 'The sidecar from the current unsigned release-profile package reopens the last commit after SIGKILL with a SQLite writer holding the next save.',
+      status: candidateStatus,
+      scope: 'candidate_sidecar',
+    })
+  }
   return {
     schema: 1,
     issue: 86,
@@ -128,6 +139,7 @@ export function buildReport({ cargo, releasePackagePresent = false, packagedCras
     },
     faults,
     ...(packagedCrash ? { packagedCrash: { identity: packagedCrash.identity, status: packagedStatus } } : {}),
+    ...(candidateCrash ? { candidateCrash: { identity: candidateCrash.identity, status: candidateStatus } } : {}),
     releaseAcceptance: 'not_closed',
   }
 }
@@ -144,12 +156,50 @@ function runCargo(packagedSidecar = null) {
   )
 }
 
+const usage = 'Usage: accept-autosave-recovery.mjs [--packaged-sidecar=/abs/bin --installer=/abs/package --verification=/abs/release-verification.json | --candidate-package=/abs/release-package]'
+
+function flagValue(args, key) {
+  return args.find(arg => arg.startsWith(`--${key}=`))?.slice(key.length + 3)
+}
+
+function candidateSidecar(args) {
+  const packageDir = flagValue(args, 'candidate-package')
+  if (!packageDir) return null
+  if (!path.isAbsolute(packageDir)) throw new Error(usage)
+  const described = describePackage(packageDir)
+  if (described.evidence.kind !== 'unsigned_release_profile_bundle' || described.evidence.profile !== 'release') {
+    throw new Error(`Candidate package is not an unsigned release-profile bundle: ${described.evidence.note}`)
+  }
+  if (!described.identity.present || described.resources.status !== 'listed') {
+    throw new Error('Candidate package bytes could not be listed')
+  }
+  const name = `sidecar/futureox-design-desktop-backend${process.platform === 'win32' ? '.exe' : ''}`
+  const entry = described.resources.entries.find(item => item.installPath === name)
+  if (!entry?.present || !entry.sha256) throw new Error(`Candidate package does not contain ${name}`)
+  const sidecar = path.join(packageDir, described.resources.installRoot, name)
+  const observed = hashReadonlyFile(sidecar)
+  if (observed.sha256 !== entry.sha256) throw new Error('Candidate sidecar hash does not match the package resource list')
+  return {
+    sidecar,
+    identity: {
+      kind: 'unsigned_release_candidate',
+      platform: `${process.platform}-${process.arch}`,
+      packageSha256: described.identity.sha256,
+      packageFiles: described.identity.files,
+      packageProfile: described.evidence.profile,
+      packageEvidence: described.evidence.kind,
+      sidecarSha256: observed.sha256,
+      sidecarPath: name,
+    },
+  }
+}
+
 function publishedSidecar(args) {
   if (!args.length) return null
-  const value = key => args.find(arg => arg.startsWith(`--${key}=`))?.slice(key.length + 3)
+  const value = key => flagValue(args, key)
   const sidecar = value('packaged-sidecar'), installer = value('installer'), recordPath = value('verification')
   if (args.length !== 3 || [sidecar, installer, recordPath].some(file => !file || !path.isAbsolute(file))) {
-    throw new Error('Usage: accept-autosave-recovery.mjs --packaged-sidecar=/abs/bin --installer=/abs/package --verification=/abs/release-verification.json')
+    throw new Error(usage)
   }
   const record = JSON.parse(readFileSync(recordPath, 'utf8'))
   const triple = `${process.platform}-${process.arch}`
@@ -168,15 +218,22 @@ function publishedSidecar(args) {
 
 const invoked = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 if (invoked) {
-  const packaged = publishedSidecar(process.argv.slice(2))
+  const args = process.argv.slice(2)
+  const candidate = candidateSidecar(args)
+  if (candidate && args.some(arg => /^--(packaged-sidecar|installer|verification)=/.test(arg))) {
+    throw new Error('Select either a published sidecar or a candidate package, not both')
+  }
+  const packaged = candidate ? null : publishedSidecar(args)
   const cargo = runCargo()
   const packagedCrash = packaged && { identity: packaged.identity, cargo: runCargo(packaged.sidecar) }
+  const candidateCrash = candidate && { identity: candidate.identity, cargo: runCargo(candidate.sidecar) }
   const report = buildReport({
     cargo,
-    releasePackagePresent: Boolean(packaged || process.env.FUTUREOX_RELEASE_PACKAGE),
+    releasePackagePresent: Boolean(packaged || candidate || process.env.FUTUREOX_RELEASE_PACKAGE),
     packagedCrash,
+    candidateCrash,
   })
-  for (const result of [cargo, packagedCrash?.cargo].filter(Boolean)) {
+  for (const result of [cargo, packagedCrash?.cargo, candidateCrash?.cargo].filter(Boolean)) {
     if (result.stdout) process.stderr.write(result.stdout)
     if (result.stderr) process.stderr.write(result.stderr)
   }
@@ -186,5 +243,6 @@ if (invoked) {
     process.exit(2)
   }
   const unitFailed = report.faults.some(item => item.scope === 'simulated_backend' && item.status !== 'passed')
-  process.exit(unitFailed || (packagedCrash && report.packagedCrash.status !== 'passed') ? 1 : 0)
+  process.exit(unitFailed || (packagedCrash && report.packagedCrash.status !== 'passed')
+    || (candidateCrash && report.candidateCrash.status !== 'passed') ? 1 : 0)
 }

@@ -100,9 +100,20 @@ function crossNode(n: DesignNode | undefined): boolean {
     Object.keys(n.variableModes || {}).length)
 }
 
-function needsLayout(n: DesignNode): boolean {
+/** Imported Sketch Smart Layout groups reflow in the Rust kernel even though
+ * `node.layout` stays null; the derived receipt lives in Sketch metadata. */
+export function hasSketchSmartLayout(doc: DesignDocument, n: DesignNode): boolean {
+  const key = 'sketchSmartLayout'
+  if (typeof n.bindings?.[key] === 'string') return true
+  const metadata = doc.designSystem?.sketchContainers?.nodeMetadata as
+    Record<string, { bindings?: Record<string, unknown> }> | undefined
+  return typeof metadata?.[n.id]?.bindings?.[key] === 'string'
+}
+
+function needsLayout(doc: DesignDocument, n: DesignNode): boolean {
   return !!(n.graphic || n.constraints || (n.layout && n.layout.mode !== 'none') ||
-    (n.sizing && (n.sizing.width !== 'fixed' || n.sizing.height !== 'fixed')))
+    (n.sizing && (n.sizing.width !== 'fixed' || n.sizing.height !== 'fixed')) ||
+    hasSketchSmartLayout(doc, n))
 }
 
 const geometryKeys = ['kind', 'width', 'height', 'transform', 'children', 'text', 'fontSize', 'textStyle', 'textRuns', 'graphic', 'layout', 'sizing', 'constraints', 'visible', 'network', 'vectorGeometry'] as const
@@ -188,13 +199,13 @@ function scopeFrom(before: DesignDocument, after: DesignDocument, ids: readonly 
     if (geometry) {
       if (subtree(after, id, crossNode)) return
       if (index.externalRefs.size && subtree(after, id, n => index.externalRefs.has(n.id))) return
-      if (subtree(after, id, needsLayout)) layout = true
+      if (subtree(after, id, n => needsLayout(after, n))) layout = true
       else {
         let parent = index.parents.get(id)
         const visited = new Set<string>()
         while (parent && after.nodes[parent] && !visited.has(parent)) {
           visited.add(parent)
-          if (needsLayout(after.nodes[parent])) { layout = true; break }
+          if (needsLayout(after, after.nodes[parent])) { layout = true; break }
           parent = index.parents.get(parent)
         }
       }

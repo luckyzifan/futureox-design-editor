@@ -100,7 +100,7 @@ test('plugin ui window is sandboxed and only its messages reach the editor', asy
   host.close()
 })
 
-test('startup scan enables declared plugins and ignores symlinks, FigJam, duplicates and escapes', async () => {
+test('startup scan enables declared plugins and ignores symlinks, duplicates and escapes', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'futureox-plugin-scan-'))
   const outside = await mkdtemp(path.join(tmpdir(), 'futureox-plugin-scan-out-'))
   const manifest = (name, id, extra = {}) => ({ name, id, api: '1.0.0', main: 'code.js', editorType: ['figma'], ...extra })
@@ -109,7 +109,10 @@ test('startup scan enables declared plugins and ignores symlinks, FigJam, duplic
     assert.equal(parseDeclaredPluginManifest(sample).id, 'futureox.sample.labeled-rectangles')
     assert.equal(parseDeclaredPluginManifest(sample).ui, 'ui.html')
     assert.equal(parseDeclaredPluginManifest(JSON.stringify(manifest('Inspector', 'local.inspector', { editorType: ['dev'] }))).id, 'local.inspector')
-    assert.throws(() => parseDeclaredPluginManifest('{"name":"A","id":"a","api":"1","main":"code.js","editorType":["figjam"]}'), /manifest/)
+    assert.equal(parseDeclaredPluginManifest(JSON.stringify(manifest('Board', 'local.board', { editorType: ['figjam'] }))).id, 'local.board')
+    assert.equal(parseDeclaredPluginManifest(JSON.stringify(manifest('Deck', 'local.deck', { editorType: ['slides'] }))).id, 'local.deck')
+    assert.throws(() => parseDeclaredPluginManifest('{"name":"A","id":"a","api":"1","main":"code.js","editorType":["unknown"]}'), /manifest/)
+    assert.throws(() => parseDeclaredPluginManifest('{"name":"A","id":"a","api":"1","main":"code.js","editorType":["figjam","dev"]}'), /manifest/)
     assert.deepEqual(await scanDeclaredPlugins(path.join(root, 'missing')), { plugins: [], skipped: 0, truncated: false })
 
     const plugins = path.join(root, 'plugins')
@@ -129,14 +132,14 @@ test('startup scan enables declared plugins and ignores symlinks, FigJam, duplic
     await symlink(outside, path.join(plugins, 'linked-dir'), 'dir')
 
     const scanned = await scanDeclaredPlugins(plugins)
-    assert.deepEqual(scanned.plugins.map(plugin => plugin.id), ['local.first', 'local.second'])
+    assert.deepEqual(scanned.plugins.map(plugin => plugin.id), ['local.first', 'local.second', 'local.figjam'])
     assert.equal(scanned.plugins[0].name, 'First')
     assert.equal(scanned.truncated, false)
-    assert.equal(scanned.skipped, 4)
+    assert.equal(scanned.skipped, 3)
     assert.equal(JSON.stringify(scanned.plugins).includes('secret'), false)
     const linkedRoot = path.join(root, 'linked-root')
     await symlink(plugins, linkedRoot, 'dir')
-    assert.deepEqual((await scanDeclaredPlugins(linkedRoot)).plugins.map(plugin => plugin.id), ['local.first', 'local.second'])
+    assert.deepEqual((await scanDeclaredPlugins(linkedRoot)).plugins.map(plugin => plugin.id), ['local.first', 'local.second', 'local.figjam'])
     const capped = await scanDeclaredPlugins(plugins, { enableLimit: 1, scanLimit: 1 })
     assert.deepEqual(capped.plugins.map(plugin => plugin.name), ['First'])
     assert.equal(capped.truncated, true)
@@ -144,7 +147,7 @@ test('startup scan enables declared plugins and ignores symlinks, FigJam, duplic
 
     const host = createPluginDirectoryHost()
     const enabled = host.enableDeclared(scanned.plugins)
-    assert.equal(enabled.length, 2)
+    assert.equal(enabled.length, 3)
     assert.equal(Object.hasOwn(enabled[0], 'root'), false)
     const read = await host.read(enabled[0].grant, ['code.js', 'nested/ui.html'])
     assert.equal(read.files['code.js'], 'first()')

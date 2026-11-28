@@ -39,11 +39,11 @@ Desktop:
 
 ## Local plugins at startup
 
-The Electron app scans the `plugins` directory inside its user-data profile once, before the first window opens. Each immediate child directory that declares a valid `manifest.json` is enabled. A declaration is valid when `editorType` includes `figma` (or is omitted), and the declared `main` and optional `ui` files stay inside that directory within the existing size limits. The first folder name in English sort order wins when two folders use the same plugin id. At most 64 visible real child directories are considered, and at most 32 plugins are enabled.
+The Electron app scans the `plugins` directory inside its user-data profile once, before the first window opens. Each immediate child directory that declares a valid `manifest.json` is enabled. A declaration is valid when `editorType` is one of `figma`, `figjam`, `dev`, `slides`, or `buzz` (or is omitted), `figjam` and `dev` are not listed together, and the declared `main` and optional `ui` files stay inside that directory within the existing size limits. The first folder name in English sort order wins when two folders use the same plugin id. At most 64 visible real child directories are considered, and at most 32 plugins are enabled.
 
 Enabled plugins appear in the **Plugins** menu and in the plugin host. Choosing one runs it through the same worker and `Editor.change` path as a folder picked by hand. The scan reads the manifest and the declared files. It does not execute plugin code and does not change the open document. Restart the app after adding or removing a plugin folder.
 
-Hidden directories, directory symlinks, FigJam-only manifests, and files that resolve outside the plugin folder are not enabled. The renderer receives the manifest text and a session grant. It does not receive the filesystem path. An additional local window uses its own profile, so it scans that profile’s `plugins` directory.
+Hidden directories, directory symlinks, invalid `editorType` lists, and files that resolve outside the plugin folder are not enabled. A FigJam, Slides, or Buzz manifest is enabled and listed; launching it reports that this editor has no such surface. The renderer receives the manifest text and a session grant. It does not receive the filesystem path. An additional local window uses its own profile, so it scans that profile’s `plugins` directory.
 
 The web build can run the sample main script. The UI window and the startup scan exist only in the Electron app.
 
@@ -60,7 +60,7 @@ A plugin folder uses the Figma manifest shape:
 }
 ```
 
-`editorType` must include `figma`. FigJam-only manifests are refused. The host always runs command `run`; it does not list manifest menus.
+`editorType` accepts the Figma list `figma`, `figjam`, `dev`, `slides`, and `buzz`. `figjam` and `dev` cannot be listed together. This editor provides the design and Dev inspection contexts: a manifest that lists `figma` runs in design, and a Dev-only manifest runs in inspection or code generation. A FigJam, Slides, or Buzz manifest is valid but cannot launch here. The host always runs command `run`; it does not list manifest menus.
 
 UI code talks to the plugin with `parent.postMessage({ pluginMessage }, '*')` and reads `event.data.pluginMessage`. Messages must be JSON, up to 64 KiB.
 
@@ -139,7 +139,7 @@ The table below is the earlier worker subset. The Plugins panel list is the rich
 | `figma.viewport.scrollAndZoomIntoView` | partial | Asks the editor to reveal the nodes. It does not change zoom. |
 | `figma.fileKey` | partial | Always null. Local documents have no Figma file key. |
 | `figma.on` | partial | selectionchange and currentpagechange are accepted and not delivered. close runs inside closePlugin. |
-| `figma.editorType` | partial | Always "figma". FigJam-only manifests are refused. |
+| `figma.editorType` | partial | The snapshot worker always reports "figma" and refuses FigJam-only manifests; the Plugins panel uses the rich host above, which reports the design and Dev contexts. |
 | `figma.mode` | partial | Always "default". |
 | `figma.pluginId` | partial | The manifest id. It is not a published Figma plugin id. |
 | `figma.command` | partial | The host always passes "run". Manifest menu commands are not listed. |

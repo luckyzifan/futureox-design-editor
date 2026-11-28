@@ -907,7 +907,6 @@ fn oracle_coverage(cell: &Cell, shape: &[f32]) -> Vec<u8> {
 }
 
 #[test]
-#[test]
 fn diagnose_rotated_shadow_against_area_coverage() {
     let cell = cells()
         .into_iter()
@@ -934,6 +933,80 @@ fn diagnose_rotated_shadow_against_area_coverage() {
         "rotated shadow still exceeds 16/255 on {over_a:.4}% of the frame"
     );
     let _ = (over_b, mae_b, mae_a);
+}
+
+#[test]
+fn issue_177_matrix_edit_undo_reopen_and_scaled_exports() {
+    println!(
+        "STAGE\tcell\tsource\tcompositing\tcoverage\torder\tsupport\tnative\tgpu"
+    );
+    for cell in cells() {
+        let doc = import_cell(&cell);
+        let mut editor = DocumentEditor::new(doc).unwrap();
+        let id = shape(editor.document()).id.clone();
+        let original = editor.document().clone();
+        let mut edited = original.clone();
+        fn paint<'a>(document: &'a mut Document, id: &str) -> &'a mut String {
+            let node = document.nodes.get_mut(id).unwrap();
+            if node.fills.is_empty() {
+                &mut node.strokes[0].paint.color
+            } else {
+                &mut node.fills[0].color
+            }
+        }
+        let base = paint(&mut edited, &id).clone();
+        *paint(&mut edited, &id) = "#3366cc".into();
+        assert_ne!(base, "#3366cc", "{} edit target", cell.name);
+        editor
+            .apply(
+                0,
+                DocumentPatch::between(&original, &edited).unwrap(),
+            )
+            .unwrap();
+        let mut check = editor.document().clone();
+        assert_eq!(*paint(&mut check, &id), "#3366cc", "{} edit", cell.name);
+        editor.undo().unwrap();
+        let mut check = editor.document().clone();
+        assert_eq!(*paint(&mut check, &id), base, "{} undo", cell.name);
+        editor.redo().unwrap();
+        let mut check = editor.document().clone();
+        assert_eq!(*paint(&mut check, &id), "#3366cc", "{} redo", cell.name);
+        let bytes = futureox_design_kernel::binfmt::encode_value(
+            &serde_json::to_value(editor.document()).unwrap(),
+        )
+        .unwrap();
+        let reopened = futureox_design_kernel::binfmt::decode_value(&bytes).unwrap();
+        let reopened: Document = serde_json::from_value(reopened).unwrap();
+        assert_eq!(
+            shape(&reopened).effects, shape(editor.document()).effects,
+            "{} reopen keeps shadow fields",
+            cell.name
+        );
+        let mut exports = Vec::new();
+        for scale in [1., 2., 3.] {
+            let (ms, peak, rejections) =
+                region(editor.document(), scale, RasterProfile::Analytic).unwrap();
+            assert_eq!(rejections, 0, "{} scale {scale} rejected", cell.name);
+            assert!(peak <= 256 * 1024 * 1024, "{} scale {scale} peak {peak}", cell.name);
+            exports.push(format!("{scale}x:{ms}ms"));
+        }
+        let order = if !cell.shadows.is_empty() && !cell.inner.is_empty() {
+            "outer-then-inner"
+        } else if !cell.inner.is_empty() {
+            "inner-only"
+        } else if cell.shadows.len() > 1 {
+            "stacked-outer"
+        } else {
+            "single"
+        };
+        println!(
+            "MATRIX\t{}\tpublished-params\tencoded-srgb-source-over\t{}\t{order}\t{}\tnative=UNKNOWN\tgpu=UNKNOWN\texports={}",
+            cell.name,
+            if cell.exact_coverage { "binary-exact" } else { "area-supersampled" },
+            exported_classes(&reopened),
+            exports.join(","),
+        );
+    }
 }
 
 #[test]

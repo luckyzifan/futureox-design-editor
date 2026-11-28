@@ -87,9 +87,39 @@ test('Figma uses one selected layer as an in-place alpha mask', async () => {
   }
 })
 
-test.each(['figma', 'sketch'] as const)('%s groups only the selected objects for a multi-layer mask', async uiMode => {
+test('Figma uses the bottom selected sibling as an in-place alpha mask for a multi-selection', async () => {
   const previous = interfacePreference.getSnapshot().uiMode
-  interfacePreference.set({ uiMode })
+  interfacePreference.set({ uiMode: 'figma' })
+  const { doc, mask, selected, unselected } = maskCommandFixture()
+  const editor = new Editor(doc)
+  try {
+    editor.select([selected.id, mask.id])
+    const before = editor.authoredDocument
+    const change = vi.spyOn(editor, 'change')
+    await dispatchEditorCommand(editor, 'mask-selection')
+    const after = editor.authoredDocument
+    expect(change).toHaveBeenCalledTimes(1)
+    expect(after.pages[0].children).toEqual(before.pages[0].children)
+    expect(Object.keys(after.nodes)).toEqual(Object.keys(before.nodes))
+    expect(after.nodes[mask.id]).toMatchObject({ mask: true, maskType: 'alpha', maskChain: 'start' })
+    expect(after.nodes[selected.id].mask).toBe(false)
+    expect(after.nodes[unselected.id].mask).toBe(false)
+    expect(canvasPixels(after, [[2, 2], [12, 8]])).toEqual([[255, 0, 0, 255], [0, 255, 0, 255]])
+    expect(editor.state.selection).toEqual([selected.id, mask.id])
+    editor.undo()
+    expect(editor.authoredDocument).toEqual(before)
+    expect(editor.canUndo).toBe(false)
+    editor.redo()
+    expect(editor.authoredDocument).toEqual(after)
+  } finally {
+    editor.dispose()
+    interfacePreference.set({ uiMode: previous })
+  }
+})
+
+test('Sketch still groups only the selected objects for a multi-layer mask', async () => {
+  const previous = interfacePreference.getSnapshot().uiMode
+  interfacePreference.set({ uiMode: 'sketch' })
   const { doc, mask, selected, unselected } = maskCommandFixture()
   const editor = new Editor(doc)
   try {
@@ -222,12 +252,16 @@ test('Move to page keeps world placement, invalid targets are no-ops, and Undo r
 })
 test('Context auto layout, remove layout, component and mask dispatch to native document operations', async () => {
   for (const command of ['auto-layout', 'create-component', 'mask-selection'] as const) {
-    const { editor } = rotatedFixture(), before = editor.state.doc
+    const { editor, parent, a, b } = rotatedFixture(), before = editor.state.doc
     await dispatchEditorCommand(editor, command)
     const root = editor.state.doc.nodes[editor.state.selection[0]]
     if (command === 'auto-layout') { expect(root.layout?.mode).toBe('vertical'); await dispatchEditorCommand(editor, 'remove-auto-layout'); expect(editor.state.doc.nodes[root.id].layout).toBeUndefined(); editor.undo() }
     if (command === 'create-component') expect(root.component).toBeDefined()
-    if (command === 'mask-selection') expect(editor.state.doc.nodes[root.children[0]].mask).toBe(true)
+    if (command === 'mask-selection') {
+      expect(editor.state.doc.nodes[a.id]).toMatchObject({ mask: true, maskType: 'alpha', maskChain: 'start' })
+      expect(editor.state.doc.nodes[parent.id].children).toEqual([a.id, b.id])
+      expect(editor.state.selection).toEqual([a.id, b.id])
+    }
     editor.undo(); expect(editor.state.doc).toEqual(before); editor.dispose()
   }
 })

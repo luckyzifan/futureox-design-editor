@@ -73,8 +73,7 @@ test('distributeOffsets: overlapping rects distribute with negative gaps', () =>
   expect(distributeOffsets(rects, 'x')!.map((d) => d.x)).toEqual([0, 0, 0])
 })
 
-test('tidyOffsets: rows cluster by overlap, equalize gaps and center rows', () => {
-  // Two rows of two, uneven gaps: row1 x gaps 5 (0-10, 15-25), row2 gap 45.
+test('tidyOffsets: a grid fills the original selection bounds with even row and column gaps', () => {
   const rects = [
     rect(0, 0, 10, 10),
     rect(15, 2, 10, 10),
@@ -82,31 +81,34 @@ test('tidyOffsets: rows cluster by overlap, equalize gaps and center rows', () =
     rect(55, 30, 10, 10),
   ]
   const d = tidyOffsets(rects)!
-  // mean in-row gap = (5 + 45) / 2 = 25; row1 anchored at x 0 → second at 35
-  expect(d[0].x).toBe(0)
-  expect(d[1].x).toBe(20)
-  expect(d[2].x).toBe(0)
-  expect(d[3].x).toBe(-20)
-  // row band 0..12 centered at 6; mean row gap = (30-12)=18 (single value)
-  expect(d[0].y).toBe(1)
-  expect(d[1].y).toBe(-1)
-  // row2 top = 12 + 18 = 30 (unchanged), band center 35
-  expect(d[2].y).toBe(0)
-  expect(d[3].y).toBe(0)
+  const moved = rects.map((r, i) => ({ ...r, x: r.x + d[i].x, y: r.y + d[i].y }))
+  expect(moved).toEqual([
+    rect(0, 0, 10, 10),
+    rect(55, 0, 10, 10),
+    rect(0, 30, 10, 10),
+    rect(55, 30, 10, 10),
+  ])
 })
 
-test('tidyOffsets: a single row equalizes horizontal gaps; a single column vertical gaps', () => {
+test('tidyOffsets: a single row keeps its vertical bounds; a single column aligns and distributes', () => {
   const row = [rect(0, 0, 10, 10), rect(30, 5, 10, 10), rect(50, 2, 10, 10)]
   const d = tidyOffsets(row)!
-  // mean gap = (20 + 10) / 2 = 15 → positions 0, 25, 50
   expect(d.map((p) => p.x)).toEqual([0, -5, 0])
-  // one row band 0..15 → centers align to 7.5
-  expect(d.map((p) => p.y)).toEqual([2.5, -2.5, 0.5])
+  expect(d.map((p) => p.y)).toEqual([0, 0, 0])
   const column = [rect(0, 0, 10, 10), rect(4, 30, 10, 10), rect(1, 50, 10, 10)]
   const v = tidyOffsets(column)!
   expect(v.map((p) => p.y)).toEqual([0, -5, 0])
-  expect(v.map((p) => p.x)).toEqual([0, 0, 0])
+  expect(v.map((p) => p.x)).toEqual([2, -2, 1])
   expect(tidyOffsets([rect(0, 0, 10, 10)])).toBeNull()
+})
+
+test('tidyOffsets: uneven heights in one row preserve the outer bounds and even horizontal gaps', () => {
+  const rects = [rect(0, 0, 10, 10), rect(30, 5, 10, 10), rect(70, 1, 10, 14)]
+  const d = tidyOffsets(rects)!
+  const moved = rects.map((r, i) => ({ ...r, x: r.x + d[i].x, y: r.y + d[i].y }))
+  expect(moved).toEqual([rect(0, 0, 10, 10), rect(35, 5, 10, 10), rect(70, 1, 10, 14)])
+  expect(moved[1].x - moved[0].x - moved[0].width).toBe(25)
+  expect(moved[2].x - moved[1].x - moved[1].width).toBe(25)
 })
 
 test('arrangeOffsets routes each command and returns null when not applicable', () => {

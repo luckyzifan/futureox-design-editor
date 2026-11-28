@@ -17,7 +17,12 @@ const require = createRequire(path.join(desktop, 'package.json'))
 
 function findElectronZip(version) {
   const name = `electron-v${version}-${process.platform}-${process.arch}.zip`
-  const roots = [process.env.ELECTRON_CACHE, path.join(process.env.HOME ?? '', '.cache/electron'), path.join(process.env.LOCALAPPDATA ?? '', 'electron/Cache')].filter(Boolean)
+  const roots = [
+    process.env.ELECTRON_CACHE,
+    path.join(process.env.HOME ?? '', '.cache/electron'),
+    path.join(process.env.HOME ?? '', 'Library/Caches/electron'),
+    path.join(process.env.LOCALAPPDATA ?? '', 'electron/Cache'),
+  ].filter(Boolean)
   for (const root of roots) {
     if (!existsSync(root)) continue
     const queue = [{ dir: root, depth: 0 }]

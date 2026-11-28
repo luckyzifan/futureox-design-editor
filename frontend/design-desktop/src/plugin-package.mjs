@@ -67,8 +67,12 @@ export function parseDeclaredPluginManifest(text) {
   const uiFiles = namedUiFiles(value.ui)
   const ui = uiFiles ? uiFiles.main : value.ui === undefined ? undefined : uiPath(value.ui)
   const editorType = value.editorType === undefined ? ['figma'] : value.editorType
-  if (!Array.isArray(editorType) || editorType.some(item => typeof item !== 'string') ||
-      !editorType.includes('figma') && !editorType.includes('dev')) {
+  // Figma accepts figma, figjam, dev, slides and buzz. A FigJam+Dev manifest is
+  // invalid. Enabling a manifest is not the same as running it: the editor has no
+  // FigJam, Slides or Buzz surface and reports that when the plugin launches.
+  if (!Array.isArray(editorType) || editorType.length === 0 || editorType.some(item => typeof item !== 'string') ||
+      editorType.some(item => !['figma', 'figjam', 'dev', 'slides', 'buzz'].includes(item)) ||
+      editorType.includes('figjam') && editorType.includes('dev')) {
     throw new Error('Invalid plugin manifest')
   }
   return { id, name, main, ui, ...(uiFiles ? { uiFiles } : {}) }
@@ -93,8 +97,10 @@ function limitOption(value, max) {
 
 /**
  * Scan one plugins directory. Each real child folder with a valid manifest and
- * its declared main/ui files is enabled. Symlinks, hidden folders, FigJam-only
- * manifests, and files that leave the folder are not enabled. Nothing is executed.
+ * its declared main/ui files is enabled. Symlinks, hidden folders, invalid
+ * editorType lists, and files that leave the folder are not enabled. Nothing is
+ * executed. A FigJam, Slides or Buzz-only manifest is valid and enabled; the
+ * editor reports its missing surface when one is launched.
  */
 export async function scanDeclaredPlugins(root, options = {}) {
   const scanLimit = limitOption(options.scanLimit, LOCAL_PLUGIN_SCAN_LIMIT)

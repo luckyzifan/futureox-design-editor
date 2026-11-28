@@ -8,8 +8,8 @@ export type PluginApiEntry = {
 
 /**
  * What a Figma plugin can call in this host. `supported` matches the operation
- * we run. `partial` runs, with the difference in `notes`. `unsupported` throws
- * `unsupported_api` or is absent, and the note says which.
+ * we run. `partial` runs, with the difference in `notes`. `unsupported` is
+ * absent or throws a documented unavailability error; the note says which.
  */
 export const PLUGIN_API_COVERAGE: readonly PluginApiEntry[] = [
   { api: 'figma.createRectangle', status: 'supported', notes: 'Appended to the current page. Default size is 100×100.' },
@@ -48,8 +48,8 @@ export const PLUGIN_API_COVERAGE: readonly PluginApiEntry[] = [
   { api: 'figma.ui.hide', status: 'supported', notes: 'Hides the iframe. The plugin keeps running.' },
   { api: 'figma.ui.close', status: 'partial', notes: 'Hides the iframe. The plugin keeps running until closePlugin. show() can open it again.' },
   { api: 'figma.commitUndo', status: 'supported', notes: 'Flushes the current turn as its own undo entry. Later edits in the same run are a new undo step.' },
-  { api: 'figma.editorType', status: 'partial', notes: '"figma" in design and "dev" in the editor’s Dev inspection mode.' },
-  { api: 'figma.mode', status: 'partial', notes: '"default" in design and "inspect" in Dev. Code generation and FigJam are unavailable.' },
+  { api: 'figma.editorType', status: 'partial', notes: '"figma" in design and "dev" in the Dev inspection or codegen context. A FigJam, Slides, or Buzz manifest parses but reports that this editor has no such surface.' },
+  { api: 'figma.mode', status: 'partial', notes: '"default" in design, "inspect" from the Dev toggle, and "codegen" for a Dev codegen launch. FigJam, Slides, and Buzz launches are refused.' },
   { api: 'figma.pluginId', status: 'partial', notes: 'The manifest id. It is not a published Figma plugin id.' },
   { api: 'figma.command', status: 'partial', notes: 'The menu command the host launched, or undefined when the manifest has no menu.' },
   { api: 'figma.fileKey', status: 'partial', notes: 'Always null. Local documents have no Figma file key.' },
@@ -148,11 +148,11 @@ export const PLUGIN_API_COVERAGE: readonly PluginApiEntry[] = [
   { api: 'figma.clientStorage', status: 'supported', notes: 'getAsync, setAsync, keysAsync, and deleteAsync with JSON, undefined, and Uint8Array. Desktop commits to SQLite under the authorized package identity. The quota is 5 MiB and 10,000 keys per plugin. https://developers.figma.com/docs/plugins/api/figma-clientStorage/' },
   { api: 'figma.variables', status: 'partial', notes: 'Local collections and COLOR, FLOAT, STRING, and BOOLEAN variables, synchronous and asynchronous lookups, and typed local aliases. Mode ids are mode names. setBoundVariable supports width, height, opacity, characters, visible, fontSize, and itemSpacing. Remote libraries are unavailable. https://developers.figma.com/docs/plugins/api/figma-variables/' },
   { api: 'figma.variables.getVariableByIdAsync', status: 'partial', notes: 'Looks up authored variables in the open document. Invalid or absent IDs resolve to null.' },
-  { api: 'figma.teamLibrary', status: 'unsupported', notes: 'Absent. There is no team library or cloud account.' },
+  { api: 'figma.teamLibrary', status: 'partial', notes: 'Both calls reject with permission_denied. This host never grants the teamlibrary permission and has no cloud library.' },
   { api: 'figma.payments', status: 'partial', notes: 'Read-only status is NOT_SUPPORTED. Commerce is unavailable.' },
-  { api: 'figma.parameters', status: 'unsupported', notes: 'Absent. Parameter UI is not collected.' },
-  { api: 'figma.codegen', status: 'unsupported', notes: 'Absent.' },
-  { api: 'figma.annotations', status: 'unsupported', notes: 'Absent.' },
+  { api: 'figma.parameters', status: 'partial', notes: 'on, once, and off register input handlers. No parameter UI is opened, so input never fires; figma.on("run") carries no parameters property.' },
+  { api: 'figma.codegen', status: 'partial', notes: 'Dev codegen launches deliver generate events for the selected node with the first manifest codegenLanguages value and PIXEL preferences. refresh re-runs generate; preferenceschange is not delivered.' },
+  { api: 'figma.annotations', status: 'partial', notes: 'getAnnotationCategoriesAsync resolves an empty list and getAnnotationCategoryByIdAsync resolves null. addAnnotationCategoryAsync rejects with annotations_unavailable.' },
   { api: 'figma.currentUser', status: 'partial', notes: 'Always null. There is no account user. Optional chaining works; reading an id does not.' },
   { api: 'figma.util.rgb', status: 'supported', notes: 'Returns {r, g, b} with channels from 0 to 1.' },
   { api: 'figma.util.solidPaint', status: 'supported', notes: 'SOLID paint from #RGB, #RRGGBB, #RRGGBBAA, or an {r, g, b} object.' },
@@ -169,7 +169,8 @@ export const PLUGIN_API_COVERAGE: readonly PluginApiEntry[] = [
   { api: 'figma.getLocalTextStylesAsync', status: 'supported', notes: 'Async form of getLocalTextStyles.' },
   { api: 'figma.getLocalEffectStylesAsync', status: 'supported', notes: 'Async form of getLocalEffectStyles.' },
   { api: 'figma.createSlice', status: 'supported', notes: 'Creates a slice node on the current page. Default size matches other creates.' },
-  { api: 'figma.importComponentByKeyAsync', status: 'unsupported', notes: 'Throws unsupported_api. Remote component keys are not imported.' },
+  { api: 'figma.importComponentByKeyAsync', status: 'unsupported', notes: 'Throws library_unavailable. Remote component keys need a published Figma library and this host has no cloud library.' },
+  { api: 'figma.importStyleByKeyAsync', status: 'unsupported', notes: 'Throws library_unavailable. Remote style keys need a published Figma library and this host has no cloud library.' },
   { api: 'figma.createPaintStyle', status: 'partial', notes: 'Creates a local paint style. name and paints can be set. No cloud library or style key. https://www.figma.com/plugin-docs/api/PaintStyle/' },
   { api: 'figma.createTextStyle', status: 'partial', notes: 'Creates a local text style. fontName, lineHeight, letterSpacing, textCase, and paragraph spacing can be set. fontSize and textDecoration are kept on the node, not the style.' },
   { api: 'figma.createEffectStyle', status: 'partial', notes: 'Creates a local effect style. name and effects can be set. No cloud library.' },
@@ -179,13 +180,13 @@ export const PLUGIN_API_COVERAGE: readonly PluginApiEntry[] = [
   { api: 'figma.getStyleById', status: 'partial', notes: 'Returns a local style or null. Import by key is not available.' },
   { api: 'figma.base64Encode', status: 'supported', notes: 'Encodes up to 256 KiB. https://www.figma.com/plugin-docs/api/properties/figma-base64encode/' },
   { api: 'figma.base64Decode', status: 'supported', notes: 'Decodes base64 text to bytes.' },
-  { api: 'figma.createGridStyle', status: 'unsupported', notes: 'Throws unsupported_api.' },
+  { api: 'figma.createGridStyle', status: 'unsupported', notes: 'Throws grid_style_unavailable. The local document has no layout-grid style kind.' },
   { api: 'SceneNode.exportAsync', status: 'partial', notes: 'SVG markup bytes resolve inline. PNG, JPG, and bitmap PDF use the product CPU renderer at scales 0.1–4, with a 500,000-character base64 transport cap. https://developers.figma.com/docs/plugins/api/properties/nodes-exportasync/' },
   { api: 'SceneNode.getPluginData', status: 'supported', notes: 'String values for this manifest id. A missing key returns "". Pages and the document root use the same methods. Stored in the fdCompatibility extension design.futureox/plugin-data and undone with the edit.' },
   { api: 'SceneNode.setPluginData', status: 'supported', notes: 'Up to 50 keys and 10000 characters. An empty string deletes the key. The same limits apply to pages and figma.root.' },
   { api: 'SceneNode.getSharedPluginData', status: 'supported', notes: 'Reads a namespace another plugin on this file could also read. Missing keys return "".' },
   { api: 'SceneNode.setSharedPluginData', status: 'supported', notes: 'Writes a namespaced string on the node, page, or root. An empty string deletes the key.' },
-  { api: 'SceneNode.setRelaunchData', status: 'unsupported', notes: 'Throws unsupported_api. Relaunch buttons are not shown.' },
+  { api: 'SceneNode.setRelaunchData', status: 'unsupported', notes: 'Throws relaunch_unavailable. Relaunch buttons have no local surface.' },
   { api: 'SceneNode.reactions', status: 'partial', notes: 'Reads complete authored navigation reactions with supported transitions. Conditions, other actions, imported inert receipts and writes are outside this projection.' },
   { api: 'SceneNode.boundVariables', status: 'partial', notes: 'Reads bindings written by setBoundVariable. Fields are width, height, opacity, characters, visible, fontSize, and itemSpacing. Fills, strokes, and effects are not bound.' },
   { api: 'TextNode.getStyledTextSegments', status: 'partial', notes: 'Reads UTF-16 ranges and groups equal adjacent styles. Supports fontSize, fontWeight, fontStyle, textDecoration, textCase, lineHeight, letterSpacing, paragraphSpacing, and paragraphIndent.' },
