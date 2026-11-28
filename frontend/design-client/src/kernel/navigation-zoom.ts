@@ -1,4 +1,4 @@
-import type { CanvasCamera } from '../canvas-camera'
+import { MAX_CANVAS_ZOOM, type CanvasCamera } from '../canvas-camera'
 import { allowsReducedSampling } from './render-quality'
 import { MAX_PREVIEW_SCALE_RATIO, previewCameraScaleWithinLimit } from './tile-preview'
 
@@ -19,7 +19,12 @@ const CADENCE_INTERVALS = 8
 const CADENCE_REQUIRED_INTERVALS = CADENCE_INTERVALS
 const CADENCE_QUIET_MULTIPLIER = 3
 /** Filtered native repair adapts for inward zoom and pan after zoom-out. */
-export type NavigationZoomOptions = { adaptiveQuiet?: boolean | 'filtered'; includeTranslation?: boolean; sampleOnFrame?: boolean }
+export type NavigationZoomOptions = {
+  adaptiveQuiet?: boolean | 'filtered'
+  includeTranslation?: boolean
+  sampleOnFrame?: boolean
+  settleAtMaximumZoom?: boolean
+}
 export type NavigationZoomSample = { active: boolean; view: CanvasCamera; sequence: number }
 export class NavigationZoom {
   private target: CanvasCamera
@@ -61,7 +66,12 @@ export class NavigationZoom {
     return view.zoom !== this.target.zoom || !!this.options.includeTranslation &&
       (view.x !== this.target.x || view.y !== this.target.y)
   }
+  reachedMaximumZoom(view: CanvasCamera, pointerHeld: boolean) {
+    return this.options.settleAtMaximumZoom && !pointerHeld &&
+      view.zoom === MAX_CANVAS_ZOOM && view.zoom > this.target.zoom
+  }
   update(view: CanvasCamera, now: number, pointerHeld = false): NavigationZoomSample {
+    const atMaximumZoom = this.reachedMaximumZoom(view, pointerHeld)
     const held = !!this.options.includeTranslation && pointerHeld
     const released = this.held && !held
     const changed = this.inputChanged(view) || held && !this.held
@@ -80,7 +90,9 @@ export class NavigationZoom {
     this.target = { ...view }
     // Canvas flushes the final pointer position before releasing its gesture.
     // A known release needs no guessed quiet interval before exact refinement.
-    if (released) {
+    // Extra inward wheel events cannot move a camera at the existing zoom
+    // endpoint. Start its exact tiles without waiting for gesture silence.
+    if (released || atMaximumZoom) {
       this.direction = undefined
       this.changedAt = now; this.stableFrames = 0
       return this.publish(false, now)

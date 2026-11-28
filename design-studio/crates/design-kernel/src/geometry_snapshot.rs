@@ -66,7 +66,7 @@ fn prepare_node_geometry_impl(
     local_strokes: &mut crate::resident_strokes::ResidentStrokes,
     prepared: &mut HashMap<String, Prepared>, segments: &mut usize, early: bool,
 ) -> Result<Rect, String> {
-    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,early,None,None,None)
+    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,early,None,None,None,None)
 }
 /// Leaves whose conservative device box lies inside `guard` already have the
 /// contours a tighter flatten would produce: chord replacement runs only
@@ -93,15 +93,16 @@ pub(crate) fn prepare_node_geometry_indexed(
     id:&str,parent:Transform,context:(&Document,&Fonts,Rect,bool),
     paths:&mut HashMap<String,crate::path::SharedPaths>,local_strokes:&mut crate::resident_strokes::ResidentStrokes,
     prepared:&mut HashMap<String,Prepared>,segments:&mut usize,support:Option<&crate::world_support::WorldSupport>,
+    enclosing_geometry: Option<&HashMap<String, Prepared>>,
 ) -> Result<Rect,String>{
-    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,true,support.map(|index|(index,parent)),None,None)
+    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,true,support.map(|index|(index,parent)),None,None,enclosing_geometry)
 }
 pub(crate) fn prepare_cpu_frame_geometry(
     id: &str, camera: Transform, context: (&Document, &Fonts, Rect, bool),
     paths: &mut HashMap<String, crate::path::SharedPaths>, strokes: &mut crate::resident_strokes::ResidentStrokes,
     prepared: &mut HashMap<String, Prepared>, segments: &mut usize, reuse: &mut crate::cpu_frame_plan::FrameGeometry,
 ) -> Result<Rect, String> {
-    prepare_node_geometry_supported::<true>(id, camera, context, paths, strokes, prepared, segments, true, None, Some(reuse), None)
+    prepare_node_geometry_supported::<true>(id, camera, context, paths, strokes, prepared, segments, true, None, Some(reuse), None, None)
 }
 fn prepare_node_geometry_supported<const FRAME: bool>(
     id:&str,parent:Transform,context:(&Document,&Fonts,Rect,bool),
@@ -110,11 +111,20 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
     support:Option<(&crate::world_support::WorldSupport,Transform)>,
     mut reuse:Option<&mut crate::cpu_frame_plan::FrameGeometry>,
     _span_source: Option<&Node>,
+    enclosing_geometry: Option<&HashMap<String, Prepared>>,
 ) -> Result<Rect,String>{
     crate::render_cancellation::checkpoint()?;
     if let Some(cached) = prepared.get(id) {
         account_segments(segments,cached.segments)?;
         return Ok(cached.bounds);
+    }
+    // Consult the enclosing guard only for an actual visit. Prepopulating
+    // culled descendants could change the membership of the tile's map.
+    let enclosing = enclosing_geometry.and_then(|wide| wide.get(id));
+    if let Some(culled) = enclosing.filter(|entry| entry.support_culled) {
+        account_segments(segments, culled.segments)?;
+        prepared.insert(id.to_owned(), culled.clone());
+        return Ok(culled.bounds);
     }
     let start_segments = *segments;
     let (doc, fonts, guard, compatible) = context;
@@ -122,6 +132,21 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
     if !n.visible {
         return Ok(Rect::default());
     }
+    let leaf_outside = if let Some((index, camera)) = support
+        && let Some(leaf) = enclosing.filter(|_| n.render_children().is_empty())
+    {
+        let (outside, enclosed) = index.tile_leaf_support(id, camera, guard);
+        if enclosed {
+            // Only visited leaves with a complete support box have the
+            // exact contours a tighter guard would produce.
+            account_segments(segments, leaf.segments)?;
+            prepared.insert(id.to_owned(), leaf.clone());
+            return Ok(leaf.bounds);
+        }
+        Some(outside)
+    } else {
+        None
+    };
     let matrix = parent.concat(n.transform);
     if matrix.0.iter().any(|v| !v.is_finite() || v.abs() > 1e12) {
         return Err("Composed transform exceeds precision budget".into());
@@ -132,12 +157,13 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
         prepared.insert(id.to_owned(), hit);
         return Ok(bounds);
     }
-    let scale = matrix.max_scale().max(1e-6);
-    if support.is_some_and(|(index,camera)|index.culls(id,camera,guard)) {
+    let culled = leaf_outside.unwrap_or_else(|| support.is_some_and(|(index, camera)| index.culls(id, camera, guard)));
+    if culled {
         prepared.insert(id.to_owned(),Prepared{support_culled:true,fill_bounds:None,matrix,fill:Arc::new(Vec::new()),
             fill_program_bounds:Rect::default(),strokes:Vec::new(),stroke_program_bounds:Vec::new(),bounds:Rect::default(),halo:0,segments:0});
         return Ok(Rect::default());
     }
+    let scale = matrix.max_scale().max(1e-6);
     if early && !paths.contains_key(id) {
         if let Some(bounds) = crate::geometry_support::leaf_control_bounds(n,matrix) {
             let halo = n.effect_outset(scale);
@@ -316,7 +342,7 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
     let span_source = None;
     for child in n.render_children() {
         child_bounds = child_bounds.union(prepare_node_geometry_supported::<FRAME>(
-            child, matrix, context, paths, local_strokes, prepared, segments, early,support,reuse.as_deref_mut(),span_source,
+            child, matrix, context, paths, local_strokes, prepared, segments, early,support,reuse.as_deref_mut(),span_source,enclosing_geometry,
         )?);
     }
     if n.clip && !own.empty() {

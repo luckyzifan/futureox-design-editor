@@ -72,7 +72,7 @@ import { ViewControls } from './ViewControls'
 import { CanvasTextEditor } from './TextEditor'
 import { createBox, localClockwiseAfter, resizeBasisIsAxisAligned, resizeInBasis, resizeSnapEnd, snapLocalClockwise, snapMove, selectionLocalBounds, vectorPointSnaps } from './canvas-view'
 import { fitBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
-import { WheelCameraGesture } from './wheel-camera-gesture'
+import { WheelCameraGesture, WheelModifierHistory } from './wheel-camera-gesture'
 import { desktopBridge,type LocalPeer } from './desktop'
 import {
   kernelLayout,
@@ -1099,7 +1099,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       return same(prev.selected,next.selected)&&same(prev.hover,next.hover)?prev:next
     })
   },[])
-  const wheelModifiers = useRef({ ctrl: false, meta: false })
+  const [wheelModifiers] = useState(() => new WheelModifierHistory())
   const space = useRef(false)
   type KeyboardBox = { page: string; session: number; original: string[]; point: Point; anchor?: Point; parent?: string; mode: 'box' | 'pick'; pick?: string }
   const keyboardBox = useRef<KeyboardBox | null>(null)
@@ -2239,7 +2239,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       desktopPet.stopNavigation()
       nudge.finish()
       cancelQueuedMove()
-      wheelModifiers.current = { ctrl: false, meta: false }
+      wheelModifiers.reset()
       setMeasureKeys({alt:false,deep:false,text:false})
       setPenShift(false)
       if(drag.current?.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
@@ -2263,6 +2263,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const releaseMarquee = () => { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
     const visibility = () => {
       if (!document.hidden) return
+      wheelModifiers.reset()
       if (recoveringMouseCapture.current && drag.current) cancelCapturedDrag(drag.current, ActionReason.sessionEnd)
       closeKeyboardBox(); releaseTemporaryZoom(); releaseMarquee(); nudge.finish()
     }
@@ -2314,7 +2315,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       // A native Chromium pinch synthesizes ctrlKey without a physical Ctrl
       // keydown. Track keyboard modifiers separately so Ctrl/⌘+wheel keeps
       // its mouse-wheel step instead of being magnified as a pinch.
-      const pinch = isNativePinch(e, wheelModifiers.current)
+      const pinch = isNativePinch(e, wheelModifiers.at(e.timeStamp))
       const wheelSize = { width: el.clientWidth, height: el.clientHeight }
       const scope=`${editor.sessionGeneration}/${editor.state.page}`
       if(scope!==wheelScope){wheelGesture.reset();wheelScope=scope}
@@ -2333,7 +2334,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       scheduleView(next)
     }
     el.addEventListener('wheel', wheel, { passive: false })
-    const modifiers = (e: KeyboardEvent) => { wheelModifiers.current = { ctrl: e.ctrlKey, meta: e.metaKey } }
+    const modifiers = (e: KeyboardEvent) => wheelModifiers.record(e)
     window.addEventListener('keydown', modifiers, true)
     window.addEventListener('keyup', modifiers, true)
     return () => {

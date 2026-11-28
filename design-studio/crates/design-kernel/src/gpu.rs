@@ -97,6 +97,8 @@ pub(crate) struct CameraPrepare {
     program_guard: Option<(i32, i32, u32, u32)>,
     fragments: fragments::FragmentCache,
     metadata: Option<CameraMetadata>,
+    /// Unmodified whole-page support used when this guard was built.
+    cull_revision: Option<(u64, bool, bool)>,
     zoom_bounds: Option<Arc<crate::zoom_support::ZoomBounds>>,
     reuses: u64,
     incomplete: bool,
@@ -351,6 +353,7 @@ struct CameraMetadata {
     backdrop_chain: bool,
     foreground_only: bool,
     noise_guard: Option<i32>,
+    unmanaged_large_gaussian: Option<bool>,
 }
 
 type ProgramShape = (usize, i32, i32, u32, u32, bool, bool);
@@ -809,8 +812,9 @@ fn page_has_large_gaussian(doc:&Document,roots:&[String],camera:Transform)->bool
         let Some(n)=doc.nodes.get(id) else { return false };
         if !n.visible||n.opacity<=0.{return false}
         let matrix=parent.concat(n.transform);
-        let scale=matrix.max_scale();
-        n.effects.iter().any(|e|e.visible&&e.kind=="gaussian-blur"&&e.gradient_blur.is_none()&&e.radius.is_finite()&&e.radius*scale>512.)
+        let mut scale=None;
+        n.effects.iter().any(|e|e.visible&&e.kind=="gaussian-blur"&&e.gradient_blur.is_none()&&e.radius.is_finite()
+            &&e.radius * *scale.get_or_insert_with(||matrix.max_scale())>512.)
             ||n.children.iter().any(|child|walk(doc,child,matrix))
     }
     roots.iter().any(|id|walk(doc,id,camera))
@@ -2788,6 +2792,8 @@ impl Engine {
             }
         }else{self.world_support=None;}
         let world_support=self.world_support.as_ref().map(|c|c.index.clone());
+        let cull_revision = world_revision.filter(|_| self.source_compile_context.is_none()
+            && world_support.as_ref().is_some_and(|index| index.has_certificates()));
         self.camera_residency.reserve_frame_resources(self.frame_scene.bytes().saturating_add(self.world_support.as_ref().map_or(0,|c|c.bytes())).saturating_add(self.source_compile_context.as_ref().map_or(0,|c|c.reserved_bytes)));
         let properties=self.source_compile_context.as_ref().map(|c|c.properties).or_else(||self.world_support.as_ref().map(|c|c.properties)).unwrap_or_else(||PageProperties::build(doc,&page.children));
         let margin_index=self.world_support.as_ref().and_then(|c|c.margin.clone());
@@ -2818,11 +2824,11 @@ impl Engine {
             cache.key.0==self.geo_revision&&cache.key.1==options.page_id&&cache.key.2==(options.view.x,options.view.y,options.view.zoom)
                 &&cache.key.4==compatible&&cache.key.5==options.animation
         }).and_then(|cache|cache.metadata);
-        let metadata=if let Some(cached)=cached_metadata{cached}else{
+        let mut metadata=if let Some(cached)=cached_metadata{cached}else{
             let indexed=if let Some(context)=&self.source_compile_context{Some(context.padding)}else if let Some(index)=&margin_index{index.padding(doc,camera)?}else{None};
             let padding=indexed.unwrap_or_else(||page.children.iter().map(|id|margin(doc,id,camera)).max().unwrap_or(0));
             CameraMetadata{padding,backdrop_chain:properties.backdrop_chain,foreground_only:properties.foreground_only,
-                noise_guard:properties.noise_extra.map(|extra|padding.saturating_add(extra))}
+                noise_guard:properties.noise_extra.map(|extra|padding.saturating_add(extra)), unmanaged_large_gaussian: None}
         };
         let padding = metadata.padding;
         // This is a geometry search guard, not an allocated surface. An
@@ -2832,6 +2838,28 @@ impl Engine {
             return Err("GPU effect support exceeds coordinate budget".into());
         }
         let has_region = viewport.is_some();
+        // This predicate depends on the whole page and linear camera, not
+        // the current tile. The existing metadata invalidation also covers
+        // its effects and affine-transform dependencies.
+        let unmanaged_tile = has_region && doc.color_management.is_none()
+            && metadata.noise_guard.is_none() && options.pixel_preview.is_none()
+            && options.animation.is_none() && !options.raster_profile.is_export()
+            && if self.source_compile_context.is_none() {
+                if let Some(large) = metadata.unmanaged_large_gaussian {
+                    large
+                } else {
+                    let large = page_has_large_gaussian(doc, &page.children, camera);
+                    metadata.unmanaged_large_gaussian = Some(large);
+                    if cached_metadata.is_some()
+                        && let Some(cache) = self.camera_prepare.as_mut()
+                    {
+                        cache.metadata = Some(metadata);
+                    }
+                    large
+                }
+            } else {
+                page_has_large_gaussian(doc, &page.children, camera)
+            };
         let mut regional_foreground = viewport.is_some_and(|region| metadata.foreground_only &&
             metadata.noise_guard.is_none_or(|guard| {
                 // Global pixel centres, their neighbouring taps, and the
@@ -2859,11 +2887,8 @@ impl Engine {
         // Only an analytic SDR canvas tile may replace a wide isolated image
         // filter by a projected basis. Exports, HDR, readback and whole-frame
         // compatibility captures keep their established filter admission.
-        let project_images = analytic_regions && has_region && options.view.zoom >= 32.
-            && options.raster_profile == crate::fidelity::RasterProfile::Analytic
-            && doc.color_management.is_none() && options.pixel_preview.is_none()
-            && options.animation.is_none() && metadata.noise_guard.is_none()
-            && page_has_large_gaussian(doc, &page.children, camera);
+        let project_images = analytic_regions && unmanaged_tile && options.view.zoom >= 32.
+            && options.raster_profile == crate::fidelity::RasterProfile::Analytic;
         let mut zoom_bounds_for_prepare = None;
         let (zoom_extent, zoom_prepare, wide_image_gaussians) = if properties.has_zoom || project_images {
             // Both domains share one resolved camera and scene. Independently
@@ -2876,7 +2901,13 @@ impl Engine {
                 .and_then(|cache| cache.zoom_bounds.clone());
             let bounds = match cached {
                 Some(bounds) => bounds,
-                None => Arc::new(crate::dirty_region::render_bounds_map(doc, &page.children, camera, &self.fonts)?),
+                None => {
+                    let paths = (self.source_compile_context.is_none() && options.animation.is_none())
+                        .then_some(&self.paths);
+                    Arc::new(crate::dirty_region::render_bounds_map_with_paths(
+                        doc, &page.children, camera, &self.fonts, paths,
+                    )?)
+                }
             };
             let plan = |r| crate::zoom_support::scene_plan_with_bounds(doc, &page.children, r, &bounds, project_images);
             match plan(viewport) {
@@ -2956,6 +2987,7 @@ impl Engine {
                     Arc::make_mut(&mut prepared),
                     &mut segments,
                     world_support.as_deref(),
+                    None,
                 )?;
             }
             if let Some(key) = &cache_key {
@@ -2965,7 +2997,7 @@ impl Engine {
                 } else {
                     self.camera_prepare = Some(CameraPrepare {
                         key: key.clone(), prepared: prepared.clone(), programs: ProgramCache::default(), program_guard: None, fragments: fragments::FragmentCache::default(),
-                        metadata: Some(metadata), zoom_bounds: None, reuses: 0, incomplete: false, retained_nodes: 0, incremental:false, device_shift: None,
+                        metadata: Some(metadata), cull_revision, zoom_bounds: None, reuses: 0, incomplete: false, retained_nodes: 0, incremental:false, device_shift: None,
                     });
                 }
             }
@@ -2994,10 +3026,14 @@ impl Engine {
                     && i64::from(built_guard.y) <= i64::from(tile_guard.y)
                     && i64::from(built_guard.x) + i64::from(built_guard.w) >= i64::from(tile_guard.x) + i64::from(tile_guard.w)
                     && i64::from(built_guard.y) + i64::from(built_guard.h) >= i64::from(tile_guard.y) + i64::from(tile_guard.h);
-                if tile_inside {
-                    if let Some(support) = world_support.as_deref() {
-                        crate::geometry_snapshot::reuse_enclosed_leaves(doc, &prepared, &mut local, support, camera, tile_guard);
-                    }
+                let enclosing_geometry = (tile_inside && cull_revision.is_some()
+                    && self.camera_prepare.as_ref().is_some_and(|cache| {
+                        !cache.incremental && !cache.incomplete && cache.cull_revision == cull_revision
+                    })).then_some(prepared.as_ref());
+                if tile_inside && enclosing_geometry.is_none()
+                    && let Some(support) = world_support.as_deref()
+                {
+                    crate::geometry_snapshot::reuse_enclosed_leaves(doc, &prepared, &mut local, support, camera, tile_guard);
                 }
                 let mut tile_segments = 0;
                 for root in &page.children {
@@ -3005,6 +3041,7 @@ impl Engine {
                         root, camera, (doc, &self.fonts, tile_guard, compatible),
                         &mut self.paths, &mut self.local_strokes, &mut local, &mut tile_segments,
                         world_support.as_deref(),
+                        enclosing_geometry,
                     )?;
                 }
                 let local = Arc::new(local);
@@ -3164,6 +3201,7 @@ impl Engine {
                                     root, camera, (doc, &self.fonts, guard, compatible),
                                     &mut self.paths, &mut self.local_strokes, &mut local, &mut segments,
                                     world_support.as_deref(),
+                                    None,
                                 )?;
                             }
                             let rebuilt = Arc::new(local);
@@ -3190,10 +3228,6 @@ impl Engine {
         // retry. A device sigma in (512, 1024] still belongs to the existing
         // regional three-box plan: the 512 whole-surface cap, the kernel
         // weights and the authored radius stay unchanged.
-        let unmanaged_tile = has_region && doc.color_management.is_none()
-            && metadata.noise_guard.is_none() && options.pixel_preview.is_none()
-            && options.animation.is_none() && !options.raster_profile.is_export()
-            && page_has_large_gaussian(doc, &page.children, camera);
         if unmanaged_tile {
             gaussian_regions = true;
         }
@@ -3517,7 +3551,7 @@ mod analytic_glass_support_tests {
                 &json!({"schemaVersion":5,"id":"d","name":"tiles",
                     "colorManagement":crate::color::ColorSettings::default(),
                     "pages":[{"id":"p","name":"p","background":"#808080",
-                        "children":["frame"]}],
+                        "children":["frame","offscreen"]}],
                     "nodes":{"frame":{"id":"frame","kind":"frame","width":1200,"height":800,
                         "clip":true,"radii":[16,16,16,16],"fills":[{"kind":"solid","color":"#ffffff"}],
                         "children":["box","lens"],
@@ -3527,7 +3561,9 @@ mod analytic_glass_support_tests {
                             "fills":[{"kind":"solid","color":"#3777e8"}],
                             "strokes":[{"paint":{"kind":"solid","color":"#101321","opacity":0.6},
                                 "width":3,"align":"inside"}]},
-                        "lens":lens(8., 0.5, 0.3, 12.)}})
+                        "lens":lens(8., 0.5, 0.3, 12.),
+                        "offscreen":{"id":"offscreen","kind":"rectangle","width":24,"height":24,
+                            "transform":[1,0,0,1,8000,8000],"fills":[{"kind":"solid","color":"#333333"}]}}})
                     .to_string(),
             )
             .unwrap();
@@ -3544,6 +3580,7 @@ mod analytic_glass_support_tests {
                 Some(union),
             )
             .unwrap();
+        assert!(engine.camera_prepare.as_ref().unwrap().prepared["offscreen"].support_culled);
         for region in [
             Rect::new(-1, -1, 514, 514),
             Rect::new(511, -1, 514, 514),

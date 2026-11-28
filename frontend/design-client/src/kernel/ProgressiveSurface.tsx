@@ -27,7 +27,7 @@ import { viewportPreviewRole } from './frame-handoff'
 import { acceptFrameClarity } from './frame-acceptance'
 import { previewCameraScaleWithinLimit, tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
 import { canvasStatusLabel } from '../canvas-status-label'
-import { fitBounds, type CanvasCamera } from '../canvas-camera'
+import { fitBounds, MAX_CANVAS_ZOOM, type CanvasCamera } from '../canvas-camera'
 import { boundsContain, intersectBounds } from './page-translation'
 import { useRasterDensity } from './use-raster-density'
 import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
@@ -418,7 +418,7 @@ export function ProgressiveSurfaceImpl(
   const coverageGeneration = useRef(0)
   const coverageFlight = useRef<NavigationCoverageFlight<PaintedTile> | null>(null)
   /** World rect of the one native tile the navigation turn is drawing. */
-  const refinementTile = useRef<{ x: number; y: number; width: number; height: number } | undefined>(undefined)
+  const refinementTile = useRef<{ x: number; y: number; width: number; height: number; density: number; cancelled?: boolean } | undefined>(undefined)
   const previewAdmission = useRef<{ contract?: object; key?: string; active: boolean }>({ active: false })
   const [navigationIntentOwner] = useState(() => new NavigationIntentOwner())
   const [nativeNavigationHandoff] = useState(() => new NativeNavigationHandoff())
@@ -643,15 +643,24 @@ export function ProgressiveSurfaceImpl(
     !nativeNavigation && !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles)
   const latestNativeNavigation = useRef(nativeNavigation)
   latestNativeNavigation.current = nativeNavigation
-  const navigationGesture = useNavigationZoom(view, identity, singleCanvas && !props.paused && props.visible !== false &&
-    !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles && !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview && !hdrCompositing,
+  const navigationEnabled = singleCanvas && !props.paused && props.visible !== false &&
+    !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles && !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview && !hdrCompositing
+  const settleAtMaximumZoom = navigationEnabled && residentDisplay && progressiveNativeRepair && filteredContent && !cameraDependent
+  const navigationGesture = useNavigationZoom(view, identity, navigationEnabled,
     residentDisplay && filteredContent, props.panGestureActive === true, nativeNavigation,
-    import.meta.env.VITE_DESIGN_NAVIGATION_ADAPTIVE_QUIET!=='0' && residentDisplay &&
-      (!filteredContent || (progressiveNativeRepair && !cameraDependent ? 'filtered' : false)))
-  const frameZooming=useZoomActivity(view.zoom,identity)
+    {
+      adaptiveQuiet: import.meta.env.VITE_DESIGN_NAVIGATION_ADAPTIVE_QUIET!=='0' && residentDisplay &&
+        (!filteredContent || (progressiveNativeRepair && !cameraDependent ? 'filtered' : false)),
+      settleAtMaximumZoom,
+    })
+  // The navigation state already knows this camera is final. The two-frame
+  // activity signals must not restart its exact fill after it has begun.
+  const settledMaximum = settleAtMaximumZoom && view.zoom === MAX_CANVAS_ZOOM &&
+    !navigationGesture.active && !navigationGesture.suspended && !props.panGestureActive
+  const frameZooming=useZoomActivity(view.zoom,identity) && !settledMaximum
   const sharpZooming=useSharpZoomActivity(sharpNavigation?view.zoom:1,sharpNavigation?identity:'sharp-disabled')
   const zooming=sharpNavigation?sharpZooming:frameZooming
-  const cameraMoving = useCameraActivity(view, identity)
+  const cameraMoving = useCameraActivity(view, identity) && !settledMaximum
   const motionPreview=!sharpNavigation&&!gestureHeadroom&&!nativeVisibleTiles&&residentDisplay&&zooming&&!props.interaction?.active&&!props.grid&&!props.checkerboard&&!props.pixelPreview&&
     import.meta.env.VITE_DESIGN_VIEWPORT_PREVIEW!=='0'
   const lastIdentity = useRef(identity)
@@ -1187,7 +1196,15 @@ export function ProgressiveSurfaceImpl(
       // After a long pan it is the old camera: yielding it lets the live
       // viewport capture use the raster channel. Accepted pixels stay.
       const refining = refinementTile.current
-      if (refining && captureMostlyOffscreen(refining, requestedView, width, height)) c.cancelTileFill()
+      if (refining && !refining.cancelled) {
+        if (!navigationZoom.active && requestedView.zoom === MAX_CANVAS_ZOOM &&
+            refining.density < requestedView.zoom * dpr && hasContinuityBacking()) {
+          // The exact endpoint already has continuity pixels. Yield the CPU
+          // preparation of the older, lower-density tile to its native fill.
+          refining.cancelled = true
+          c.cancelTileFill(refining.density)
+        } else if (captureMostlyOffscreen(refining, requestedView, width, height)) c.cancelTileFill()
+      }
     }
     const pendingCoverage = () => {
       const flight = coverageFlight.current, tile = flight?.tile
@@ -1754,6 +1771,7 @@ focus?: SurfaceProps['overview'],
           let delivered = false
           const gutter = tile.gutter ?? 1
           const tileBounds = tile.zoom > 0 ? {
+            density: tile.zoom,
             x: (tile.x + gutter - (tile.phaseX ?? 0)) / tile.zoom,
             y: (tile.y + gutter - (tile.phaseY ?? 0)) / tile.zoom,
             width: (tile.width - 2 * gutter) / tile.zoom,
@@ -1916,6 +1934,7 @@ focus?: SurfaceProps['overview'],
         // do not pay for a page overview on pointer release.
         if (residentDisplay && !reusePageOverview && !nativeReturnReady && !coveredHighZoomOut && !sharpNavigation && !nativeVisibleTiles && !props.grid && !props.checkerboard &&
             !props.pixelPreview && !props.interaction?.active && !retainedEditViewport && (!navigationZoom.active || zoomOutCoverage) &&
+            (!settledMaximum || !hasRepairBacking()) &&
             (!displayed || (displayed.document === doc && displayed.revision === contract.revision && previousView &&
               (previousView.x !== view.x || previousView.y !== view.y || previousView.zoom !== view.zoom)))) {
           // Fill bounded page coverage during the first desktop render so
@@ -2706,6 +2725,7 @@ focus?: SurfaceProps['overview'],
     nativeNavigation,
     nativeVisibleTiles,
     progressiveNativeRepair,
+    settledMaximum,
     sharpNavigation,
     zooming,
     cameraMoving,

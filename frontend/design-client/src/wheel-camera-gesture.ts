@@ -1,5 +1,41 @@
 import {clampCanvasZoom,wheelCamera,wheelDeltaPixels,zoomAt,type CanvasCamera,type CanvasSize} from './canvas-camera'
 import type {Point} from './model'
+
+type ModifierTiming = { down?: number; completed?: { down: number; up: number } }
+
+/** Chromium can dispatch an older wheel event after the physical key release.
+ * Use its input timestamp to distinguish the modifier from a new native pinch. */
+export class WheelModifierHistory {
+  private ctrl: ModifierTiming = {}
+  private meta: ModifierTiming = {}
+
+  record(event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'timeStamp'>) {
+    const update = (timing: ModifierTiming, pressed: boolean) => {
+      if (pressed) timing.down ??= event.timeStamp
+      else if (timing.down !== undefined) {
+        timing.completed = { down: timing.down, up: event.timeStamp }
+        timing.down = undefined
+      }
+    }
+    update(this.ctrl, event.ctrlKey)
+    update(this.meta, event.metaKey)
+  }
+
+  at(time: number) {
+    const held = ({ down, completed }: ModifierTiming) => {
+      if (!Number.isFinite(time) || time <= 0) return down !== undefined
+      return (down !== undefined && time >= down) ||
+        (completed !== undefined && time >= completed.down && time < completed.up)
+    }
+    return { ctrl: held(this.ctrl), meta: held(this.meta) }
+  }
+
+  reset() {
+    this.ctrl = {}
+    this.meta = {}
+  }
+}
+
 type Wheel=Parameters<typeof wheelCamera>[1] & {isTrusted?:boolean}
 type WheelRun={base:CanvasCamera;last:CanvasCamera;anchor:Point;size:CanvasSize;rate:number;x:number;y:number;cx:number;cy:number;roundoff?:number}
 const MAX_WHEEL_RUNS=8

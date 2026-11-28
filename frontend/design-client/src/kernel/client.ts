@@ -1106,11 +1106,12 @@ export class KernelClient {
     if (gpuSlot) await gpuSlot
     await this.request({ command: 'lose-device' })
   }
-  cancelTileFill() {
+  cancelTileFill(abandonedDensity?: number) {
     this.tileFillEpoch++
     // Let the running tile publish; stop the obsolete batch before its next
     // tile. Unlike content cancellation, useful same-document pixels survive.
-    this.worker?.postMessage({ command: 'cancel-tile-fill', executionPolicy: renderExecutionPolicy })
+    this.worker?.postMessage({ command: 'cancel-tile-fill', executionPolicy: renderExecutionPolicy,
+      ...(abandonedDensity === undefined ? {} : { abandonedDensity }) })
   }
   cancelPreview(channel: 'canvas' | 'interaction' = 'canvas') {
     this.previewEpochs[channel]++
