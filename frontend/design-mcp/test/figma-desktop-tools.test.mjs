@@ -221,6 +221,7 @@ test('Code Connect suggestions report unmapped local components without inventin
   const ignored = await plain.callTool('get_code_connect_suggestions', { nodeId: 'plain' }, {})
   assert.equal(ignored.error.code, 'unsupported_remote_capability')
   assert.deepEqual(ignored.error.details.ignoredNodeIds, ['plain'])
+  assert.equal((await api.callTool('get_code_connect_suggestions', { nodeIds: [] }, {})).error.code, 'invalid_params')
 })
 
 test('Code Connect reports the typed boundary when no local mapping exists', async () => {
