@@ -6,8 +6,10 @@ import { DesignMcpServer, PROTOCOL_VERSION } from '../src/server.mjs'
 import { FIGMA_MCP_GAPS, FIGMA_MCP_INSTRUCTIONS, FIGMA_MCP_TOOLS, FigmaFacade, metadataXml, registerFigmaPluginBridge, validateFigmaOperation } from '../src/figma-facade.mjs'
 import { FIGMA_COMPATIBILITY_TOOLS } from '../src/figma-weave-tools.mjs'
 import { FIGMA_DESKTOP_TOOL_NAMES, FIGMA_DESKTOP_WRITE_TOOLS } from '../src/figma-desktop-tools.mjs'
+import { REMOTE_FIGMA_TOOLS } from '../src/figma-remote-tools.mjs'
 
 const READ_DESKTOP_TOOL_NAMES = FIGMA_DESKTOP_TOOL_NAMES.filter(name => !FIGMA_DESKTOP_WRITE_TOOLS.has(name))
+const READ_REMOTE_TOOL_NAMES = REMOTE_FIGMA_TOOLS.filter(entry => entry.annotations.readOnlyHint).map(entry => entry.name)
 
 const METHODS = ['document.get', 'page.list', 'node.find', 'node.get', 'selection.get', 'context.get', 'code.export', 'preview.capture', 'variable.list', 'style.list', 'vector.export', 'batch.apply', 'workspace.open']
 
@@ -34,7 +36,7 @@ const ok = response => { assert.equal(response.ok, true, JSON.stringify(response
 
 test('advertised tools match the Figma-shaped subset and do not invent registry aliases', () => {
   assert.deepEqual(FIGMA_MCP_TOOLS.map(tool => tool.name), ['get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets', 'use_figma', 'open_document'])
-  assert.ok(FIGMA_MCP_GAPS.some(gap => gap.id === 'whoami' && gap.status === 'absent'))
+  assert.ok(FIGMA_MCP_GAPS.some(gap => gap.id === 'whoami' && gap.status === 'local'))
   assert.ok(FIGMA_MCP_GAPS.some(gap => gap.id === 'use_figma_plugin_javascript'))
   assert.equal(validateFigmaOperation({ op: 'create', kind: 'button' }), 'create kind must be one of slice, frame, section, group, rectangle, ellipse, polygon, star, line, vector, text')
 })
@@ -259,7 +261,10 @@ test('registered plugin bridge receives source and the facade does not eval it',
 
 test('read-only scope rejects writes before calling the Design API', async () => {
   const { api, calls } = facade({}, { scope: 'read' })
-  assert.deepEqual(api.listTools().map(tool => tool.name), ['get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets', ...READ_DESKTOP_TOOL_NAMES, ...FIGMA_COMPATIBILITY_TOOLS.map(entry => entry.name)])
+  assert.deepEqual(api.listTools().map(tool => tool.name), ['get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets',
+    ...READ_DESKTOP_TOOL_NAMES,
+    ...FIGMA_COMPATIBILITY_TOOLS.map(entry => entry.name),
+    ...READ_REMOTE_TOOL_NAMES])
   const write = await api.callTool('use_figma', { description: 'Edit', operations: [{ op: 'delete', nodeId: 'a' }] }, {})
   const open = await api.callTool('open_document', { rootHandle: 'root', documentHandle: 'doc', mutationId: 'open-1' }, {})
   assert.equal(write.error.code, 'read_only')

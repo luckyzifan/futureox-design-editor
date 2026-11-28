@@ -9,9 +9,12 @@ import {
   FIGMA_COMPATIBILITY_TOOLS, FIGMA_WEAVE_TOOL_NAMES, UNSUPPORTED_REMOTE_CAPABILITY, isCompatibilityTool,
 } from '../src/figma-weave-tools.mjs'
 import { FIGMA_DESKTOP_TOOL_NAMES, FIGMA_DESKTOP_WRITE_TOOLS } from '../src/figma-desktop-tools.mjs'
+import { REMOTE_FIGMA_TOOLS } from '../src/figma-remote-tools.mjs'
 
 const READ_DESKTOP_TOOL_NAMES = FIGMA_DESKTOP_TOOL_NAMES.filter(name => !FIGMA_DESKTOP_WRITE_TOOLS.has(name))
 
+const REMOTE_READ_NAMES = REMOTE_FIGMA_TOOLS.filter(entry => entry.annotations.readOnlyHint).map(entry => entry.name)
+const REMOTE_ALL_NAMES = REMOTE_FIGMA_TOOLS.map(entry => entry.name)
 const COMPATIBILITY_NAMES = [
   'weave_list_tools', 'weave_get_tool_inputs', 'weave_upload_asset', 'weave_run_tool',
   'weave_get_tool_run_output', 'weave_cancel_tool_run', 'weave_find_model', 'weave_run_model',
@@ -80,12 +83,12 @@ test('every read-only session lists the compatibility names after the base six',
   const { api } = facade()
   assert.deepEqual(api.listTools().map(tool => tool.name), [
     'get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets',
-    ...READ_DESKTOP_TOOL_NAMES, ...COMPATIBILITY_NAMES,
+    ...READ_DESKTOP_TOOL_NAMES, ...COMPATIBILITY_NAMES, ...REMOTE_READ_NAMES,
   ])
   const write = facade({ methods: WRITE_METHODS, scope: 'write' }).api
   assert.deepEqual(write.listTools().map(tool => tool.name), [
     'get_metadata', 'get_selection', 'get_design_context', 'get_screenshot', 'get_variable_defs', 'download_assets',
-    'use_figma', 'open_document', ...FIGMA_DESKTOP_TOOL_NAMES, ...COMPATIBILITY_NAMES,
+    'use_figma', 'open_document', ...FIGMA_DESKTOP_TOOL_NAMES, ...COMPATIBILITY_NAMES, ...REMOTE_ALL_NAMES,
   ])
 })
 

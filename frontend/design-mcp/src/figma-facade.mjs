@@ -2,12 +2,13 @@ import { createHash } from 'node:crypto'
 import { isRecord } from './framing.mjs'
 import { FIGMA_COMPATIBILITY_GAPS, FIGMA_COMPATIBILITY_TOOLS, callCompatibilityTool, isCompatibilityTool } from './figma-weave-tools.mjs'
 import { FIGMA_DESKTOP_TOOL_SPECS, FIGMA_DESKTOP_WRITE_TOOLS, callFigmaDesktopTool, isFigmaDesktopTool } from './figma-desktop-tools.mjs'
+import { REMOTE_FIGMA_GAPS, REMOTE_FIGMA_TOOL_NAMES, REMOTE_FIGMA_TOOLS, callRemoteFigmaTool } from './figma-remote-tools.mjs'
 
 /** Explicit compatibility surface for AI clients that already speak Figma MCP.
  * These names are not added to the shared Design API registry. Every call is
  * translated into that API. This module does not store a document, eval plugin
  * code, or claim Figma account, library, or pixel parity. */
-export const FIGMA_MCP_INSTRUCTIONS = 'Futureox Design Figma-shaped MCP facade for the document whose desktop automation bridge is enabled. Tools call the existing Design API; this server applies document/session/revision fences itself. get_metadata, get_design_context, get_screenshot, get_variable_defs and download_assets read. The desktop/Dev Mode names get_code_connect_map, get_code_connect_suggestions, get_figjam, get_motion_context, get_shader and list_shaders are listed: motion reads authored local animation and prototype data, Code Connect reads and writes a bounded process-local map, and FigJam/shader calls return unsupported_remote_capability because no local model exists. add_code_connect_map and send_code_connect_mappings write only that process-local map at the current document revision; they do not modify the design document. use_figma writes structured create/update/delete/move/select operations as one undo step. Plugin JavaScript in use_figma code is forwarded only when the host registered a plugin bridge; otherwise the tool returns plugin_host_unavailable and does not eval. get_selection and open_document are Futureox extension tools, not names in the Figma tools index; they are labeled [Futureox extension] and listed by default. Set FUTUREOX_FIGMA_STRICT_TOOLS=1 to omit those two from tools/list; calls stay available. open_document is a local workspace open, not a Figma cloud file. fileKey is ignored. Screenshots are CPU exports of design content, not GPU or window captures. Cancellation cannot undo a committed edit.'
+export const FIGMA_MCP_INSTRUCTIONS = 'Futureox Design Figma-shaped MCP facade for the document whose desktop automation bridge is enabled. Tools call the existing Design API; this server applies document/session/revision fences itself. get_metadata, get_design_context, get_screenshot, get_variable_defs and download_assets read. The desktop/Dev Mode names get_code_connect_map, get_code_connect_suggestions, get_figjam, get_motion_context, get_shader and list_shaders are listed: motion reads authored local animation and prototype data, Code Connect reads and writes a bounded process-local map, and FigJam/shader calls return unsupported_remote_capability because no local model exists. add_code_connect_map and send_code_connect_mappings write only that process-local map at the current document revision; they do not modify the design document. use_figma writes structured create/update/delete/move/select operations as one undo step. Plugin JavaScript in use_figma code is forwarded only when the host registered a plugin bridge; otherwise the tool returns plugin_host_unavailable and does not eval. whoami returns a local application identity and one local plan key, not a Figma account. create_new_file saves a blank local design through workspace.importCopy. get_comments reads local reviews. get_libraries and search_design_system read local components, variables, collections, and shared styles. upload_assets imports inline SVG or raster assets because no upload-URL endpoint exists locally. Other Figma remote tools stay visible and return unsupported_remote_capability with a capability name and hint; none fabricates remote storage, AI generation, or a Figma account. get_selection and open_document are Futureox extension tools, not names in the Figma tools index; they are labeled [Futureox extension] and listed by default. Set FUTUREOX_FIGMA_STRICT_TOOLS=1 to omit those two from tools/list; calls stay available. open_document is a local workspace open, not a Figma cloud file. fileKey is ignored. Screenshots are CPU exports of design content, not GPU or window captures. Cancellation cannot undo a committed edit.'
 export const FIGMA_ASSET_LIMIT = 20
 export const FIGMA_EXTENSION_TOOLS = Object.freeze(['get_selection', 'open_document'])
 export const FUTUREOX_FIGMA_STRICT_TOOLS_ENV = 'FUTUREOX_FIGMA_STRICT_TOOLS'
@@ -16,20 +17,20 @@ const ASSET_BATCH_BYTES = 32 * 1024 * 1024
 const ASSET_MIN_SCALE = 0.01
 
 export const FIGMA_MCP_GAPS = Object.freeze([
-  { id: 'whoami', tool: 'whoami', status: 'absent', detail: 'No Figma account, plan, seat, or identity.' },
-  { id: 'create_new_file', tool: 'create_new_file', status: 'absent', detail: 'No cloud file creation. open_document (a labeled Futureox extension) opens a saved local design when workspace.open is granted.' },
-  { id: 'generate_figma_design', tool: 'generate_figma_design', status: 'absent', detail: 'No live-site capture into design layers.' },
-  { id: 'generate_diagram', tool: 'generate_diagram', status: 'absent', detail: 'No FigJam or Mermaid diagram generator.' },
-  { id: 'generate_image', tool: 'generate_image', status: 'absent', detail: 'No image generation or AI-credit placement.' },
-  { id: 'html_to_figma', tool: 'html_to_figma', status: 'absent', detail: 'HTML import is not a Design API operation.' },
-  { id: 'upload_assets', tool: 'upload_assets', status: 'absent', detail: 'No multi-file image/SVG upload tool. svg.import remains on the design_* catalog.' },
-  { id: 'send_code_to_figma', tool: 'send_code_to_figma', status: 'absent', detail: 'No Figma Make or code-layer import.' },
-  { id: 'libraries_and_code_connect', tool: 'get_libraries, search_design_system', status: 'absent', detail: 'No team libraries or Figma design-system search. clientFrameworks and clientLanguages are ignored.' },
+  { id: 'whoami', tool: 'whoami', status: 'local', detail: 'Returns the local Futureox identity, one local plan key, and the local owner seat. No Figma email, plan, team, or OAuth grant.' },
+  { id: 'create_new_file', tool: 'create_new_file', status: 'local', detail: 'Creates a blank local design through workspace.importCopy and returns a documentHandle. FigJam, Slides, and Make editor types return unsupported_editor_type.' },
+  { id: 'generate_figma_design', tool: 'generate_figma_design', status: 'unsupported', detail: 'Listed. Returns unsupported_remote_capability; no browser capture or live-site layer conversion.' },
+  { id: 'generate_diagram', tool: 'generate_diagram', status: 'unsupported', detail: 'Listed. Returns unsupported_remote_capability; no FigJam document type or Mermaid layout service.' },
+  { id: 'generate_image', tool: 'generate_image', status: 'unsupported', detail: 'Listed. Returns unsupported_remote_capability; no image model or AI-credit placement.' },
+  { id: 'html_to_figma', tool: 'html_to_figma', status: 'unsupported', detail: 'Listed. Returns unsupported_remote_capability; document.import explicitly rejects HTML and no HTML layout converter exists locally.' },
+  { id: 'upload_assets', tool: 'upload_assets', status: 'local', detail: 'Inline SVG imports as editable vectors; PNG, JPEG, GIF, and WebP become exact embedded image fills. Each item is fenced with the revision returned by the previous write. No upload URLs or remote storage.' },
+  { id: 'send_code_to_figma', tool: 'send_code_to_figma', status: 'unsupported', detail: 'Listed. Returns unsupported_remote_capability; no Figma Make or code-layer build service.' },
   { id: 'local_code_connect_map', tool: 'get_code_connect_map, get_code_connect_suggestions, add_code_connect_map, send_code_connect_mappings', status: 'partial', detail: 'Listed desktop/Dev Mode names. Reads and writes a bounded process-local Code Connect map keyed by the live document revision and validated against local component/instance identity. Not the Figma cloud Code Connect store, not durable across MCP processes, and it never modifies the design document. Requests with no local mapping return unsupported_remote_capability.' },
-  { id: 'figjam', tool: 'get_figjam', status: 'absent', detail: 'Listed and discoverable, but Futureox has no FigJam board model or connectors. Every call returns unsupported_remote_capability.' },
+  { id: 'figjam', tool: 'get_figjam', status: 'unsupported', detail: 'Listed and discoverable, but Futureox has no FigJam board model or connectors. Every call returns unsupported_remote_capability.' },
   { id: 'motion_context', tool: 'get_motion_context', status: 'partial', detail: 'Reads authored local animation clips and keyframes plus authored prototype interactions, and derives a CSS snippet. Not Figma timeline playback, Motion code generation, or a rendered animation.' },
-  { id: 'shaders', tool: 'get_shader, list_shaders', status: 'absent', detail: 'Listed and discoverable, but Futureox has no shader library or shader source model. Every call returns unsupported_remote_capability.' },
+  { id: 'shaders', tool: 'get_shader, list_shaders, list_file_shaders, create_shader, update_shader', status: 'unsupported', detail: 'All five are listed and discoverable, but Futureox has no shader library or shader source model. Every call returns unsupported_remote_capability and does not call the Design API.' },
   { id: 'futureox_extension_tools', tool: 'get_selection, open_document', status: 'partial', detail: 'Futureox extension tools, not names in the Figma tools index. Descriptions are prefixed [Futureox extension] and the names are listed by default so existing clients keep working. FUTUREOX_FIGMA_STRICT_TOOLS=1 omits them from tools/list only; calls remain available.' },
+  ...REMOTE_FIGMA_GAPS.filter(gap => gap.id !== 'shaders'),
   { id: 'use_figma_plugin_javascript', tool: 'use_figma', status: 'partial', detail: 'Structured operations map to Design API batches. code is forwarded only through a host-registered plugin bridge. Without that bridge the call returns plugin_host_unavailable and is not evaluated.' },
   { id: 'download_assets_urls_pdf_raw', tool: 'download_assets', status: 'partial', detail: 'PNG, JPEG, WebP, SVG or bitmap PDF for up to 20 local nodes uses MCP resources. rawImagesOnly reads the original embedded image fills. External fetch URLs and external image sources are unavailable.' },
   { id: 'design_context_not_react', tool: 'get_design_context', status: 'partial', detail: 'Returns Design API context and, when advertised, HTML/CSS from code.export. Not Figma React + Tailwind.' },
@@ -237,7 +238,10 @@ export class FigmaFacade {
     const desktop = FIGMA_DESKTOP_TOOL_SPECS
       .filter(spec => !spec.mutates || canWrite)
       .map(spec => tool(spec.name, spec.description, spec.properties, spec.required, spec.annotations))
-    const catalog = [...base, ...desktop, ...FIGMA_COMPATIBILITY_TOOLS]
+    // Local and unsupported remote write tools stay visible in an editable
+    // session; every handler rechecks scope and its own prerequisites.
+    const remote = REMOTE_FIGMA_TOOLS.filter(entry => entry.annotations.readOnlyHint || this.scope === 'write')
+    const catalog = [...base, ...desktop, ...FIGMA_COMPATIBILITY_TOOLS, ...remote]
     const listed = this.strictFigmaTools ? catalog.filter(entry => !EXTENSION_TOOL_NAMES.has(entry.name)) : catalog
     return listed.map(entry => ({ ...entry }))
   }
@@ -261,6 +265,9 @@ export class FigmaFacade {
       if (name === 'use_figma') return await this.useFigma(toolArgs, context)
       if (name === 'open_document') return await this.openDocument(toolArgs, context)
       if (isFigmaDesktopTool(name)) return await callFigmaDesktopTool(this, name, toolArgs, context)
+      if (REMOTE_FIGMA_TOOL_NAMES.has(name)) {
+        return await callRemoteFigmaTool(this, name, toolArgs, context, { failure, done, identityOf })
+      }
       if (isCompatibilityTool(name)) {
         return await callCompatibilityTool({
           name, args: toolArgs,
