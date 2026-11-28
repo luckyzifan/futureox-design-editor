@@ -1,15 +1,24 @@
 import { createHash } from 'node:crypto'
 import { isRecord } from './framing.mjs'
+import { buildLocalDesignContext, DESIGN_CONTEXT_NODE_LIMIT } from './figma-design-context.mjs'
 import { FIGMA_COMPATIBILITY_GAPS, FIGMA_COMPATIBILITY_TOOLS, callCompatibilityTool, isCompatibilityTool } from './figma-weave-tools.mjs'
 
 /** Explicit compatibility surface for AI clients that already speak Figma MCP.
  * These names are not added to the shared Design API registry. Every call is
  * translated into that API. This module does not store a document, eval plugin
  * code, or claim Figma account, library, or pixel parity. */
-export const FIGMA_MCP_INSTRUCTIONS = 'Futureox Design Figma-shaped MCP facade for the document whose desktop automation bridge is enabled. Tools call the existing Design API; this server applies document/session/revision fences itself. get_metadata, get_selection, get_design_context, get_screenshot, get_variable_defs and download_assets read. use_figma writes structured create/update/delete/move/select operations as one undo step. Plugin JavaScript in use_figma code is forwarded only when the host registered a plugin bridge; otherwise the tool returns plugin_host_unavailable and does not eval. open_document is a local workspace open, not a Figma cloud file. fileKey is ignored. Screenshots are CPU exports of design content, not GPU or window captures. Cancellation cannot undo a committed edit.'
+export const FIGMA_MCP_INSTRUCTIONS = 'Futureox Design Figma-shaped MCP facade for the document whose desktop automation bridge is enabled. Tools call the existing Design API; this server applies document/session/revision fences itself. Loopback Streamable HTTP supports POST JSON-RPC, one GET text/event-stream per session, Mcp-Session-Id, MCP-Protocol-Version, and DELETE. get_metadata, get_selection, get_design_context, get_screenshot, get_variable_defs and download_assets read. get_design_context returns a deterministic local React JSX + Tailwind approximation (not Figma output) and lists unmapped fields. use_figma writes structured create/update/delete/move/select operations as one undo step. Plugin JavaScript in use_figma code is forwarded only when the host registered or injected a plugin bridge; otherwise the tool returns plugin_host_unavailable and does not eval. open_document is a local workspace open, not a Figma cloud file. fileKey is ignored. Screenshots are CPU exports of design content with no temporary URL. Team libraries, Code Connect and remote asset URLs return typed boundaries. Cancellation cannot undo a committed edit.'
 export const FIGMA_ASSET_LIMIT = 20
 const ASSET_BATCH_BYTES = 32 * 1024 * 1024
 const ASSET_MIN_SCALE = 0.01
+const ASSET_URL_BOUNDARY = Object.freeze({
+  supported: false,
+  code: 'unsupported_remote_capability',
+  message: 'No temporary asset URL service exists. On this local-first build, export bytes are delivered as exact MCP resources in the same authorized session; no remote URL is invented.',
+})
+const localAssetDelivery = result => ({
+  ...result, delivery: 'mcp-resources', temporaryUrls: false, urls: false, urlExport: ASSET_URL_BOUNDARY,
+})
 
 export const FIGMA_MCP_GAPS = Object.freeze([
   { id: 'whoami', tool: 'whoami', status: 'absent', detail: 'No Figma account, plan, seat, or identity.' },
@@ -22,11 +31,13 @@ export const FIGMA_MCP_GAPS = Object.freeze([
   { id: 'send_code_to_figma', tool: 'send_code_to_figma', status: 'absent', detail: 'No Figma Make or code-layer import.' },
   { id: 'libraries_and_code_connect', tool: 'get_libraries, search_design_system, get_code_connect_map, add_code_connect_map', status: 'absent', detail: 'No team libraries or Code Connect. clientFrameworks and clientLanguages are ignored.' },
   { id: 'figjam_motion_shaders', tool: 'get_figjam, get_motion_context, shader and generative-plugin tools', status: 'absent', detail: 'No FigJam, motion keyframes, shaders, or generative-plugin library.' },
-  { id: 'use_figma_plugin_javascript', tool: 'use_figma', status: 'partial', detail: 'Structured operations map to Design API batches. code is forwarded only through a host-registered plugin bridge. Without that bridge the call returns plugin_host_unavailable and is not evaluated.' },
-  { id: 'download_assets_urls_pdf_raw', tool: 'download_assets', status: 'partial', detail: 'PNG, JPEG, WebP, SVG or bitmap PDF for up to 20 local nodes uses MCP resources. rawImagesOnly reads the original embedded image fills. External fetch URLs and external image sources are unavailable.' },
-  { id: 'design_context_not_react', tool: 'get_design_context', status: 'partial', detail: 'Returns Design API context and, when advertised, HTML/CSS from code.export. Not Figma React + Tailwind.' },
-  { id: 'screenshot_is_cpu_export', tool: 'get_screenshot', status: 'partial', detail: 'preview.capture CPU raster of design content. Not an application window or GPU canvas screenshot.' },
-  { id: 'file_key_ignored', tool: 'fileKey', status: 'partial', detail: 'The server is bound to the enabled local document. A Figma URL or file key does not select a different file.' },
+  { id: 'use_figma_plugin_javascript', tool: 'use_figma', status: 'partial', detail: 'Structured operations map to Design API batches. code is sent to a host-registered or host-injected plugin bridge (the desktop QuickJS host satisfies this contract). Without a bridge the call returns plugin_host_unavailable and is not evaluated in Node.' },
+  { id: 'download_assets_urls_pdf_raw', tool: 'download_assets', status: 'partial', detail: 'PNG, JPEG, WebP, SVG or bitmap PDF for up to 20 local nodes uses MCP resources (also rawImagesOnly). External fetch URLs and temporary asset URLs are unavailable and reported as a typed boundary, never invented.' },
+  { id: 'design_context_not_react', tool: 'get_design_context', status: 'partial', detail: 'Returns a deterministic local React JSX + Tailwind approximation with node tree, layout, paints, text metrics, variables and shared styles. Explicitly not Figma cloud output; unmapped fields are listed.' },
+  { id: 'screenshot_is_cpu_export', tool: 'get_screenshot', status: 'partial', detail: 'preview.capture CPU raster of design content with Figma nodeId/format/scale/contentsOnly/maxDimension parameters and a 1024 default max side. No temporary URL; bytes are inline or a session resource.' },
+  { id: 'file_key_ignored', tool: 'fileKey', status: 'partial', detail: 'The server is bound to the enabled local document. A Figma URL or file key does not select a different file. Figma-style node ids are accepted; an unknown id returns the page list like Figma.' },
+  { id: 'team_libraries', tool: 'get_variable_defs', status: 'unsupported', detail: 'Local variables and shared styles only. Team libraries and published design systems return a typed unsupported boundary, not an empty catalog; nodeId is optional and omitted means a document-level catalog.' },
+  { id: 'streamable_http_get', tool: 'GET /mcp', status: 'partial', detail: 'POST JSON-RPC, one GET text/event-stream per session, Mcp-Session-Id, MCP-Protocol-Version and DELETE are implemented on loopback with the desktop bearer grant. There is no remote OAuth or multi-user service.' },
   { id: 'no_remote_account', tool: 'remote MCP', status: 'absent', detail: 'Loopback HTTP and stdio only. No mcp.figma.com, OAuth, or multi-user account.' },
   ...FIGMA_COMPATIBILITY_GAPS,
 ])
@@ -37,6 +48,8 @@ const LOOSE = { description: 'Accepted and ignored. This server is bound to the 
 const NODE_LIMIT = 100
 const METADATA_CURSOR_PATTERN = /^([A-Za-z0-9_-]{43})\.([A-Za-z0-9_-]{2,171})$/
 const SELECTION_DETAIL = 20
+const FIGMA_NODE_ID_PATTERN = /^(?:[IT])?\d+[:-]\d+(?:[;:]\d+(?::\d+)?)*$/
+const FIGMA_URL_NODE_ID_PATTERN = /^\d+-\d+$/
 
 let registeredBridge = null
 
@@ -57,17 +70,28 @@ const tool = (name, description, properties, required = []) => ({
 })
 
 export const FIGMA_MCP_TOOLS = Object.freeze([
-  tool('get_metadata', 'Lightweight XML outline of the open Futureox document. Omit nodeId for pages. A page id outlines that page; any other id outlines that subtree in pages of up to 100 nodes. fileKey is ignored.', {
+  tool('get_metadata', 'Lightweight XML outline of the open Futureox document. Omit nodeId for pages. A page id outlines that page; any other id outlines that subtree in pages of up to 100 nodes. Figma-style ids such as 1:23 or the URL form 1-23 are accepted; an id that is not a local page or node returns the page list, matching Figma behavior for an unknown node id. fileKey is ignored.', {
     nodeId: { type: 'string', minLength: 1, maxLength: 128 },
     limit: { type: 'integer', minimum: 1, maximum: NODE_LIMIT, description: 'Nodes per outline page. Defaults to 100.' },
     cursor: { type: 'string', minLength: 46, maxLength: 215, description: 'nextCursor from the same nodeId, editor session, and revision.' },
   }),
   tool('get_selection', 'Read the active page and current selection. Up to 20 nodes include id, name, kind, size, and world bounds. Desktop Figma MCP often implies this selection; call this tool to read it.', {}),
-  tool('get_design_context', 'Bounded design context for nodeId or the current selection, from context.get. When code.export is available, HTML/CSS is attached as resources. Output is Futureox HTML/CSS, not Figma React and Tailwind. clientFrameworks is ignored.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
-  tool('get_screenshot', 'CPU PNG of the local node, selection or active page. maxDimension fits the rendered size. Set contentsOnly to false to include background and other page layers inside the crop. Set enableBase64Response to false for a resource link without inline image content.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, scale: { type: 'number', minimum: 0.1, maximum: 4 }, maxDimension: { type: 'integer', minimum: 1, maximum: 65536 }, contentsOnly: { type: 'boolean' }, enableBase64Response: { type: 'boolean' } }),
-  tool('get_variable_defs', 'Local variable definitions and their alias dependencies, plus shared styles referenced by nodeId or the first 20 selected nodes. An empty selection returns a bounded document catalog.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
+  tool('get_design_context', 'Bounded local design context for nodeId or the current selection. Returns a deterministic React JSX + Tailwind approximation with the node tree, layout, paints, text metrics, variables and shared styles; unsupported fields are listed in unmapped. fileKey and clientFrameworks are accepted; this is not Figma cloud output and no Code Connect registry exists. Page with cursor and limit.', {
+    nodeId: { type: 'string', minLength: 1, maxLength: 128 },
+    cursor: { type: 'string', minLength: 1, maxLength: 512 },
+    limit: { type: 'integer', minimum: 1, maximum: DESIGN_CONTEXT_NODE_LIMIT, description: 'Nodes per context page. Defaults to 40.' },
+    disableCodeConnect: { type: 'boolean', description: 'Accepted. No Code Connect registry exists locally.' }, excludeScreenshot: { type: 'boolean', description: 'Accepted. Local context never embeds a screenshot; call get_screenshot for pixels.' }, forceCode: { type: 'boolean', description: 'Accepted. Local context always generates JSX code.' },
+  }),
+  tool('get_screenshot', 'CPU PNG (or JPEG/WebP) of the local node, selection or active page. maxDimension fits the rendered size and defaults to 1024 when scale is omitted. Set contentsOnly to false to include background and other page layers inside the crop. enableBase64Response false requests a resource link without inline image content. Returns local bytes, not a temporary URL.', {
+    nodeId: { type: 'string', minLength: 1, maxLength: 128 },
+    format: { type: 'string', enum: ['png', 'jpeg', 'webp'], description: 'Defaults to png.' },
+    scale: { type: 'number', minimum: 0.1, maximum: 4 },
+    maxDimension: { type: 'integer', minimum: 1, maximum: 65536, description: 'Longest rendered side. Defaults to 1024 when scale is omitted.' },
+    contentsOnly: { type: 'boolean' }, enableBase64Response: { type: 'boolean' },
+  }),
+  tool('get_variable_defs', 'Local variable definitions and their alias dependencies, plus shared styles referenced by nodeId or the first 20 selected nodes. nodeId is optional here: without it the result is a bounded document-level catalog. Team libraries are not available and are reported as a typed unsupported boundary, not an empty library list.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 } }),
   tool('download_assets', 'Export up to 20 local nodes as individual MCP resources in png, jpeg, webp, svg, or bitmap pdf. Set rawImagesOnly to read up to 20 original embedded image fills in the selected subtrees instead.', { nodeId: { type: 'string', minLength: 1, maxLength: 128 }, nodeIds: { type: 'array', minItems: 1, maxItems: FIGMA_ASSET_LIMIT, items: { type: 'string', minLength: 1, maxLength: 128 } }, defaultFormat: { type: 'string', enum: ['png', 'jpeg', 'jpg', 'webp', 'svg', 'pdf'] }, defaultScale: { type: 'number', minimum: ASSET_MIN_SCALE, maximum: 4 }, rawImagesOnly: { type: 'boolean' } }),
-  tool('use_figma', 'Write the open document. Preferred input is operations (at most 40), applied as one Design API batch and one undo step: create {kind,parentId?,x?,y?,width?,height?,name?,text?,fontSize?,fill?}, update {nodeId,name?,x?,y?,width?,height?,text?,fill?,transform?}, delete {nodeId|nodeIds}, select {nodeIds}, move {nodeId,parentId,index?}. fill is #RRGGBB. Coordinates are parent-local document units. code is plugin JavaScript and runs only when a plugin bridge is registered; otherwise the result is plugin_host_unavailable and the source is not evaluated. description is required.', { description: { type: 'string', minLength: 1, maxLength: 400 }, operations: { type: 'array', maxItems: 40 }, code: { type: 'string', maxLength: 100000 }, mutationId: { type: 'string', minLength: 1, maxLength: 128 } }, ['description']),
+  tool('use_figma', 'Write the open document. Preferred input is operations (at most 40), applied as one Design API batch and one undo step: create {kind,parentId?,x?,y?,width?,height?,name?,text?,fontSize?,fill?}, update {nodeId,name?,x?,y?,width?,height?,text?,fill?,transform?}, delete {nodeId|nodeIds}, select {nodeIds}, move {nodeId,parentId,index?}. fill is #RRGGBB. Coordinates are parent-local document units. code is plugin JavaScript and is forwarded to the registered plugin host bridge; this Node process never evals it. Without a bridge the result is plugin_host_unavailable and the source is not evaluated. description is required.', { description: { type: 'string', minLength: 1, maxLength: 2000 }, operations: { type: 'array', maxItems: 40 }, code: { type: 'string', maxLength: 50000 }, mutationId: { type: 'string', minLength: 1, maxLength: 128 } }, ['description']),
   tool('open_document', 'Open a saved local design through workspace.open. Requires rootHandle, documentHandle, and mutationId from a workspace grant. This is not Figma create_new_file. A successful open can end this automation session.', { rootHandle: { type: 'string', minLength: 1, maxLength: 512 }, documentHandle: { type: 'string', minLength: 1, maxLength: 512 }, mutationId: { type: 'string', minLength: 1, maxLength: 128 } }, ['rootHandle', 'documentHandle', 'mutationId']),
 ])
 
@@ -91,6 +115,18 @@ function unknownArguments(args, allowed, { pagination = false } = {}) {
 
 function metadataCursorBinding({ documentId, session }, nodeId, scope) {
   return createHash('sha256').update(JSON.stringify([documentId, session, nodeId, scope])).digest('base64url')
+}
+
+/** Figma URLs spell a node id with hyphens (`?node-id=1-23`); the API and MCP
+ * parameter use colons (`1:23`). Only digit/hyphen forms are rewritten, so a
+ * local UUID or arbitrary local id is never modified. */
+export function normalizeFigmaNodeId(value) {
+  if (typeof value !== 'string') return value
+  return FIGMA_URL_NODE_ID_PATTERN.test(value) ? value.replaceAll('-', ':') : value
+}
+
+export function isFigmaNodeId(value) {
+  return typeof value === 'string' && FIGMA_NODE_ID_PATTERN.test(value)
 }
 
 function xmlEscape(value) {
@@ -282,8 +318,9 @@ export class FigmaFacade {
   async metadata(args, context) {
     const invalid = unknownArguments(args, new Set(['nodeId', 'limit', 'cursor']), { pagination: true })
     if (invalid) return failure('get_metadata', 'invalid_params', invalid)
-    const nodeId = this.nodeId(args)
-    if (isRecord(nodeId)) return failure('get_metadata', 'invalid_params', nodeId.error)
+    const requestedNodeId = this.nodeId(args)
+    if (isRecord(requestedNodeId)) return failure('get_metadata', 'invalid_params', requestedNodeId.error)
+    const nodeId = normalizeFigmaNodeId(requestedNodeId)
     if (args.limit !== undefined && (nodeId === undefined || !Number.isInteger(args.limit) || args.limit < 1 || args.limit > NODE_LIMIT)) return failure('get_metadata', 'invalid_params', 'limit requires nodeId and must be an integer from 1 to 100')
     const continuation = typeof args.cursor === 'string' && args.cursor.length <= 215 ? METADATA_CURSOR_PATTERN.exec(args.cursor) : null
     if (args.cursor !== undefined && (nodeId === undefined || !continuation)) return failure('get_metadata', 'invalid_params', 'Pass nextCursor from an earlier result with the same nodeId')
@@ -308,13 +345,35 @@ export class FigmaFacade {
       return failure('get_metadata', 'stale_cursor', 'The document changed. Restart the outline without a cursor.', identityOf(found))
     }
     if (!found.ok && found.error?.code === 'not_found') {
-      return { ...found, method: 'get_metadata', error: { ...found.error, details: { pages: pageList } } }
+      if (continuation) return failure('get_metadata', 'stale_cursor', 'The requested node no longer exists. Restart the outline without a cursor.', identity)
+      if (!isFigmaNodeId(nodeId)) {
+        // A local id that does not exist stays an explicit not_found. Only the
+        // Figma id namespace uses Figma's page-list response, so a typo in a
+        // local id is not silently converted into a page listing.
+        return { ...found, method: 'get_metadata', error: { ...found.error, details: { pages: pageList } } }
+      }
+      // Figma returns the top-level page list for a node id that is not in the
+      // file. The local file has no Figma id namespace, so an unknown Figma id
+      // is reported as unresolved instead of an invented subtree.
+      const xml = metadataXml(pages.documentId, pageList.map(entry => ({ id: entry.id, name: entry.name, kind: 'page' })))
+      return done('get_metadata', identity, {
+        format: 'futureox.figma-metadata.v1', scope: 'pages', xml, pages: pageList,
+        requestedNodeId, nodeId, unresolvedNodeId: nodeId, figmaStyleNodeId: true,
+        ...(requestedNodeId === nodeId ? {} : { normalizedFrom: requestedNodeId }),
+        fileKeyIgnored: args.fileKey !== undefined, modelText: xml,
+        note: 'The requested Figma-style id is not a page or node in this local document. An unknown Figma node id returns the page list; local ids are not Figma cloud ids.',
+      })
     }
     if (!found.ok) return found
     const nodes = Array.isArray(found.result?.nodes) ? found.result.nodes : []
     const xml = metadataXml(nodeId, nodes)
     const nextCursor = found.result?.nextCursor ? `${binding}.${Buffer.from(found.result.nextCursor).toString('base64url')}` : null
-    return done('get_metadata', identityOf(found), { format: 'futureox.figma-metadata.v1', scope, nodeId, xml, nodes, truncated: nextCursor !== null, nextCursor, total: found.result?.total, fileKeyIgnored: args.fileKey !== undefined, modelText: xml })
+    return done('get_metadata', identityOf(found), {
+      format: 'futureox.figma-metadata.v1', scope, nodeId,
+      ...(requestedNodeId === nodeId ? {} : { requestedNodeId, normalizedFrom: requestedNodeId }),
+      figmaStyleNodeId: isFigmaNodeId(nodeId), xml, nodes, truncated: nextCursor !== null, nextCursor,
+      total: found.result?.total, fileKeyIgnored: args.fileKey !== undefined, modelText: xml,
+    })
   }
 
   async selection(args, context) {
@@ -344,39 +403,68 @@ export class FigmaFacade {
   }
 
   async designContext(args, context) {
-    const invalid = unknownArguments(args, new Set(['nodeId', 'cursor']))
+    const invalid = unknownArguments(args, new Set(['nodeId', 'cursor', 'limit', 'disableCodeConnect', 'excludeScreenshot', 'forceCode']), { pagination: true })
     if (invalid) return failure('get_design_context', 'invalid_params', invalid)
+    if (args.cursor !== undefined && (typeof args.cursor !== 'string' || !args.cursor.length || args.cursor.length > 512))
+      return failure('get_design_context', 'invalid_params', 'cursor must be a nonempty string of at most 512 characters')
+    if (args.limit !== undefined && (!Number.isInteger(args.limit) || args.limit < 1 || args.limit > DESIGN_CONTEXT_NODE_LIMIT))
+      return failure('get_design_context', 'invalid_params', `limit must be an integer from 1 to ${DESIGN_CONTEXT_NODE_LIMIT}`)
+    for (const key of ['disableCodeConnect', 'excludeScreenshot', 'forceCode']) {
+      if (args[key] !== undefined && typeof args[key] !== 'boolean') return failure('get_design_context', 'invalid_params', `${key} must be a boolean`)
+    }
     const target = await this.resolveNodes(args, context, 'get_design_context')
     if (!target.ok) return target
-    const roots = target.ids?.length ? { nodeIds: target.ids.slice(0, 40) } : {}
-    const contextResult = await this.call('context.get', { ...roots, limit: 40 }, context)
+    const roots = target.ids?.length ? { nodeIds: target.ids.slice(0, DESIGN_CONTEXT_NODE_LIMIT) } : {}
+    const contextResult = await this.call('context.get', {
+      ...roots,
+      limit: args.limit ?? DESIGN_CONTEXT_NODE_LIMIT,
+      ...(args.cursor === undefined ? {} : { cursor: args.cursor }),
+    }, context)
     if (!contextResult.ok) return contextResult
-    const nodes = Array.isArray(contextResult.result?.nodes) ? contextResult.result.nodes.slice(0, 40).map(entry => ({
-      id: entry.id ?? entry.node?.id, name: entry.name ?? entry.node?.name, kind: entry.kind ?? entry.node?.kind,
-    })) : []
-    const outline = metadataXml('context', nodes.filter(node => node.id))
-    const result = {
-      format: 'futureox.design-context.v1', fidelity: 'futureox-html-css',
-      note: 'This is Futureox context and HTML/CSS when code.export is available. It is not Figma React + Tailwind. clientFrameworks is ignored.',
-      nodes, outline, warnings: contextResult.result?.warnings, pagination: contextResult.result?.pagination,
-      modelText: `${outline}\nFutureox design context. HTML/CSS is included only when code.export is available in this session. This is not Figma React + Tailwind.`,
+    const identity = identityOf(contextResult)
+    let variables
+    let styles
+    let variablesError
+    let stylesError
+    if (this.methodNames.has('variable.list')) {
+      const response = await this.call('variable.list', {}, context, identity)
+      if (response.ok) variables = response.result
+      else variablesError = response.error
     }
+    if (this.methodNames.has('style.list')) {
+      const response = await this.call('style.list', {}, context, identity)
+      if (response.ok) styles = response.result
+      else stylesError = response.error
+    }
+    const result = buildLocalDesignContext({
+      context: contextResult.result, variables, styles,
+      options: { ...args, nodeId: target.ids?.length === 1 ? target.ids[0] : args.nodeId },
+    })
+    if (variablesError) result.variablesError = variablesError
+    if (stylesError) result.stylesError = stylesError
+    if (!this.methodNames.has('variable.list')) result.variablesError = { code: 'method_unavailable', message: 'variable.list is not available in this session' }
+    if (!this.methodNames.has('style.list')) result.stylesError = { code: 'method_unavailable', message: 'style.list is not available in this session' }
+    // Keep the existing deterministic HTML/CSS export as a supplemental
+    // artifact when the session advertises it. It stays a resource-projected
+    // `futureox.design-code.v1` payload; the JSX context above is separate.
     if (this.methodNames.has('code.export')) {
-      const code = await this.call('code.export', { ...roots, ...(contextResult.result?.page?.id ? { pageId: contextResult.result.page.id } : {}), maxNodes: 40 }, context, identityOf(contextResult))
+      const code = await this.call('code.export', { ...roots, ...(contextResult.result?.page?.id ? { pageId: contextResult.result.page.id } : {}), maxNodes: DESIGN_CONTEXT_NODE_LIMIT }, context, identity)
       if (code.ok && isRecord(code.result) && typeof code.result.html === 'string' && typeof code.result.css === 'string') {
         result.format = 'futureox.design-code.v1'
         result.html = code.result.html
         result.css = code.result.css
-        result.warnings = code.result.warnings
+        result.warnings = [...result.warnings, ...(Array.isArray(code.result.warnings) ? code.result.warnings : [])].slice(0, 64)
         result.codeFidelity = code.result.fidelity
       } else if (!code.ok) result.codeExportError = code.error
     } else result.codeExportError = { code: 'method_unavailable', message: 'code.export is not available in this session' }
-    return done('get_design_context', identityOf(contextResult), result)
+    result.modelText = result.modelText.replace(/\n?$/, '\n\n// Local React/Tailwind approximation of this document. This is not Figma React + Tailwind output; see result.unmapped for fields without a mapping.')
+    return done('get_design_context', identity, result)
   }
 
   async screenshot(args, context) {
-    const invalid = unknownArguments(args, new Set(['nodeId', 'scale', 'maxDimension', 'contentsOnly', 'enableBase64Response', 'cursor']))
+    const invalid = unknownArguments(args, new Set(['nodeId', 'format', 'scale', 'maxDimension', 'contentsOnly', 'enableBase64Response', 'cursor']))
     if (invalid) return failure('get_screenshot', 'invalid_params', invalid)
+    if (args.format !== undefined && !['png', 'jpeg', 'webp'].includes(args.format)) return failure('get_screenshot', 'invalid_params', 'format must be png, jpeg, or webp')
     if (args.scale !== undefined && (!Number.isFinite(args.scale) || args.scale < 0.1 || args.scale > 4)) return failure('get_screenshot', 'invalid_params', 'scale must be a number from 0.1 to 4')
     const { maxDimension, contentsOnly, enableBase64Response, scale } = args
     if (maxDimension !== undefined && (!Number.isSafeInteger(maxDimension) || maxDimension < 1 || maxDimension > 65536))
@@ -385,15 +473,25 @@ export class FigmaFacade {
       return failure('get_screenshot', 'invalid_params', 'contentsOnly and enableBase64Response must be booleans')
     const target = await this.resolveNodes(args, context, 'get_screenshot')
     if (!target.ok) return target
-    const params = { format: 'png', ...(scale === undefined ? {} : { scale }),
-      ...(maxDimension === undefined ? {} : { maxDimension }),
+    // Figma documents a 1024-pixel default maximum side. An explicit scale is
+    // the caller's own size request and is not clipped by that default.
+    const fitted = maxDimension === undefined && scale === undefined ? 1024 : maxDimension
+    const params = { format: args.format ?? 'png', ...(scale === undefined ? {} : { scale }),
+      ...(fitted === undefined ? {} : { maxDimension: fitted }),
       ...(contentsOnly === undefined ? {} : { contentsOnly }),
       ...(target.pageId ? { pageId: target.pageId } : {}),
       ...(target.ids?.length ? { nodeIds: target.ids.slice(0, 256) } : {}),
     }
     const captured = await this.call('preview.capture', params, context, target.identity)
-    if (!captured.ok || enableBase64Response !== false) return captured
-    return { ...captured, result: { ...captured.result, inlineImage: false } }
+    if (!captured.ok) return captured
+    const result = {
+      ...captured.result,
+      delivery: 'mcp-image-or-resource',
+      temporaryUrl: false,
+      urlExport: { supported: false, code: 'unsupported_remote_capability', message: 'No temporary screenshot URL service exists. Pixels are delivered as MCP image content or an exact session-local resource.' },
+      ...(enableBase64Response === false ? { inlineImage: false } : {}),
+    }
+    return { ...captured, result }
   }
 
   async variables(args, context) {
@@ -428,7 +526,16 @@ export class FigmaFacade {
       ? { scope: 'selection', variables: variableList.filter(entry => usedVariables.has(entry.id)), styles: styleList.filter(entry => usedStyles.has(entry.id)), truncated: ids.length < target.ids.length }
       : { scope: 'document', variables: variableList.slice(0, 50), styles: styleList.slice(0, 50), truncated: variableList.length > 50 || styleList.length > 50 }
     return done('get_variable_defs', identityOf(styles), {
-      ...scoped, libraries: [], note: 'Local document variables and styles only. Team libraries are not available.',
+      ...scoped,
+      nodeIds: ids.slice(0, SELECTION_DETAIL),
+      fileKeyIgnored: args.fileKey !== undefined,
+      librarySupport: false,
+      libraries: {
+        status: 'unsupported', code: 'unsupported_remote_capability',
+        message: 'Team libraries and published design systems are not available in this local document session. variables and styles contain local document definitions only; no empty library catalog is invented.',
+        docs: 'docs/FIGMA_MCP_FACADE.md',
+      },
+      note: 'Local document variables and styles only. nodeId is optional; without it the document catalog is bounded instead of claiming the selection has no tokens.',
     })
   }
 
@@ -450,7 +557,10 @@ export class FigmaFacade {
       if (args.defaultFormat !== undefined || args.defaultScale !== undefined)
         return failure('download_assets', 'invalid_params', 'Omit format and scale when requesting original images')
       const fences = await this.fences(context)
-      return fences.ok ? this.call('raster.sourceAssets', { nodeIds: unique }, context, fences) : fences
+      if (!fences.ok) return fences
+      const captured = await this.call('raster.sourceAssets', { nodeIds: unique }, context, fences)
+      if (!captured.ok) return captured
+      return { ...captured, result: localAssetDelivery(captured.result) }
     }
     const format = args.defaultFormat ?? 'png'
     if (!['png', 'jpeg', 'jpg', 'webp', 'svg', 'pdf'].includes(format)) return failure('download_assets', 'invalid_params', 'defaultFormat must be png, jpeg, webp, svg, or pdf')
@@ -462,8 +572,9 @@ export class FigmaFacade {
     const method = vector ? 'vector.export' : 'preview.capture'
     if (unique.length === 1) {
       const captured = await this.call(method, { ...params, nodeIds: unique }, context)
-      if (vector || !captured.ok) return captured
-      return { ...captured, result: { ...captured.result, rawImages: [], rawImagesUnsupported: !this.methodNames.has('raster.sourceAssets'), urls: false } }
+      if (!captured.ok) return captured
+      if (vector) return { ...captured, result: localAssetDelivery(captured.result) }
+      return { ...captured, result: localAssetDelivery({ ...captured.result, rawImages: [], rawImagesUnsupported: !this.methodNames.has('raster.sourceAssets') }) }
     }
 
     const fences = await this.fences(context)
@@ -488,13 +599,16 @@ export class FigmaFacade {
         return failure('download_assets', 'artifact_unavailable', 'The batch exceeds the export byte budget. Use fewer nodes or a smaller scale.', fences)
       assets.push({ nodeId: id, mimeType, base64 })
     }
-    return done('download_assets', fences, { format: 'futureox.design-asset-batch.v1', assets, rawImagesUnsupported: !this.methodNames.has('raster.sourceAssets'), urls: false })
+    return done('download_assets', fences, localAssetDelivery({
+      format: 'futureox.design-asset-batch.v1', assets,
+      rawImagesUnsupported: !this.methodNames.has('raster.sourceAssets'),
+    }))
   }
 
   async useFigma(args, context) {
     const invalid = unknownArguments(args, new Set(['description', 'operations', 'code', 'mutationId', 'cursor']))
     if (invalid) return failure('use_figma', 'invalid_params', invalid)
-    if (typeof args.description !== 'string' || !args.description.trim() || args.description.length > 400) return failure('use_figma', 'invalid_params', 'description is required and must be at most 400 characters')
+    if (typeof args.description !== 'string' || !args.description.trim() || args.description.length > 2000) return failure('use_figma', 'invalid_params', 'description is required and must be at most 2000 characters')
     if (args.code !== undefined && args.operations !== undefined) return failure('use_figma', 'invalid_params', 'Pass code or operations, not both')
     if (args.mutationId !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(args.mutationId)) return failure('use_figma', 'invalid_params', 'mutationId must be 1–128 ASCII letters, digits, hyphens, or underscores')
     if (this.scope !== 'write') return failure('use_figma', 'read_only', 'This connection is read-only. Enable read and edit access to write.')
@@ -546,7 +660,7 @@ export class FigmaFacade {
   }
 
   async pluginCode(args, context) {
-    if (typeof args.code !== 'string' || !args.code.trim() || args.code.length > 100000) return failure('use_figma', 'invalid_params', 'code must be plugin source of at most 100000 characters')
+    if (typeof args.code !== 'string' || !args.code.trim() || args.code.length > 50000) return failure('use_figma', 'invalid_params', 'code must be plugin source of at most 50000 characters')
     const bridge = this.pluginHost()
     if (!bridge) {
       return failure('use_figma', 'plugin_host_unavailable', 'No plugin host is registered. use_figma did not evaluate code. Send structured operations, or run this document in a desktop build that registers a Figma plugin bridge.')

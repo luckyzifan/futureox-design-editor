@@ -27,6 +27,41 @@ function authorized(header, token) {
   return presented.length === expected.length && timingSafeEqual(presented, expected)
 }
 
+/** One server-initiated MCP event stream. The stream carries JSON-RPC
+ * notifications emitted by the per-client server; POST still owns request
+ * responses. A second concurrent GET for the same session is refused. */
+class SseStream {
+  constructor(response) {
+    this.response = response
+    this.closed = false
+    response.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    })
+    response.write(': stream open\n\n')
+    this.keepAlive = setInterval(() => this.comment('keepalive'), 25_000)
+    this.keepAlive.unref?.()
+    response.on('close', () => this.close())
+  }
+
+  comment(text) {
+    if (!this.closed) this.response.write(`: ${text}\n\n`)
+  }
+
+  event(message) {
+    if (!this.closed) this.response.write(`event: message\ndata: ${JSON.stringify(message)}\n\n`)
+  }
+
+  close() {
+    if (this.closed) return
+    this.closed = true
+    clearInterval(this.keepAlive)
+    try { this.response.end() } catch {}
+  }
+}
+
 class HttpMcpSession {
   constructor(backend, clientId) {
     this.input = new PassThrough()
@@ -34,6 +69,7 @@ class HttpMcpSession {
     this.decoder = new StringDecoder('utf8')
     this.buffer = ''
     this.pending = new Map()
+    this.streams = new Set()
     this.lastUsed = Date.now()
     this.closed = false
     this.server = new DesignMcpServer({
@@ -55,8 +91,20 @@ class HttpMcpSession {
       if (!line) continue
       let message
       try { message = JSON.parse(line) } catch { continue }
-      this.pending.get(message.id)?.finish({ status: 200, body: message })
+      const waiter = this.pending.get(message.id)
+      if (waiter) waiter.finish({ status: 200, body: message })
+      else if (typeof message.method === 'string') for (const stream of this.streams) stream.event(message)
     }
+  }
+
+  /** One event stream per client session; a second GET must not steal events. */
+  attachStream(response) {
+    if (this.closed || this.server.closed || this.streams.size) return null
+    this.lastUsed = Date.now()
+    const stream = new SseStream(response)
+    this.streams.add(stream)
+    response.on('close', () => this.streams.delete(stream))
+    return stream
   }
 
   dispatch(message) {
@@ -91,6 +139,8 @@ class HttpMcpSession {
   async close() {
     if (this.closed) return
     this.closed = true
+    for (const stream of this.streams) stream.close()
+    this.streams.clear()
     for (const waiter of this.pending.values()) waiter.finish({ status: 404 })
     await this.server.close()
     this.input.destroy()
@@ -108,7 +158,7 @@ function respond(response, status, body, headers = {}) {
   response.end(body === undefined ? undefined : JSON.stringify(body))
 }
 
-async function facadeFromSocket({ endpoint, sessionId, token, connectTimeoutMs }) {
+async function facadeFromSocket({ endpoint, sessionId, token, connectTimeoutMs, pluginBridge }) {
   const socket = new SocketDesignBackend({ endpoint, sessionId, token, connectTimeoutMs })
   const operation = await socket.connect()
   const facade = new FigmaFacade({
@@ -117,17 +167,22 @@ async function facadeFromSocket({ endpoint, sessionId, token, connectTimeoutMs }
     scope: operation.scope,
     target: operation.target,
     terminalSignal: socket.terminalSignal,
+    pluginBridge,
   })
   return { facade, close: () => socket.close() }
 }
 
 /** Loopback Streamable HTTP using JSON responses and per-client MCP sessions.
- * Bind address must be a loopback host. The bearer token is the desktop bridge token. */
-export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backend, host = '127.0.0.1', port = 0, connectTimeoutMs = 10000 } = {}) {
+ * Bind address must be a loopback host. The bearer token is the desktop bridge token.
+ * GET /mcp opens one text/event-stream per session for server notifications.
+ * Host code may inject a pluginBridge ({ run }) so use_figma code reaches the
+ * registered QuickJS plugin host; without one the facade keeps its typed
+ * plugin_host_unavailable boundary. */
+export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backend, host = '127.0.0.1', port = 0, connectTimeoutMs = 10000, pluginBridge } = {}) {
   if (host !== '127.0.0.1' && host !== '::1') throw new TypeError('Figma MCP HTTP listens on loopback only')
   if (typeof token !== 'string' || token.length < 16) throw new TypeError('An ephemeral bridge token is required')
   const urlHost = host === '::1' ? '[::1]' : host
-  const owned = backend ? null : await facadeFromSocket({ endpoint, sessionId, token, connectTimeoutMs })
+  const owned = backend ? null : await facadeFromSocket({ endpoint, sessionId, token, connectTimeoutMs, pluginBridge })
   const source = backend ?? owned.facade
   const sharedBackend = {
     listTools: (...args) => source.listTools(...args),
@@ -143,7 +198,7 @@ export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backen
   function expireSessions() {
     const now = Date.now()
     for (const [id, session] of sessions) {
-      if (!session.pending.size && now - session.lastUsed > SESSION_IDLE_MS) void retire(id, session)
+      if (!session.pending.size && !session.streams.size && now - session.lastUsed > SESSION_IDLE_MS) void retire(id, session)
     }
   }
   const revoke = () => {
@@ -194,8 +249,23 @@ export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backen
       respond(response, 400, rpcError(-32600, 'Protocol version does not match this session'))
       return
     }
+    if (request.method === 'GET') {
+      if (!existing) {
+        respond(response, 400, rpcError(-32600, 'MCP-Session-Id is required'))
+        return
+      }
+      const accept = request.headers.accept ?? ''
+      if (!/(?:^|,)\s*(?:text\/event-stream|\*\/\*)/i.test(accept)) {
+        respond(response, 406, rpcError(-32600, 'GET requires Accept: text/event-stream'), { allow: 'GET, POST, DELETE' })
+        return
+      }
+      if (!existing.attachStream(response)) {
+        respond(response, 409, rpcError(-32000, 'This MCP session already has an open event stream'))
+      }
+      return
+    }
     if (request.method !== 'POST' && request.method !== 'DELETE') {
-      respond(response, 405, rpcError(-32601, 'Use POST for JSON-RPC. This endpoint does not offer an event stream.'), { allow: 'POST, DELETE' })
+      respond(response, 405, rpcError(-32601, 'Use GET for the event stream, POST for JSON-RPC, or DELETE to end the session.'), { allow: 'GET, POST, DELETE' })
       return
     }
     if (request.method === 'DELETE') {
@@ -298,7 +368,7 @@ export async function startLoopbackFigmaMcp({ endpoint, sessionId, token, backen
 async function main(argv = process.argv.slice(2)) {
   const options = parseOptions(argv)
   if (options.help) {
-    process.stderr.write('Futureox Design Figma-shaped MCP (loopback HTTP)\nUsage: node src/figma-http.mjs --socket ABSOLUTE_SOCKET_PATH --session SESSION_ID\nToken: FUTUREOX_DESIGN_BRIDGE_TOKEN. The URL is printed to stderr. Clients send Authorization: Bearer <token>.\nThe desktop app starts this listener when local automation is enabled. Use this command when that listener is unavailable.\n')
+    process.stderr.write('Futureox Design Figma-shaped MCP (loopback Streamable HTTP)\nUsage: node src/figma-http.mjs --socket ABSOLUTE_SOCKET_PATH --session SESSION_ID\nToken: FUTUREOX_DESIGN_BRIDGE_TOKEN. The URL is printed to stderr. Clients send Authorization: Bearer <token>.\nPOST sends JSON-RPC; GET with Accept: text/event-stream opens one notification stream per session; DELETE ends it.\nThe desktop app starts this listener when local automation is enabled. Use this command when that listener is unavailable.\n')
     return
   }
   const server = await startLoopbackFigmaMcp({ endpoint: options.endpoint, sessionId: options.sessionId, token: options.token })
