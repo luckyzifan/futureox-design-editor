@@ -984,7 +984,7 @@ const apply=()=>kernel.apply_interaction_transforms(JSON.stringify(renderTransfo
             // to the existing worker. Returning the entire packet through
             // the editor event loop delays the next visible pose.
             const transport = direct ?? preparation
-            const applied=await (transport ? transport.withTerminalTransport('interaction', apply) : apply())
+            const applied=await (transport ? transport.withPoseTransport(apply) : apply())
             if(applied && displacedAbsolutePose?.kernel===kernel && displacedAbsolutePose.session===session) {
               displacedAbsolutePose=undefined
               terminalDiagnostics.record('cache',{pageCommitStage:3,pageCommitReason:9,inputSequence:pose.input.sequence})
@@ -1003,7 +1003,7 @@ const apply=()=>kernel.apply_interaction_transforms(JSON.stringify(renderTransfo
               laneState.synchronizedInteractionDocument=undefined
               laneState.compiledScene=undefined
               const applyPatch = () => kernel.apply_document_patch_with_damage(JSON.stringify(patch))
-              await (preparation ? preparation.withTerminalTransport('interaction', applyPatch) : applyPatch())
+              await (preparation ? preparation.withPoseTransport(applyPatch) : applyPatch())
               patchedPose=true
               document=applyDocumentPatch(session.document,patch)
               clippedBitmapPose=coversDisplay&&session.fixedWindow===true&&!session.affine&&!!displayFrame&&
@@ -1028,7 +1028,7 @@ const terminal = pose.terminal && terminalOptions
             const compile=()=>compilePacket(kernel, poseOptions, signal,
               terminal ? false : pose.terminal ? terminalTransport : 'curves')
             try {
-              packet=await (direct ? direct.withTerminalTransport('interaction', compile) : compile())
+              packet=await (direct ? direct.withPoseTransport(compile) : compile())
             } catch(error) {
               // The native channel still fences the cancelled call before the
               // terminal mutation. No authored or interaction mutation is cancelled.
@@ -1145,7 +1145,7 @@ const packet=await journalCompile(()=>kernel.prepare_gpu_scene(terminalOptions ?
                     signal, terminalOptions ? false : terminalTransport))
                   return {packet,compileMs:performance.now()-at}
                 }
-                ahead.start(work.sequence,()=>preparation?preparation.withTerminalTransport('interaction', prepare):prepare())
+                ahead.start(work.sequence,()=>preparation?preparation.withPoseTransport(prepare):prepare())
               }
               prioritizeTerminalPose=terminal=>{
                 if (advance?.motion) {
@@ -2681,9 +2681,7 @@ const overviewBitmapCommit = bitmapViewportCommit && !!displayFrame && allowsRed
                       return Promise.resolve(unused.packet)
                     }
                   }
-                  if (reuseTileCurves && preparation)
-                    return preparation.withTerminalTransport('canvas', () => compilePacket(kernel, serialized, signal, 'curves'))
-                  return compilePacket(kernel, serialized, signal)
+                  return compilePacket(kernel, serialized, signal, reuseTileCurves ? 'curves' : 'exact')
                 }
                 const inBands=()=>compilePacket(kernel,JSON.stringify({...options,gpuGaussianRegions:true,gpuGaussianReduction:0}),signal)
                 // One admission hint for this owner, revision, scale and visible
