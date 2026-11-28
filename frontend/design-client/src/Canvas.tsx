@@ -563,8 +563,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const discardPendingView = () => {
     editor.discardPendingView()
   }
-  const scheduleView = (next: typeof state.view) => {
-    scheduleCanvasView(editor, next, flushSync, import.meta.env.VITE_DESIGN_LEADING_PAN_INPUT !== '0')
+  const scheduleView = (next: typeof state.view, commitMaximumZoom = false) => {
+    scheduleCanvasView(editor, next, flushSync, import.meta.env.VITE_DESIGN_LEADING_PAN_INPUT !== '0', commitMaximumZoom)
   }
   /** Base camera for incremental wheel math: the pending write when one is
    * coalesced, otherwise the committed editor view. */
@@ -2330,7 +2330,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }
       if (nativeSource && next.zoom !== v.zoom) sourceWheel.current = {token:nativeSource.token, view:next}
       recordNavigationInput(editor, e, wheelSize, next, pinch)
-      scheduleView(next)
+      scheduleView(next, renderExecutionPolicy.desktopDisplay && !nativeSource && !drag.current)
     }
     el.addEventListener('wheel', wheel, { passive: false })
     const modifiers = (e: KeyboardEvent) => { wheelModifiers.current = { ctrl: e.ctrlKey, meta: e.metaKey } }

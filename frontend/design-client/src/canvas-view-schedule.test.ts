@@ -77,6 +77,18 @@ test('a parked shrink is published before the immediate pan and the retained pic
   editor.dispose()
 })
 
+test('desktop wheel publishes the legal maximum in the same input turn', () => {
+  const { editor, frames } = harness()
+  const flush = (run: () => void) => run()
+  scheduleCanvasView(editor, { x: -80, y: -20, zoom: 240 }, flush, true, true)
+  expect(editor.cameraCommitPending()).toBe(true)
+  const endpoint = { x: -86.5, y: -22, zoom: 256 }
+  scheduleCanvasView(editor, endpoint, flush, true, true)
+  expect(editor.state.view).toEqual(endpoint)
+  expect(frames.size).toBe(0)
+  editor.dispose()
+})
+
 test('coalesced same-zoom samples slide the accepted bitmap and stage before the next frame', () => {
   const dom = new JSDOM('<div data-testid="canvas"><div id="host"><canvas></canvas></div><svg class="stage"></svg></div>', { url: 'http://localhost/' })
   worlds.push(dom)
