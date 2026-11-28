@@ -7,6 +7,7 @@ import { FramePresetPanel } from './FramePresetPanel'
 import { SketchInsertionDialog, type SketchInsertionAnchor } from './SketchInsertionDialog'
 import { SketchSymbolDialog, type SketchSymbolTarget } from './SketchSymbolDialog'
 import { SketchMakeGridDialog } from './SketchMakeGridDialog'
+import { SketchRotateCopiesDialog } from './SketchRotateCopiesDialog'
 import { SketchDistributionDialog } from './SketchDistributionDialog'
 import { ShortcutReference } from './ShortcutReference'
 import { closeShortcutReference } from './shortcut-reference-session'
@@ -1259,6 +1260,15 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       if (largeDocument || source) return
       if (name === 'settings') { openSettings(); return }
       if (name === 'command-search') { setMenu(false); requestCommandSearch(document.activeElement); return }
+      if (name === 'preview-prototype') {
+        setMenu(false)
+        if (uiMode === 'sketch') {
+          if (editor.state.doc.pages.some(page => page.id === editor.state.page && page.children.length)) setShowSketchPreview(true)
+          return
+        }
+        if (prototypePlaybackReady(editor.state.doc, editor.state.page)) setShowPrototype({ kind: 'present' })
+        return
+      }
       if (name === 'automation-settings') { setMenu(false); setShowAutomation(true); return }
       if (name === 'plugins') { setMenu(false); setShowPlugins(true); return }
       if (showHome) {
@@ -2233,6 +2243,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       </main>}
       <BatchRenameDialog editor={editor} />
       <SketchMakeGridDialog editor={editor} />
+      {uiMode === 'sketch' && <SketchRotateCopiesDialog editor={editor} />}
       {uiMode === 'sketch' && <SketchDistributionDialog editor={editor} />}
       <CommandSearch editor={editor} />
       {uiMode === 'figma' && !showHome && <ShortcutReference />}

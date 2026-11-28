@@ -78,6 +78,7 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
   const durationLabel = english ? 'Duration (ms)' : '时长（毫秒）'
   const easingLabel = english ? 'Easing' : '缓动'
   const delayLabel = english ? 'Delay (ms)' : '延迟（毫秒）'
+  const maintainScrollLabel = english ? 'Maintain scroll position after click' : '点击后保持滚动位置'
   const event = primaryInteraction(doc.prototype?.interactions[layer.id])
   const action = navigationAction(event)
   const target = action?.kind === 'back' ? previous : action?.target ?? ''
@@ -241,6 +242,19 @@ export function SketchInteractionPanel({ editor, doc, selection, armed }: {
       }}>
       {easings.map(item => <option key={item.value || 'default'} value={item.value}>{english ? item.en : item.zh}</option>)}
     </select></label>
+    {/* Native Interaction inspector keeps this action flag next to duration/easing. */}
+    <label>{maintainScrollLabel}<input type="checkbox" aria-label={maintainScrollLabel}
+      disabled={action?.kind !== 'navigate'}
+      checked={!!action?.transitionPreserveScroll}
+      onChange={change => {
+        const enabled = change.currentTarget.checked
+        update('修改交互动画', (_draft, event) => {
+          const action = navigationAction(event)
+          if (!action || action.kind !== 'navigate') return
+          if (enabled) action.transitionPreserveScroll = true
+          else delete action.transitionPreserveScroll
+        })
+      }} /></label>
     </section>
   </>
 }

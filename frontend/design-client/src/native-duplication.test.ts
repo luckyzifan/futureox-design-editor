@@ -395,6 +395,32 @@ test('Ctrl+D and Command+D select only the copy of a top-level frame and park it
   expect(worldMatrix(editor.state.doc, editor.state.selection[0])).toEqual([1, 0, 0, 1, 40 + 120 + 40, 70])
 })
 
+test('Sketch ⌘D keeps +10,+10 for top-level frames and ordinary layers while Figma leaves ordinary layers in place', async () => {
+  const doc = blank('layout shortcut'), frame = node('frame', 40, 70, 120, 90), shape = node('rectangle', 10, 20, 30, 40)
+  doc.nodes[frame.id] = frame; doc.nodes[shape.id] = shape
+  doc.pages[0].children = [frame.id, shape.id]
+  interfacePreference.set({ uiMode: 'sketch' })
+  const editor = new Editor(doc); editors.push(editor)
+  const press = (uiMode: 'figma' | 'sketch') => dispatchEditorShortcut(editor, {
+    key: 'd', code: 'KeyD', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false,
+    repeat: false, isComposing: false, defaultPrevented: false, target: null, preventDefault() {},
+  }, { profile: uiMode === 'sketch' ? 'sketch-like' : 'figma-like', platform: 'mac', uiMode })
+  editor.select([frame.id])
+  expect(await press('sketch')).toBe(true)
+  expect(worldMatrix(editor.state.doc, editor.state.selection[0])).toEqual([1, 0, 0, 1, 40 + 10, 70 + 10])
+  editor.undo()
+  editor.select([shape.id])
+  expect(await press('sketch')).toBe(true)
+  expect(worldMatrix(editor.state.doc, editor.state.selection[0])).toEqual([1, 0, 0, 1, 10 + 10, 20 + 10])
+  editor.undo()
+  interfacePreference.set({ uiMode: 'figma' })
+  editor.select([shape.id])
+  expect(await press('figma')).toBe(true)
+  expect(worldMatrix(editor.state.doc, editor.state.selection[0])).toEqual([1, 0, 0, 1, 10, 20])
+  editor.undo()
+  expect(editor.state.doc).toEqual(doc)
+})
+
 test('Figma duplicate uses the layout gap for a flow child and its original position for an absolute child', () => {
   interfacePreference.set({ uiMode: 'figma' })
   const doc = blank('flow duplicate')

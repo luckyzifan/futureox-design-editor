@@ -2528,3 +2528,35 @@ test('Figma A and F arm the frame tool and display both keys without interceptin
   expect(current.authoredDocument).toBe(before)
   expect(current.canUndo).toBe(false)
 })
+
+test('native Sketch Prototype commands edit through history and open the document preview', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  let command!: (name: any) => void
+  Object.defineProperty(window, 'coreDesktop', { configurable: true, value: {
+    version: 1, renderPolicy: { cpuOnly: true }, onCommand: (callback: (name: any) => void) => { command = callback; return () => {} },
+    onCloseRequested: () => () => {}, setDirty: async () => ({}), readRecovery: async () => ({ status: 'cancelled' }),
+    writeRecovery: async () => ({ status: 'ok' }),
+  } as unknown as DesktopBridge })
+  await render()
+  const current = editor!, doc = blank('Native prototype')
+  const frame = node('frame', 0, 0, 320, 640), button = node('rectangle', 20, 30, 80, 40)
+  doc.nodes[frame.id] = frame; doc.nodes[button.id] = button; doc.pages[0].children = [frame.id, button.id]
+  await act(async () => { current.load(doc); current.select([frame.id]) })
+  await act(async () => command('set-prototype-start'))
+  expect(current.state.doc.prototype?.startNode).toBe(frame.id)
+  await act(async () => { current.select([button.id]); command('convert-to-hotspot') })
+  expect(current.state.doc.nodes[button.id].fills).toEqual([])
+  expect(current.state.doc.prototype?.interactions[button.id]).toBeDefined()
+  await act(async () => command('remove-prototype-links'))
+  expect(current.state.doc.prototype?.interactions[button.id]).toBeUndefined()
+  await act(async () => { current.undo(); current.undo(); current.undo() })
+  expect(current.state.doc.nodes[button.id].fills.length).toBeGreaterThan(0)
+  expect(current.state.doc.prototype?.startNode).toBeUndefined()
+  await act(async () => { current.select([frame.id]); command('set-prototype-start') })
+  await act(async () => command('preview-prototype'))
+  expect(document.querySelector('.prototype-player')).not.toBeNull()
+  await act(async () => {
+    [...document.querySelectorAll<HTMLButtonElement>('.prototype-player button')].find(item => item.textContent?.includes('关闭预览'))!.click()
+  })
+})

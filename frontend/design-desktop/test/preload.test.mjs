@@ -226,8 +226,10 @@ test('Sketch native menu commands reach the renderer as admitted IDs only', () =
     'flip-horizontal', 'flip-vertical', 'create-component', 'detach-instance',
     'mask-selection', 'flatten', 'select-containing-symbol', 'edit-selection', 'rename',
     'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
-    'close-path', 'join-paths', 'reverse-order', 'outline-stroke', 'convert-vector', 'boolean-add',
-    'boolean-union', 'boolean-subtract', 'boolean-intersect', 'boolean-exclude', 'command-search',
+    'close-path', 'join-paths', 'reverse-order', 'rotate-copies', 'outline-stroke', 'convert-vector', 'boolean-add',
+    'boolean-union', 'boolean-subtract', 'boolean-intersect', 'boolean-exclude', 'next-page', 'previous-page', 'command-search',
+    'duplicate-behind', 'zoom-next-frame', 'zoom-previous-frame',
+    'set-prototype-start', 'convert-to-hotspot', 'remove-prototype-links', 'preview-prototype',
   ]
   for (const command of [...commands, 'set-tool-unregistered', ['close-path'], { command: 'edit-selection' }]) {
     events.emit('design-desktop:command', {}, command)

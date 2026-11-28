@@ -1511,6 +1511,10 @@ async function buildWindow() {
             accelerator: interfaceMode === 'sketch' ? 'CmdOrCtrl+Alt+Shift+S' : 'CmdOrCtrl+Shift+S',
             click: () => sendCommand('saveAs'),
           },
+          ...(interfaceMode === 'sketch' ? [
+            // Native Sketch keeps Command Bar in File; the renderer owns the S key.
+            { label: 'Command Bar', click: () => sendCommand('command-search') },
+          ] : []),
           { label: 'Recover unsaved design…', click: () => sendCommand('recover') },
           { type: 'separator' },
           interfaceMode === 'figma' ? { label: 'Close Window', accelerator: 'CmdOrCtrl+W', click: (_item, focusedWindow) => {
@@ -1536,12 +1540,20 @@ async function buildWindow() {
         { label: 'Paste Over Selection', accelerator: 'CmdOrCtrl+Shift+V', click: () => sendCommand('paste-over-selection') },
         { label: 'Paste in Place', click: () => sendCommand('paste-in-place') },
         { label: 'Duplicate', accelerator: 'CmdOrCtrl+D', click: () => sendCommand('duplicate') },
+        ...(sketchMenu ? [
+          { label: 'Duplicate Behind', accelerator: 'CmdOrCtrl+Shift+D', click: () => sendCommand('duplicate-behind') },
+          { label: 'Delete', accelerator: 'Backspace', click: () => sendCommand('delete') },
+        ] : []),
         { type: 'separator' },
         { label:'Select Matching',accelerator:interfaceMode === 'figma' ? 'CmdOrCtrl+Alt+A' : undefined,click:()=>sendCommand('select-matching') },
         // In Sketch the renderer resolves this chord according to the selected preset.
         { label:'Select Inverse', accelerator: process.platform === 'darwin' && interfaceMode === 'sketch' ? undefined : 'CmdOrCtrl+Shift+A',
           click:()=>sendCommand('select-inverse') },
         { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: () => sendCommand('select-all') },
+        ...(sketchMenu ? [
+          { type: 'separator' },
+          { label: 'Rename', accelerator: 'CmdOrCtrl+R', click: () => sendCommand('rename') },
+        ] : []),
       ] },
       ...(sketchMenu ? [{
         label: 'Insert',
@@ -1555,30 +1567,55 @@ async function buildWindow() {
           { label: 'Hotspot', click: () => sendCommand('set-tool-hotspot') },
           { label: 'Slice', click: () => sendCommand('set-tool-slice') },
         ],
-      }] : []),
-      { label: 'Object', submenu: [
-        { label: 'Group', accelerator: 'CmdOrCtrl+G', click: () => sendCommand('group') },
-        { label: 'Ungroup', accelerator: 'CmdOrCtrl+Shift+G', click: () => sendCommand('ungroup') },
-        ...(sketchMenu ? [
-          { label: 'Duplicate', accelerator: 'CmdOrCtrl+D', click: () => sendCommand('duplicate') },
-          { label: 'Delete', accelerator: 'Backspace', click: () => sendCommand('delete') },
-          { type: 'separator' },
-          { label: 'Flip Horizontal', click: () => sendCommand('flip-horizontal') },
-          { label: 'Flip Vertical', click: () => sendCommand('flip-vertical') },
-        ] : []),
-      ] },
-      ...(sketchMenu ? [{
+      }, {
+        // Native Sketch order: Edit, Create Symbol, Transform/Path/Combine,
+        // Mask and bitmap/outline conversion, then symbol selection.
         label: 'Layer',
         submenu: [
+          { label: 'Edit', accelerator: 'CmdOrCtrl+Enter', click: () => sendCommand('edit-selection') },
           { label: 'Create Symbol', accelerator: 'CmdOrCtrl+Y', click: () => sendCommand('create-component') },
-          { label: 'Detach Symbol', click: () => sendCommand('detach-instance') },
+          { label: 'Detach Symbol', accelerator: 'CmdOrCtrl+Alt+Y', click: () => sendCommand('detach-instance') },
+          { type: 'separator' },
+          { label: 'Transform', submenu: [
+            { label: 'Flip Horizontal', click: () => sendCommand('flip-horizontal') },
+            { label: 'Flip Vertical', click: () => sendCommand('flip-vertical') },
+          ] },
+          { label: 'Path', submenu: [
+            { label: 'Join', click: () => sendCommand('join-paths') },
+            { type: 'separator' },
+            { label: 'Close Path', click: () => sendCommand('close-path') },
+            { label: 'Reverse Order', click: () => sendCommand('reverse-order') },
+            { type: 'separator' },
+            { label: 'Rotate Copies…', click: () => sendCommand('rotate-copies') },
+          ] },
+          { label: 'Combine', submenu: [
+            { label: 'Combine Shapes', click: () => sendCommand('boolean-add') },
+            { label: 'Union', click: () => sendCommand('boolean-union') },
+            { label: 'Subtract', click: () => sendCommand('boolean-subtract') },
+            { label: 'Intersect', click: () => sendCommand('boolean-intersect') },
+            { label: 'Exclude', click: () => sendCommand('boolean-exclude') },
+          ] },
           { type: 'separator' },
           { label: 'Mask', click: () => sendCommand('mask-selection') },
-          { label: 'Flatten', click: () => sendCommand('flatten') },
+          { label: 'Flatten Selection to Bitmap', click: () => sendCommand('flatten') },
+          { label: 'Convert to Outlines', accelerator: 'CmdOrCtrl+Alt+O', click: () => sendCommand('outline-stroke') },
+          { label: 'Convert to Vector', click: () => sendCommand('convert-vector') },
           { type: 'separator' },
           { label: 'Select Containing Symbol', click: () => sendCommand('select-containing-symbol') },
-          { label: 'Enter Component Source', accelerator: 'CmdOrCtrl+Enter', click: () => sendCommand('edit-selection') },
-          { label: 'Rename', accelerator: 'CmdOrCtrl+R', click: () => sendCommand('rename') },
+        ],
+      }, {
+        label: 'Text',
+        submenu: [
+          { label: 'Insert Text', click: () => sendCommand('set-tool-text') },
+        ],
+      }, {
+        label: 'Prototype',
+        submenu: [
+          { label: 'Preview Prototype…', accelerator: 'CmdOrCtrl+P', click: () => sendCommand('preview-prototype') },
+          { type: 'separator' },
+          { label: 'Use Frame as Start Point', click: () => sendCommand('set-prototype-start') },
+          { label: 'Convert to Hotspot Layer', click: () => sendCommand('convert-to-hotspot') },
+          { label: 'Remove Links', click: () => sendCommand('remove-prototype-links') },
         ],
       }, {
         label: 'Arrange',
@@ -1587,6 +1624,10 @@ async function buildWindow() {
           { label: 'Bring Forward', accelerator: 'CmdOrCtrl+]', click: () => sendCommand('bring-forward') },
           { label: 'Send Backward', accelerator: 'CmdOrCtrl+[', click: () => sendCommand('send-backward') },
           { label: 'Send to Back', accelerator: 'CmdOrCtrl+Alt+[', click: () => sendCommand('send-to-back') },
+          { type: 'separator' },
+          { label: 'Group', accelerator: 'CmdOrCtrl+G', click: () => sendCommand('group') },
+          { label: 'Group as Frame', accelerator: 'CmdOrCtrl+F', click: () => sendCommand('frame-selection') },
+          { label: 'Ungroup', accelerator: 'CmdOrCtrl+Shift+G', click: () => sendCommand('ungroup') },
           { type: 'separator' },
           { label: 'Align Left', accelerator: alignAccelerator('Control+Command+Left'), click: () => sendCommand('align-left') },
           { label: 'Align Horizontal Center', accelerator: alignAccelerator('Control+Command+H'), click: () => sendCommand('align-horizontal-center') },
@@ -1597,28 +1638,17 @@ async function buildWindow() {
           { type: 'separator' },
           { label: 'Distribute Horizontally', click: () => sendCommand('distribute-horizontal') },
           { label: 'Distribute Vertically', click: () => sendCommand('distribute-vertical') },
-        ],
-      }, {
-        label: 'Text',
-        submenu: [
-          { label: 'Insert Text', click: () => sendCommand('set-tool-text') },
-        ],
-      }, {
-        label: 'Path',
-        submenu: [
-          { label: 'Close Path', click: () => sendCommand('close-path') },
-          { label: 'Join', click: () => sendCommand('join-paths') },
-          { label: 'Reverse Order', click: () => sendCommand('reverse-order') },
-          { label: 'Outline Stroke', accelerator: 'CmdOrCtrl+Alt+O', click: () => sendCommand('outline-stroke') },
-          { label: 'Convert to Vector', click: () => sendCommand('convert-vector') },
           { type: 'separator' },
-          { label: 'Combine Shapes', click: () => sendCommand('boolean-add') },
-          { label: 'Union', click: () => sendCommand('boolean-union') },
-          { label: 'Subtract', click: () => sendCommand('boolean-subtract') },
-          { label: 'Intersect', click: () => sendCommand('boolean-intersect') },
-          { label: 'Exclude', click: () => sendCommand('boolean-exclude') },
+          { label: 'Hide Layer', click: () => sendCommand('hide-selection') },
+          { label: 'Lock Layer', click: () => sendCommand('lock-selection') },
         ],
-      }] : []),
+      }] : [{
+        label: 'Object',
+        submenu: [
+          { label: 'Group', accelerator: 'CmdOrCtrl+G', click: () => sendCommand('group') },
+          { label: 'Ungroup', accelerator: 'CmdOrCtrl+Shift+G', click: () => sendCommand('ungroup') },
+        ],
+      }]),
       { label: 'Plugins', submenu: [
         { label: 'Open plugin host…', click: () => sendCommand('plugins') },
         ...(localPlugins.length ? [
@@ -1647,6 +1677,15 @@ async function buildWindow() {
             },
           }, { type: 'separator' }] : []),
           { label: 'Center Selection', click: () => sendCommand('center-selection') },
+          ...(sketchMenu ? [
+            { label: 'Previous Frame', click: () => sendCommand('zoom-previous-frame') },
+            { label: 'Next Frame', click: () => sendCommand('zoom-next-frame') },
+            // Native Sketch switches pages with Fn↑/Fn↓; the renderer owns that
+            // chord so the menu carries no accelerator that would double-handle it.
+            { label: 'Previous Page', click: () => sendCommand('previous-page') },
+            { label: 'Next Page', click: () => sendCommand('next-page') },
+            { type: 'separator' },
+          ] : []),
           { label: 'Actual Size', accelerator: 'CmdOrCtrl+0', click: () => sendCommand('zoom100') },
           { label: 'Zoom In', accelerator: 'CmdOrCtrl+Plus', click: () => sendCommand('zoomIn') },
           { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: () => sendCommand('zoomOut') },
@@ -1654,14 +1693,14 @@ async function buildWindow() {
           { role: 'togglefullscreen' },
         ],
       },
+      automationBridge.menu,
+      ...(process.platform === 'darwin' ? [{ role: 'windowMenu' }] : []),
       ...(sketchMenu ? [{
         label: 'Help',
         submenu: [
           { label: 'Run Command…', accelerator: 'CmdOrCtrl+K', click: () => sendCommand('command-search') },
         ],
       }] : []),
-      automationBridge.menu,
-      ...(process.platform === 'darwin' ? [{ role: 'windowMenu' }] : []),
     ], interfaceLocale)),
   )
   }

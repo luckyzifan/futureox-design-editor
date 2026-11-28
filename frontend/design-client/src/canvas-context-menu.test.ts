@@ -324,14 +324,22 @@ test('Paste here preserves nested animation world frames with independent x/y of
   editor.dispose()
 })
 
-test('ordinary Duplicate steps 10px down-right; top-level frames move right at unchanged y', () => {
+test('ordinary Figma Duplicate stays in place; Sketch steps 10px; top-level frames move right at unchanged y', () => {
   interfacePreference.set({ uiMode: 'figma' })
   const { editor, a, parent } = rotatedFixture()
   editor.select([a.id]); const before = worldMatrix(editor.state.doc, a.id)
   editor.duplicate(); const copied = worldMatrix(editor.state.doc, editor.state.selection[0])
-  expect(copied[4] - before[4]).toBeCloseTo(10, 8)
-  expect(copied[5] - before[5]).toBeCloseTo(10, 8)
-  editor.undo(); editor.select([parent.id]); const box = editor.selectionBounds()!
+  expect(copied[4] - before[4]).toBeCloseTo(0, 8)
+  expect(copied[5] - before[5]).toBeCloseTo(0, 8)
+  editor.undo()
+  interfacePreference.set({ uiMode: 'sketch' })
+  editor.select([a.id]); editor.duplicate()
+  const stepped = worldMatrix(editor.state.doc, editor.state.selection[0])
+  expect(stepped[4] - before[4]).toBeCloseTo(10, 8)
+  expect(stepped[5] - before[5]).toBeCloseTo(10, 8)
+  editor.undo()
+  interfacePreference.set({ uiMode: 'figma' })
+  editor.select([parent.id]); const box = editor.selectionBounds()!
   editor.duplicate(); const duplicated = editor.selectionBounds()!
   expect(duplicated.x).toBeCloseTo(box.x + box.width + 40, 8)
   expect(duplicated.y).toBeCloseTo(box.y, 8)
@@ -339,7 +347,7 @@ test('ordinary Duplicate steps 10px down-right; top-level frames move right at u
   interfacePreference.set({ uiMode: 'figma' })
 })
 
-test('Figma Duplicate places a top-level frame or section to the right; groups, nested frames, and paste stay at +10,+10', () => {
+test('Figma Duplicate places a top-level frame or section to the right while groups and nested frames stay in place; paste steps +10,+10', () => {
   interfacePreference.set({ uiMode: 'figma' })
   const document = blank('container duplicate'), frame = node('frame', 140, 486, 500, 300), nested = node('frame', 16, 18, 40, 30)
   const section = node('section', 20, 30, 80, 40), group = node('group', 8, 12, 40, 20), child = node('rectangle', 4, 6, 10, 10)
@@ -365,7 +373,7 @@ test('Figma Duplicate places a top-level frame or section to the right; groups, 
   }
   step(frame.id, frame.width + 40, 0)
   step(section.id, section.width + 40, 0)
-  for (const id of [group.id, nested.id]) step(id, 10, 10)
+  for (const id of [group.id, nested.id]) step(id, 0, 0)
   editor.select([frame.id]); const origin = worldMatrix(editor.state.doc, frame.id)
   editor.copy(); editor.paste()
   const pasted = worldMatrix(editor.state.doc, editor.state.selection[0])
@@ -407,7 +415,7 @@ test('the canvas right-click list follows the Mac desktop order for a selected s
   const commands = items.map(item => item.command)
   expect(commands).toEqual([
     'copy', 'paste-here', 'paste-to-replace',
-    'copy-properties', 'paste-properties', 'copy-fills', 'copy-strokes', 'copy-effects', 'copy-as-png', 'copy-as-svg',
+    'copy-as-svg', 'copy-as-png', 'copy-properties', 'paste-properties', 'copy-fills', 'copy-strokes', 'copy-effects',
     'bring-to-front', 'send-to-back',
     'group', 'frame-selection', 'flatten', 'outline-stroke', 'mask-selection',
     'auto-layout', 'create-component',

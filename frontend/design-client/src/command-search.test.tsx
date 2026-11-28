@@ -364,3 +364,23 @@ test('closing the command filter with ⌘F restores input focus', async () => {
   expect(document.querySelector('[role="menu"]')).toBeNull()
   expect(document.activeElement).toBe(input)
 })
+
+test('native Prototype menu commands use their Sketch labels and admission reasons', () => {
+  const frame = node('frame', 0, 0, 320, 640), button = node('rectangle', 20, 30, 80, 40)
+  const editor = editorWith([frame, button])
+  const row = (id: string, locale: 'zh-CN' | 'en' = 'zh-CN') =>
+    commandSearchEntries(editor, sketch, locale).find(entry => entry.id === id)!
+  editor.select([button.id])
+  expect(row('set-prototype-start').label).toBe('将画框设为起点')
+  expect(row('set-prototype-start').disabled).toBe(true)
+  expect(row('set-prototype-start').reason).toBe('请选择一个未锁定的画框')
+  expect(row('convert-to-hotspot').disabled).toBe(false)
+  expect(row('remove-prototype-links').disabled).toBe(true)
+  expect(row('remove-prototype-links').reason).toBe('所选图层没有原型链接')
+  editor.select([frame.id])
+  expect(row('set-prototype-start').disabled).toBe(false)
+  expect(row('convert-to-hotspot').disabled).toBe(true)
+  expect(row('set-prototype-start', 'en').label).toBe('Use Frame as Start Point')
+  expect(row('convert-to-hotspot', 'en').label).toBe('Convert to Hotspot Layer')
+  expect(row('remove-prototype-links', 'en').label).toBe('Remove Links')
+})

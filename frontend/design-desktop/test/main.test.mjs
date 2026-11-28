@@ -1597,16 +1597,20 @@ for (const platform of ['darwin', 'win32', 'linux']) {
   })
 }
 
-test('Sketch menu bar adds Insert, Layer, Arrange, Text, Path and Help with executable commands', async () => {
+test('Sketch menu bar follows the native 2025.1.3 groups and every leaf dispatches a command', async () => {
   const state = await host({ platform: 'darwin' })
   try {
     assert.deepEqual(await state.invoke('set-interface-mode', 'sketch'), { status: 'ok' })
     await state.invoke('set-interface-locale', 'en')
     const top = label => state.menu.find(item => item.label === label)
-    for (const label of ['Insert', 'Layer', 'Arrange', 'Text', 'Path', 'Help']) assert.ok(top(label), label)
-    const leaves = label => top(label).submenu.filter(item => item.type !== 'separator')
-    for (const label of ['Insert', 'Layer', 'Arrange', 'Text', 'Path', 'Help']) {
-      for (const item of leaves(label)) {
+    // Native order; Object is a Figma-layout menu and Path is nested in Layer.
+    assert.deepEqual(state.menu.map(item => item.label).filter(Boolean),
+      ['File', 'Edit', 'Insert', 'Layer', 'Text', 'Prototype', 'Arrange', 'Plugins', 'View', 'Automation', 'Window', 'Help'])
+    assert.equal(top('Object'), undefined)
+    const leaves = menu => (menu.submenu ?? []).filter(item => item.type !== 'separator')
+      .flatMap(item => item.submenu ? leaves(item) : item.role ? [] : [item])
+    for (const label of ['Insert', 'Layer', 'Text', 'Prototype', 'Arrange', 'Help']) {
+      for (const item of leaves(top(label))) {
         assert.equal(typeof item.click, 'function', `${label} > ${item.label}`)
         state.sent = []
         item.click()
@@ -1616,19 +1620,57 @@ test('Sketch menu bar adds Insert, Layer, Arrange, Text, Path and Help with exec
       }
     }
     state.sent = []
-    leaves('Layer').find(item => item.label === 'Select Containing Symbol').click()
-    leaves('Layer').find(item => item.label === 'Enter Component Source').click()
-    leaves('Text').find(item => item.label === 'Insert Text').click()
-    leaves('Path').find(item => item.label === 'Close Path').click()
-    leaves('Path').find(item => item.label === 'Join').click()
-    leaves('Path').find(item => item.label === 'Reverse Order').click()
-    leaves('Help').find(item => item.label === 'Run Command…').click()
+    const layer = top('Layer').submenu.find(item => item.label === 'Path').submenu
+    const prototype = top('Prototype').submenu
+    top('Layer').submenu.find(item => item.label === 'Select Containing Symbol').click()
+    top('Layer').submenu.find(item => item.label === 'Edit').click()
+    top('Text').submenu.find(item => item.label === 'Insert Text').click()
+    layer.find(item => item.label === 'Close Path').click()
+    layer.find(item => item.label === 'Join').click()
+    layer.find(item => item.label === 'Reverse Order').click()
+    layer.find(item => item.label === 'Rotate Copies…').click()
+    prototype.find(item => item.label === 'Preview Prototype…').click()
+    prototype.find(item => item.label === 'Use Frame as Start Point').click()
+    prototype.find(item => item.label === 'Convert to Hotspot Layer').click()
+    prototype.find(item => item.label === 'Remove Links').click()
+    top('Help').submenu.find(item => item.label === 'Run Command…').click()
+    top('File').submenu.find(item => item.label === 'Command Bar').click()
     assert.deepEqual(state.sent.map(([, command]) => command), [
-      'select-containing-symbol', 'edit-selection', 'set-tool-text', 'close-path', 'join-paths', 'reverse-order', 'command-search',
+      'select-containing-symbol', 'edit-selection', 'set-tool-text', 'close-path', 'join-paths', 'reverse-order', 'rotate-copies',
+      'preview-prototype', 'set-prototype-start', 'convert-to-hotspot', 'remove-prototype-links', 'command-search', 'command-search',
     ])
-    assert.equal(leaves('Arrange').find(item => item.label === 'Align Left').accelerator, 'Control+Command+Left')
+    const flatten = top('Layer').submenu.find(item => item.label === 'Flatten Selection to Bitmap')
+    assert.equal(typeof flatten.click, 'function')
+    assert.equal(top('Layer').submenu.find(item => item.label === 'Convert to Outlines').accelerator, 'CmdOrCtrl+Alt+O')
+    assert.equal(prototype.find(item => item.label === 'Preview Prototype…').accelerator, 'CmdOrCtrl+P')
+    const edit = top('Edit').submenu
+    assert.equal(edit.find(item => item.label === 'Delete').accelerator, 'Backspace')
+    assert.equal(edit.find(item => item.label === 'Duplicate Behind').accelerator, 'CmdOrCtrl+Shift+D')
+    assert.equal(edit.find(item => item.label === 'Rename').accelerator, 'CmdOrCtrl+R')
+    const arrange = top('Arrange').submenu
+    assert.equal(arrange.find(item => item.label === 'Align Left').accelerator, 'Control+Command+Left')
+    assert.equal(arrange.find(item => item.label === 'Group').accelerator, 'CmdOrCtrl+G')
+    assert.equal(arrange.find(item => item.label === 'Group as Frame').accelerator, 'CmdOrCtrl+F')
+    assert.equal(arrange.find(item => item.label === 'Ungroup').accelerator, 'CmdOrCtrl+Shift+G')
+    const view = leaves(top('View'))
+    assert.equal(view.find(item => item.label === 'Previous Page').accelerator, undefined)
+    state.sent = []
+    view.find(item => item.label === 'Previous Page').click()
+    view.find(item => item.label === 'Next Page').click()
+    view.find(item => item.label === 'Previous Frame').click()
+    view.find(item => item.label === 'Next Frame').click()
+    assert.deepEqual(state.sent.map(([, command]) => command), ['previous-page', 'next-page', 'zoom-previous-frame', 'zoom-next-frame'])
     await state.invoke('set-interface-locale', 'zh-CN')
-    for (const label of ['插入', '图层', '排列', '文本', '路径', '帮助']) assert.ok(top(label), label)
+    for (const label of ['插入', '图层', '文本', '原型', '排列', '帮助']) assert.ok(top(label), label)
+    assert.equal(top('路径'), undefined)
+    assert.ok(top('图层').submenu.find(item => item.label === '路径').submenu.some(item => item.label === '旋转副本…'))
+    assert.ok(top('图层').submenu.some(item => item.label === '拼合选中图像'))
+    assert.ok(top('图层').submenu.some(item => item.label === '轮廓化'))
+    assert.ok(top('原型').submenu.some(item => item.label === '预览原型…'))
+    assert.ok(top('原型').submenu.some(item => item.label === '将画框设为起点'))
+    assert.ok(top('视图').submenu.some(item => item.label === '上一页'))
+    assert.ok(top('视图').submenu.some(item => item.label === '下一页'))
+    assert.ok(top('排列').submenu.some(item => item.label === '编组画框'))
   } finally { await state.dispose() }
 })
 

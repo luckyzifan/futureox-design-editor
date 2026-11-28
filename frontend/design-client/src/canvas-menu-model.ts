@@ -15,6 +15,7 @@ import { selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
 import { pageMoveRoots } from './layer-drop'
 import { componentSourceId, containingSymbolId } from './component-navigation'
 import { canCloseSelectionPath, canJoinSelectionPaths, canReverseSelectionPath } from './sketch-path-commands'
+import { canRotateCopies } from './sketch-rotate-copies'
 import { editableFrameCrop } from './selection-properties'
 
 export type CanvasMenuItem = { command: EditorCommand; label: string; group: string; disabled?: boolean; shortcut?: string; danger?: boolean }
@@ -115,6 +116,7 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
       { command: 'close-path', label: '闭合路径', group: 'path', disabled: !canCloseSelectionPath(editor) },
       { command: 'join-paths', label: '连接路径', group: 'path', disabled: !canJoinSelectionPaths(editor) },
       { command: 'reverse-order', label: '倒序', group: 'path', disabled: !canReverseSelectionPath(editor) },
+      { command: 'rotate-copies', label: '旋转副本', group: 'path', disabled: !canRotateCopies(editor) },
       { command: 'select-containing-symbol', label: '选择包含的控件', group: 'selection',
         disabled: !single || !containingSymbolId(doc, single.id, parents) },
     )
@@ -182,8 +184,8 @@ const sketchContextOrder: EditorCommand[] = [
   'edit-selection', 'select-containing-symbol',
   'lock-selection', 'unlock-selection', 'hide-selection', 'show-selection',
   ...alignmentCommandIds,
-  'make-grid', 'close-path', 'join-paths', 'reverse-order',
-  'flip-horizontal', 'flip-vertical', 'fit-pixel-bounds', 'round-to-pixel', 'mask-selection', 'convert-vector', 'outline-stroke',
+  'make-grid', 'close-path', 'join-paths', 'reverse-order', 'rotate-copies',
+  'flip-horizontal', 'flip-vertical', 'fit-pixel-bounds', 'round-to-pixel', 'mask-selection', 'flatten', 'convert-vector', 'outline-stroke',
 ]
 const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = {
   'copy': ['拷贝', 'Copy'],
@@ -204,7 +206,14 @@ const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = 
   'close-path': ['闭合路径', 'Close Path'],
   'join-paths': ['连接路径', 'Join'],
   'reverse-order': ['倒序', 'Reverse Order'],
+  'rotate-copies': ['旋转副本', 'Rotate Copies'],
   'select-containing-symbol': ['选择包含的控件', 'Select Containing Symbol'],
+  'flatten': ['拼合选中图像', 'Flatten Selection to Bitmap'],
+  'duplicate-behind': ['在后面复制', 'Duplicate Behind'],
+  'outline-stroke': ['轮廓化', 'Convert to Outlines'],
+  'set-prototype-start': ['将画框设为起点', 'Use Frame as Start Point'],
+  'convert-to-hotspot': ['转换为热区', 'Convert to Hotspot Layer'],
+  'remove-prototype-links': ['移除链接', 'Remove Links'],
 }
 export function sketchCommandLabel(command: EditorCommand, locale: 'zh-CN' | 'en') {
   return sketchLabels[command]?.[locale === 'en' ? 1 : 0]
