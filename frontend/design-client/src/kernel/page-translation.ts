@@ -126,9 +126,16 @@ private tracking = false
     }
     if (!this.board && this.fillCoverage?.(owner!.document, {...this.offset}, sequence, failPage)) return true
     if (this.board) {
-      if (!tilesCoverBounds(this.residents, this.board)) {
+      // A certified clipped window already holds every pixel this pose can
+      // show. A page-budget fill of the wider board would compete with the
+      // exact pose without changing this frame. A refused covered pose gets the
+      // same two stale-frame receipts as a fully covered board; the third one
+      // hands the gesture to the live scene.
+      const covered = this.srgbBoard?.clipped ? this.clippedPoseCovered(this.offset) :
+        tilesCoverBounds(this.residents, this.board)
+      if (!covered) {
         if (this.requestBoardFill()) return true
-      } else if (this.boardFillSequence !== 0 && this.coveredMisses++ < 2) {
+      } else if ((this.srgbBoard?.clipped || this.boardFillSequence !== 0) && this.coveredMisses++ < 2) {
         // The incomplete frame was recorded before these board pixels arrived.
         // One stale rejection must not start a whole-scene redraw.
         return false
@@ -141,6 +148,10 @@ private tracking = false
 private requestBoardFill() {
     const owner = this.plan, board = this.board
     if (!owner || !board || !this.tracking || this.phaseRevoked || tilesCoverBounds(this.residents, board)) return false
+    // The certified viewport crop is a complete source for this pose. Its
+    // half-cell prefetch margin covers the next samples; only a pose that
+    // leaves the crop (which rebases to native) needs wider raw pixels.
+    if (this.srgbBoard?.clipped && this.clippedPoseCovered(this.offset)) return false
     if (!this.boardFillSequence) this.boardFillSequence = this.fillToken
     return this.fillCoverage?.(owner.document, { ...this.offset }, this.boardFillSequence, () => {
       const latest = this.pendingPose
@@ -149,8 +160,14 @@ private requestBoardFill() {
     }, { ...board }) === true
   }
   private integerPhysicalOffset(offset: { x: number; y: number }) {
+    // Authored transforms accumulate in floating point. A delta meant to be
+    // whole pixels can arrive a few ulps off (for example 20.4 - 20 at 250%).
+    // Those samples belong on the retained lattice; a real half-pixel pose
+    // stays far outside this tolerance and still hands off to native.
+    const whole = (value: number) => Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER &&
+      Math.abs(value - Math.round(value)) <= 1e-9
     return this.residents.length > 0 && this.residents.every(tile =>
-      [offset.x * tile.zoom, offset.y * tile.zoom].every(Number.isSafeInteger))
+      whole(offset.x * tile.zoom) && whole(offset.y * tile.zoom))
   }
   private reusableOffset(offset: { x: number; y: number }) {
     // A fractional page translation or a clipped finite window keeps its

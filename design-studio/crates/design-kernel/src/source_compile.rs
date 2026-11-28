@@ -185,7 +185,6 @@ pub(crate) struct Runtime {
     declined: Option<&'static str>,
     compiler: Option<Engine>,
     units: Vec<usize>,
-    base_units: Vec<usize>,
     authored_nodes: usize,
     epoch: u64,
     active: bool,
@@ -205,7 +204,6 @@ impl Default for Runtime {
             declined: None,
             compiler: None,
             units: vec![],
-            base_units: vec![],
             authored_nodes: 0,
             epoch: 0,
             active: false,
@@ -226,7 +224,6 @@ impl Runtime {
         }
         self.compiler = None;
         self.units.clear();
-        self.base_units.clear();
         if let Some(plan) = &mut self.plan {
             plan.margin = None;
         }
@@ -328,7 +325,6 @@ impl Runtime {
             self.compiler = None;
             self.plan = None;
             self.units.clear();
-            self.base_units.clear();
             self.declined = None;
             self.key = None;
             owner.release_source_compile_caches();
@@ -471,7 +467,6 @@ impl Runtime {
                 demand = padded;
             }
         }
-        let base_units = demand.unit_key();
         let catalog = plan.catalog.clone();
         let properties = plan.properties;
         let backdrop = plan.backdrop;
@@ -487,9 +482,13 @@ impl Runtime {
             }
             let units = demand.unit_key();
             // At most one prior demand is retained, never the union of every
-            // visited viewport. Expansion replaces it with this exact set.
+            // visited viewport. First-iteration units are this request's
+            // initial demand, so a subset of the retained projection covers it.
+            // Adjacent tiles of one material unit do not share their tile-local
+            // first demand, but the retained projection already contains every
+            // node this request needs. Reusing it there is what keeps a large
+            // board from resolving its 80-100k-node context once per tile.
             let reuse = expansions == 0
-                && self.base_units == base_units
                 && units.iter().all(|u| self.units.binary_search(u).is_ok());
             if self.compiler.is_none() || !reuse {
                 owner.share_resolved_source_nodes();
@@ -514,7 +513,6 @@ impl Runtime {
                 self.compiler = Some(compiler);
                 self.authored_nodes = demand_stats.required_nodes;
                 self.units = units;
-                self.base_units = base_units.clone();
                 self.rebuilds += 1;
                 projection_decision = "rebuild";
                 owner.invalidate_frame_scene_request();
