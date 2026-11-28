@@ -89,7 +89,9 @@ test('HTTP server refuses public bind and serves only authorized clients with th
   assert.equal(selected.result.isError, false)
   assert.match(selected.result.content[0].text, /node-1/)
   const get = await fetch(server.url, { headers: { ...headers, authorization, accept: 'text/event-stream' } })
-  assert.equal(get.status, 405)
+  assert.equal(get.status, 200)
+  assert.match(get.headers.get('content-type'), /^text\/event-stream/)
+  await get.body?.cancel()
 })
 
 test('two HTTP clients can initialize concurrently and use the same request IDs independently', async t => {
@@ -108,6 +110,39 @@ test('two HTTP clients can initialize concurrently and use the same request IDs 
   assert.equal((await post(server.url, selectionRequest, authorization, first)).status, 404)
   const alive = await (await post(server.url, selectionRequest, authorization, second)).json()
   assert.match(alive.result.content[0].text, /node-1/)
+})
+
+function readWithin(reader, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('SSE read timed out')), ms)
+    reader.read().then(value => { clearTimeout(timer); resolve(value) }, error => { clearTimeout(timer); reject(error) })
+  })
+}
+
+test('HTTP GET opens one text/event-stream per session, and DELETE ends it', async t => {
+  const server = await startLoopbackFigmaMcp({ backend: facade(), token })
+  t.after(() => server.close())
+  const headers = await openClient(server.url)
+  const missing = await fetch(server.url, { headers: { authorization, accept: 'text/event-stream' } })
+  assert.equal(missing.status, 400)
+  const notAcceptable = await fetch(server.url, { headers: { ...headers, authorization, accept: 'application/json' } })
+  assert.equal(notAcceptable.status, 406)
+  const stream = await fetch(server.url, { headers: { ...headers, authorization, accept: 'text/event-stream' } })
+  assert.equal(stream.status, 200)
+  assert.match(stream.headers.get('content-type'), /^text\/event-stream/)
+  const reader = stream.body.getReader()
+  const opened = await readWithin(reader, 4000)
+  assert.match(Buffer.from(opened.value).toString('utf8'), /^: stream open/)
+  const duplicate = await fetch(server.url, { headers: { ...headers, authorization, accept: 'text/event-stream' } })
+  assert.equal(duplicate.status, 409)
+  // POST request/response traffic continues while the event stream is open.
+  const list = await post(server.url, listRequest, authorization, headers)
+  assert.equal(list.status, 200)
+  assert.equal((await list.json()).result.tools.length > 0, true)
+  const end = await fetch(server.url, { method: 'DELETE', headers: { authorization, ...headers } })
+  assert.equal(end.status, 204)
+  const closed = await readWithin(reader, 4000)
+  assert.equal(closed.done, true)
 })
 
 test('HTTP validates a tool session assertion against the current client before forwarding', async t => {
@@ -209,6 +244,40 @@ test('HTTP exposes all twenty local assets atomically as resources in the export
       assert.equal(other.error.code, -32002)
     }
   }
+})
+
+test('HTTP use_figma sends plugin code to the injected host bridge and keeps the typed boundary otherwise', async t => {
+  const seen = []
+  const bridge = {
+    run: async input => {
+      seen.push({ code: input.code, description: input.description, documentId: input.documentId, session: input.session, revision: input.revision })
+      return { ok: true, method: 'use_figma', documentId: input.documentId, session: input.session, revision: input.revision, result: { bridged: true } }
+    },
+  }
+  const execute = async request => ({ ok: true, method: request.method, documentId: 'doc', session: 1, revision: 2, result: {} })
+  const bridged = new FigmaFacade({ execute, methods: [{ name: 'document.get' }], scope: 'write', pluginBridge: bridge })
+  const server = await startLoopbackFigmaMcp({ backend: bridged, token })
+  t.after(() => server.close())
+  const headers = await openClient(server.url)
+  const call = await post(server.url, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
+    name: 'use_figma', arguments: { description: 'Plugin edit', code: 'figma.currentPage.selection.length' },
+  } }, authorization, headers)
+  const result = (await call.json()).result
+  assert.equal(result.isError, false)
+  assert.equal(result.structuredContent.result.bridged, true)
+  assert.deepEqual(seen, [{ code: 'figma.currentPage.selection.length', description: 'Plugin edit', documentId: 'doc', session: 1, revision: 2 }])
+
+  const bare = new FigmaFacade({ execute, methods: [{ name: 'document.get' }, { name: 'batch.apply' }], scope: 'write', pluginBridge: null })
+  const blockedServer = await startLoopbackFigmaMcp({ backend: bare, token })
+  t.after(() => blockedServer.close())
+  const blockedHeaders = await openClient(blockedServer.url)
+  const blocked = await post(blockedServer.url, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
+    name: 'use_figma', arguments: { description: 'Plugin edit', code: 'PLUGIN_SENTINEL' },
+  } }, authorization, blockedHeaders)
+  const blockedResult = (await blocked.json()).result
+  assert.equal(blockedResult.isError, true)
+  assert.equal(blockedResult.structuredContent.error.code, 'plugin_host_unavailable')
+  assert.equal(JSON.stringify(blockedResult).includes('PLUGIN_SENTINEL'), false)
 })
 
 test('IPv6 loopback publishes its own reachable URL', async t => {
