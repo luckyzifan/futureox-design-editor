@@ -125,14 +125,17 @@ fn absolute_non_stack_child_still_follows_end_pin() {
 }
 
 #[test]
-fn hug_fill_cycle_converts_parent_axis_to_fixed() {
+fn hug_fill_cycle_keeps_the_authored_hug_and_resolves_as_fixed() {
     let mut p = parent(120., 80., "horizontal");
     p["sizing"] = json!({"width":"hug","height":"hug"});
     let mut a = shape("a", 30., 20.);
     a["sizing"] = json!({"width":"fill"});
     let mut d = doc(p, vec![a]);
     solve(&mut d);
-    assert_eq!(d.nodes["p"].sizing.as_ref().unwrap().width, SizeMode::Fixed);
+    // The authored Hug survives for the inspector and Sketch sizing export;
+    // this solve still resolves the cyclic axis against the authored width.
+    assert_eq!(d.nodes["p"].sizing.as_ref().unwrap().width, SizeMode::Hug);
+    close(d.nodes["p"].width, 120.);
     close(d.nodes["a"].width, 100.);
     close(d.nodes["p"].height, 40.);
 }

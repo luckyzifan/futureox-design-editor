@@ -569,7 +569,10 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
         BTreeMap::new()
     };
     let outset = |id: &str| borders.get(id).copied().unwrap_or(0.);
-    // Resolve the hug/fill dependency explicitly, as a fixed parent axis.
+    // Resolve the hug/fill dependency explicitly, as a fixed parent axis for
+    // this pass. Keep the authored Hug mode on the node: the inspector and
+    // Sketch export must still see Hug, and the geometry is identical because
+    // `sizing` is the local, resolved view of that axis.
     for a in 0..2 {
         if mode(&sizing, a) == SizeMode::Hug
             && (ids
@@ -583,9 +586,6 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
                 sizing.height = SizeMode::Fixed
             }
         }
-    }
-    if doc.nodes[id].sizing.is_some() {
-        doc.nodes.get_mut(id).unwrap().sizing = Some(sizing.clone());
     }
     let pad_start = [l.padding[3], l.padding[0]];
     let pad_end = [l.padding[1], l.padding[2]];

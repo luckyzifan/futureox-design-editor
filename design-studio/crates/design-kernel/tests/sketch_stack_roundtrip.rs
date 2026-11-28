@@ -133,8 +133,9 @@ fn authored_fill_and_hug_resize_after_sketch_reopen() {
     })).unwrap();
     let fonts = Fonts::new();
     layout::resolve(&mut doc, &fonts).unwrap();
-    // The existing layout solver normalizes a cyclic Hug/Fill axis to Fixed.
-    assert_eq!(doc.nodes["stack"].sizing_value().height, layout::SizeMode::Fixed);
+    // The authored Hug container keeps its mode even while the same-axis Fill
+    // child forces this pass to resolve the cycle against the authored height.
+    assert_eq!(doc.nodes["stack"].sizing_value().height, layout::SizeMode::Hug);
     assert_eq!(box_at(&doc, "fill"), [10., 10., 105., 60.]);
     let mut resized = doc.clone();
     resized.nodes.get_mut("stack").unwrap().width = 260.;
@@ -143,7 +144,7 @@ fn authored_fill_and_hug_resize_after_sketch_reopen() {
 
     let archive = export_sketch(&doc).unwrap();
     let layer = first_sketch_layer(&archive);
-    for (name, x, y) in [("stack", 0, 0), ("fill", 2, 2), ("hug", 1, 0), ("fixed", 0, 0)] {
+    for (name, x, y) in [("stack", 0, 1), ("fill", 2, 2), ("hug", 1, 0), ("fixed", 0, 0)] {
         let layer = layer_named(&layer, name).unwrap();
         assert_eq!(layer["horizontalSizing"], x, "{name} horizontal sizing");
         assert_eq!(layer["verticalSizing"], y, "{name} vertical sizing");
@@ -151,11 +152,17 @@ fn authored_fill_and_hug_resize_after_sketch_reopen() {
     let mut reopened = import_sketch_report(&archive).unwrap().document;
     assert_eq!(reopened.nodes["fill"].sizing_value().height, layout::SizeMode::Fill);
     assert_eq!(reopened.nodes["hug"].sizing_value().width, layout::SizeMode::Hug);
+    assert_eq!(reopened.nodes["stack"].sizing_value().height, layout::SizeMode::Hug);
     reopened.nodes.get_mut("stack").unwrap().width = 260.;
     layout::resolve(&mut reopened, &fonts).unwrap();
     for id in ["stack", "fill", "hug", "fixed"] {
         assert_eq!(box_at(&reopened, id), box_at(&resized, id));
     }
+    // Re-export keeps the authored Hug code instead of rewriting it to Fixed.
+    let reexported = first_sketch_layer(&export_sketch(&reopened).unwrap());
+    assert_eq!(reexported["verticalSizing"], 1);
+    assert_eq!(layer_named(&reexported, "fill").unwrap()["horizontalSizing"], 2);
+    assert_eq!(layer_named(&reexported, "fill").unwrap()["verticalSizing"], 2);
 }
 
 #[test]
