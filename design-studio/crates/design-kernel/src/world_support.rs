@@ -173,6 +173,7 @@ impl WorldSupport {
     /// Remember a declined optional allocation for this exact revision/page.
     /// A new camera must not rebuild the same over-budget index on every tile.
     pub(crate) fn disabled()->Self{Self{entries:HashMap::new(),bytes:0}}
+    pub(crate) fn has_certificates(&self) -> bool { !self.entries.is_empty() }
     pub(crate) fn build(doc:&Document,roots:&[String],fonts:&Fonts,budget:usize)->Result<Option<Self>,String>{
         Self::build_mode(doc,roots,fonts,budget,false)
     }
@@ -266,6 +267,24 @@ impl WorldSupport {
     pub(crate) fn culls(&self,id:&str,camera:Transform,guard:Rect)->bool {
         match self.device_bounds(id,camera){Bounds::Empty=>true,Bounds::Unknown=>false,Bounds::Box(b)=>
             b[2]<f64::from(guard.x)||b[3]<f64::from(guard.y)||b[0]>f64::from(guard.x)+f64::from(guard.w)||b[1]>f64::from(guard.y)+f64::from(guard.h)}
+    }
+    /// Classify a leaf for the tile traversal using a single projection.
+    /// An empty subtree can be rejected but has no reusable contour proof.
+    pub(crate) fn tile_leaf_support(&self, id: &str, camera: Transform, guard: Rect) -> (bool, bool) {
+        match self.device_bounds(id, camera) {
+            Bounds::Empty => (true, false),
+            Bounds::Unknown => (false, false),
+            Bounds::Box(b) => {
+                let x = f64::from(guard.x);
+                let y = f64::from(guard.y);
+                let right = x + f64::from(guard.w);
+                let bottom = y + f64::from(guard.h);
+                let outside = b[2] < x || b[3] < y || b[0] > right || b[1] > bottom;
+                let enclosed = b.iter().all(|v| v.is_finite())
+                    && b[0] >= x && b[1] >= y && b[2] <= right && b[3] <= bottom;
+                (outside, enclosed)
+            }
+        }
     }
     pub(crate) fn contained_in(&self,id:&str,camera:Transform,guard:Rect)->bool {
         match self.device_bounds(id,camera){Bounds::Empty=>true,Bounds::Unknown=>false,Bounds::Box(b)=>
