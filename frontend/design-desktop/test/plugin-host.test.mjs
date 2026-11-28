@@ -256,3 +256,51 @@ test('desktop folders load a bounded sibling TypeScript entry without executing 
     await assert.rejects(read, error => error.code === 'PLUGIN_SOURCE_UNSUPPORTED')
   } finally { await rm(root, { recursive: true, force: true }) }
 })
+
+test('desktop folders resolve unbuilt dist entries inside a bounded source set', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'futureox-plugin-unbuilt-'))
+  try {
+    await writePlugin(path.join(root, 'bundled'), { name: 'Bundled', id: 'unbuilt.bundled', api: '1.0.0', main: 'dist/code.js', ui: 'dist/ui.html' }, {
+      'plugin-src/code.ts': "const label: string = 'From plugin-src'; figma.closePlugin(label)",
+      'src/unrelated.ts': 'figma.closePlugin("wrong file")',
+      'ui-src/ui.html': '<p>UI from source</p>',
+    })
+    await writePlugin(path.join(root, 'typed-main'), { name: 'Typed main', id: 'unbuilt.typed-main', api: '1.0.0', main: 'src/code.ts' }, {
+      'src/code.ts': "enum Kind { A = 'a' }; const label: Kind = Kind.A; figma.closePlugin(label)",
+    })
+    await writePlugin(path.join(root, 'js-source'), { name: 'JS source', id: 'unbuilt.js-source', api: '1.0.0', main: 'dist/core.js' }, {
+      'plugin-src/core.js': 'figma.closePlugin("plain source")',
+    })
+    await writePlugin(path.join(root, 'jsx'), { name: 'JSX', id: 'unbuilt.jsx', api: '1.0.0', main: 'code.tsx' }, {
+      'code.tsx': 'const label = <div/>',
+    })
+    await writePlugin(path.join(root, 'elsewhere'), { name: 'Elsewhere', id: 'unbuilt.elsewhere', api: '1.0.0', main: 'dist/code.js' }, {
+      'nested/code.ts': 'figma.closePlugin("not a candidate")',
+    })
+
+    assert.equal(parseDeclaredPluginManifest(JSON.stringify({ name: 'TS', id: 'ts.main', api: '1.0.0', main: 'src/code.ts' })).main, 'src/code.ts')
+    assert.equal(parseDeclaredPluginManifest(JSON.stringify({ name: 'TSX', id: 'tsx.main', api: '1.0.0', main: 'code.tsx' })).main, 'code.tsx')
+
+    const found = await scanDeclaredPlugins(root)
+    assert.deepEqual(found.plugins.map(plugin => plugin.id), ['unbuilt.bundled', 'unbuilt.js-source', 'unbuilt.jsx', 'unbuilt.typed-main'])
+    assert.equal(found.skipped, 1)
+    const host = createPluginDirectoryHost()
+    const enabled = host.enableDeclared(found.plugins)
+    const grant = id => enabled.find(plugin => plugin.id === id).grant
+
+    const bundled = await host.read(grant('unbuilt.bundled'), ['dist/code.js', 'dist/ui.html'])
+    assert.match(bundled.files['dist/code.js'], /const label\s*= 'From plugin-src'/)
+    assert.equal(bundled.files['dist/ui.html'], '<p>UI from source</p>')
+    await assert.rejects(() => host.read(grant('unbuilt.bundled'), ['src/unrelated.ts']))
+
+    const typed = (await host.read(grant('unbuilt.typed-main'), ['src/code.ts'])).files['src/code.ts']
+    assert.match(typed, /var Kind/)
+    assert.match(typed, /figma\.closePlugin\(label\)/)
+
+    assert.equal((await host.read(grant('unbuilt.js-source'), ['dist/core.js'])).files['dist/core.js'], 'figma.closePlugin("plain source")')
+
+    await assert.rejects(() => host.read(grant('unbuilt.jsx'), ['code.tsx']), error => error.code === 'PLUGIN_SOURCE_UNSUPPORTED')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
