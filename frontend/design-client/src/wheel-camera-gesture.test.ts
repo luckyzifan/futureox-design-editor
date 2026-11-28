@@ -1,8 +1,21 @@
 import {expect,test} from 'vitest'
-import {WheelCameraGesture} from './wheel-camera-gesture'
-import {MAX_CANVAS_ZOOM,MIN_CANVAS_ZOOM,wheelCamera,screenToWorld} from './canvas-camera'
+import {WheelCameraGesture, WheelModifierHistory} from './wheel-camera-gesture'
+import {MAX_CANVAS_ZOOM,MIN_CANVAS_ZOOM,isNativePinch,wheelCamera,screenToWorld} from './canvas-camera'
 const size={width:855,height:888},anchor={x:427.5,y:444}
 const initial={x:-1332.43125,y:3.6218749999999886,zoom:.4036458333333333}
+test('wheel deltas queued before Ctrl release retain their mouse-wheel gain', () => {
+  const history = new WheelModifierHistory()
+  const event = { deltaX: 0, deltaY: 184.84, deltaMode: 0, ctrlKey: true }
+  history.record({ ctrlKey: true, metaKey: false, timeStamp: 200 })
+  history.record({ ctrlKey: false, metaKey: false, timeStamp: 300 })
+  expect(isNativePinch(event, history.at(285))).toBe(false)
+  expect(isNativePinch(event, history.at(310))).toBe(true)
+  const gesture = new WheelCameraGesture()
+  const before = { x: 0, y: 0, zoom: Math.exp(.003 * event.deltaY) }
+  expect(gesture.update(before, event, size, anchor, false, isNativePinch(event, history.at(285))).zoom).toBeCloseTo(1, 12)
+  history.reset()
+  expect(isNativePinch(event, history.at(285))).toBe(true)
+})
 test('thousands of opposing pan samples return to the identical camera without rounding its phase',()=>{
  const gesture=new WheelCameraGesture();let view={...initial}
  for(let cycle=0;cycle<100;cycle++)for(const sign of [-1,1])for(let i=0;i<24;i++)
