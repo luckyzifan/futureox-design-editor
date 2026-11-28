@@ -1194,3 +1194,91 @@ fn analytic_source_projection_retains_only_the_original_sketch_gradient() {
         assert!(plain["nodes"]["a"]["fills"][0].get("fixedGradient").is_some());
     }
 }
+
+/// Three clipped boards of different sizes. Tile overlap decides the demand
+/// unit set, so a tile compiled after a wider neighbour can be served by the
+/// projection that neighbour already resolved.
+fn nested_boards_document(children: usize) -> (Document, Vec<(i32, i32)>) {
+    let mut doc = document();
+    for id in ["a", "b", "c"] {
+        doc.nodes.remove(id);
+    }
+    let mut leaf: crate::scene::Node = serde_json::from_value(json!({
+        "id": "leaf", "kind": "rectangle", "width": 16.0, "height": 12.0,
+        "fills": [{"kind": "solid", "color": "#2a4d8f"}]
+    }))
+    .unwrap();
+    let boards = [("wide", 0.0, 0.0, 1400.0, 1000.0), ("tail", 0.0, 1000.0, 1400.0, 600.0),
+        ("side", 1400.0, 0.0, 400.0, 400.0)];
+    let mut stage_children = Vec::new();
+    for (name, x, y, width, height) in boards {
+        let mut kids = Vec::new();
+        for index in 0..children {
+            let id = format!("{name}-{index}");
+            leaf.id = id.clone();
+            leaf.transform = Transform([1., 0., 0., 1.,
+                4. + (index % 20) as f64 * 32., 4. + (index / 20 % 20) as f64 * 28.]);
+            doc.nodes.insert(id.clone(), leaf.clone());
+            kids.push(id);
+        }
+        let mut board: crate::scene::Node = serde_json::from_value(json!({
+            "id": name, "kind": "frame", "width": width, "height": height, "clip": true,
+            "fills": [{"kind": "solid", "color": "#fbfaf6"}]
+        }))
+        .unwrap();
+        board.transform = Transform([1., 0., 0., 1., x, y]);
+        board.children = kids;
+        doc.nodes.insert(name.into(), board);
+        stage_children.push(name.to_owned());
+    }
+    let stage = doc.nodes.get_mut("stage").unwrap();
+    stage.children = stage_children;
+    stage.width = 2000.;
+    stage.height = 1800.;
+    // Interior tile first (two boards), then tiles whose demand is a subset of
+    // that projection, then the side board that needs a new one.
+    (doc, vec![(0, 512), (0, 0), (0, 1024), (1024, 0)])
+}
+
+#[test]
+fn adjacent_tiles_reuse_the_retained_projection_instead_of_resolving_it_again() {
+    let children = env_usize("FUTUREOX_TILE_CONTEXT_CHILDREN", 400);
+    let (doc, tiles) = nested_boards_document(children);
+    let desc = descriptor(&doc);
+    let mut expected = owner(doc.clone(), "nested-oracle");
+    let mut actual = owner(doc, "nested-live");
+    let mut runtime = Runtime::default();
+    let mut records = Vec::new();
+    let tiles_len = tiles.len() as u64;
+    let wall = std::time::Instant::now();
+    for (x, y) in tiles {
+        let request = json!({
+            "pageId": "page", "width": 512, "height": 512,
+            "view": {"x": 0.0, "y": 0.0, "zoom": 1.0},
+            "rasterProfile": "figmaSubpixel", "gpuPageBackground": true,
+            "gpuViewport": {"x": x, "y": y, "w": 512, "h": 512},
+        });
+        let started = std::time::Instant::now();
+        let packet = compare(&mut runtime, &mut actual, &mut expected, &desc, &request);
+        let stats = runtime.stats.clone();
+        let resolved = stats["resolvedCompileNodes"].as_u64().unwrap_or(0);
+        eprintln!(
+            "NESTED_TILE x={x} y={y} demand={:.1}ms resolved={resolved} authored={} decision={} rebuilds={} reuses={} expansions={} bytes={}",
+            started.elapsed().as_secs_f64() * 1000.,
+            stats["residentAuthoredNodes"], stats["projectionDecision"],
+            stats["projectionRebuilds"], stats["projectionReuses"], stats["scopeExpansions"], packet.len()
+        );
+        records.push(stats);
+        assert_eq!(runtime.stats["mode"], "demand");
+    }
+    let rebuilds = runtime.stats["projectionRebuilds"].as_u64().unwrap_or(0);
+    let reuses = runtime.stats["projectionReuses"].as_u64().unwrap_or(0);
+    // Tiles 2 and 3 need only boards that tile 1 already resolved. Without the
+    // subset reuse every tile re-resolves that context and rebuilds the compiler.
+    assert!(reuses >= 2, "tiles inside the retained projection must reuse it: {}", runtime.stats);
+    assert!(rebuilds <= 3, "only the first and the side-board tile resolve: {}", runtime.stats);
+    assert!(rebuilds < tiles_len, "one projection per tile is the old behavior: {}", runtime.stats);
+    assert!(records.iter().all(|stats| stats["resolvedCompileNodes"].as_u64().unwrap_or(0) > 0));
+    eprintln!("NESTED_SUMMARY rebuilds={rebuilds} reuses={reuses} total_ms={:.1}",
+        wall.elapsed().as_secs_f64() * 1000.);
+}

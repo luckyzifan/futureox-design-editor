@@ -77,3 +77,22 @@ test('a miss can capture a wider portion of the same phase without extending the
   expect(atlas.find(pose(40, 15))).toBeDefined()
   expect(atlas.find(pose(15, 15))).toBeDefined()
 })
+
+test('same-phase replay accepts fractional authored origins on whole physical shifts', () => {
+  const { atlas, device } = fixture()
+  // A real drag pose carries a fractional document origin. At this 1.6 device
+  // scale only a 1.25-unit step is a whole 2-pixel shift; 0.5 units is 0.8.
+  atlas.record(5, pose(10.25))
+  expect(device.saveClippedRegion).toHaveBeenCalledOnce()
+  expect(atlas.find(pose(10.75))).toBeUndefined() // 0.8 physical pixels: another phase.
+  expect(atlas.find(pose(12.5))).toBeUndefined() // 3.6 physical pixels: another phase.
+  const match = atlas.find(pose(11.5))
+  expect(match).toBeDefined()
+  expect(atlas.show(match!)).toBe(13)
+  expect(device.copyClippedPose).toHaveBeenCalledOnce()
+  // 3.75 units is 6.000000000000001 physical pixels: whole within the lattice
+  // tolerance, so the copy stays on the same texels instead of resampling.
+  const noisy = atlas.find(pose(14))
+  expect(noisy).toBeDefined()
+  expect(atlas.show(noisy!)).toBe(13)
+})

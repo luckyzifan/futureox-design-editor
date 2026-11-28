@@ -610,3 +610,131 @@ test('a released clipped board never starts native drag repair from a late cover
   expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(false)
   expect(rebase).not.toHaveBeenCalled()
 })
+
+/** A clipped 1440-wide board seen through a 1143×800 Retina viewport. The
+ * certified window is the visible board plus a half native cell of margin. */
+function clippedBoardFixture() {
+  const doc = blank(), board = node('frame', 20, 30, 1440, 1030), other = node('frame', 1600, 30, 40, 40)
+  for (const root of [board, other]) { root.blend = 'normal'; root.clip = true; doc.nodes[root.id] = root }
+  const paint = board.fills[0]
+  if (paint.kind !== 'solid') throw Error('Missing opaque paint')
+  paint.color = 'color(srgb 0.86 0.91 0.94 / 1)'
+  const page = doc.pages[0]
+  page.children = [board.id, other.id]
+  const camera = { view: { x: 0, y: 0, zoom: 1.25 }, width: 1143, height: 800, dpr: 2 }
+  const source = clippedBoardSource({ x: 20, y: 30, width: 1440, height: 1030 }, camera)!
+  const tile = { key: 'crop', serial: 1, gpuTile: 9, bytes: new Uint8Array(),
+    x: Math.floor(source.x * 2.5) - 1, y: Math.floor(source.y * 2.5) - 1,
+    width: Math.ceil((source.x + source.width) * 2.5) - Math.floor(source.x * 2.5) + 2,
+    height: Math.ceil((source.y + source.height) * 2.5) - Math.floor(source.y * 2.5) + 2,
+    zoom: 2.5, gutter: 1 }
+  const props: InteractionProps = { document: doc, selection: [board.id], active: true, epoch: 1,
+    figmaBoardPreview: true, control: { current: null }, onReady() {} }
+  return { doc, board, page, camera, source, tile, props }
+}
+
+test('a certified clipped crop suppresses the wide page fill while it covers the pose', () => {
+  const { doc, board, page, camera, tile, props } = clippedBoardFixture()
+  const fill = vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[3]>>(() => true)
+  const native = vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[1]>>(() => ({ x: .2, y: 0 }))
+  const movement = new PageTranslation(vi.fn(), native, undefined, fill)
+  expect(movement.prepare(props, page.id, doc, [], doc, true, true, camera, [{ tile, active: true, layer: 0 }])).toBe(true)
+  expect(movement.mode).toBe('retained-clipped-board')
+  const first = movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 20.4, 30.8] } })!
+  expect(first.x).toBeCloseTo(.4, 9)
+  expect(first.y).toBeCloseTo(.8, 9)
+  const baseline = movement.items(camera.view)
+  expect(baseline).not.toBeNull()
+  // `FUTUREOX_CLIPPED_SAMPLES` scales the fixed input replay for the CPU
+  // microbenchmark; the default stays at the contract's 40 in-crop samples.
+  const steps = Math.max(1, Math.min(4000, Number(process.env.FUTUREOX_CLIPPED_SAMPLES) || 40))
+  const samples = performance.now()
+  // Every sample stays inside the certified window (the board is 1440 wide and
+  // the window keeps a 102-pixel physical margin): no page fill may start.
+  for (let step = 1; step <= steps; step++) {
+    // A held drag jitters back and forth inside the certified margin. Every
+    // sample is a whole physical pixel at 250%, so each one must stay on the
+    // retained lattice without asking the page budget for the 1440px board.
+    const offset = (step % 2 ? 1 : -1) * (Math.ceil(step / 2) % 20 + 1) * .4
+    const applied = movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 20 + offset, 30] } })
+    expect(applied).not.toBeNull()
+    expect(applied!.x).toBeCloseTo(offset, 9)
+    expect(applied!.y).toBe(0)
+    expect(movement.items(camera.view)).not.toBeNull()
+  }
+  const sampleMs = (performance.now() - samples) / steps
+  expect(fill).not.toHaveBeenCalled()
+  expect(native).not.toHaveBeenCalled()
+  expect(movement.handingOff).toBe(false)
+  console.info(`[issue-817] ${steps} in-crop clipped samples: page fills 0, native rebases 0, ${sampleMs.toFixed(3)} ms/sample`)
+  // Leaving the certified window still hands the pose to the live scene on the
+  // original lattice; suppression never turns into a lost frame.
+  const leaving: typeof board.transform = [1, 0, 0, 1, -400, 30]
+  expect(movement.control.apply(doc, { [board.id]: { transform: leaving } })).toBeNull()
+  expect(native).toHaveBeenCalledOnce()
+  expect(native.mock.calls[0][1][board.id].transform).toEqual(leaving)
+  expect(fill).not.toHaveBeenCalled()
+})
+
+test('a refused covered clipped pose keeps two stale receipts before the live scene owns it', () => {
+  const { doc, board, page, camera, tile, props } = clippedBoardFixture()
+  const fill = vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[3]>>(() => true)
+  const rebase = vi.fn(() => null)
+  const movement = new PageTranslation(vi.fn(), rebase, undefined, fill)
+  expect(movement.prepare(props, page.id, doc, [], doc, true, true, camera, [{ tile, active: true, layer: 0 }])).toBe(true)
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 20.4, 30] } })).not.toBeNull()
+  const sequence = movement.control.inputSequence!()
+  expect(movement.repairMissingCoverage(sequence)).toBe(false)
+  expect(movement.repairMissingCoverage(sequence)).toBe(false)
+  expect(movement.repairMissingCoverage(sequence)).toBe(true)
+  expect(rebase).toHaveBeenCalledOnce()
+  expect(fill).not.toHaveBeenCalled()
+})
+
+test('whole physical steps with float noise stay resident and true half pixels hand off to native', () => {
+  const { doc, board, page, camera, tile, props } = clippedBoardFixture()
+  const native = vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[1]>>(() => ({ x: .2, y: 0 }))
+  const movement = new PageTranslation(vi.fn(), native)
+  expect(movement.prepare(props, page.id, doc, [], doc, true, true, camera, [{ tile, active: true, layer: 0 }])).toBe(true)
+  // 0.4 and 0.8 document units are exactly 1 and 2 physical pixels at 250%.
+  // `20.4 - 20` evaluates to 0.3999999999999986, so the lattice test needs the
+  // physical tolerance rather than an exact integer comparison.
+  const whole = movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 20.4, 30.8] } })!
+  expect(whole.x).toBeCloseTo(.4, 9)
+  expect(whole.y).toBeCloseTo(.8, 9)
+  expect(native).not.toHaveBeenCalled()
+  expect(movement.items(camera.view)).not.toBeNull()
+  // 0.2 units is half a physical pixel; only the native renderer can carry it.
+  const fractional: typeof board.transform = [1, 0, 0, 1, 20.2, 30]
+  const handed = movement.control.apply(doc, { [board.id]: { transform: fractional } })!
+  expect(handed.x).toBeCloseTo(.2, 9)
+  expect(handed.y).toBe(0)
+  expect(native).toHaveBeenCalledWith(doc, { [board.id]: { transform: fractional } }, doc, undefined)
+  expect(movement.handingOff).toBe(true)
+})
+
+test('a released clipped pose commits once, then ignores samples and undo clears it', () => {
+  const { doc, board, page, camera, tile, props } = clippedBoardFixture()
+  const native = vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[1]>>(() => ({ x: .2, y: 0 }))
+  const movement = new PageTranslation(vi.fn(), native)
+  expect(movement.prepare(props, page.id, doc, [], doc, true, true, camera, [{ tile, active: true, layer: 0 }])).toBe(true)
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 21.2, 30] } })!.x).toBeCloseTo(1.2, 9)
+  const held = movement.items(camera.view)
+  expect(held).not.toBeNull()
+  movement.control.releaseInput?.('move')
+  const committed = { ...doc, nodes: { ...doc.nodes, [board.id]: { ...board, transform: [1, 0, 0, 1, 21.2, 30] as typeof board.transform } } }
+  movement.control.end?.(committed)
+  expect(movement.control.boardCommit?.(committed, page.id, camera)).toBe(true)
+  expect(movement.items(camera.view)).not.toBeNull()
+  // The certified input is closed: no later sample may move this frame.
+  expect(movement.control.apply(committed, { [board.id]: { transform: [1, 0, 0, 1, 24.2, 30] } })).toBeNull()
+  expect(native).not.toHaveBeenCalled()
+  movement.clear()
+  expect(movement.control.apply(committed, { [board.id]: { transform: [1, 0, 0, 1, 24.2, 30] } })).toBeNull()
+  // Undo returns the authored pose: no offset means no retained frame.
+  expect(movement.prepare(props, page.id, doc, [], doc, true, true, camera, [{ tile, active: true, layer: 0 }])).toBe(true)
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 20, 30] } })).toEqual({ x: 0, y: 0 })
+  movement.control.end?.(doc)
+  expect(movement.items(camera.view)).toBeNull()
+  expect(movement.control.boardCommit?.(doc, page.id, camera)).toBe(false)
+})

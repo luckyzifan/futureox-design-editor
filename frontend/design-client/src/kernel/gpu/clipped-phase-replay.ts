@@ -79,7 +79,11 @@ export class ClippedPhaseReplay {
 
   private pose(transform: Matrix) {
     if (transform[0] !== 1 || transform[1] !== 0 || transform[2] !== 0 || transform[3] !== 1 ||
-        ![transform[4], transform[5]].every(Number.isSafeInteger)) return
+        ![transform[4], transform[5]].every(Number.isFinite)) return
+    // Authored origins are fractional during a real drag. Placement below
+    // accepts only whole physical shifts, so a fractional origin still copies
+    // the exact sample lattice; requiring an integer document transform
+    // excluded every pointer pose from the cache.
     const origin = { x: transform[4], y: transform[5] }
     const left = origin.x * this.view.zoom + this.view.x - this.output.x
     const top = origin.y * this.view.zoom + this.view.y - this.output.y
@@ -94,10 +98,17 @@ export class ClippedPhaseReplay {
 
   private placement(anchor: Pick<Anchor, 'origin' | 'support' | 'captured'>,
     target: Pick<Anchor, 'origin' | 'support' | 'captured'>) {
-    const dx = (target.origin.x - anchor.origin.x) * this.view.zoom
-    const dy = (target.origin.y - anchor.origin.y) * this.view.zoom
-    if (!Number.isSafeInteger(dx) || !Number.isSafeInteger(dy) ||
-        target.support.x !== anchor.support.x + dx || target.support.y !== anchor.support.y + dy ||
+    // Authored origins are accumulated in floating point, so a whole physical
+    // shift can arrive a few ulps off (20.4 - 20 at 250%). Rounding inside this
+    // tolerance keeps the copy on the same texels; a genuine fractional shift
+    // stays outside it and misses instead of resampling.
+    const whole = (value: number) => Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER &&
+      Math.abs(value - Math.round(value)) <= 1e-9
+    const originDx = (target.origin.x - anchor.origin.x) * this.view.zoom
+    const originDy = (target.origin.y - anchor.origin.y) * this.view.zoom
+    if (!whole(originDx) || !whole(originDy)) return
+    const dx = Math.round(originDx), dy = Math.round(originDy)
+    if (target.support.x !== anchor.support.x + dx || target.support.y !== anchor.support.y + dy ||
         target.support.w !== anchor.support.w || target.support.h !== anchor.support.h) return
     const read = { ...target.captured, x: target.captured.x - dx, y: target.captured.y - dy }
     if (!contains(anchor.captured, read)) return
