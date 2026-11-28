@@ -1604,12 +1604,14 @@ if retain_translated_roots {
     }
     fn install_document_policy(&mut self, input: DocumentInstall) -> Result<(), String> {
         let (mut doc, retain_index, measure_size, checked_bytes, local_nodes, stable_images) = match input {
-            DocumentInstall::Load { document, measure_size } => {
+            DocumentInstall::Load { mut document, measure_size } => {
+                document.normalize_spatial_schema();
                 document.validate()?;
                 (document, false, measure_size, None, None, false)
             }
             DocumentInstall::Patch { applied, retain_index } => {
-                let (document, bytes, local_nodes, stable_images) = applied.into_install_parts();
+                let (mut document, bytes, local_nodes, stable_images) = applied.into_install_parts();
+                document.normalize_spatial_schema();
                 (document, retain_index, false, Some(bytes), local_nodes, stable_images)
             }
         };
@@ -1938,7 +1940,25 @@ if retain_translated_roots {
         self.restore_resolved_camera();
         Ok(())
     }
+    /// Projected 3D planes are calibrated against the Figma export band: the
+    /// coverage cells, their edge samples and the inside-stroke partition all
+    /// resolve through the two-times export lattice. `RenderOptions` defaults
+    /// to `Analytic`, so that value doubles as "no band requested" here; a
+    /// document band or a non-analytic profile still wins. Rendering the
+    /// measured perspective fixture at the default used to differ from
+    /// `figma` by 218 of 60000 pixels (#1127).
+    fn spatial_default_profile(&self, options: &RenderOptions) -> RenderOptions {
+        if options.raster_profile != crate::fidelity::RasterProfile::Analytic {
+            return options.clone();
+        }
+        let Some(doc) = self.source_doc.as_ref() else { return options.clone() };
+        if doc.raster_profile.is_some() || !crate::spatial::has_spatial(doc) {
+            return options.clone();
+        }
+        RenderOptions { raster_profile: crate::fidelity::RasterProfile::Figma, ..options.clone() }
+    }
     pub fn render(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
+        let options = &self.spatial_default_profile(options);
         if self.should_budget_display(options) {
             return self.finish_degraded_display(options);
         }
@@ -2135,6 +2155,9 @@ if retain_translated_roots {
     /// keeps the tiled batch. Export profiles and screen-anchored checkerboards
     /// keep their own sampling. Analytic pressure falls through to that batch.
     pub(crate) fn render_exact(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
+        // The WASM and export entries call this directly instead of `render`,
+        // so the document-derived band is applied here as well.
+        let options = &self.spatial_default_profile(options);
         if self.integer_bucket_residency(options)
             && options.raster_profile == crate::fidelity::RasterProfile::Analytic
         {

@@ -1525,10 +1525,30 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
   if (scope) {
     if (!pages.has(scope.pageId)) throw new Error('页面数据无效')
     for (const id of scope.ids) if (!d.nodes[id]) throw new Error('文件包含未归属页面的图层')
+    normalizeSpatialSchema(d)
     return d
   }
   if (seen.size !== nodes.length) throw new Error('文件包含未归属页面的图层')
+  normalizeSpatialSchema(d)
   return d
+}
+
+/** Schema 24 exists for the projected 3D fields and schema 25 only adds the
+ * shared 3D space. Both versions follow node content, so removing the last
+ * spatial effect drops the band back; later schemas carry unrelated features
+ * and keep their declared version. Returns whether the version changed. */
+export function normalizeSpatialSchema(d: DesignDocument): boolean {
+  if (d.schemaVersion !== 24 && d.schemaVersion !== 25) return false
+  let any = false, shared = false
+  for (const n of Object.values(d.nodes)) {
+    if (!n.spatial) continue
+    any = true
+    if (n.spatial.preserve3d) shared = true
+  }
+  const version = !any ? 23 : d.schemaVersion === 25 && !shared ? 24 : d.schemaVersion
+  if (version === d.schemaVersion) return false
+  d.schemaVersion = version as DesignDocument['schemaVersion']
+  return true
 }
 
 // Structural edits must remain renderable before publishing a new snapshot.
