@@ -34,7 +34,7 @@ import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
 import { inFlightPreviewCancelRatio, navigationPreviewDensity, zoomDetailInsteadOfViewportPreview } from './navigation-zoom'
-import { focusTileDuringZoom } from './zoom-underlay'
+import { focusTileDuringZoom, hasCachedMaximumZoomCoverage } from './zoom-underlay'
 import { captureMostlyOffscreen, deferCoveredOutwardPreview, liveNavigationCapture, navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, ZOOM_OUT_DETAIL_MIN_ZOOM, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
@@ -1758,6 +1758,13 @@ focus?: SurfaceProps['overview'],
           const focus = held && filteredContent && !cameraDependent && !zoomOutCoverage && target.zoom > held.zoom
             ? focusTileDuringZoom(ordered, target, held, { width, height })
             : undefined
+          // During a warm revisit the same anchor already has maximum-zoom
+          // texture coverage. Keep the covering preview and let the resident
+          // tiles follow the input without adding a focus render to the
+          // presentation device's GPU queue.
+          if (focus && held && progressiveNativeRepair && !props.panGestureActive && syncedDoc.current === doc &&
+              hasCachedMaximumZoomCoverage(resident.filter(tile => !tile.viewportPreview), target, held, { width, height, dpr }) &&
+              navigationHasCoverage(resident, target, width, height)) return
           // Sample a bounded crop around the wheel anchor first. Its key is
           // distinct from the parent so the current exact plan still fills it.
           const tile = focus && !tileRef.current.has(focus.key) ? focus : navigationCost.choose(ordered, priorities)

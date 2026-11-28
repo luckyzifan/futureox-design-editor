@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { sharperCoverageFrame } from './coverage-stack'
 import type { RasterTile } from './tile-cache'
-import { focusTileDuringZoom, retainedPreviewUnderlay, zoomInCanShowReadyTile, zoomInPartialTiles, zoomUnderlayImproves } from './zoom-underlay'
+import { focusTileDuringZoom, hasCachedMaximumZoomCoverage, retainedPreviewUnderlay, zoomInCanShowReadyTile, zoomInPartialTiles, zoomUnderlayImproves } from './zoom-underlay'
 
 const view = { x: 0, y: 0, zoom: 8 }
 const size = { width: 800, height: 600, dpr: 2 }
@@ -19,6 +19,20 @@ test('moving inward refines the off-center wheel anchor without moving the exact
   expect(focus).toMatchObject({ key: 'right/640:160:162:162/zoom-focus', x: 639, y: 159, width: 162, height: 162, zoom: 4, gutter: 1 })
   expect(tiles[1]).toEqual(tile('right', 4, 511, -1, 514))
   expect(focusTileDuringZoom(tiles, oldView, newView, viewport)).toBeUndefined()
+})
+
+test('a moving zoom can reuse the native window at the same wheel anchor', () => {
+  const previous = { x: 0, y: 0, zoom: 1 }
+  const view = { x: -128, y: -96, zoom: 2 }
+  const size = { width: 256, height: 192, dpr: 2 }
+  const first = { ...tile('left', 512, 65279, 48959, 258), height: 386 }
+  const last = { ...tile('right', 512, 65535, 48959, 258), height: 386 }
+  expect(hasCachedMaximumZoomCoverage([first, last], view, previous, size)).toBe(true)
+  expect(hasCachedMaximumZoomCoverage([first], view, previous, size)).toBe(false)
+  expect(hasCachedMaximumZoomCoverage([first, { ...last, zoom: 256 }], view, previous, size)).toBe(false)
+  expect(hasCachedMaximumZoomCoverage([first, last], { ...view, x: -150 }, previous, size)).toBe(false)
+  expect(hasCachedMaximumZoomCoverage([first, last], { ...view, x: -300 }, previous, size)).toBe(false)
+  expect(hasCachedMaximumZoomCoverage([first, last], previous, view, size)).toBe(false)
 })
 
 test('the underlay uv is the new viewport inside the retained device texture', () => {
