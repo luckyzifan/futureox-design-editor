@@ -4671,6 +4671,114 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
 pub struct SketchImportReport {
     pub document: Document,
     pub warnings: Vec<String>,
+    /// Source face names that still render through the bundled default. A host
+    /// may read exact faces from its own font catalog and bind them into
+    /// `document.fonts`; this report never embeds or substitutes host fonts by
+    /// itself. Empty when every text reference already has a document face.
+    #[serde(rename = "sourceFonts", default, skip_serializing_if = "Vec::is_empty")]
+    pub source_fonts: Vec<SourceFontRequest>,
+}
+
+/// One unresolved authored font name, counted on the text layers that still
+/// carry the bundled default. Stable shape for host matching in browsers and
+/// Electron; the order is the name's byte order so reports are deterministic.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceFontRequest {
+    pub name: String,
+    /// Text layers whose style-level font still points at `default`.
+    pub nodes: usize,
+    /// Text runs whose run-level font still points at `default`.
+    pub runs: usize,
+}
+
+#[derive(Default, serde::Deserialize)]
+struct RawSourceFonts {
+    #[serde(default)]
+    style: Option<String>,
+    #[serde(default)]
+    runs: std::collections::BTreeMap<String, String>,
+}
+
+fn node_source_fonts(document: &Document, node: &crate::scene::Node) -> Option<RawSourceFonts> {
+    if let Some(source) = document
+        .design_system
+        .as_ref()
+        .and_then(|system| system.font_sources.get(&node.id))
+    {
+        return Some(RawSourceFonts {
+            style: source.style.clone(),
+            runs: source.runs.clone(),
+        });
+    }
+    let raw = node.bindings.get("sketchSourceFonts").map(String::as_str).or_else(|| {
+        document
+            .design_system
+            .as_ref()?
+            .sketch_containers
+            .get("nodeMetadata")?
+            .get(&node.id)?
+            .get("bindings")?
+            .get("sketchSourceFonts")?
+            .as_str()
+    })?;
+    serde_json::from_str::<RawSourceFonts>(raw).ok()
+}
+
+fn resolved_source_names(document: &Document, id: &str) -> std::collections::BTreeSet<String> {
+    document
+        .design_system
+        .as_ref()
+        .and_then(|system| system.font_sources.get(id))
+        .map(|source| source.resolved.clone())
+        .unwrap_or_default()
+}
+
+/// Authored font names that still lack a document font resource. Matches the
+/// editable-frontend definition of "missing": a name counts only while its text
+/// style or run still points at `default` and the user has not confirmed a
+/// replacement. The renderer does not consult host fonts, so this list is the
+/// host's complete input for loading real faces into the document.
+pub fn source_font_requests(document: &Document) -> Vec<SourceFontRequest> {
+    use std::collections::BTreeMap;
+    let mut counts: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+    for node in document.nodes.values() {
+        if node.kind != "text" {
+            continue;
+        }
+        let Some(source) = node_source_fonts(document, node) else {
+            continue;
+        };
+        let resolved = resolved_source_names(document, &node.id);
+        let base = node
+            .text_style
+            .as_ref()
+            .map(|style| style.font_id.as_str())
+            .unwrap_or("default");
+        if base == "default"
+            && let Some(name) = source.style.as_deref().filter(|name| !name.is_empty() && name.len() <= 128)
+            && !resolved.contains(name)
+        {
+            counts.entry(name.to_owned()).or_default().0 += 1;
+        }
+        for (index, name) in source.runs {
+            if name.is_empty() || name.len() > 128 || resolved.contains(&name) {
+                continue;
+            }
+            let bound = node
+                .text_runs
+                .get(index.parse::<usize>().unwrap_or(usize::MAX))
+                .and_then(|run| run.font_id.as_deref())
+                .unwrap_or(base);
+            if bound == "default" {
+                counts.entry(name).or_default().1 += 1;
+            }
+        }
+    }
+    counts
+        .into_iter()
+        .map(|(name, (nodes, runs))| SourceFontRequest { name, nodes, runs })
+        .collect()
 }
 
 pub const MAX_IMPORT_WARNINGS: usize = 32;
@@ -6008,7 +6116,8 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
     }
     document.validate().map_err(Error::InvalidDocument)?;
     let warnings = warnings.into_iter().take(MAX_IMPORT_WARNINGS).collect();
-    Ok(SketchImportReport { document, warnings })
+    let source_fonts = source_font_requests(&document);
+    Ok(SketchImportReport { document, warnings, source_fonts })
 }
 
 struct ExportedImages {

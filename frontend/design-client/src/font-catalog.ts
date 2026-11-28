@@ -112,6 +112,12 @@ export const FONT_CATALOG: readonly CatalogFamily[] = Object.freeze([
   system('Arimo'),
   system('Tinos'),
   system('Cousine'),
+  // Sketch 117 source faces (#1263). Never shipped: matching only binds a
+  // locally installed face, and an absent one keeps the bundled fallback.
+  system('YouSheBiaoTiHei', ['优设标题黑'], ['Noto Sans SC']),
+  system('DINPro', ['DIN Pro']),
+  system('Alibaba PuHuiTi', ['AlibabaPuHuiTi', '阿里巴巴普惠体'], ['Noto Sans SC']),
+  system('Barlow'),
 ])
 
 const norm = (value: string) => value.normalize('NFKC').replace(/[\s_-]+/g, '').toLowerCase()
