@@ -1544,6 +1544,13 @@ if (poseSession && (poseSession.native || poseSession.scene.interactionFixedMask
   if (request.command === 'cancel-tile-fill') {
     tileFillGeneration++
     for (const wait of packetWaits) if (wait.channel === 'canvas' && wait.tiled) wait.controller.abort()
+    const density = request.abandonedDensity
+    if (Number.isFinite(density) && density > 0)
+      for (const wait of canvasTilePreparations) if (wait.density === density && !wait.controller.signal.aborted) {
+        terminalDiagnostics.record('cancel', { requestId: wait.requestId, reasonCode: 3, channel: 0,
+          generation: previewGenerations.canvas, fillGeneration: tileFillGeneration })
+        wait.controller.abort()
+      }
     return
   }
   const generation = previewGenerations[channel]
