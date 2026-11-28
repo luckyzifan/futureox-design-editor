@@ -75,3 +75,13 @@ node frontend/design-desktop/scripts/verify-packaged-mcp-path.mjs
 - 实际清单脚本退出 0：本机 Claude Code、Codex、Kimi Code CLI、Kimi CLI 1.x 为 `present_not_exercised`，DSH 为 `missing_environment`。所有外部客户端动作仍为 `not_run`。
 - 探测模块、清单脚本及打包 GUI 入口的 `node --check` 通过。没有运行正式安装包、真实外部客户端握手或 Windows 实机流程。
 - 现有 MCP 协议、资源、stdio、HTTP 门面与会话回归：110 项通过，0 失败、0 跳过。
+
+## 2026-11-28 macOS arm64 复核
+
+在隔离 worktree 中重跑同目标打包探针：`node --test frontend/design-desktop/test/packaged-mcp-path.test.mjs` 通过 1 项；`node frontend/design-desktop/scripts/verify-packaged-mcp-path.mjs` 退出 0，`cli.mjs` 与 `figma-cli.mjs` 的握手、读取、编辑、截图、撤销和撤权全部 `passed`。`cliSha256` 是 `3eecb2294be89a776000de6cbed0cde2045644cacc9eddf38c059d365e41f7d3`。这仍是同目标未签名包，不是正式安装包，也不是外部客户端实机；`externalClientAcceptance` 为 false，`editorGui` 和 `signedInstaller` 为 `not_run`。
+
+`mcp-client-acceptance.mjs` 退出 0：Claude Code、Kimi Code CLI、Kimi CLI 1.x 为 `present_not_exercised`，Codex 与 DeepSeek Harness 为 `missing_environment`；六个外部客户端步骤全部 `not_run`。把 `FUTUREOX_RELEASE_EXECUTABLE` 指向实际 0.0.0.1 DMG 内的可执行文件时，报告只写 `path_supplied_not_launched`。
+
+实际 0.0.0.1 包的 `design-mcp/src/cli.mjs` SHA-256 是 `d5fe76c5d5fe4105eee04f316b09e06a0a9522ce9bbcb7a4afcc17f1b6c7a75e`，`figma-cli.mjs` 是 `0c628d3d553dd740604b5f878162bc9c82b3f695cbf3379a7b01cd6424a3aa77`，与当前源码不同；包内 host 的配置函数参数形态也不同。当前探针不能直接套到这份旧包上。外部客户端六步必须在安装后的包上重做，或用当前源码重建正式包后再验。
+
+本轮另一个 campaign 正在做真实 GUI 性能测量，`test/packaged-local-mcp.mjs --live-clients --clients` 需要可见窗口，记为 `NOT_RUN`。完整身份、命令和门槛见 [0.0.0.1 release 包验收复核](verification/RELEASE_ACCEPTANCE_20261128.zh-CN.md)。

@@ -335,3 +335,15 @@ node frontend/design-desktop/scripts/release-desktop-session.mjs \
 - 会话报告里的 macOS 签名公证和 Windows Authenticode 是 `blocked`。这两项记为 `NOT_RUN`
 
 日志里有 dbus 系统总线连接错误。会话仍然完成打开、缩放、改名、撤销、自动保存、关闭重开和原生导出。这个错误不记成签名验收或硬件 GPU 验收。
+
+## 2026-11-28 macOS arm64 0.0.0.1 复核
+
+在隔离 worktree 中复核已发布的 `futureox-design-0.0.0.1-macos-arm64.dmg`（SHA-256 `730207741e9edcfa73716d1a04c327423414d37afffeaf06001864fa0ecb5aec`）和 `futureox-design-0.0.0.1-linux-x64.deb`（SHA-256 `092798551707d6c4016127afcded7404a37ada975a06262ae3b93a0877ff300c`）。两个包的发布源都是 `58f0d7542`，包内 `app.asar`、kernel WASM 和 native/sidecar 都与 `release-verification.json` 一致。
+
+- 打包 MCP 探针在同目标未签名包上通过 `cli.mjs`/`figma-cli.mjs` 的握手、读取、编辑、截图、撤销和撤权；它不是外部客户端实机，也不是这份 DMG。外部客户端六步仍是 `NOT_RUN`。
+- 自动保存的 20 项模拟故障全部通过；DMG 内真实 sidecar 在 SIGKILL 保存中退出后重开最后提交版本的用例通过。GUI 的保存中退出、磁盘满和失败提示仍是 `NOT_RUN`。
+- 按包内字节生成的组件清单发现当前 0.0.0.1 包有阻断性归属缺口：macOS 包没有 Electron `LICENSE`/`LICENSES.chromium.html` 归属副本、没有项目 LICENSE、图标和 color fixture 不可追溯、9 个 Rust crate 无包内许可文本、2 个验证页仍在包内；Linux 包缺少项目 LICENSE、图标/color fixture 归属和 2 个 Rust crate 许可文本。`--require-package` 在两个包上都退出 1。提交的清单是 `docs/publication/release-component-inventory-0.0.0.1-darwin-arm64.json` 与 `...-linux-x64.json`。
+- 当前 `main` 的打包输入已补齐上述 Rust notice 和图标来源，但没有重新构建新的安装包；因此这些缺口不能用源码清单关闭。
+- macOS DMG 的打开、导航、编辑、撤销、自动保存、关闭重开和原生导出因并发 GUI 性能测量没有执行，`releaseAcceptance` 保持 `not_closed`。签名与公证仍是 `not_run`。
+
+完整命令、退出码、哈希和复跑门槛见 [0.0.0.1 release 包验收复核](verification/RELEASE_ACCEPTANCE_20261128.zh-CN.md)。
