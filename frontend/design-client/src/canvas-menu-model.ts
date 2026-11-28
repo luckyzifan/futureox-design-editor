@@ -209,6 +209,11 @@ const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = 
   'rotate-copies': ['旋转副本', 'Rotate Copies'],
   'select-containing-symbol': ['选择包含的控件', 'Select Containing Symbol'],
   'flatten': ['拼合选中图像', 'Flatten Selection to Bitmap'],
+  'duplicate-behind': ['在后面复制', 'Duplicate Behind'],
+  'outline-stroke': ['轮廓化', 'Convert to Outlines'],
+  'set-prototype-start': ['将画框设为起点', 'Use Frame as Start Point'],
+  'convert-to-hotspot': ['转换为热区', 'Convert to Hotspot Layer'],
+  'remove-prototype-links': ['移除链接', 'Remove Links'],
 }
 export function sketchCommandLabel(command: EditorCommand, locale: 'zh-CN' | 'en') {
   return sketchLabels[command]?.[locale === 'en' ? 1 : 0]

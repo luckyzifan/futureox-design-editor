@@ -167,3 +167,19 @@ test('one committed duration typing sequence has one undo step and Escape cancel
   expect(duration()).toBe(450)
   expect(field().value).toBe('450')
 })
+
+test('the Interaction inspector exposes the native maintain-scroll flag on navigate actions', async () => {
+  await render()
+  const flag = () => document.querySelector<HTMLInputElement>('[aria-label="点击后保持滚动位置"]')!
+  expect(flag()).not.toBeNull()
+  expect(flag().disabled).toBe(true)
+  await setSelect('链接到', frame.id)
+  await render()
+  expect(flag().disabled).toBe(false)
+  await act(async () => { flag().click() })
+  expect(editor.state.doc.prototype?.interactions[rectangle.id][0].actions[0]).toMatchObject({
+    kind: 'navigate', target: frame.id, transitionPreserveScroll: true,
+  })
+  await act(async () => { editor.undo() })
+  expect(editor.state.doc.prototype?.interactions[rectangle.id][0].actions[0].transitionPreserveScroll).toBeUndefined()
+})

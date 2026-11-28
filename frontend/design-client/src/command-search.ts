@@ -17,6 +17,7 @@ import { componentSourceId, containingSymbolId } from './component-navigation'
 import { commandRecentRank, recordCommandSearchUse } from './command-recent'
 import { canCloseSelectionPath, canJoinSelectionPaths, canReverseSelectionPath } from './sketch-path-commands'
 import { canRotateCopies } from './sketch-rotate-copies'
+import { canConvertToHotspot, canRemovePrototypeLinks, canSetPrototypeStart } from './sketch-prototype-actions'
 import { editableFrameCrop } from './selection-properties'
 import { commitPendingEdits } from './pending-edits'
 import { componentSources } from './components'
@@ -55,7 +56,7 @@ const groupLabels: Readonly<Record<string, readonly [string, string]>> = {
   structure: ['结构', 'Structure'], layout: ['布局', 'Layout'], component: ['控件', 'Components'],
   visibility: ['可见性', 'Visibility'], transform: ['变换', 'Transform'], geometry: ['形状', 'Geometry'],
   naming: ['命名', 'Naming'], selection: ['选区', 'Selection'], view: ['视图', 'View'],
-  tools: ['工具', 'Tools'], arrange: ['排列', 'Arrange'], path: ['路径', 'Path'],
+  tools: ['工具', 'Tools'], arrange: ['排列', 'Arrange'], path: ['路径', 'Path'], prototype: ['原型', 'Prototype'],
 }
 
 export function commandSearchGroupLabel(group: string, locale: InterfaceLocale): string {
@@ -96,6 +97,9 @@ const catalog: readonly Spec[] = [
   { command: 'join-paths', layout: 'sketch', zh: '连接路径', en: 'Join', group: 'path', aliases: ['join paths'] },
   { command: 'reverse-order', layout: 'sketch', zh: '倒序', en: 'Reverse Order', group: 'path', aliases: ['reverse path', '反转路径'] },
   { command: 'rotate-copies', layout: 'sketch', zh: '旋转副本', en: 'Rotate Copies', group: 'path', aliases: ['rotate copies', '旋转复制'] },
+  { command: 'set-prototype-start', layout: 'sketch', zh: '将画框设为起点', en: 'Use Frame as Start Point', group: 'prototype', aliases: ['start point', '原型起点'] },
+  { command: 'convert-to-hotspot', layout: 'sketch', zh: '转换为热区', en: 'Convert to Hotspot Layer', group: 'prototype', aliases: ['hotspot', '热区'] },
+  { command: 'remove-prototype-links', layout: 'sketch', zh: '移除链接', en: 'Remove Links', group: 'prototype', aliases: ['remove links', '移除原型链接'] },
   { command: 'select-containing-symbol', layout: 'sketch', zh: '选择包含的控件', en: 'Select Containing Symbol', group: 'selection' },
   { command: 'fit-pixel-bounds', layout: 'sketch', zh: '使边界贴合像素', en: 'Fit to pixel bounds', group: 'transform' },
   { command: 'round-to-pixel', layout: 'sketch', zh: '舍入到像素', en: 'Round to pixel', group: 'transform' },
@@ -270,6 +274,12 @@ function explain(editor: Editor, action: CommandSearchAction, context: ShortcutC
     phrase(locale, '请选择一条矢量路径', 'Select a vector path')
   if (command === 'rotate-copies') return canRotateCopies(editor) ? undefined :
     phrase(locale, '请选择可旋转的未锁定图层', 'Select mutable layers to rotate')
+  if (command === 'set-prototype-start') return canSetPrototypeStart(editor) ? undefined :
+    phrase(locale, '请选择一个未锁定的画框', 'Select one unlocked frame')
+  if (command === 'convert-to-hotspot') return canConvertToHotspot(editor) ? undefined :
+    phrase(locale, '请选择未锁定的非画框图层', 'Select unlocked non-frame layers')
+  if (command === 'remove-prototype-links') return canRemovePrototypeLinks(editor) ? undefined :
+    phrase(locale, '所选图层没有原型链接', 'The selected layers have no prototype links')
   if (command === 'select-containing-symbol') {
     const target = nodes.length === 1 ? containingSymbolId(doc, nodes[0].id, editor.parentMap()) : undefined
     return target ? undefined : phrase(locale, '当前图层不在控件内', 'The layer is not inside a component')

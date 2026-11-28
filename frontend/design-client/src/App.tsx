@@ -1260,6 +1260,15 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       if (largeDocument || source) return
       if (name === 'settings') { openSettings(); return }
       if (name === 'command-search') { setMenu(false); requestCommandSearch(document.activeElement); return }
+      if (name === 'preview-prototype') {
+        setMenu(false)
+        if (uiMode === 'sketch') {
+          if (editor.state.doc.pages.some(page => page.id === editor.state.page && page.children.length)) setShowSketchPreview(true)
+          return
+        }
+        if (prototypePlaybackReady(editor.state.doc, editor.state.page)) setShowPrototype({ kind: 'present' })
+        return
+      }
       if (name === 'automation-settings') { setMenu(false); setShowAutomation(true); return }
       if (name === 'plugins') { setMenu(false); setShowPlugins(true); return }
       if (showHome) {

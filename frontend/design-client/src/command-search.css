@@ -4,13 +4,15 @@
   z-index: 1300;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
-  padding: 12vh 16px 16px;
-  background: #1c19173d;
+  /* Native Sketch Command Bar is a 626×500 floating panel near the bottom
+     centre of the screen and does not dim the canvas behind it. */
+  align-items: flex-end;
+  padding: 0 16px 12vh;
+  background: transparent;
 }
 .command-search-dialog {
-  width: min(560px, 100%);
-  max-height: min(640px, calc(100dvh - 48px));
+  width: min(626px, 100%);
+  max-height: min(500px, calc(100dvh - 48px));
   position: relative;
   display: flex;
   flex-direction: column;
