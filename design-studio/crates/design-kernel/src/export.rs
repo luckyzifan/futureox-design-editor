@@ -2212,7 +2212,11 @@ mod tests {
         let image = image::load_from_memory(&png).unwrap().into_rgba8();
         assert_eq!(image.dimensions(), (184, 96));
         // Decoded RGBA8 of the opaque fill on a transparent Figma layer export.
-        assert_eq!(format!("{:x}", Sha256::digest(image.as_raw())),
+        let digest: String = Sha256::digest(image.as_raw())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        assert_eq!(digest,
             "5df57cd348ab7b4b2c3888c296c9b9a5af6a61987e721a6a2543a98a44c121e2");
     }
 }
