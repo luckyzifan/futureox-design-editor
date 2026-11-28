@@ -1574,7 +1574,7 @@ async function buildWindow() {
           { label: 'Detach Symbol', click: () => sendCommand('detach-instance') },
           { type: 'separator' },
           { label: 'Mask', click: () => sendCommand('mask-selection') },
-          { label: 'Flatten', click: () => sendCommand('flatten') },
+          { label: 'Flatten Selection to Bitmap', click: () => sendCommand('flatten') },
           { type: 'separator' },
           { label: 'Select Containing Symbol', click: () => sendCommand('select-containing-symbol') },
           { label: 'Enter Component Source', accelerator: 'CmdOrCtrl+Enter', click: () => sendCommand('edit-selection') },
@@ -1609,6 +1609,7 @@ async function buildWindow() {
           { label: 'Close Path', click: () => sendCommand('close-path') },
           { label: 'Join', click: () => sendCommand('join-paths') },
           { label: 'Reverse Order', click: () => sendCommand('reverse-order') },
+          { label: 'Rotate Copies…', click: () => sendCommand('rotate-copies') },
           { label: 'Outline Stroke', accelerator: 'CmdOrCtrl+Alt+O', click: () => sendCommand('outline-stroke') },
           { label: 'Convert to Vector', click: () => sendCommand('convert-vector') },
           { type: 'separator' },
@@ -1646,6 +1647,13 @@ async function buildWindow() {
               }
             },
           }, { type: 'separator' }] : []),
+          ...(sketchMenu ? [
+            // Native Sketch switches pages with Fn↑/Fn↓; the renderer owns that
+            // chord so the menu carries no accelerator that would double-handle it.
+            { label: 'Previous Page', click: () => sendCommand('previous-page') },
+            { label: 'Next Page', click: () => sendCommand('next-page') },
+            { type: 'separator' },
+          ] : []),
           { label: 'Center Selection', click: () => sendCommand('center-selection') },
           { label: 'Actual Size', accelerator: 'CmdOrCtrl+0', click: () => sendCommand('zoom100') },
           { label: 'Zoom In', accelerator: 'CmdOrCtrl+Plus', click: () => sendCommand('zoomIn') },

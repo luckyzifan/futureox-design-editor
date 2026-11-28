@@ -1622,13 +1622,25 @@ test('Sketch menu bar adds Insert, Layer, Arrange, Text, Path and Help with exec
     leaves('Path').find(item => item.label === 'Close Path').click()
     leaves('Path').find(item => item.label === 'Join').click()
     leaves('Path').find(item => item.label === 'Reverse Order').click()
+    leaves('Path').find(item => item.label === 'Rotate Copies…').click()
     leaves('Help').find(item => item.label === 'Run Command…').click()
     assert.deepEqual(state.sent.map(([, command]) => command), [
-      'select-containing-symbol', 'edit-selection', 'set-tool-text', 'close-path', 'join-paths', 'reverse-order', 'command-search',
+      'select-containing-symbol', 'edit-selection', 'set-tool-text', 'close-path', 'join-paths', 'reverse-order', 'rotate-copies', 'command-search',
     ])
+    assert.ok(leaves('Layer').some(item => item.label === 'Flatten Selection to Bitmap'))
     assert.equal(leaves('Arrange').find(item => item.label === 'Align Left').accelerator, 'Control+Command+Left')
+    const view = leaves('View')
+    assert.equal(view.find(item => item.label === 'Previous Page').accelerator, undefined)
+    state.sent = []
+    view.find(item => item.label === 'Previous Page').click()
+    view.find(item => item.label === 'Next Page').click()
+    assert.deepEqual(state.sent.map(([, command]) => command), ['previous-page', 'next-page'])
     await state.invoke('set-interface-locale', 'zh-CN')
     for (const label of ['插入', '图层', '排列', '文本', '路径', '帮助']) assert.ok(top(label), label)
+    assert.ok(top('视图').submenu.some(item => item.label === '上一页'))
+    assert.ok(top('视图').submenu.some(item => item.label === '下一页'))
+    assert.ok(top('路径').submenu.some(item => item.label === '旋转副本…'))
+    assert.ok(top('图层').submenu.some(item => item.label === '拼合选中图像'))
   } finally { await state.dispose() }
 })
 
