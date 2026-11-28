@@ -5,7 +5,7 @@ import { equalValue } from '../document-patch'
 import {regionalGaussianDisplay,regionalGaussianAllocationFailure} from './regional-gaussian-display'
 import {MATERIAL_BAND,sourceBandDefersWholePresent} from './source-display-band'
 import { ResidentPoseReuse, samePoseTransforms, newerPoseDisposition, terminalPoseDisposition } from './resident-pose-reuse'
-import { MAX_CANVAS_RASTER_SCALE } from '../canvas-camera'
+import { MAX_CANVAS_RASTER_SCALE, MAX_CANVAS_ZOOM } from '../canvas-camera'
 import { documentCapacity, pinDocumentCapacity } from '../document-capacity'
 import { initializeKernelModule } from './module'
 import { createTileCostDiagnostics } from './tile-cost-diagnostics'
@@ -1544,6 +1544,13 @@ if (poseSession && (poseSession.native || poseSession.scene.interactionFixedMask
   if (request.command === 'cancel-tile-fill') {
     tileFillGeneration++
     for (const wait of packetWaits) if (wait.channel === 'canvas' && wait.tiled) wait.controller.abort()
+    const density = request.abandonedDensity
+    if (Number.isFinite(density) && density > 0)
+      for (const wait of canvasTilePreparations) if (wait.density === density && !wait.controller.signal.aborted) {
+        terminalDiagnostics.record('cancel', { requestId: wait.requestId, reasonCode: 3, channel: 0,
+          generation: previewGenerations.canvas, fillGeneration: tileFillGeneration })
+        wait.controller.abort()
+      }
     return
   }
   const generation = previewGenerations[channel]
@@ -2665,6 +2672,11 @@ const overviewBitmapCommit = bitmapViewportCommit && !!displayFrame && allowsRed
                   [(sourceBand || commitBand) && Math.max(tile.width,tile.height) > TILE_SIDE+2 ? 'captureViewport' : 'gpuViewport']:{x:tile.x+Math.floor(renderOptions.view.x),y:tile.y+Math.floor(renderOptions.view.y),w:tile.width,h:tile.height},
                   ...(prepareViewport ? {prepareViewport:prepareForTile(tile)} : {})}
                 const signal = tilePreparation?.controller.signal ?? packetWait?.controller.signal
+                // Adjacent visible tiles at the full endpoint density share
+                // immutable curve programs. Reuse the receiver's acknowledged
+                // programs while keeping the same exact crop and sample lattice.
+                const reuseTileCurves = !!tilePreparation && !tile.prefetch && executionPolicy?.desktopDisplay &&
+                  displayFrame?.view.zoom === MAX_CANVAS_ZOOM && tile.zoom === displayFrame.view.zoom * displayFrame.dpr
                 const ordinary = () => {
                   const serialized = JSON.stringify(options)
                   if (reuseUnusedPacket && !tile.prefetch && tile.zoom <= LOW_ZOOM_SAMPLING_LIMIT && serialized.length <= 65536) {
@@ -2676,7 +2688,7 @@ const overviewBitmapCommit = bitmapViewportCommit && !!displayFrame && allowsRed
                       return Promise.resolve(unused.packet)
                     }
                   }
-                  return compilePacket(kernel, serialized, signal)
+                  return compilePacket(kernel, serialized, signal, reuseTileCurves ? 'curves' : 'exact')
                 }
                 const inBands=()=>compilePacket(kernel,JSON.stringify({...options,gpuGaussianRegions:true,gpuGaussianReduction:0}),signal)
                 // One admission hint for this owner, revision, scale and visible

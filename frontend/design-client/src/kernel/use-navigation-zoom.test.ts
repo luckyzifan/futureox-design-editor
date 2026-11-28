@@ -31,13 +31,14 @@ function harness() {
   owners.push(dispose)
   return {
     render(zoom: number, identity = 'document', enabled = true,
-      pan: { enabled?: boolean; held?: boolean; x?: number; y?: number; sampleOnFrame?: boolean; adaptiveQuiet?: boolean } = {}) {
+      pan: { enabled?: boolean; held?: boolean; x?: number; y?: number; sampleOnFrame?: boolean; adaptiveQuiet?: boolean; settleAtMaximumZoom?: boolean } = {}) {
       state = ref = effect = 0; layouts = []
       const internal = (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE
       const previous = internal.H
       let value: ReturnType<typeof useNavigationZoom>
       try { internal.H = dispatcher; value = useNavigationZoom({ x: pan.x || 0, y: pan.y || 0, zoom },
-        identity, enabled, pan.enabled === true, pan.held === true, pan.sampleOnFrame === true, pan.adaptiveQuiet === true) }
+        identity, enabled, pan.enabled === true, pan.held === true, pan.sampleOnFrame === true,
+        { adaptiveQuiet: pan.adaptiveQuiet === true, settleAtMaximumZoom: pan.settleAtMaximumZoom }) }
       finally { internal.H = previous }
       layouts.forEach(run => run()); return value!
     },
@@ -58,6 +59,16 @@ test('first changed input suppresses exact work before the sampled preview layou
   h.frame(160); expect(h.render(32).active).toBe(true)
   h.frame(176); expect(h.render(32).active).toBe(false)
   expect(h.pending).toBe(0)
+})
+
+test('the inward maximum starts exact work immediately and a reversal still enters motion', () => {
+  const h = harness(), options = { enabled: true, settleAtMaximumZoom: true }
+  h.render(128, 'document', true, options)
+  expect(h.render(240, 'document', true, options).active).toBe(true)
+  expect(h.render(256, 'document', true, { ...options, x: .375 }).active).toBe(false)
+  expect(h.pending).toBe(0)
+  expect(h.render(256, 'document', true, { ...options, x: .375 }).active).toBe(false)
+  expect(h.render(240, 'document', true, options).active).toBe(true)
 })
 
 test('dense opt-in input begins final refinement after measured cadence without the fixed 160ms tail',()=>{
