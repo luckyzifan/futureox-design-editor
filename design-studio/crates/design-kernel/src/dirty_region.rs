@@ -19,9 +19,10 @@
 use crate::font::Fonts;
 use crate::math::Transform;
 use crate::ops::Op;
+use crate::path::{LocalPaths, SharedPaths};
 use crate::scene::{Document, Node};
 use crate::tile_stack::raster_addresses;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Tile addressing parameters; mirrors the arguments of
 /// [`crate::tile_stack::raster_addresses`].
@@ -280,7 +281,7 @@ pub(crate) fn resolved_leaf_pose_damage(doc:&Document,parents:&crate::render_ind
         } else {
             let before=subtree_bounds_from(doc,id,matrix,Some(fonts),false)?;
             let mut next=node.clone();next.transform=*transform;
-            let after=subtree_bounds_node_observed(doc,id,matrix,Some(fonts),false,false,&mut|_,_|true,Some(&next))?;
+            let after=subtree_bounds_node_observed(doc,id,matrix,Some(fonts),false,false,&mut|_,_|true,Some(&next),None)?;
             [before,after]
         };
         for bounds in bounds {
@@ -526,7 +527,7 @@ fn patch_damage_impl(
             let mut shape = old.clone();
             shape.effects.clear();
             let matrix = parent_transform(before, before_map, id)?;
-            subtree_bounds_node_observed(before, id, matrix, fonts, false, false, &mut |_, _| true, Some(&shape))
+            subtree_bounds_node_observed(before, id, matrix, fonts, false, false, &mut |_, _| true, Some(&shape), None)
                 .map(|bounds| (id.as_str(), bounds))
         })
     } else { None };
@@ -677,17 +678,25 @@ fn union_box(a: &mut [f64; 4], b: [f64; 4]) {
 fn subtree_bounds_from(doc:&Document,id:&str,matrix:Transform,fonts:Option<&Fonts>,device:bool)->Option<[f64;4]> {
     subtree_bounds_observed(doc,id,matrix,fonts,device,false,&mut|_,_|true)
 }
-/// Shared conservative geometry oracle, once per node. Only the new radial
-/// filter's source planner needs this map; ordinary damage queries stay unchanged.
+/// Shared conservative geometry oracle for the filter source planner.
 pub(crate) fn render_bounds_map(doc:&Document,roots:&[String],camera:Transform,fonts:&Fonts)
-    ->Result<std::collections::HashMap<String,([f64;4],Transform)>,String> {
-    let mut result=std::collections::HashMap::new();
+    ->Result<HashMap<String,([f64;4],Transform)>,String> {
+    render_bounds_map_with_paths(doc, roots, camera, fonts, None)
+}
+
+/// Existing local paths from the same resolved document are independent of
+/// the camera. Borrow them when available, without retaining offscreen paths.
+pub(crate) fn render_bounds_map_with_paths(
+    doc: &Document, roots: &[String], camera: Transform, fonts: &Fonts,
+    path_cache: Option<&HashMap<String, SharedPaths>>,
+) -> Result<HashMap<String, ([f64; 4], Transform)>, String> {
+    let mut result=HashMap::new();
     result.try_reserve(doc.nodes.len()).map_err(|_|"Zoom bounds allocation failed")?;
     for id in roots {
-        let value=subtree_bounds_observed(doc,id,camera,Some(fonts),true,false,&mut|id,value|{
+        let value=subtree_bounds_node_observed(doc,id,camera,Some(fonts),true,false,&mut|id,value|{
             if crate::render_cancellation::checkpoint().is_err(){return false}
             if let Some(value)=value {result.insert(id.to_owned(),value);} true
-        });
+        },None,path_cache);
         if value.is_none(){crate::render_cancellation::checkpoint()?;return Err("Unable to bound zoom source geometry".into())}
     }
     Ok(result)
@@ -702,11 +711,11 @@ fn subtree_bounds_observed<F: FnMut(&str, Option<([f64;4], Transform)>) -> bool>
         controls: bool,
         observe: &mut F,
     ) -> Option<[f64; 4]> {
-        subtree_bounds_node_observed(doc,id,matrix,fonts,device,controls,observe,None)
+        subtree_bounds_node_observed(doc,id,matrix,fonts,device,controls,observe,None,None)
 }
 fn subtree_bounds_node_observed<F: FnMut(&str, Option<([f64;4], Transform)>) -> bool>(
         doc:&Document,id:&str,matrix:Transform,fonts:Option<&Fonts>,device:bool,controls:bool,
-        observe:&mut F,override_node:Option<&Node>,
+        observe:&mut F,override_node:Option<&Node>,path_cache:Option<&HashMap<String,SharedPaths>>,
     )->Option<[f64;4]>{
         if !observe(id,None) {return None;}
         let Some(node) = override_node.or_else(||doc.nodes.get(id)) else {
@@ -752,6 +761,7 @@ fn subtree_bounds_node_observed<F: FnMut(&str, Option<([f64;4], Transform)>) -> 
         // Damage and zoom dependency oracles retain their original tight paths.
         // Unknown/generated curves keep the exact path builder below.
         let control = controls.then(||crate::geometry_support::leaf_control_bounds(node,m)).flatten();
+        let built;
         let paths = if let Some(actual)=control {
             let b=[f64::from(actual.x)-margin,f64::from(actual.y)-margin,
                 f64::from(actual.right())+margin,f64::from(actual.bottom())+margin];
@@ -767,18 +777,24 @@ fn subtree_bounds_node_observed<F: FnMut(&str, Option<([f64;4], Transform)>) -> 
                 let Ok(path) = fonts.node_path_shared(node) else {
                     return None;
                 };
-                Some(crate::path::LocalPaths::Text(path))
+                built = LocalPaths::Text(path);
+                Some(&built)
             }
+        } else if let Some(path) = path_cache.and_then(|paths| paths.get(id))
+            && matches!(path.as_ref(), LocalPaths::Owned(_))
+        {
+            Some(path.as_ref())
         } else {
             let Ok(paths) = node.paths() else {
                 return None;
             };
-            Some(crate::path::LocalPaths::Owned(paths))
+            built = LocalPaths::Owned(paths);
+            Some(&built)
         };
         if let Some(paths) = paths {
             let (fill,stroke)=paths.pair();
             for path in [fill, stroke] {
-                if let Some(actual) = crate::bounds::path_bounds(&path, m) {
+                if let Some(actual) = crate::bounds::path_bounds(path, m) {
                     let b = [
                         actual.x - margin,
                         actual.y - margin,
@@ -800,7 +816,7 @@ fn subtree_bounds_node_observed<F: FnMut(&str, Option<([f64;4], Transform)>) -> 
         // in world units, including their own effects; never transform twice.
         let mut children: Option<[f64; 4]> = None;
         for child in &node.children {
-            let child = subtree_bounds_observed(doc, child, m, fonts, device, controls, observe)?;
+            let child = subtree_bounds_node_observed(doc, child, m, fonts, device, controls, observe, None, path_cache)?;
             if let Some(children) = &mut children {
                 union_box(children, child);
             } else {
