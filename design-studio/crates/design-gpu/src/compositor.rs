@@ -91,20 +91,20 @@ fn rect_box(scene: &GpuScene, n: &GpuNode) -> Option<[f32; 4]> {
     if words[12..28].iter().any(|word| *word != 0.) {
         return None;
     }
-    let box = [
+    let bounds = [
         words[4] + words[6],
         words[8] + words[10],
         words[5] + words[7],
         words[9] + words[11],
     ];
-    (box[0] >= 0.
-        && box[1] >= 0.
-        && box[2] > box[0]
-        && box[3] > box[1]
-        && box[2] <= rect.w as f32
-        && box[3] <= rect.h as f32
-        && box.iter().all(|v| v.abs() <= 16_777_216.))
-        .then_some(box)
+    (bounds[0] >= 0.
+        && bounds[1] >= 0.
+        && bounds[2] > bounds[0]
+        && bounds[3] > bounds[1]
+        && bounds[2] <= rect.w as f32
+        && bounds[3] <= rect.h as f32
+        && bounds.iter().all(|v| v.abs() <= 16_777_216.))
+        .then_some(bounds)
 }
 pub(crate) fn render(
     frame: &mut Frame<'_>,
@@ -1680,7 +1680,7 @@ impl Compositor<'_, '_, '_> {
             if b.empty() {
                 continue;
             }
-            let (first, count, bands, flags, box) = match (&p.analytic, rect_box(self.scene, n)) {
+            let (first, count, bands, flags, bounds) = match (&p.analytic, rect_box(self.scene, n)) {
                 (Some(a), _) => {
                     if a.count == 0 {
                         continue;
@@ -1695,7 +1695,7 @@ impl Compositor<'_, '_, '_> {
                 }
                 // Flag 2 selects the exact axis-aligned rectangle test; bit 0
                 // still records the fill rule the single-path shader shares.
-                (None, Some(box)) => (0., 0., -1., 2. + f32::from(p.rule == "evenodd"), box),
+                (None, Some(bounds)) => (0., 0., -1., 2. + f32::from(p.rule == "evenodd"), bounds),
                 (None, None) => continue,
             };
             let color = futureox_design_kernel::paint::solid_rgba8(
@@ -1712,10 +1712,10 @@ impl Compositor<'_, '_, '_> {
                 count,
                 bands,
                 flags,
-                box[0],
-                box[1],
-                box[2],
-                box[3],
+                bounds[0],
+                bounds[1],
+                bounds[2],
+                bounds[3],
                 color[0],
                 color[1],
                 color[2],
