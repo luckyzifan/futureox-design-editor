@@ -643,18 +643,24 @@ export function ProgressiveSurfaceImpl(
     !nativeNavigation && !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles)
   const latestNativeNavigation = useRef(nativeNavigation)
   latestNativeNavigation.current = nativeNavigation
-  const navigationGesture = useNavigationZoom(view, identity, singleCanvas && !props.paused && props.visible !== false &&
-    !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles && !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview && !hdrCompositing,
+  const navigationEnabled = singleCanvas && !props.paused && props.visible !== false &&
+    !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles && !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview && !hdrCompositing
+  const settleAtMaximumZoom = navigationEnabled && residentDisplay && progressiveNativeRepair && filteredContent && !cameraDependent
+  const navigationGesture = useNavigationZoom(view, identity, navigationEnabled,
     residentDisplay && filteredContent, props.panGestureActive === true, nativeNavigation,
     {
       adaptiveQuiet: import.meta.env.VITE_DESIGN_NAVIGATION_ADAPTIVE_QUIET!=='0' && residentDisplay &&
         (!filteredContent || (progressiveNativeRepair && !cameraDependent ? 'filtered' : false)),
-      settleAtMaximumZoom: residentDisplay && progressiveNativeRepair && filteredContent && !cameraDependent,
+      settleAtMaximumZoom,
     })
-  const frameZooming=useZoomActivity(view.zoom,identity)
+  // The navigation state already knows this camera is final. The two-frame
+  // activity signals must not restart its exact fill after it has begun.
+  const settledMaximum = settleAtMaximumZoom && view.zoom === MAX_CANVAS_ZOOM &&
+    !navigationGesture.active && !navigationGesture.suspended && !props.panGestureActive
+  const frameZooming=useZoomActivity(view.zoom,identity) && !settledMaximum
   const sharpZooming=useSharpZoomActivity(sharpNavigation?view.zoom:1,sharpNavigation?identity:'sharp-disabled')
   const zooming=sharpNavigation?sharpZooming:frameZooming
-  const cameraMoving = useCameraActivity(view, identity)
+  const cameraMoving = useCameraActivity(view, identity) && !settledMaximum
   const motionPreview=!sharpNavigation&&!gestureHeadroom&&!nativeVisibleTiles&&residentDisplay&&zooming&&!props.interaction?.active&&!props.grid&&!props.checkerboard&&!props.pixelPreview&&
     import.meta.env.VITE_DESIGN_VIEWPORT_PREVIEW!=='0'
   const lastIdentity = useRef(identity)
@@ -1928,6 +1934,7 @@ focus?: SurfaceProps['overview'],
         // do not pay for a page overview on pointer release.
         if (residentDisplay && !reusePageOverview && !nativeReturnReady && !coveredHighZoomOut && !sharpNavigation && !nativeVisibleTiles && !props.grid && !props.checkerboard &&
             !props.pixelPreview && !props.interaction?.active && !retainedEditViewport && (!navigationZoom.active || zoomOutCoverage) &&
+            (!settledMaximum || !hasRepairBacking()) &&
             (!displayed || (displayed.document === doc && displayed.revision === contract.revision && previousView &&
               (previousView.x !== view.x || previousView.y !== view.y || previousView.zoom !== view.zoom)))) {
           // Fill bounded page coverage during the first desktop render so
@@ -2718,6 +2725,7 @@ focus?: SurfaceProps['overview'],
     nativeNavigation,
     nativeVisibleTiles,
     progressiveNativeRepair,
+    settledMaximum,
     sharpNavigation,
     zooming,
     cameraMoving,
