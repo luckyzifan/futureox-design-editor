@@ -27,7 +27,7 @@ import { viewportPreviewRole } from './frame-handoff'
 import { acceptFrameClarity } from './frame-acceptance'
 import { previewCameraScaleWithinLimit, tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
 import { canvasStatusLabel } from '../canvas-status-label'
-import { fitBounds, type CanvasCamera } from '../canvas-camera'
+import { fitBounds, MAX_CANVAS_ZOOM, type CanvasCamera } from '../canvas-camera'
 import { boundsContain, intersectBounds } from './page-translation'
 import { useRasterDensity } from './use-raster-density'
 import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
@@ -2306,9 +2306,12 @@ focus?: SurfaceProps['overview'],
         // Stable world samples reuse pixels within a density level; native
         // pixel/chrome paths retain their explicit camera phase.
         const rekey = (tile: RasterTile) => ({ ...tile, key: tileComputationKey(tile, renderCamera, cameraDependent) })
-        // A same-content backing already follows the minified camera. Repair
-        // cold edges on its native lattice while retaining the full prepare guard.
-        const edgeViewport = view.zoom < 1 && progressiveNativeRepair && reusableFrame && residentDisplay && phaseExact &&
+        // A same-content backing already follows this camera. At fit-out and
+        // at the inward endpoint, compile only the visible interiors of cold
+        // edge tiles. Their physical lattice, gutters and prepare guard stay intact.
+        const clipViewportEdges = view.zoom < 1 || view.zoom === MAX_CANVAS_ZOOM &&
+          filteredContent && !props.panGestureActive && !props.animation
+        const edgeViewport = clipViewportEdges && progressiveNativeRepair && reusableFrame && residentDisplay && phaseExact &&
           renderScale === detailLevel &&
           rejectedEdgeCrop.current !== frameKey &&
           !cameraDependent && !navigationZoom.active && !props.interaction?.active &&
