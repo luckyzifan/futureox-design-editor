@@ -1,13 +1,38 @@
-import type { CanvasCamera } from '../canvas-camera'
+import { MAX_CANVAS_ZOOM, zoomAt, type CanvasCamera } from '../canvas-camera'
 import { selectSharperCoverage, tileVisibleWorld } from './coverage-stack'
 import { tilesCoverBounds, type RasterTile } from './tile-cache'
 import { clipAlignedTile } from './tile-plan-aligned'
+import { navigationCoverageBounds } from './navigation-coverage'
 
 export type CameraSample = {
   view: CanvasCamera
   width: number
   height: number
   dpr: number
+}
+
+function inwardZoomAnchor(view: CanvasCamera, previous: CanvasCamera) {
+  const delta = view.zoom - previous.zoom
+  if (!(delta > 0)) return
+  return { x: (previous.x * view.zoom - view.x * previous.zoom) / delta,
+    y: (previous.y * view.zoom - view.y * previous.zoom) / delta }
+}
+
+/** A retained maximum-zoom window already supplies sharper pixels around this
+ * wheel anchor. This only defers intermediate focus work. The actual endpoint
+ * still has to pass its ordinary camera, phase, and coverage checks. */
+export function hasCachedMaximumZoomCoverage(tiles: readonly RasterTile[], view: CanvasCamera,
+  previous: CanvasCamera, size: { width: number; height: number; dpr: number }) {
+  const point = inwardZoomAnchor(view, previous)
+  const { width, height, dpr } = size
+  if (!point || !(point.x >= 0 && point.x < width && point.y >= 0 && point.y < height) ||
+      !(dpr > 0) || !Number.isFinite(dpr) || view.zoom >= MAX_CANVAS_ZOOM) return false
+  const nativeScale = MAX_CANVAS_ZOOM * dpr
+  const residents = tiles.filter(tile => tile.zoom === nativeScale)
+  if (!residents.length) return false
+  const endpoint = zoomAt(view, MAX_CANVAS_ZOOM, point)
+  return endpoint.zoom === MAX_CANVAS_ZOOM &&
+    tilesCoverBounds(residents, navigationCoverageBounds(endpoint, width, height))
 }
 
 /** The incremental camera transform identifies the unchanged screen point.
@@ -17,14 +42,10 @@ export function focusTileDuringZoom(
   tiles: readonly RasterTile[], view: CanvasCamera, previous: CanvasCamera,
   size: { width: number; height: number },
 ) {
-  const delta = view.zoom - previous.zoom
-  if (!(delta > 0)) return
-  const anchor = (old: number, current: number, extent: number) => {
-    const screen = (old * view.zoom - current * previous.zoom) / delta
-    return ((screen >= 0 && screen < extent ? screen : extent / 2) - current) / view.zoom
-  }
-  const x = anchor(previous.x, view.x, size.width)
-  const y = anchor(previous.y, view.y, size.height)
+  const point = inwardZoomAnchor(view, previous)
+  if (!point) return
+  const x = ((point.x >= 0 && point.x < size.width ? point.x : size.width / 2) - view.x) / view.zoom
+  const y = ((point.y >= 0 && point.y < size.height ? point.y : size.height / 2) - view.y) / view.zoom
   const tile = tiles.find(tile => {
     const core = tileVisibleWorld(tile, view, size)
     return core && x >= core.x && y >= core.y && x < core.x + core.width && y < core.y + core.height
