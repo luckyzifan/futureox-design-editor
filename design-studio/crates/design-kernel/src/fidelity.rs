@@ -330,63 +330,22 @@ pub fn resolve_sample_planes(samples: [&[u8]; 4]) -> Vec<u8> {
 // is inserted between spatial filtering and accumulation. This order matches
 // complete official gradient/coverage exports and the independent numeric probes.
 pub fn resolve_sample_planes_2x(samples: [&[u8]; 4], width: u32, height: u32) -> Vec<u8> {
-    resolve_sample_planes_2x_with(samples, width, height, |_, _| false)
-}
-
-fn resolve_sample_planes_2x_with(
-    samples: [&[u8]; 4], width: u32, height: u32, precise: impl Fn(u32, u32) -> bool,
-) -> Vec<u8> {
     let mut out = vec![0; width as usize * height as usize * 4];
     for y in 0..height as usize {
         for x in 0..width as usize {
             let mut accumulated = [0_u8; 4];
-            let mut sum = [0_f32; 4];
-            let keep_mean = precise(x as u32, y as u32);
             for (pass, index) in EXPORT_ORDER.into_iter().enumerate() {
                 let pixels = std::array::from_fn(|corner| {
                     let i = ((y * 2 + corner / 2) * width as usize * 2 + x * 2 + corner % 2) * 4;
                     premultiplied_bytes(samples[index], i)
                 });
-                let source = pair_source(pixels);
-                if keep_mean {
-                    let weight = (1.0_f64 / (pass + 1) as f64) as f32;
-                    sum = std::array::from_fn(|channel| {
-                        (source[channel] - sum[channel])
-                            .mul_add(weight, sum[channel])
-                            .clamp(0., 1.)
-                    });
-                } else {
-                    accumulated = accumulate_export(accumulated, source, pass + 1);
-                }
+                accumulated = accumulate_export(accumulated, pair_source(pixels), pass + 1);
             }
             let i = (y * width as usize + x) * 4;
-            if keep_mean {
-                out[i..i + 4].copy_from_slice(&straight_bytes(
-                    sum.map(crate::figma_sampling::encode_unorm8),
-                ));
-            } else {
-                out[i..i + 4].copy_from_slice(&straight_bytes(accumulated));
-            }
+            out[i..i + 4].copy_from_slice(&straight_bytes(accumulated));
         }
     }
     out
-}
-
-/// #1126: a projected inset stroke's own output pixels keep the jitter mean
-/// in binary32 until one final encode, matching the desktop 126.11.9 export
-/// (the perspective fixture's edge at (151, 125)). The desktop re-encodes a
-/// running u8 mean for other content, so this path takes the exact written
-/// region instead of changing [`resolve_sample_planes_2x`]: every pixel
-/// outside `precise` keeps that established byte accumulation bit for bit.
-pub fn resolve_sample_planes_2x_inset(
-    samples: [&[u8]; 4], width: u32, height: u32, precise: &[crate::math::Rect],
-) -> Vec<u8> {
-    resolve_sample_planes_2x_with(samples, width, height, |x, y| {
-        precise.iter().any(|rect| {
-            rect.x <= x as i32 && (x as i32) < rect.right()
-                && rect.y <= y as i32 && (y as i32) < rect.bottom()
-        })
-    })
 }
 
 /// A 0/255 neighborhood is four equal coverage taps. Rounding each axis first

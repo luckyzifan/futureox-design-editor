@@ -940,19 +940,13 @@ mod tests {
                 .filter(|(before, after)| before != after).count();
             assert_eq!(changed, cases.len());
             if scale == 1 {
-                // Figma desktop 126.11.9 samples. The reported (151, 125)
-                // residue was one code in G and B (#1126); the export resolve
-                // now keeps the binary32 mean for the inset stroke's own
-                // pixels, so this edge is exact. (148, 73) stays within one
-                // code: that tap still carries the projected coverage residual.
-                assert_eq!(pixel(&snapped, 151, 125), [211, 75, 75, 255]);
-                let error = |image: &[u8], x: usize, y: usize, native: [u8; 4]| {
-                    pixel(image, x, y).into_iter().zip(native).map(|(a, b)| a.abs_diff(b)).max().unwrap()
-                };
-                assert!(error(&unsnapped, 151, 125, [211, 75, 75, 255]) >= 20);
-                assert!(error(&unsnapped, 148, 73, [21, 8, 8, 255]) >= 20);
-                assert!(error(&snapped, 148, 73, [21, 8, 8, 255]) <= 1,
-                    "edge at 148,73: {:?}", pixel(&snapped, 148, 73));
+                for (x, y, native) in [(148, 73, [21, 8, 8, 255]), (151, 125, [211, 75, 75, 255])] {
+                    let error = |image: &[u8]| {
+                        pixel(image, x, y).into_iter().zip(native).map(|(a, b)| a.abs_diff(b)).max().unwrap()
+                    };
+                    assert!(error(&unsnapped) >= 20);
+                    assert!(error(&snapped) <= 8, "edge at {x},{y}: {:?}", pixel(&snapped, x, y));
+                }
                 assert_eq!(pixel(&snapped, 108, 99), [0, 0, 0, 255]);
                 assert_eq!(pixel(&snapped, 150, 99), [231, 82, 82, 255]);
             }

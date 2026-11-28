@@ -674,12 +674,6 @@ pub struct Engine {
     /// Cleared at the start of every surface render and consumed by the
     /// figma tile resolver. Not a document or stats field.
     false_half_fixes: Vec<crate::fidelity::FalseHalfFix>,
-    /// Export-only. Output pixels (tile-relative) written by a projected
-    /// inset stroke's jitter samples. Cleared at the start of every surface
-    /// render and consumed by the figma tile resolver: these keep the jitter
-    /// mean in binary32 until one final encode (#1126). Every other pixel
-    /// keeps the byte accumulation untouched.
-    spatial_inset_pixels: Vec<crate::math::Rect>,
 }
 impl Default for Engine {
     fn default() -> Self {
@@ -736,7 +730,6 @@ impl Engine {
             pose_prefix: None,
             settled_cuts: Arc::new(Mutex::new(SettledCuts::default())),
             false_half_fixes: Vec::new(),
-            spatial_inset_pixels: Vec::new(),
         }
     }
     pub fn load_font(&mut self, data: &[u8]) -> Result<(), String> {
@@ -2465,7 +2458,6 @@ if retain_translated_roots {
         padding: ExportPadding, budget: Budget, regional: bool, plan: Option<&mut CpuFramePlan>, use_pose_prefix: bool,
     ) -> Result<Vec<Surface>, String> {
         self.false_half_fixes.clear();
-        self.spatial_inset_pixels.clear();
         let (extra_halo, required) = match padding {
             ExportPadding::Extra(value) => (value, None),
             ExportPadding::Required(rect) => (0, Some(rect)),
@@ -2773,7 +2765,6 @@ if retain_translated_roots {
             prefix_view,
             prefix_allocations: Vec::new(),
             false_half_fixes: Vec::new(),
-            spatial_inset_pixels: Vec::new(),
         };
         let rendered = if synchronized {
             let mut targets = vec![target];
@@ -2809,7 +2800,6 @@ if retain_translated_roots {
                     }
                 }
                 self.false_half_fixes = std::mem::take(&mut painter.false_half_fixes);
-                self.spatial_inset_pixels = std::mem::take(&mut painter.spatial_inset_pixels);
                 return Ok(output);
             }
             if draw_root.iter().all(|draw| *draw) {
@@ -2819,7 +2809,6 @@ if retain_translated_roots {
                 painter.paint_siblings(&roots, &mut targets, None, false, None)?;
             }
             self.false_half_fixes = std::mem::take(&mut painter.false_half_fixes);
-            self.spatial_inset_pixels = std::mem::take(&mut painter.spatial_inset_pixels);
             Ok(targets.into_iter().collect())
         } else {
             // Reverse paint order: earlier layers must retain every input read
@@ -2841,7 +2830,6 @@ if retain_translated_roots {
                 painter.node_region(root, &mut target, None, regional.then_some(output), extent, false)?;
             }
             self.false_half_fixes = std::mem::take(&mut painter.false_half_fixes);
-            self.spatial_inset_pixels = std::mem::take(&mut painter.spatial_inset_pixels);
             Ok(vec![target])
         };
         rendered
@@ -3281,17 +3269,9 @@ if retain_translated_roots {
                     crate::fidelity::resolve_software_sample_planes_2x(
                         samples, w, h, self.allows_software_color_coverage(options),
                     )
-                } else if self.spatial_inset_pixels.is_empty() {
-                    crate::fidelity::resolve_sample_planes_2x(samples, w, h)
                 } else {
-                    // Only the projected inset stroke's own samples keep the
-                    // jitter mean in binary32 (#1126). Every other tile and
-                    // pixel stays on the byte accumulation above.
-                    crate::fidelity::resolve_sample_planes_2x_inset(
-                        samples, w, h, &self.spatial_inset_pixels,
-                    )
+                    crate::fidelity::resolve_sample_planes_2x(samples, w, h)
                 };
-                self.spatial_inset_pixels.clear();
                 if source.raster_profile == crate::fidelity::RasterProfile::Figma {
                     crate::fidelity::apply_false_half_fixes(
                         &mut bytes,
@@ -3651,7 +3631,6 @@ impl Engine {
             pose_prefix: self.pose_prefix.clone(),
             settled_cuts: Arc::clone(&self.settled_cuts),
             false_half_fixes: Vec::new(),
-            spatial_inset_pixels: Vec::new(),
         }
     }
 
@@ -3836,7 +3815,6 @@ struct Painter<'a> {
     prefix_view: PrefixView,
     prefix_allocations: Vec<Allocation>,
     false_half_fixes: Vec<crate::fidelity::FalseHalfFix>,
-    spatial_inset_pixels: Vec<crate::math::Rect>,
 }
 
 enum TextureBundle {
@@ -4835,7 +4813,6 @@ impl Painter<'_> {
         let fill = to_pixel(style.fill);
         let edge = to_pixel(style.stroke);
         let mut previous = Point::default();
-        let mut touched: Option<Rect> = None;
         for (sample, (sx, sy)) in crate::fidelity::SAMPLE_OFFSETS.into_iter().enumerate() {
             let mask = if convex.is_none() {
                 let shift = Point::new(0.5 - sx, 0.5 - sy);
@@ -4855,8 +4832,6 @@ impl Painter<'_> {
                     if outline.at(sample, x, y) == 0. {
                         continue;
                     }
-                    touched = Some(touched.map_or(Rect::new(x, y, 1, 1), |bounds|
-                        bounds.union(Rect::new(x, y, 1, 1))));
                     let coverage = if (0..4).all(|plane| outline.at(plane, x, y) == 1.) {
                         if let Some(convex) = &convex {
                             convex.coverage(Point::new(f64::from(x) + sx, f64::from(y) + sy))
@@ -4871,22 +4846,6 @@ impl Painter<'_> {
                     let index = layers[sample].rect.index(x, y).expect("projected inset within layer");
                     layers[sample].pixels[index] = pixel;
                 }
-            }
-        }
-        if let Some(bounds) = touched {
-            // Written pixels are in the 2× device lattice; the tile resolver
-            // works in output pixels relative to the viewport origin.
-            let to_output = |value: i32, origin: i32| (value - origin).div_euclid(2);
-            let x0 = to_output(bounds.x, self.viewport.x);
-            let y0 = to_output(bounds.y, self.viewport.y);
-            let x1 = to_output(bounds.right() - 1, self.viewport.x) + 1;
-            let y1 = to_output(bounds.bottom() - 1, self.viewport.y) + 1;
-            let tile = Rect::new(0, 0, self.viewport.w / 2, self.viewport.h / 2);
-            let clipped = Rect::new(
-                x0, y0, (x1 - x0) as u32, (y1 - y0) as u32,
-            ).intersect(tile);
-            if !clipped.empty() {
-                self.spatial_inset_pixels.push(clipped);
             }
         }
         Ok(())
