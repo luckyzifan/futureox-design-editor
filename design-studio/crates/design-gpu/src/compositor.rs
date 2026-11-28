@@ -2896,7 +2896,7 @@ mod solid_batch_admission_tests {
         json!({"id":id,"kind":"rectangle","transform":[1,0,0,1,x,y],"width":w,"height":h,
             "fills":[{"kind":"solid","color":"#336699"}]})
     }
-    fn node(scene: &GpuScene, id: &str) -> &GpuNode {
+    fn node<'a>(scene: &'a GpuScene, id: &str) -> &'a GpuNode {
         &scene.nodes[id]
     }
 
@@ -2904,7 +2904,8 @@ mod solid_batch_admission_tests {
     fn whole_pixel_rectangle_runs_on_one_instanced_draw() {
         let scene = compile(json!(["a"]), json!({"a": solid("a", 10., 12., 40., 24.)}));
         let n = node(&scene, "a");
-        assert_eq!(rect_box(&scene, n), Some([0., 0., 40., 24.]));
+        // Shape-local bounds on the 2x export lattice: (0.5, 0.5) to (40.5, 24.5).
+        assert_eq!(rect_box(&scene, n), Some([1., 1., 81., 49.]));
         assert!(batchable(&scene, n));
     }
 
@@ -2965,7 +2966,7 @@ mod solid_batch_admission_tests {
     #[test]
     fn strokes_effects_opacity_and_blend_keep_their_draws() {
         let mut stroked = solid("a", 10., 12., 40., 24.);
-        stroked["strokes"] = json!([{"kind":"solid","color":"#000000","width":2.}]);
+        stroked["strokes"] = json!([{"paint":{"kind":"solid","color":"#000000"},"width":2.}]);
         let mut shadowed = solid("b", 10., 12., 40., 24.);
         shadowed["effects"] = json!([{"kind":"shadow","radius":4.,"color":"#000000"}]);
         let mut translucent = solid("c", 10., 12., 40., 24.);
@@ -2983,7 +2984,7 @@ mod solid_batch_admission_tests {
 
     #[test]
     fn plain_rectangles_inside_a_clipping_frame_stay_batched() {
-        let frame = json!({"id":"frame","kind":"frame","clip":true,
+        let frame = json!({"id":"frame","kind":"frame","clip":true,"children":["a","b"],
             "transform":[1,0,0,1,4,4],"width":80,"height":60,
             "fills":[{"kind":"solid","color":"#ffffff"}]});
         let scene = compile(
@@ -3002,7 +3003,7 @@ mod solid_batch_admission_tests {
     #[test]
     fn rectangles_below_a_rotated_parent_keep_the_analytic_mask() {
         let (sin, cos) = 0.25_f64.sin_cos();
-        let frame = json!({"id":"frame","kind":"frame","clip":true,
+        let frame = json!({"id":"frame","kind":"frame","clip":true,"children":["a"],
             "transform":[cos, sin, -sin, cos, 40., 40.],"width":80,"height":60,
             "fills":[{"kind":"solid","color":"#ffffff"}]});
         let scene = compile(
