@@ -817,10 +817,10 @@ describe('Figma plugin host', () => {
     expect(parsePluginManifest({ name: 'Typed main', id: 'typed.main', api: '1.0.0', main: 'src/code.ts' }).main).toBe('src/code.ts')
     expect(parsePluginManifest({ name: 'Typed entry', id: 'typed.entry', api: '1.0.0', main: 'src/code.tsx' }).main).toBe('src/code.tsx')
     expect(() => parsePluginManifest({ name: 'Bad main', id: 'bad.main', api: '1.0.0', main: 'code.txt' })).toThrow(/\.js, \.mjs, \.ts, or \.tsx/)
-    expect(() => pluginBundleFromZip(zipSync({
+    await expect(pluginBundleFromZip(zipSync({
       'manifest.json': strToU8(JSON.stringify({ name: 'JSX', id: 'jsx.plugin', api: '1.0.0', main: 'code.tsx' })),
       'code.tsx': strToU8('const label = <div/>'),
-    }), async source => source)).toThrow(/TSX\/JSX/)
+    }), async source => source)).rejects.toThrow(/TSX\/JSX/)
 
     const typedMain = await pluginBundleFromZip(zipSync({
       'manifest.json': strToU8(JSON.stringify({ name: 'Typed main', id: 'typed.archive', api: '1.0.0', main: 'code.ts' })),
