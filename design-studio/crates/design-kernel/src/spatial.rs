@@ -226,8 +226,12 @@ fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transf
         return Ok(patch);
     }
 
-    // The outline projects independently from the paint. Paints and styles
-    // that need inverse projective sampling keep their explicit admission gate.
+    // The outline projects independently from the paint. Solid vector layers
+    // become exact projected coverage cells. Other layer content keeps its
+    // own paint pipeline and follows the plane through the affine map of
+    // three projected corners: text, image and gradient paints, shadows and
+    // nested containers are admitted, while masks, offsets, repeats, brushes
+    // and authored references still need inverse projective sampling.
     if !supports_projected_outline(node)
         || !node.children.is_empty() || node.mask || node.clip && node.kind != "frame" || node.path_offset != 0.
         || node.vector_brush.is_some() || node.repeat.is_some()
@@ -235,7 +239,31 @@ fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transf
         || node.fills.iter().any(|p| p.visible && p.kind != "solid")
         || node.effects.iter().any(|e| e.visible)
     {
-        return Err("Tilt with perspective requires solid vector layers without other enabled effects".into());
+        let flat_content = node.kind == "text"
+            || !node.children.is_empty()
+            || node.fills.iter().any(|paint| paint.visible && paint.kind != "solid")
+            || node.effects.iter().any(|effect| effect.visible);
+        let admitted = flat_content
+            && !node.mask
+            && !(node.clip && node.kind != "frame")
+            && node.path_offset == 0.
+            && node.vector_brush.is_none()
+            && node.repeat.is_none()
+            && node.bindings.is_empty()
+            && node.style_refs.is_empty()
+            && node.width > 0.
+            && node.height > 0.;
+        if !admitted {
+            return Err("Tilt with perspective requires solid vector layers without other enabled effects".into());
+        }
+        let transform = Transform([
+            (tr.x - tl.x) / node.width, (tr.y - tl.y) / node.width,
+            (bl.x - tl.x) / node.height, (bl.y - tl.y) / node.height, tl.x, tl.y,
+        ]);
+        let mut patch = Projection::new(transform, true);
+        patch.pivot_plane = fallback.pivot_plane;
+        patch.selection_corners = selection_corners;
+        return Ok(patch);
     }
     let inverse = node.transform.inverse()?;
     let tolerance = PAGE_TOLERANCE / page_parent.max_scale().max(1.);
@@ -587,7 +615,51 @@ mod tests {
         document["nodes"]["parent"].as_object_mut().unwrap().remove("spatial");
         let bytes = crate::binfmt::encode_authored_json(&document.to_string()).unwrap();
         let decoded = crate::binfmt::decode_authored_json(&bytes).unwrap();
-        assert_eq!(serde_json::from_str::<Value>(&decoded).unwrap(), document);
+        let decoded: Value = serde_json::from_str(&decoded).unwrap();
+        // No spatial field remains, so the portable file declares schema 23
+        // instead of keeping a band that belongs to removed 3D content.
+        assert_eq!(decoded["schemaVersion"], 23);
+        document["schemaVersion"] = json!(23);
+        assert_eq!(decoded, document);
+    }
+
+    #[test]
+    fn the_declared_spatial_schema_follows_the_fields_that_remain() {
+        let mut document = fixture();
+        let parsed = |value: &Value| -> crate::scene::Document { serde_json::from_value(value.clone()).unwrap() };
+        assert_eq!(parsed(&document).spatial_schema_version(), 24);
+
+        // Removing the last spatial effect leaves schema 24 without any 3D
+        // content. Validation still passes, but the declared band is stale.
+        let mut bare = document.clone();
+        bare["nodes"]["parent"].as_object_mut().unwrap().remove("spatial");
+        bare["nodes"]["shape"].as_object_mut().unwrap().remove("spatial");
+        let mut bare_doc = parsed(&bare);
+        bare_doc.validate().unwrap();
+        assert!(bare_doc.normalize_spatial_schema());
+        assert_eq!(bare_doc.schema_version, 23);
+        let bytes = crate::binfmt::encode_authored_json(&bare.to_string()).unwrap();
+        let decoded: Value = serde_json::from_str(&crate::binfmt::decode_authored_json(&bytes).unwrap()).unwrap();
+        assert_eq!(decoded["schemaVersion"], 23, "FD encode drops the stale 3D band");
+        // The typed container follows the same rule in both directions.
+        let typed_bytes = crate::binfmt::encode(&bare_doc);
+        let typed: crate::scene::Document = crate::binfmt::decode(&typed_bytes).unwrap();
+        assert_eq!(typed.schema_version, 23, "typed FD decode normalizes the band");
+        let mut engine = Engine::new();
+        engine.load_document(&bare.to_string()).unwrap();
+        assert_eq!(engine.authored_document().unwrap().schema_version, 23, "loading normalizes the declaration");
+
+        // Schema 25 belongs to the shared 3D space only.
+        document["schemaVersion"] = json!(25);
+        document["nodes"]["parent"]["spatial"]["preserve3d"] = json!(true);
+        assert_eq!(parsed(&document).spatial_schema_version(), 25);
+        document["nodes"]["parent"]["spatial"]["preserve3d"] = json!(false);
+        assert_eq!(parsed(&document).spatial_schema_version(), 24);
+        document["schemaVersion"] = json!(33);
+        assert_eq!(parsed(&document).spatial_schema_version(), 33, "later schemas carry other features");
+        let mut later = parsed(&bare);
+        later.schema_version = 33;
+        assert_eq!(later.spatial_schema_version(), 33);
     }
 
     #[test]
@@ -613,6 +685,11 @@ mod tests {
         ]}));
 
         let json = json!({"pageId":"p","width":300,"height":200,"view":{"x":0,"y":0,"zoom":1},"transparent":true});
+        // The oracle has no spatial field, so both engines must be pinned to
+        // the same raster band: the default band of a projected document is
+        // Figma while the oracle keeps the flat default.
+        let mut json = json.clone();
+        json["rasterProfile"] = json!("figma");
         let options: RenderOptions = serde_json::from_value(json.clone()).unwrap();
         let mut reference = Engine::new();
         reference.load_document(&oracle.to_string()).unwrap();
@@ -863,13 +940,19 @@ mod tests {
                 .filter(|(before, after)| before != after).count();
             assert_eq!(changed, cases.len());
             if scale == 1 {
-                for (x, y, native) in [(148, 73, [21, 8, 8, 255]), (151, 125, [211, 75, 75, 255])] {
-                    let error = |image: &[u8]| {
-                        pixel(image, x, y).into_iter().zip(native).map(|(a, b)| a.abs_diff(b)).max().unwrap()
-                    };
-                    assert!(error(&unsnapped) >= 20);
-                    assert!(error(&snapped) <= 8, "edge at {x},{y}: {:?}", pixel(&snapped, x, y));
-                }
+                // Figma desktop 126.11.9 samples. The reported (151, 125)
+                // residue was one code in G and B (#1126); the export resolve
+                // now keeps the binary32 mean for the inset stroke's own
+                // pixels, so this edge is exact. (148, 73) stays within one
+                // code: that tap still carries the projected coverage residual.
+                assert_eq!(pixel(&snapped, 151, 125), [211, 75, 75, 255]);
+                let error = |image: &[u8], x: usize, y: usize, native: [u8; 4]| {
+                    pixel(image, x, y).into_iter().zip(native).map(|(a, b)| a.abs_diff(b)).max().unwrap()
+                };
+                assert!(error(&unsnapped, 151, 125, [211, 75, 75, 255]) >= 20);
+                assert!(error(&unsnapped, 148, 73, [21, 8, 8, 255]) >= 20);
+                assert!(error(&snapped, 148, 73, [21, 8, 8, 255]) <= 1,
+                    "edge at 148,73: {:?}", pixel(&snapped, 148, 73));
                 assert_eq!(pixel(&snapped, 108, 99), [0, 0, 0, 255]);
                 assert_eq!(pixel(&snapped, 150, 99), [231, 82, 82, 255]);
             }
@@ -900,5 +983,94 @@ mod tests {
             }
         }
         assert_eq!((min,max),([99,55],[188,135]));
+    }
+
+    fn perspective_render(doc: &Value, with_font: bool) -> Vec<u8> {
+        let options: RenderOptions = serde_json::from_value(json!({
+            "pageId":"p","width":300,"height":200,"transparent":true,
+            "view":{"x":0,"y":0,"zoom":1},"rasterProfile":"figma",
+        })).unwrap();
+        let mut engine = Engine::new();
+        if with_font {
+            engine.load_font(&std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"),
+                "/../../../frontend/design-client/public/fonts/NotoSansSC.ttf")).unwrap()).unwrap();
+        }
+        engine.load_document(&doc.to_string()).unwrap();
+        engine.render(&options).unwrap()
+    }
+
+    #[test]
+    fn a_flat_layer_follows_the_parent_perspective_instead_of_rejecting() {
+        let image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGN4FBT0H4QZYAwAWhgKFXUM74MAAAAASUVORK5CYII=";
+        let mut gradient = fixture();
+        gradient["nodes"]["shape"]["fills"] = json!([{"kind":"linear","color":"#ffffff",
+            "stops":[{"offset":0,"color":"#e75252"},{"offset":1,"color":"#427ff1"}]}]);
+        let mut image_fill = fixture();
+        image_fill["nodes"]["shape"]["fills"] = json!([{"kind":"image","color":"#ffffff",
+            "image":image,"fit":"stretch"}]);
+        let mut shadow = fixture();
+        shadow["nodes"]["shape"]["effects"] = json!([{"id":"shadow","kind":"shadow",
+            "visible":true,"radius":4,"x":0,"y":0,"spread":0,"color":"#000000","opacity":0.5}]);
+        let mut text = fixture();
+        text["nodes"]["shape"]["kind"] = json!("text");
+        text["nodes"]["shape"]["text"] = json!("3D");
+        text["nodes"]["shape"]["fontSize"] = json!(28);
+        let mut empty_frame = fixture();
+        empty_frame["nodes"]["shape"]["kind"] = json!("frame");
+        empty_frame["nodes"]["shape"]["children"] = json!([]);
+        for (name, doc, with_font, least) in [
+            ("gradient", gradient, false, 1000),
+            ("image", image_fill, false, 1000),
+            ("shadow", shadow, false, 1000),
+            ("text", text, true, 100),
+            ("empty frame", empty_frame, false, 1000),
+        ] {
+            let painted = |bytes: &[u8]| {
+                // The parent keeps an opaque white fill, so every non-white
+                // output pixel belongs to the projected layer.
+                bytes.chunks(4).filter(|pixel| pixel[..3] != [255, 255, 255]).count()
+            };
+            let perspective = perspective_render(&doc, with_font);
+            assert!(painted(&perspective) >= least,
+                "{name} under perspective painted {} pixels", painted(&perspective));
+            let mut flat = doc.clone();
+            flat["nodes"]["parent"].as_object_mut().unwrap().remove("spatial");
+            assert!(painted(&perspective_render(&flat, with_font)) >= least,
+                "{name} without the parent perspective");
+        }
+        // Content that still needs inverse projective sampling keeps its gate.
+        let mut offset = fixture();
+        offset["nodes"]["shape"]["pathOffset"] = json!(3.);
+        let error = Engine::new().load_document(&offset.to_string()).unwrap_err();
+        assert!(error.contains("Tilt with perspective requires solid vector layers"), "{error}");
+    }
+
+    #[test]
+    fn projected_content_defaults_to_the_figma_raster_band() {
+        let doc = fixture();
+        let render = |doc: &Value, profile: Option<&str>| {
+            let mut request = json!({"pageId":"p","width":300,"height":200,"transparent":true,
+                "view":{"x":0,"y":0,"zoom":1}});
+            if let Some(profile) = profile { request["rasterProfile"] = json!(profile); }
+            let options: RenderOptions = serde_json::from_value(request).unwrap();
+            let mut engine = Engine::new();
+            engine.load_document(&doc.to_string()).unwrap();
+            engine.render(&options).unwrap()
+        };
+        let default = render(&doc, None);
+        assert_eq!(default, render(&doc, Some("figma")),
+            "the default band of projected content must be the Figma band");
+        // A flat document keeps the analytic default.
+        let mut flat = doc.clone();
+        flat["nodes"]["parent"].as_object_mut().unwrap().remove("spatial");
+        flat["nodes"]["shape"].as_object_mut().unwrap().remove("spatial");
+        flat["schemaVersion"] = json!(23);
+        assert_eq!(render(&flat, None), render(&flat, Some("analytic")),
+            "flat content keeps the analytic default");
+        // An authored document band still wins over the derived default.
+        let mut analytic_doc = doc.clone();
+        analytic_doc["rasterProfile"] = json!("analytic");
+        assert_ne!(render(&analytic_doc, None), render(&doc, None),
+            "the document band overrides the projected default");
     }
 }

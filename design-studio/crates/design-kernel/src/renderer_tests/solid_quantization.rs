@@ -82,6 +82,7 @@ impl Fixture {
             settled_cuts: std::sync::Arc::new(std::sync::Mutex::new(super::SettledCuts::default())),
             prefix_allocations: Vec::new(),
             false_half_fixes: Vec::new(),
+            spatial_inset_pixels: Vec::new(),
             prefix_view: PrefixView {
                 viewport: extent,
                 extent,

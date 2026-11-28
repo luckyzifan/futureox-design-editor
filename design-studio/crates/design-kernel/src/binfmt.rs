@@ -432,11 +432,36 @@ pub fn decode_value(data: &[u8]) -> Result<Value, Error> {
 /// Encode a typed document. Portable files use `encode_authored_json` so ignored
 /// fields and explicit nulls stay in the file.
 pub fn encode(document: &Document) -> Vec<u8> {
-    encode_value(&serde_json::to_value(document).expect("document serializes"))
-        .expect("document numbers encode")
+    encode_value(&authored_value(document)).expect("document numbers encode")
 }
 pub fn decode(data: &[u8]) -> Result<Document, Error> {
-    serde_json::from_value(decode_value(data)?).map_err(|e| Error::Json(e.to_string()))
+    let mut document: Document =
+        serde_json::from_value(decode_value(data)?).map_err(|e| Error::Json(e.to_string()))?;
+    document.normalize_spatial_schema();
+    Ok(document)
+}
+
+/// Serialize a document with the schema version its 3D content implies.
+fn authored_value(document: &Document) -> Value {
+    let mut value = serde_json::to_value(document).expect("document serializes");
+    let version = document.spatial_schema_version();
+    if version != document.schema_version {
+        value["schemaVersion"] = Value::from(version);
+    }
+    value
+}
+
+/// The authored value tree with the declared 3D schema band matched to the
+/// spatial fields it still carries. Validation runs on the declared version
+/// first, so lowering the band never hides a rejected spatial payload.
+fn validated_authored_value(mut value: Value) -> Result<Value, String> {
+    let document: Document = serde::Deserialize::deserialize(&value).map_err(|e| e.to_string())?;
+    document.validate()?;
+    let version = document.spatial_schema_version();
+    if version != document.schema_version {
+        value["schemaVersion"] = Value::from(version);
+    }
+    Ok(value)
 }
 
 /// Validate the typed document, then encode the authored JSON value.
@@ -445,11 +470,7 @@ pub fn decode(data: &[u8]) -> Result<Document, Error> {
 pub fn encode_authored_json(json: &str) -> Result<Vec<u8>, String> {
     crate::capacity::check_document_bytes(json.len())?;
     let value: Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
-    {
-        let document: Document =
-            serde::Deserialize::deserialize(&value).map_err(|e| e.to_string())?;
-        document.validate()?;
-    }
+    let value = validated_authored_value(value)?;
     let bytes = encode_value(&value).map_err(|e| e.to_string())?;
     crate::capacity::check_document_bytes(bytes.len())?;
     Ok(bytes)
@@ -458,11 +479,7 @@ pub fn encode_authored_json(json: &str) -> Result<Vec<u8>, String> {
 /// Decode a portable file, validate it, and return the authored value tree.
 pub fn decode_authored_json(data: &[u8]) -> Result<String, String> {
     let value = decode_value(data).map_err(|e| e.to_string())?;
-    {
-        let document: Document =
-            serde::Deserialize::deserialize(&value).map_err(|e| e.to_string())?;
-        document.validate()?;
-    }
+    let value = validated_authored_value(value)?;
     let json = serde_json::to_string(&value).map_err(|e| e.to_string())?;
     crate::capacity::check_document_bytes(json.len())?;
     Ok(json)
